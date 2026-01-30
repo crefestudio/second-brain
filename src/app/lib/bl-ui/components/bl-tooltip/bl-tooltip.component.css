@@ -1,0 +1,52 @@
+/* tool-tip-content */
+.tool-tip-content {
+    position: absolute;
+    width: max-content;
+    padding: 4px 10px;
+    background: var(--text-body);
+    font-size: 12px;
+    /* font-weight: 600; */
+    line-height: 1.25;
+    color: var(--bg1);
+    border-radius: 32px;
+    z-index: 10;
+}
+img {
+    position: absolute;
+    z-index: 10;
+    width: 12px;
+    height: 7px;
+}
+
+.bottom .tool-tip-content,
+.bottom img {
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.right img,
+.right .tool-tip-content {
+    top: 50%;
+    transform: translateY(-50%);
+}
+.right img {
+    transform: translateY(-50%) rotate(270deg);
+}
+
+.left .tool-tip-content,
+.left img {
+    top: 50%;
+    transform: translateY(-50%);
+}
+.left img {
+    transform: translateY(-50%) rotate(90deg);
+}
+
+.top .tool-tip-content,
+.top img {
+    left: 50%;
+    transform: translateX(-50%);
+}
+.top img {
+    transform: translateX(-50%) rotate(180deg);
+}

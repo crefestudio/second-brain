@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <defs>
+        <filter id="arriiq68wa" x="3.807" y="6.283" width="24.385" height="19.435" filterUnits="userSpaceOnUse">
+            <feOffset/>
+            <feGaussianBlur stdDeviation="1" result="blur"/>
+            <feFlood flood-opacity=".4"/>
+            <feComposite operator="in" in2="blur"/>
+            <feComposite in="SourceGraphic"/>
+        </filter>
+    </defs>
+    <path style="fill:none" d="M0 0h32v32H0z"/>
+    <g style="filter:url(#arriiq68wa)">
+        <path data-name="패스 1641" d="m5919.072 1708.435-7.072-7.071 2.122-2.122 4.95 4.95 9.192-9.191 2.121 2.121z" transform="translate(-5905.19 -1685.72)" style="fill:#fff"/>
+    </g>
+</svg>

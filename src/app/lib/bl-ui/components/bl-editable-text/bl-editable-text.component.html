@@ -1,0 +1,12 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<div class="title-box {{size}} {{theme}}" [hidden]="_isEditMode">
+    <span>{{text}}</span>
+    <img [src]="editIcon" (click)="onClickEdit()">
+</div>
+<div class="title-box input {{size}} {{theme}}" [hidden]="!_isEditMode">
+    <input #inputText type="text" 
+        [(ngModel)]="_text" 
+        [value]="_text"
+        (keyup.enter)="onClickSave(_text)">
+    <button type="button" class="update-btn" (click)="onClickSave(_text)"></button>
+</div>

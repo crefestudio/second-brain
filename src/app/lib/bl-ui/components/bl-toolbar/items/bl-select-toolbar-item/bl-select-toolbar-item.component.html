@@ -1,0 +1,17 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-template class="container">
+    <bl-select [style]="'toolbar'" 
+        [height]="height"
+        [value]="value"
+        [theme]="theme"
+        [selectedStyle]="selectedStyle"
+        [popupDirection]="popupDirection"
+        (selected)="onSelect($event)">
+        <bl-option 
+            *ngFor="let option of options;"
+            [name]="option.name" 
+            [value]="option.value"
+            [style]="option.style">
+        </bl-option>
+    </bl-select>
+</ng-template>

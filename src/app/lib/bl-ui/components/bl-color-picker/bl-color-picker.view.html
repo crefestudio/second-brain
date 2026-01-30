@@ -1,0 +1,33 @@
+<div class="color-picker-palette" [ngClass]="{ 'mobile': isMobileViewMode }">
+    <div class="palette">
+        <button class="color-dot-button"
+             *ngFor="let _color of customPalette" 
+            (click)="onPickerSelect(_color)">
+            <span *ngIf="color == _color" class="select-img"></span>
+            <span class="color-dot" [style]="{background: _color}"></span>
+        </button>
+        <button class="color-dot-button"
+            name="color-picker" id="color-picker" 
+            [cpEyeDropper]="true"
+            [cpSaveClickOutside]="false"
+            [cpPosition]="'auto'"
+            [cpPositionOffset]="'50%'"
+            [cpPositionRelativeToArrow]="true"
+            [cpOKButton]="true"
+            [cpOKButtonText]="'선택'"
+            [cpOKButtonClass]= "'btn'"
+            [colorPicker]="color"
+            (colorPickerSelect)="onPickerSelect($event)">
+            <span class="color-dot add-dot"></span>
+        </button>
+    </div>
+    <div class="palette-divider"></div>
+    <div class="basic-palette scroll-style" [ngClass]="{'no-scroll': !scrollOption}">
+    <div class="palette" *ngFor="let colors of palette">
+            <button class="color-dot-button" *ngFor="let _color of colors" (click)="onPickerSelect(_color)">
+                <span *ngIf="color == _color" class="select-img"></span>
+                <span class="color-dot" [style]="{background: _color}"></span>
+            </button>
+        </div>
+    </div>
+</div>

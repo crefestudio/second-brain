@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="271" height="96" viewBox="0 0 271 96">
+    <defs>
+        <linearGradient id="ett1c3mj7a" x1=".221" y1="1" x2=".741" gradientUnits="objectBoundingBox">
+            <stop offset="0"/>
+            <stop offset="1" stop-color="#454647"/>
+        </linearGradient>
+    </defs>
+    <path data-name="src_banner_bg" style="fill:url(#ett1c3mj7a)" d="M0 0h271v96H0z"/>
+</svg>

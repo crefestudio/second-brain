@@ -1,0 +1,29 @@
+
+/* ------------------- mobile slider ------------------ */
+.ngx-slider {
+    margin: 13px 0 15px !important;
+}
+.ngx-slider .ngx-slider-bar {
+    background: var(--bg5) !important;
+}
+.ngx-slider .ngx-slider-pointer {
+    background: var(--bg1) !important;
+    border: 1px solid var(--border-icon) ;
+    width: 24px !important;
+    height: 24px !important;
+    top: -11px !important;
+}
+.ngx-slider .ngx-slider-bar-wrapper {
+    padding: 12px 0 0 0 !important;
+    margin-top: -13px !important;
+}
+.ngx-slider .ngx-slider-bubble,
+.ngx-slider .ngx-slider-pointer:after {
+    display: none !important;
+}
+.ngx-slider .ngx-slider-selection-bar {
+    visibility:  visible !important;
+}
+.ngx-slider .ngx-slider-selection {
+    background: var(--primary2) !important;
+}

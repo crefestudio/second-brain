@@ -1,0 +1,27 @@
+<ng-container *ngTemplateOutlet="template"></ng-container>
+<ng-template #template>
+    <div class="calendar-day-box {{theme}}"
+        [ngClass]="{'today': isToday, 'active': isActived }"  
+        [style]="{
+            height: height + 'px', 
+            'font-size': fontSize + 'px', 
+            padding: getPadding(), 
+            backgroundColor: getBackgroundColor(), 
+            borderColor: getActiveBorderColor()}" 
+        (click)="onClick()">
+        <p class="day" *ngIf="isShow && (!itemData?.thumbImageUrl || !isShowImage)" 
+            [style]="{width: isToday ? fontSize + 'px' : 'auto', height: isToday ? fontSize + 'px' : 'auto', color: textColor }">
+            {{day}}
+        </p>
+        <img class="photo"  *ngIf="isShow && itemData?.thumbImageUrl && isShowImage" 
+            [src]="theme == 'light'? itemData?.thumbImageUrl : itemData?.thumbImageUrlDark" alt=""> 
+        <div class="calendar-day-item-count" *ngIf="isShow && getItemCount() > 1 && itemData?.thumbImageUrl && isShowImage">
+            +{{getItemCount() - 1}}
+        </div>
+        <div class="today-mark" *ngIf="isShow && isToday">
+
+        </div>
+    </div>
+</ng-template>
+
+

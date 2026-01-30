@@ -1,0 +1,12 @@
+<!-- src/app/oauth-success/oauth-success.component.html -->
+<div class="container" style="text-align:center; margin-top:50px;">
+  <h1 *ngIf="success">🎉 Notion 연결 완료!</h1>
+  <h1 *ngIf="!success">⚠️ 연결 정보를 불러오지 못했습니다.</h1>
+
+  <div *ngIf="success" style="margin-top:20px;">
+    <p>워크스페이스: <strong>{{ workspaceName }}</strong></p>
+    <p>봇 ID: <strong>{{ botId }}</strong></p>
+    <p>이제 LifeUp 템플릿에 데이터를 수집할 수 있습니다.</p>
+    <!-- <button (click)="window.location.href='/'" style="padding:10px 20px; margin-top:20px;">홈으로 이동</button> -->
+  </div>
+</div>

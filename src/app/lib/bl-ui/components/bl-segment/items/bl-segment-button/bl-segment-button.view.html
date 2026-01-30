@@ -1,0 +1,17 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<!-- <ng-container *ngTemplateOutlet="template"></ng-container> -->
+
+<ng-template #template>
+    <button 
+        class="tool-tip-object seg-btn {{theme}} {{styleType}}"
+        [disabled]="disabled"
+        [ngClass]="{'img-btn': activatedImg && img, 'active': isActivated, 'mobile': isMobileViewMode }"
+        (click)="onSelectSegment(id)">
+        <span *ngIf="title">{{title}}</span>
+        <span class="badge dot" *ngIf="hasBadge"></span>
+        <img *ngIf="img" [src]="isActivated && activatedImg ? activatedImg : img">
+        <bl-tooltip *ngIf="tooltip" [tooltip]="tooltip"  [pHeight]="tooltipParentHeight" [pWidth]="tooltipParentWidth" [align]="tooltipAlign"></bl-tooltip>
+    </button>
+</ng-template>
+
+

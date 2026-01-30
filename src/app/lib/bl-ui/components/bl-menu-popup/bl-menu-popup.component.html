@@ -1,0 +1,33 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-container *ngTemplateOutlet="template"></ng-container>
+
+<ng-template #template>
+    <div *ngIf="!isMobileViewMode" class="container" [hidden]="!isShow" (mouseover)="onMouseOver()" (mouseout)="onMouseOut()" (click)="onClickMe()">
+        <div #blPopup class="popup" [style]="style" [style.top]="top+'px'" [style.left]="left+'px'">
+            <div *ngFor="let item of children">
+                <ng-container *ngTemplateOutlet="item.template"></ng-container>
+            </div>
+        </div>
+    </div>
+
+    <div *ngIf="isMobileViewMode" deviceClass class="container" >
+        <div class="popup-bg" (click)="hide()" *ngIf="isShowBackground"></div>
+        
+        <div #blPopup *ngIf="isShowContainer" class="filter-popup"
+            [ngClass]="{'active': isShowBackground, 'inactive': !isShowBackground, 'grid': type == 'grid'}">  
+            <div class="menu-header-wrap" *ngIf="type !== 'list'">
+                <p class="header-text">{{title}}</p>
+                <img src="assets/images/svg/ic_close_32.svg" alt="" (click)="hide()">
+            </div>
+            <ul class="grid-wrap">
+                <li *ngFor="let item of children" class="list-item"
+                    [ngClass]="{'no-display': type == 'grid' && item.id == ''}">
+                    <ng-container *ngTemplateOutlet="item.template"></ng-container>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+</ng-template>
+
+

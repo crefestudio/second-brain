@@ -1,0 +1,14 @@
+<div class="error-wrap" (click)="hide()" [ngClass]="{'closed': !isShowError}">
+    <div #errorContainer class="error-body" [@openClose]="isShowError ? 'open' : 'closed'">
+        <p>
+            오류가 발견되었습니다. 서비스에 문제가 있다면 아래 버튼을 클릭해주세요.<br>
+            <button (click)="onReload($event)">서비스 재시작하기</button>
+        </p>
+        <p class="error-message scroll-style" *ngIf="isShowErrorMessage">
+            오류내용<br>
+            <span *ngFor="let _message of messages; let idx = index;">
+                {{idx + 1}}. {{_message}}<br>
+            </span>
+        </p>
+    </div>
+</div>

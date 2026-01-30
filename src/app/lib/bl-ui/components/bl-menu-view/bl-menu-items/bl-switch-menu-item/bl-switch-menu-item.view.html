@@ -1,0 +1,29 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-container *ngTemplateOutlet="template"></ng-container>
+
+<ng-template #template>
+    <div class="setting-item" 
+        [ngClass]="{'no-border': !hasBottomBorder, 'dark': isDarkMode }"
+        [style]="{height: height + 'px'}">
+        <p>
+            <span>{{name}}</span>
+            <span *ngIf="description" class="switch-desc">{{description}}</span>
+            <span *ngIf="isShowPremiumIcon" class="premium-icon-box">
+                <div class="premium-icon-circle">
+                    <img class="premium-icon" width="16px" height="16px" src="assets/images/svg/ic_premium_color_32.svg">
+                </div>
+            </span>
+            <span *ngIf="isTooltip" class="tool-tip">
+                <img src="assets/images/svg/ic_info_24.svg" />
+                <span [innerHTML]="tooltipDesc"></span>
+            </span>
+        </p>
+        <div class="switch-btn"
+            [ngClass]="{'disabled': disabled, 'on': isChecked}"
+            (click)="onChange()">
+            <span class="dot"></span>
+        </div>
+    </div>
+</ng-template>
+
+

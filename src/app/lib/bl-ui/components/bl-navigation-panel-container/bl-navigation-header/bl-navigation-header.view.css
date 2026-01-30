@@ -1,0 +1,150 @@
+.header {
+    position: relative;
+    z-index: 1;
+    height: 50px;
+    padding: 0 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    font-size: var(--font-size-title);
+}
+.header.dark {
+    color: var(--text-title-dark);
+}
+.header.light {
+    color: var(--primary1);
+}
+
+.header.small {
+    padding: 0 12px;
+    font-size: var(--font-size-title-s);
+}
+
+.header .truncate {
+    display: inline-block;      /* span에 블록 형식을 적용 */
+    /* width: 225px; */
+    white-space: nowrap;        /* 텍스트가 한 줄로 표시되도록 설정 */
+    overflow: hidden;           /* 넘치는 텍스트 숨기기 */
+    text-overflow: ellipsis;    /* 넘치는 텍스트에 ... 추가 */
+}
+
+.header span {
+    display: inline-block;
+    min-height: 29px;
+    max-height: 35px;
+
+    font-family: 'Pretendard-Bold';
+    /* font-weight: bold; */
+    font-stretch: normal;
+    line-height: 1.21;
+    vertical-align: middle;
+    margin-left: 9px;
+    max-width: 15rem;
+    /* max-width: 90%; */
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    letter-spacing: 2px;
+}
+
+.header.small span {
+    /* font-weight: normal; */
+    vertical-align: middle;
+    min-height: 18px;
+}
+
+
+.header button {
+    width: 32px;
+    height: 32px;
+    vertical-align: middle;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.header.small button {
+    width: 28px;
+    height: 28px;
+    vertical-align: middle;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+
+.back {
+    background: url('src/assets/images/svg/ic_back-gray-32.svg');
+    margin-right: -8px; 
+}
+.more {
+    background: url('src/assets/images/svg/ic_menu-note_32_light.svg');
+}
+.close {
+    background: url('src/assets/images/svg/ic_close_32.svg');
+}
+.text-btn {
+    font-size: 14px;
+    font-weight: 300;
+    color: inherit;
+}
+
+/* mobile */
+.mobile.header {
+    height: 50px;
+    font-size: var(--font-size-m-title);
+    line-height: 29px;
+    /* padding: 32px 20px 7px; */
+}
+
+.mobile.header.small {
+    padding: 0 12px;
+    font-size: 23px; /*var(--font-size-title-s);*/
+}
+
+.title-box {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.mobile .title-box {
+    /* display: flex;
+    flex: 1;
+    max-width: 95%; */
+}
+.mobile.header span {
+    max-width: 100%;
+    /* max-width: 34rem; */
+    /* line-height: 1; */
+}
+.mobile .menu-btn .bookmark {
+    
+}
+
+.menu-btn button {
+    margin: 0 0 0 8px;
+}
+
+/* .mobile .menu-btn button:nth-child(2) {
+    margin: 0 0 0 10px;
+    
+} */
+.mobile.header.isIn span {
+    font-size: var(--font-size-m-title);
+    line-height: 28px;
+}
+
+.badge-dot {
+    display: inline-block;
+    position: absolute;
+
+    background: var(--secondary-accent-dark); 
+    width: 6px;
+    height: 6px;
+    border-radius: 6px;
+    min-height: 6px !important;
+    right: 5px;
+    top: 5px;
+    margin-left: 2px;
+    margin-bottom: 7px;
+} 

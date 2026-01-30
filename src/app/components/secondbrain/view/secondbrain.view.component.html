@@ -1,0 +1,77 @@
+<div class="view-wrapper">
+  <ng-container *ngIf="!templateKey">
+    <div class="connect-container">
+      <!-- 처음 Connect 버튼 -->
+      <!-- <button *ngIf="!showConnectInput" class="connect-btn" (click)="openConnect()">
+        CONNECT
+      </button> -->
+      <!-- 입력 상태일 때만 설명 + 입력 노출 -->
+      <ng-container>
+
+        <!-- 설명 문구 -->
+        <small class="info-text">
+          API 연결을 위해 LIFEUP템플릿 구매 시 등록한 휴대폰 번호를 입력해주세요.<br /> 
+          ※ 입력하신 번호는 연결과 구매자 확인 용도로만 사용됩니다.
+        </small>
+
+        <!-- 입력 + 버튼 영역 -->
+        <div class="input-group"
+            style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+
+          <!-- 뒤로가기 버튼 -->
+          <!-- <button
+            class="back-btn"
+            (click)="goBackToConnect()"
+            title="뒤로가기"
+            style="background:none; border:none; padding:0; cursor:pointer;"
+          >
+            <svg viewBox="0 0 1024 1024"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                fill="currentColor">
+              <path d="M224 480h640a32 32 0 1 1 0 64H224a32 32 0 0 1 0-64z"></path>
+              <path d="m237.248 512 265.408 265.344a32 32 0 0 1-45.312 45.312l-288-288a32 32 0 0 1 0-45.312l288-288a32 32 0 1 1 45.312 45.312L237.248 512z"></path>
+            </svg>
+          </button> -->
+
+          <!-- 키 입력 -->
+          <input
+            type="text"
+            size="40"
+            placeholder="LifeUp 템플릿 연결 Key를 입력해주세요."
+            [(ngModel)]="inputValue"
+          />
+
+          <!-- 확인 버튼 -->
+          <button (click)="saveKey()">확인</button>
+        </div>
+
+      </ng-container>
+
+     
+    </div>
+  </ng-container>
+
+  <!-- 그래프 영역 -->
+  <div *ngIf="templateKey" class="graph-container">
+    <!-- 여기서 기존 vis-network 그래프 렌더 -->
+    <p style="color:white; text-align:center;">Graph will render here for key: {{templateKey}}</p>
+  </div>
+</div>
+
+<!-- <div class="graph-wrapper">
+  <div #graphContainer class="graph-container"></div>
+  <div class="settings-wrapper">
+    <a href="#" class="settings-btn" (click)="openSettings()">
+      <svg width="48px" height="48px" viewBox="0 0 1024 1024" class="icon" version="1.1" xmlns="http://www.w3.org/2000/svg" fill="#373737" stroke="#373737">
+        <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+        <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+        <g id="SVGRepo_iconCarrier">
+          <path d="M511.9 135.3L182.7 323.7v376.8l329.1 188.4L841 700.5V323.7L511.9 135.3z m256 522.8l-256 146.5-256-146.5v-292l256-146.5 256 146.5v292z" fill="#373737"></path>
+          <path d="M365.6 512.1c0 80.8 65.5 146.3 146.3 146.3 80.8 0 146.3-65.5 146.3-146.3 0-80.8-65.5-146.3-146.3-146.3-80.8 0-146.3 65.5-146.3 146.3z m219.4 0c0 40.3-32.8 73.1-73.1 73.1s-73.1-32.8-73.1-73.1 32.8-73.1 73.1-73.1 73.1 32.8 73.1 73.1z" fill="#373737"></path>
+        </g>
+      </svg>
+    </a>
+  </div>
+</div> -->

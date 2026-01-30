@@ -1,0 +1,35 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-container *ngTemplateOutlet="template"></ng-container>
+
+<ng-template #template>
+    <div viewModeClass 
+        #BLNavigationPanelContainer
+        class="primary-sidebar-container" 
+        [ngClass]="theme" 
+        [ngStyle]="_style" 
+        [@flyInOut]="isTransition">
+        <div class="primary-body" *ngIf="activeView">
+            <bl-navigation-header
+                [style]="headerStyle"
+                [title]="activeView.title"
+                [titleFontFamily]="activeView.titleFontFamily"
+                [titleFontSize]="activeView.titleFontSize"
+                [theme]="theme"
+                [isIn]="navigation.hasBack()"
+                [menuId]="activeView.menuId"
+                [hasCloseBtn]="activeView.hasCloseBtn || hasCloseBtn"
+                [menuDataParam]="activeView.menuDataParam"
+                [titleButton]="activeView.titleButton"  
+                [rightButtons]="activeView.rightButtons"
+                [height]="headerStyle == 'small'? 50 : 50"
+                [navigation]="navigation" 
+                (menu)="onClickMenuBtn($event)" 
+                (close)="onClickCloseBtn()">
+            </bl-navigation-header>
+            <div class="primary-content">
+                <ng-container *ngTemplateOutlet="activeView.template"></ng-container> 
+            </div>
+        </div>
+    </div>
+</ng-template>
+

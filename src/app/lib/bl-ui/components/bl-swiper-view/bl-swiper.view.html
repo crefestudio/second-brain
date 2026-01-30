@@ -1,0 +1,20 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-container *ngTemplateOutlet="template"></ng-container>
+
+<ng-template #template>
+    <div class="container {{theme}}" #container>
+        <!-- {{i}} -->
+        <!-- {{swiper?.swiperRef?.activeIndex}} / {{children.length}} -->
+        <div class="shadow left" *ngIf="hasSideShadow" [hidden]="swiper?.swiperRef?.isBeginning" (click)="onClikPrev()"></div>
+        <div class="shadow" *ngIf="hasSideShadow" [hidden]="swiper?.swiperRef?.isEnd" (click)="onClikNext()"></div>
+        <swiper #swiper class="swiper" [config]="config" (slideChange)="onSlideChange()">
+            <ng-container  *ngFor="let child of children">
+                <ng-template swiperSlide let-data>
+                    <ng-container *ngTemplateOutlet="child.template"></ng-container>
+                </ng-template>
+            </ng-container>
+        </swiper>
+    </div>
+</ng-template>
+
+

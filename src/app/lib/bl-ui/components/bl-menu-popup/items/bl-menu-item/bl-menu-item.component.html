@@ -1,0 +1,31 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-template #template>
+    <div class="item-wrap"
+        *ngIf="type == 'list'"
+        viewModeClass
+        [ngClass]="{warning: isWarning, disabled: disabled, switch: hasSwitch}" 
+        [style]="{height: itemHeight ? itemHeight + 'px' : ''}"
+        (click)="onClickItem(id, title)">
+        <div class="item">
+            <div class="item-img-box">                
+                <img *ngIf="!checked" [src]="icon" [alt]="id" [style.width]="iconWidth + 'px'" [style.height]="iconHeight + 'px'">
+                <img *ngIf="checked" [src]="checkedIcon" [alt]="id">
+                <span class="badge dot" *ngIf="badgeType == 'dot'"></span>
+            </div>
+            <span>{{title}}</span>
+        </div>
+        <!-- <span class="hotKey" *ngIf="isShowHotKey && hotKey">{{hotKey}}</span> -->
+        <span class="hotKey stateMessage" *ngIf="stateMessage && stateMessage.length > 0">{{stateMessage}}</span>
+        <!-- 스위치 -->
+        <label *ngIf="hasSwitch" class="switch-btn" [ngClass]="{on: isSwitchOn}">
+            <input type="checkbox" [checked]="isSwitchOn" (click)="onClickSwitch()"> <!-- 여기에 이벤트를 안걸렴 이벤트가 2번 발생함 / 하지만 지금은 onClickItem이 두번 발생함 -->
+            <span class="slider round"></span>
+        </label>
+    </div>
+    <div *ngIf="type == 'grid'" class="grid-item-wrap" (click)="onClickItem(id, title)" [ngClass]="{disabled: disabled}"> 
+        <button class="grid-button" [disabled]="disabled">
+            <img [src]="gridIcon" [alt]="id">
+        </button>
+        <p>{{title}}</p>
+    </div>
+</ng-template>

@@ -1,0 +1,47 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-container *ngTemplateOutlet="template"></ng-container>
+
+<ng-template #body>
+    <bl-color-picker
+        [customPalette]="customPalette"
+        [palette]="palette"
+        [color]="color"
+        [scrollOption]="scrollOption"
+        [isMobileViewMode]="isMobileViewMode"
+        (slectedPicker)="onPickerSelect($event)"
+        (selectedCustomColor)="onClickpalette($event)">
+    </bl-color-picker>
+</ng-template>
+
+<ng-template #template>
+    <!--[style.top]="top+'px'" ios 키보드 나오면 위치가 이상함-->
+    <div *ngIf="!isMobileViewMode" class="color-container" 
+        [style.left]="left+'px'"
+        [hidden]="!isShow"
+        (click)="onClickMe()">
+        <div #blPopup class="color-popup" [style]="style">
+            <div class="palette-popup">
+                <p class="section-title">색 선택</p>
+                <ng-container *ngTemplateOutlet="body"></ng-container>
+            </div>
+        </div>
+    </div>
+
+    <div  *ngIf="isMobileViewMode" class="color-container" (click)="onClickMe()">
+        <!-- <div class="color-popup"> -->
+            <div class="popup-bg" (click)="hide()" *ngIf="isShowBackground"></div>
+            
+            <div #blPopup *ngIf="isShowContainer" class="filter-popup"
+                [ngClass]="{'active': isShowBackground, 'inactive': !isShowBackground}">  
+                <div class="mobile palette-popup">
+                    <div class="menu-header-wrap">
+                        <p class="header-text">{{title}}</p>
+                        <img src="assets/images/svg/ic_close_32.svg" alt="" (click)="hide()">
+                    </div>
+                    <ng-container *ngTemplateOutlet="body"></ng-container>
+                </div>
+            </div>
+        <!-- </div> -->
+    </div>
+</ng-template>
+

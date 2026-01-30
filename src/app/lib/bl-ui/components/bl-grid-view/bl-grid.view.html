@@ -1,0 +1,15 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<ng-container *ngTemplateOutlet="template"></ng-container>
+
+<ng-template #template>
+    <div class="wrap"
+        [style]="{'grid-template-columns': gridStyle}">
+        <div *ngFor="let child of children" 
+            [ngClass]="{'line-item': getChild(child).isLineItem}"
+            [style]="{'grid-column': getChild(child).gridColumn}">
+            <ng-container *ngTemplateOutlet="child.template"></ng-container>
+        </div>
+    </div>
+</ng-template>
+
+

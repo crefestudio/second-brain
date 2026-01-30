@@ -1,0 +1,96 @@
+.title-box {
+    position: relative;
+    /* border-bottom: 1px solid transparent; */
+    margin-bottom: 2px;
+}
+.title-box,
+.title-box input[type='text'] {
+    font-weight: bold;
+    font-size: 16px;
+    line-height: 1.19;
+    color: var(--text-title);
+    height: 24px;
+    cursor: pointer;
+}
+
+/* .dark.title-box,
+.title-box input[type='text']  {
+    color: var(--text-title-dark);    
+} */
+
+
+.title-box.input {
+    border-bottom: 1px var(--border-divider) dashed;
+    width: 100%;
+}
+.title-box span {
+    display: inline-block;
+    max-width: 82%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.dark.title-box span {
+    color: var(--text-title-dark);
+}
+
+.title-box input[type='text'] {
+    /* min-width: 30%; */
+    width: 80%;
+    line-height: 1.5;
+}
+.title-box .update-btn {
+    position: absolute;
+    top: 2px;
+    right: 0;
+    width: 18px;
+    height: 18px;
+    background: url('src/assets/images/svg/ic_save_20.svg') no-repeat center center;
+}
+.title-box img {
+    vertical-align: middle;
+    width: 24px;
+    height: 100%;
+}
+/* -------------------------------------------------------------------------- */
+/*                                    size                                    */
+/* -------------------------------------------------------------------------- */
+/* small */
+.title-box.small,
+.title-box.small input[type='text'] {
+    font-size: 16px;
+    line-height: 1.19;
+    height: 24px;
+}
+/* loarge */
+.title-box.large,
+.title-box.large input[type='text'] {
+    font-size: 19px;
+    line-height: 1.6;
+    height: 34px;
+}
+.title-box.large .update-btn {
+    width: 34px;
+    height: 34px;
+}
+.title-box.large input[type='text'] {
+    /* min-width: 30%; */
+    width: 90%;
+    line-height: 1.6;
+}
+/* -------------------------------------------------------------------------- */
+/*                                   mobile                                   */
+/* -------------------------------------------------------------------------- */
+.mobile .title-box {
+    font-size: 18px;
+    margin: 0 0 3px;
+}
+.mobile .title-box input[type='text'] {
+    width: 93%;
+    font-size: 18px;
+}
+.mobile .title-box span {
+    max-width: 90%;
+}

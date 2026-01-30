@@ -1,0 +1,67 @@
+.color-container {
+    position: absolute;
+    bottom: 44px; /* 키보드나오면 top로 하는 경우 스크롤 시 위치가 이상해짐 */
+    left: 569px;
+    width: 244px;
+}
+.color-popup {
+    /* position: absolute; */
+    z-index: 1;
+    border-radius: 12px;
+    box-shadow: 1px 3px 6px 0 rgba(30, 30, 30, 0.3);
+    background-color: var(--bg1);
+    min-width: 120px;
+    padding: 4px 0;
+}
+
+/* palette popup */
+.palette-popup {
+    /* padding: 0 0 14px; */
+}
+.palette-popup .section-title {
+    line-height: 1.17;
+    font-size: 16px;
+    height: 32px;
+    padding: 9px 16px 7px;
+    margin: 0;
+}
+/* mobile */
+.mobile.palette-popup .menu-header-wrap {
+    height: 48px;
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+    padding: 14px 56px 13px;
+}
+.mobile.palette-popup .menu-header-wrap img {
+    position: absolute;
+    right: 16px;
+    top: 6px;
+}
+.mobile.palette-popup .color-dot-button {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+}
+.mobile.palette-popup .color-dot-button .color-dot {
+    width: 32px;
+    height: 32px;
+}
+.mobile.palette-popup .palette  {
+    width: 340px;
+    margin: 0 auto;
+}
+.mobile .palette .color-dot-button .color-dot.add-dot {
+    background: url('src/assets/images/svg/ic_add_48.svg') no-repeat center center;
+}
+.mobile .palette .color-dot-button .select-img {
+    background: url('src/assets/images/svg/ic_check_32.svg') no-repeat center center;
+}
+/* .mobile color-picker .color-picker {
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%);
+} */
+/* .mobile color-picker .color-picker .arrow {
+    display: none;
+} */

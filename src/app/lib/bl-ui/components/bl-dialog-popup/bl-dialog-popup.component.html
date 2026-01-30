@@ -1,0 +1,39 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<div class="container" deviceClass>
+    <div class="popup-bg" [style]="{ backgroundColor: backgroundColor? backgroundColor : '' }" (click)="onClickBackground()" *ngIf="isShowBackground"></div>
+    
+    <div class="modal-wrap" *ngIf="isShowContainer" 
+        [style]="{width: width + 'px'}"
+        [ngClass]="{'active': isShowBackground, 'inactive': !isShowBackground}">  
+        <!-- header -->
+        <div class="popup-header" *ngIf="isShowHeader">
+            <p>
+                {{title}}
+                <span *ngIf="isTooltip" class="tool-tip">
+                    <img src="assets/images/svg/ic_info_24.svg" />
+                    <span [innerHTML]="tooltipDesc"></span>
+                </span>
+            </p>
+            <img class="close-btn" *ngIf="closeable" (click)="onCancel()" src="assets/images/svg/ic_close_32.svg">
+        </div>
+        <!-- content -->
+        <div class="popup-content">
+            <ng-container *ngTemplateOutlet="dialogPopupBody"></ng-container>
+        </div>
+
+        <div class="popup-bottom" *ngIf="isBottomBtn"  [ngClass]="{'one': !btnCancelText || btnCancelText.length == 0}">
+            <button class="cancel" (click)="onCancel()" *ngIf="btnCancelText && btnCancelText.length > 0">{{btnCancelText}}</button>
+            <!-- ok버튼 : 프리미엄 아이콘 표시 -->
+            <button *ngIf="isShowPremiumIcon" class="ok" [style.background]="bkColorOfOkBtn" (click)="onOk()">
+                <span>{{btnOkText}}&nbsp;&nbsp;&nbsp;</span>
+                <div class="premium-icon-box">
+                    <div class="premium-icon-circle">
+                        <img class="premium-icon" width="16px" height="16px" src="assets/images/svg/ic_premium_color_32.svg">
+                    </div>
+                </div>
+            </button>
+            <!-- ok버튼 : 프리미엄 아이콘 미표시 -->
+            <button *ngIf="!isShowPremiumIcon" class="ok" [style.background]="bkColorOfOkBtn" (click)="onOk()" [innerHTML]="btnOkText"></button>
+        </div>
+    </div>
+</div>

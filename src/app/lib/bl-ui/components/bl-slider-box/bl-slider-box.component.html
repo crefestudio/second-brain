@@ -1,0 +1,25 @@
+
+<div class="spin-slider-wrap" deviceClass>
+    <div class="pen-width-spin-box">
+        <p>{{title}}</p>
+        <bl-spin-number
+            [value]="value"
+            [minValue]="minValue"
+            [maxValue]="maxValue"
+            [unitText]="unitText"
+            [boxSizeType]="'middle'"
+            [numberOfChange]="numberOfChange"
+            [isMobileViewMode]="isMobileViewMode"
+            (valueChange)="onChangeValue1($event)">
+        </bl-spin-number>    
+    </div>
+    <div class="pen-width-slider-box">
+        <bl-slider 
+            [value]="value" 
+            [minValue]="minValue"
+            [maxValue]="maxValue" 
+            [step]="numberOfChange"
+            (valueChange)="onChangeValue2($event)">
+        </bl-slider>
+    </div>
+</div>

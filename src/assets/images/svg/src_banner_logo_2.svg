@@ -1,0 +1,21 @@
+<svg id="src_banner_logo" xmlns="http://www.w3.org/2000/svg" width="54" height="54" viewBox="0 0 54 54">
+  <defs>
+    <style>
+      .cls-1 {
+        opacity: 0.4;
+      }
+
+      .cls-2 {
+        fill: #5b5b5b;
+      }
+
+      .cls-3 {
+        fill: #ccc;
+      }
+    </style>
+  </defs>
+  <g id="src_banner_logo-2" data-name="src_banner_logo" class="cls-1" transform="translate(-11 16)">
+    <path id="패스_1322" data-name="패스 1322" class="cls-2" d="M55.035,0V27.035H28Z" transform="translate(-17 -16)"/>
+    <path id="패스_1323" data-name="패스 1323" class="cls-3" d="M54,0V54H0V27H16.292V37.708H37.707V16.292H27V0Z" transform="translate(11 -16)"/>
+  </g>
+</svg>

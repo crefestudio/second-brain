@@ -1,0 +1,39 @@
+<div deviceClass #panelHeader class="header" [ngClass]="{'isIn': isIn, small: style == 'small'}"  [style]="{height: height + 'px'}">
+    <div class="title-box tool-tip-object" [ngClass]="theme" [style]="titleBoxStyle">
+        <button type="button" class="back" *ngIf="isIn" (click)="onClickBackBtn()"></button>
+        <!-- title button -->
+        <button *ngIf="titleButton" type="button" 
+                class="tool-tip-object"
+                [style]="{background: titleButton.image ? 'url(' + titleButton.image + ') no-repeat' : ''}"
+                (click)="onClickTitleBtn(titleButton.id)">
+            <bl-tooltip
+                *ngIf="titleButton.tooltip && titleButton.tooltip.length > 0"
+                [tooltip]="titleButton.tooltip"
+                [pHeight]="32"
+                [align]="'bottom'">
+            </bl-tooltip>
+        </button>
+        <span  class="truncate" [style.width]="titleBoxWidth + 'px'">{{title}}</span>
+        <bl-tooltip *ngIf="title && getTrimText(title) >= 8" [tooltip]="title" [pHeight]="35" [pWidth]="95" [align]="'bottom'"></bl-tooltip>
+    </div>
+    <div class="menu-btn">
+        <ng-container *ngFor="let rightButton of rightButtons">
+            <!-- right button -->
+            <button type="button" 
+                *ngIf="rightButton && !rightButton.isHidden"
+                class="tool-tip-object"
+                [style]="{background: rightButton.image ? 'url(' + rightButton.image + ') no-repeat center' : ''}"
+                (click)="onClickRightBtn(rightButton.id)">
+                <bl-tooltip
+                    *ngIf="rightButton.tooltip && rightButton.tooltip.length > 0"
+                    [tooltip]="rightButton.tooltip"
+                    [pHeight]="32"
+                    [align]="'bottom'">
+                </bl-tooltip>
+                <span *ngIf="rightButton.hasDot" class="badge-dot"></span>
+            </button>
+        </ng-container>
+        <button typeimage.png="button" class="more" *ngIf="menuId && menuId.length > 0" (click)="onClickMenuBtn($event)"></button>
+        <button type="button" class="close" *ngIf="hasCloseBtn" (click)="onClickCloseBtn()"></button>
+    </div>
+</div>

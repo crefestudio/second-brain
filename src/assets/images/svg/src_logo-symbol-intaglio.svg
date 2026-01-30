@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+    <defs>
+        <filter id="ppenmro80a">
+            <feOffset dx="1" dy="4"/>
+            <feGaussianBlur stdDeviation="1.5" result="blur"/>
+            <feFlood flood-opacity=".2" result="color"/>
+            <feComposite operator="out" in="SourceGraphic" in2="blur"/>
+            <feComposite operator="in" in="color"/>
+            <feComposite operator="in" in2="SourceGraphic"/>
+        </filter>
+        <filter id="x8e9kr3s0b">
+            <feOffset dx="2" dy="2"/>
+            <feGaussianBlur stdDeviation="1.5" result="blur-2"/>
+            <feFlood result="color-2"/>
+            <feComposite operator="out" in="SourceGraphic" in2="blur-2"/>
+            <feComposite operator="in" in="color-2"/>
+            <feComposite operator="in" in2="SourceGraphic"/>
+        </filter>
+    </defs>
+    <g data-type="innerShadowGroup">
+        <path data-name="패스 1518" d="M280.2 0v32h32z" transform="translate(-248.202)" style="fill:#ccc"/>
+        <g style="filter:url(#ppenmro80a)">
+            <path data-name="패스 1518" d="M280.2 0v32h32z" transform="translate(-248.2)" style="fill:#fff"/>
+        </g>
+    </g>
+    <g data-type="innerShadowGroup">
+        <path data-name="패스 1519" d="M0 0v64h64V32H44.691v12.691H19.309V19.309H32V0z" style="fill:#1e1e1e"/>
+        <g style="filter:url(#x8e9kr3s0b)">
+            <path data-name="패스 1519" d="M0 0v64h64V32H44.691v12.691H19.309V19.309H32V0z" style="fill:#fff"/>
+        </g>
+    </g>
+</svg>

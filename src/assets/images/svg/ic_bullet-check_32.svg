@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <path style="fill:none" d="M0 0h32v32H0z"/>
+    <path data-name="사각형 444" d="M6 2a4 4 0 0 0-4 4v7a4 4 0 0 0 4 4h7a4 4 0 0 0 4-4V6a4 4 0 0 0-4-4H6m0-2h7a6 6 0 0 1 6 6v7a6 6 0 0 1-6 6H6a6 6 0 0 1-6-6V6a6 6 0 0 1 6-6z" transform="translate(6.5 6.5)" style="fill:#1e1e1e"/>
+    <path data-name="패스 1600" d="m5914.829 1701.364-2.829-2.828 1.414-1.414 2.829 2.828 4.949-4.95 1.415 1.415-4.95 4.949-1.415 1.414z" transform="translate(-5901.303 -1682.889)" style="fill:#1e1e1e"/>
+</svg>

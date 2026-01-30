@@ -1,0 +1,10 @@
+<div class="input-box" [ngClass]="{'disabled': disabled}">
+    <!-- [type]="isPassword? 'password': 'text'"  -->
+    <input 
+        [type]="type"
+        [ngModel]="_value"
+        [readOnly]="disabled || readOnly"
+        [placeholder]="placeholder"
+        (ngModelChange)="onChange($event)">
+        <!-- (ngModelChange)="onChange($event)" -->
+</div>

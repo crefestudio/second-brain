@@ -1,0 +1,25 @@
+<svg id="src_null-dark" xmlns="http://www.w3.org/2000/svg" width="49" height="43" viewBox="0 0 49 43">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #ccc;
+      }
+
+      .cls-2 {
+        fill: #5b5b5b;
+      }
+
+      .cls-3 {
+        fill: #646566;
+      }
+
+      .cls-4 {
+        fill: #fff;
+      }
+    </style>
+  </defs>
+  <path id="패스_1380" data-name="패스 1380" class="cls-1" d="M0,0V40H40V20L20,0Z" transform="translate(9 3)"/>
+  <path id="패스_1383" data-name="패스 1383" class="cls-2" d="M20,0V20H40Z" transform="translate(9 3)"/>
+  <path id="패스_1388" data-name="패스 1388" class="cls-3" d="M11.5,0A11.5,11.5,0,1,1,0,11.5,11.5,11.5,0,0,1,11.5,0Z"/>
+  <path id="패스_1390" data-name="패스 1390" class="cls-4" d="M7574-2448v-4h4v4Zm0-6v-10h4v10Z" transform="translate(-7564.5 2467.5)"/>
+</svg>

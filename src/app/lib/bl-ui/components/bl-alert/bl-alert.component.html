@@ -1,0 +1,19 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<div class="alert-container">
+    <div class="popup-bg" (click)="onClickBackground2()" *ngIf="isShowBackground"></div>
+    
+    <div class="modal-wrap" *ngIf="isShowContainer" [ngClass]="{'active': isShowBackground, 'inactive': !isShowBackground}">  
+        <!-- header -->
+        <div class="popup-header">
+            <p>{{title}}</p>
+            <img class="close-btn" (click)="onClose()" src="assets/images/svg/ic_close_32.svg" alt="">
+        </div>
+        <!-- content -->
+        <div class="popup-content" [innerHTML]="_message"></div>
+
+        <div class="popup-bottom" [ngClass]="{one: btnCancelText == ''}" >
+            <button class="cancel" (click)="onCancel()" *ngIf="btnCancelText != ''">{{btnCancelText}}</button>
+            <button class="ok" (click)="onOk()">{{btnOkText}}</button>
+        </div>
+    </div>
+</div>

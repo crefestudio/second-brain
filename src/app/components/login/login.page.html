@@ -1,0 +1,102 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<div class="login-container" viewModeClass *ngIf="!isLogining">
+    <div class="login flex-box">
+        <div class="blank-description">
+            <p class="version-info font-bold">
+            </p>
+            <!-- <p class="logo">
+                <img [height]="22" src="assets/images/png/lifeloglab_logo.png">
+            </p>                   -->
+        </div>
+        <div class="flex-box blank-login">
+            <!-- <p class="premium-join" (click)="onClickLoginDesc()">
+                <span class="left-bar"></span>
+                지금 무료로 시작하기
+                <span class="right-bar"></span>
+            </p> -->
+            <button class="login-btn" (click)="onClickGoogleLogin()">구글로 시작하기</button>    
+            <button class="login-btn apple" (click)="onClickAppleLogin()">애플로 시작하기</button>
+            
+        </div>
+    </div>
+    <!-- <div class="quick-menu" >
+        <ul>
+            <li *ngIf="appService?.isMobileDevice() && appService.pwaInstallPrompt" class="download" (click)="onClickDesktop()">Desktop</li>
+            <li (click)="onClickInquiryMenu($event)">문의하기</li>
+            <li><a href="https://blank365.com/pages/privacy.html" [target]="appService.isMobileViewMode() ? '' : '_blank'">개인정보 처리방침</a></li>
+            <li><a href="https://blank365.com/pages/support.html" [target]="appService.isMobileViewMode() ? '' : '_blank'">Contact</a></li>
+            <li *ngIf="appService.isStage()" (click)="onClickLoginStage()">Stage Review</li>
+            <li *ngIf="!appService.isStage()" (click)="onClickChangeStage()">Stage Mode</li>
+            <li *ngIf="appService.isStage()" (click)="onClickSetForceUserId()">_</li>
+        </ul>
+        
+        <div *ngIf="isShowForceUserId">
+            <input
+                type="text"
+                [(ngModel)]="forceUserId"
+                placeholder="입력"
+            />
+            <button (click)="onSaveToLocalStorage()">저장</button>
+        </div>
+
+        <p class="app-version" *ngIf="!appService.isMobileViewMode()">
+            <span>version {{version}}</span>
+            @2023 CrefeStudio
+        </p>
+    </div> -->
+    <!-- <div class="inquiry-menu-wrap">
+        <bl-popup
+            #inquiryPopup
+            [isMobileViewMode]="appService.isMobileViewMode()"
+            [width]="360">
+            <ng-template>
+                <div class="inquiry-popup">
+                    <p class="close-btn-box" *ngIf="!appService.isMobileViewMode()">
+                        <button class="close-btn" (click)="onCancel()"></button>
+                    </p>
+                    <div class="popup-header">
+                        <p>문의하기</p>
+                    </div>
+                    <inquiry-panel id="inquiry" 
+                        [isStandAlone]="true"
+                        [title]="'문의하기'"
+                        [theme]="'light'"
+                        [hasCloseBtn]="true">
+                    </inquiry-panel>
+                </div>
+            </ng-template>
+        </bl-popup>
+    </div> -->
+</div>
+
+<div class="logining-container font-bold" *ngIf="isLogining">
+    <img src="assets/images/svg/loading.svg" alt="'loading'">
+    <span>로그인 중...</span>
+</div>
+
+<!-- <bl-dialog-popup #emailLoginTemplatePopup
+    [title]="'테스트 계정 로그인(임시)'"
+    [btnOkText]="'로그인'">
+    <ng-template #dialogPopupBody>
+        <div class="page-setting">
+            <div class="select-area">
+                <p class="question-title">이메일</p>
+                <bl-input
+                    [type]="'text'"
+                    [(value)]="email"
+                    [placeholder]="'sample@blank.com'">
+                </bl-input>
+            </div>
+            <br>
+            <div class="select-area">
+                <p class="question-title">비밀번호</p>
+                <bl-input
+                    [type]="'password'"
+                    [(value)]="password"
+                    [placeholder]="'비밀번호를 입력해주세요.'">
+                </bl-input>
+            </div>
+        </div>
+    </ng-template>
+</bl-dialog-popup>    
+ -->

@@ -1,0 +1,56 @@
+.select-container {
+    position: relative;
+    /* height: 100%; */
+}
+.selected-btn {
+    height: 100%;
+    border-radius: 8px;
+    padding:  0 14px;
+    font-weight: bold;
+    font-size: 14px;
+    line-height: 1.14;
+    color: var(--primary1);
+    background: var(--bg1) url('/assets/images/svg/ic_unfold_16.svg') no-repeat 95% center;
+}
+.selected-btn:hover,
+.selected-btn:active {
+    background-color: rgba(215, 220, 224, 0.4);
+}
+.button-text {
+    padding-right: 24px;
+}
+.select-list {
+    display: none;
+    position: absolute;
+    width: 100%;
+    background: var(--bg1);
+    left: 0;
+    border-bottom-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-top: 1px solid var(--border-divider);
+    background-color: var(--bg1);
+    box-shadow: 1px 3px 6px 0 rgba(30, 30, 30, 0.3);
+    z-index: 1;
+}
+.select-item {
+    cursor: pointer;
+    /* height: 16px; */
+    padding: 6px 8px;
+    font-weight: 300;
+    font-size: 14px;
+    line-height: 1.14;
+    color: var(--primary1);
+}
+.select-item:last-child {
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+.select-item:hover {
+    background-color: rgba(215, 220, 224, 0.4);
+}
+.select-container.active .select-list {
+    display: block;
+}
+.select-container.active .selected-btn {
+    background: var(--bg1) url('/assets/images/svg/ic_fold_16.svg') no-repeat 95% center;
+}

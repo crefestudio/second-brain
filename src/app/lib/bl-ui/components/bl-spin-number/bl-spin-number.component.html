@@ -1,0 +1,25 @@
+<ng-container *ngTemplateOutlet="viewTemplate"></ng-container>
+
+<ng-template #viewTemplate>
+    <div class="spin-control-box" 
+        [ngClass]="{mobile: isMobileViewMode, 
+                'toolbar': style == 'toolbar', 
+                'disabled': disabled}">
+        <button type="button" class="size-btn" (click)="onClickDecrBtn()" [disabled]="disabled"></button>
+        <div *ngIf="!isMobileViewMode" class="number-box input-number {{boxSizeType}}" [ngClass]="{unit: unitText}">
+            <input type="number"
+                [readOnly]="disabled"
+                [(ngModel)]="value" 
+                (focus)="onFocusInput()"
+                (blur)="onBlurInput()"
+                (keyup.enter)="onChangValue($event)">
+            <span class="unit-text">{{unitText}}</span>
+            <ul *ngIf="options && options.length > 0" class="select-list" [ngClass]="{'active': isShowOption}">
+                <li *ngFor="let option of options" class="select-item" [ngClass]="{'selected': option == value}" (click)="onSelectOption(option)">{{option}}</li>
+            </ul>
+        </div>
+        <span *ngIf="isMobileViewMode" class="number-box input-number {{boxSizeType}}">{{value}}{{unitText}}</span>
+        <button type="button" class="size-btn" (click)="onClickIncrBtn()" [disabled]="disabled"></button>
+    </div>
+</ng-template>
+

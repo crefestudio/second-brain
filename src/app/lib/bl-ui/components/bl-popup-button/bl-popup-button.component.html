@@ -1,0 +1,10 @@
+<!--The content below is only a placeholder and can be replaced.-->
+<div class="container">
+    <bl-state-button [states]="data" (changeState)="onChangeValue($event)"></bl-state-button>
+    
+    <bl-popup #popup *ngIf="isShow" [isMobileViewMode]="isMobileViewMode">
+        <ng-template #popupBody>
+            <ng-container *ngTemplateOutlet="buttonPopupBody"></ng-container>
+        </ng-template>
+    </bl-popup>
+</div>

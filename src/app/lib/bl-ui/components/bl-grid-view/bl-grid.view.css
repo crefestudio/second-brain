@@ -1,0 +1,25 @@
+.wrap {
+    width: 100%;
+    display: grid; 
+    justify-content: center;
+    grid-template-columns: repeat(3, minmax(72px, 148px));
+    transition: all .4s;
+    /* grid-template-columns: repeat(3, minmax(88px, 1fr)); */
+    /* grid-template-columns: repeat(auto-fit, minmax(113px, 1fr)); */
+}
+.wrap > div {
+    text-align: center;
+}
+
+.wrap .add-item {
+    grid-column: 1/2;
+}
+.wrap .banner-item {
+    grid-column: 2/4;
+}
+.wrap .line-item {
+    grid-column: 1/4;
+}
+.mobile .wrap {
+    grid-template-columns: repeat(3, minmax(72px, 0));
+}

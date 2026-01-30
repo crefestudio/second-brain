@@ -1,0 +1,338 @@
+/* notion-connect.component.css */
+.view-wrapper {
+  background-color: #000;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  position: relative;
+}
+
+.connect-container {
+  text-align: center;
+  max-width: 360px;
+  font-size: 13px; 
+}
+
+.info-text {
+  display: block;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #9a9a9a;
+  margin-bottom: 20px;
+}
+
+.info-text strong {
+  color: #eeeeee;
+  font-weight: 500;
+}
+
+.info-text.sub {
+  margin-top: 18px;
+  font-size: 11px;
+  color: #6f6f6f;
+}
+
+.input-group {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+
+.input-group input {
+  padding: 8px 12px;
+  width: 220px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #111;
+  color: white;
+  font-size: 12px;
+}
+
+.input-group input::placeholder {
+  color: #777;
+}
+
+.input-group button {
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: none;
+  background: #007AFF;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.input-group button:hover {
+  opacity: 0.9;
+}
+
+
+.notice-list {
+  list-style: disc;
+  padding-left: 18px;
+  margin-top: 12px;
+  text-align: left;
+  color: #9a9a9a;
+  font-size: 11px;        /* 🔒 고정 */
+  line-height: 1.6;
+}
+
+.notice-list li {
+  margin-bottom: 6px;
+  font-size: inherit;    /* 🔒 상속 강제 */
+  line-height: inherit;
+  font-weight: 400;      /* 🔒 기본 */
+}
+
+.notice-list .warning {
+  color: #8e8e8e;        /* 튀지 않게 */
+}
+
+/* -------------------- */
+
+:host {
+  display: block;
+  font-family: 'Arial', sans-serif;
+  line-height: 1.6;
+  background-color: #f9f9f9;
+  color: #333;
+  padding: 0px; /* 상단/좌우 여백 */
+}
+
+/* 제목 */
+h1 {
+  font-size: 1.6rem;
+  margin-bottom: 12px;
+  line-height: 1.3;
+}
+
+/* 본문 설명 */
+p {
+  font-size: 1rem;
+  margin-bottom: 10px;
+}
+
+/* 상단 ul */
+ul {
+  margin-left: 20px;
+  margin-bottom: 20px;
+  padding-left: 15px;
+}
+
+ul li {
+  margin-bottom: 8px;
+  font-size: 1rem;
+}
+
+/* 탭 버튼 */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid #ddd;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px 0;
+  cursor: pointer;
+  font-weight: bold;
+  border-bottom: 4px solid transparent;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.tab.active {
+  border-color: #4a6cf7;
+  background-color: #eaf0ff;
+  color: #4a6cf7;
+}
+
+/* 탭 내용 */
+.tab-content {
+  background-color: #fff;
+  padding: 18px;
+  border-radius: 8px;
+  border-left: 4px solid #4a6cf7;
+  margin-bottom: 20px;
+}
+
+/* 내용 리스트 */
+.tab-content ul {
+  margin-left: 15px;
+  padding-left: 15px;
+  margin-bottom: 12px;
+}
+
+.tab-content li {
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+/* 버튼 공통 */
+.notion-btn, .api-btn {
+  display: block;
+  width: 100%;
+  padding: 14px 0;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  margin: 10px 0;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+/* 템플릿 설치 버튼 */
+.notion-btn {
+  background-color: #4a6cf7;
+  color: #fff;
+}
+
+.notion-btn:hover {
+  background-color: #3a53d1;
+}
+
+/* API 연결 버튼 */
+.api-btn {
+  background-color: #28a745;
+  color: #fff;
+}
+
+.api-btn:hover {
+  background-color: #1e7e34;
+}
+
+/* 주의 문구 */
+.note {
+  font-size: 0.9rem;
+  color: #666;
+  margin-top: 12px;
+}
+
+/* 모바일 대응 (작은 화면) */
+@media (max-width: 480px) {
+  h1 {
+    font-size: 1.4rem;
+  }
+  .tab {
+    font-size: 0.95rem;
+    padding: 10px 0;
+  }
+  .tab-content {
+    padding: 15px;
+  }
+  .notion-btn, .api-btn {
+    font-size: 1rem;
+    padding: 12px 0;
+  }
+}
+
+
+
+/* body, :host {
+  font-family: 'Arial', sans-serif;
+  line-height: 1.6;
+  background-color: #f9f9f9;
+  color: #333;
+  padding: 15px;
+} */
+
+h1 {
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+  line-height: 1.3;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 2px solid #ddd;
+  margin-bottom: 15px;
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 10px 0;
+  cursor: pointer;
+  font-weight: bold;
+  border-bottom: 4px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.tab.active {
+  border-color: #4a6cf7;
+  color: #4a6cf7;
+}
+
+.tab-content {
+  background-color: #fff;
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 4px solid #4a6cf7;
+  margin-bottom: 20px;
+}
+
+ol {
+  margin-left: 15px;
+  padding-left: 15px;
+  margin-bottom: 12px;
+}
+
+li {
+  margin-bottom: 8px;
+  font-size: 1rem;
+}
+
+.notion-btn, .api-btn {
+  display: block;
+  width: 100%;
+  padding: 14px 0;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  margin: 10px 0;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.notion-btn {
+  background-color: #4a6cf7;
+  color: #fff;
+}
+
+.notion-btn:hover {
+  background-color: #3a53d1;
+}
+
+.api-btn {
+  background-color: #28a745;
+  color: #fff;
+}
+
+.api-btn:hover {
+  background-color: #1e7e34;
+}
+
+.template-link {
+  color: #4a6cf7;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.note {
+  font-size: 0.9rem;
+  color: #666;
+  margin-top: 10px;
+}
