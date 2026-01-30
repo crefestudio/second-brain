@@ -1,53 +1,67 @@
-testtesttesttest
-test
-test
-<!-- 
 <div class="view-wrapper">  
-  <div class="connect-container" *ngIf="state === ''">
+  <div class="connect-container" *ngIf="state === 'notpurchaser'">
+    <p>
+      죄송합니다.<br>
+      해당 휴대폰번호로 구매정보를 확인 할 수 없습니다.<br>
+      아래 메일로 관리자에게 문의해주세요.<br>
+      toto791&#64;gmail.com
+    </p> 
+  </div>  
+  <div class="connect-container" *ngIf="state === 'notjoin' || state === 'notconnected'">
+      <h1>LifeUp 1.0<br>SecondBrain Notion API 연결</h1>
 
-    <small class="info-text">
-      <strong>Notionable · SecondBrain API</strong><br><br>
-      SecondBrain API는 LifeUp 템플릿의 노트를 분석하여<br>
-      개인의 지식을 그래프로 시각화해주는 기능입니다.
-    </small>
+      <p>LifeUp 템플릿에서 지식관리 기능을 사용하시려면 아래 안내에 따라 연결해주세요.</p>
+      <ul>
+          <li>LifeUp템플릿의 내 노트를 분석하여 AI가 자동으로 키워드를 생성합니다.</li>
+          <li>생성 된 키워드로 세컨드브레인 그래프를 생성합니다.</li>
+      </ul> 
 
-    <div class="input-group">
-      <input
-        type="tel"
-        placeholder="구매 시 입력한 휴대폰 번호를 입력해주세요"
-        [(ngModel)]="phoneNumber"
-        (input)="formatPhoneNumber()"
-      />
-      <button (click)="onConfirm()">확인</button>
-    </div>
+      <!-- 탭 버튼 -->
+      <div class="tabs">
+        <div class="tab" [class.active]="activeTab === 'installed'" (click)="selectTab('installed')">
+          Life Up 템플릿을<br>이미 설치하신 분
+        </div>
+        <div class="tab" [class.active]="activeTab === 'not-installed'" (click)="selectTab('not-installed')">
+          Life Up 템플릿을<br>아직 설치 안하신 분
+        </div>
+      </div>
 
-    <ul class="notice-list">
-      <li>
-        <strong>LifeUp 템플릿 정식 구매자</strong>에게 제공되는 프리미엄 서비스입니다.
-      </li>
-      <li>
-        구매자 1명당 <strong>1개의 LifeUp 템플릿</strong>에만 연결할 수 있습니다.
-      </li>
-      <li>
-        구매자 확인을 위해 <strong>템플릿 구매 시 입력한 휴대폰 번호</strong>를 사용합니다.
-      </li>
-      <li class="warning">
-        정식 구매자 외 무단 사용이 확인될 경우, 서비스 이용 제한 및 관련 법령에 따른 법적 책임이 발생할 수 있습니다.
-      </li>
-    </ul>
-  </div>
-  <div *ngIf="state === 'logined'">
-    logined
-  </div>
-  <div *ngIf="state === 'connecting'">
-    connecting    
-  </div> -->
-  <!-- <div *ngIf="state === 'logined'">
-    logined
+      <!-- 이미 설치한 경우 -->
+      <div class="tab-content" *ngIf="activeTab === 'installed'">
+        <ul>
+          <li>1️⃣ 아래 API 연결하기 버튼을 누르면 템플릿 선택을 위한 2개의 버튼이 나옵니다.</li>
+          <li>2️⃣ 2개의 버튼 중 아래 버튼을 눌러 이미 설치된 템플릿을 선택합니다.</li>
+        </ul>
+        <button class="api-btn" (click)="connectNotion()">세컨드브레인 API 연결하기</button>
+      </div>
+
+      <!-- 아직 설치 안한 경우 -->
+      <div class="tab-content" *ngIf="activeTab === 'not-installed'">
+        <ul>
+          <li>1️⃣ 아래 버튼을 눌러 LifeUp Notion 템플릿을 설치합니다.</li>
+          <li>2️⃣ 설치가 완료되면, 연결 버튼을 누르면 2개의 버튼이 나옵니다. 그중 아래 버튼을 눌러 설치한 템플릿을 선택하고, <strong>세컨드브레인 API 연결하기</strong> 버튼을 눌러 연결을 완료합니다.</li>
+        </ul>
+
+        <!-- 설치 버튼 -->
+        <a href="https://ambitious-pentagon-a60.notion.site/L-I-F-E-U-P-1-0-2ed916d8a1ef807c8a55f9be2ceb5aec?source=copy_link"
+          target="_blank"
+          class="notion-btn">
+          LifeUp Notion 템플릿 설치
+        </a>
+        <!-- 연결 버튼 -->
+        <button class="api-btn" (click)="connectNotion()">세컨드브레인 API 연결하기</button>
+      </div>  
+  </div> 
+
+  <div *ngIf="state === 'connected'">
+    connected
     integration > secondbrain 에 데이타를 가져와서
 
     연결정보 : secondbrain에 연결됨 
-    연결이 안된 경우 ->   -->
+    연결이 안된 경우 
+  </div>
+</div>
+
     
 <!-- <h1>LifeUp 1.0<br>SecondBrain Notion API 연결 안내</h1>
 
@@ -97,55 +111,5 @@ test
 <!-- </div> -->
 
 
-<!-- <h1>LifeUp 1.0<br>SecondBrain Notion API 연결 안내</h1>
-
-<p>LifeUp 템플릿에서 지식관리 기능을 사용하시려면 아래 안내에 따라 연결해주세요.</p>
-<ul>
-    <li>LifeUp 템플릿의 내 노트를 분석하여 AI가 자동으로 키워드를 생성합니다.</li>
-    <li>생성 된 키워드로 세컨드브레인 그래프를 생성합니다.</li>
-</ul> -->
-
-<!-- 탭 버튼 -->
-<!-- <div class="tabs">
-  <div class="tab" [class.active]="activeTab === 'installed'" (click)="selectTab('installed')">
-    Life Up 템플릿을<br>이미 설치하신 분
-  </div>
-  <div class="tab" [class.active]="activeTab === 'not-installed'" (click)="selectTab('not-installed')">
-    Life Up 템플릿을<br>아직 설치 안하신 분
-  </div>
-</div> -->
-
-<!-- 이미 설치한 경우 -->
-<!-- <div class="tab-content" *ngIf="activeTab === 'installed'">
-  <ul>
-    <li>1️⃣ 아래 API 연결하기 버튼을 누르면 템플릿 선택을 위한 2개의 버튼이 나옵니다.</li>
-    <li>2️⃣ 2개의 버튼 중 아래 버튼을 눌러 이미 설치된 템플릿을 선택합니다.</li>
-  </ul>
-  <button class="api-btn" (click)="connectNotion()">세컨드브레인 API 연결하기</button>
-</div> -->
-
-<!-- 아직 설치 안한 경우 -->
-<!-- <div class="tab-content" *ngIf="activeTab === 'not-installed'">
-  <ul>
-    <li>1️⃣ 아래 버튼을 눌러 LifeUp Notion 템플릿을 설치합니다.</li>
-    <li>2️⃣ 설치가 완료되면, 연결 버튼을 누르면 2개의 버튼이 나옵니다. 그중 아래 버튼을 눌러 설치한 템플릿을 선택하고, <strong>세컨드브레인 API 연결하기</strong> 버튼을 눌러 연결을 완료합니다.</li>
-  </ul> -->
-
-  <!-- 설치 버튼 -->
-  <!-- <a href="https://ambitious-pentagon-a60.notion.site/L-I-F-E-U-P-1-0-2ed916d8a1ef807c8a55f9be2ceb5aec?source=copy_link"
-     target="_blank"
-     class="notion-btn">
-    LifeUp Notion 템플릿 설치
-  </a> -->
-
-  <!-- 연결 버튼 -->
-  <!-- <button class="api-btn" (click)="connectNotion()">세컨드브레인 API 연결하기</button>
-</div> -->
 
 
-<!-- <p class="note">
-  * 연결을 끊으려면 내 노션 계정 &gt; 설정 &gt; 연결 &gt; 메뉴 &gt; 연결 삭제 하시면 됩니다.
-</p>
-
-* 구매자 당 1개의 템플릿에서 사용가능함
-* 구매자 확인 및 계좌 관리 - Latpeed구매 시 입력한 전화번호  -->

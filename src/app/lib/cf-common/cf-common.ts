@@ -65,13 +65,13 @@ function getParameterNames(method: any) {
 
 // test 
 export function _valid(condition: any, message = '') {
-    if (environment.production && !environment.isShowLog) {
-        return condition;
-    }
+    // if (environment.production && !environment.isShowLog) {
+    //     return condition;
+    // }
     if (!condition) {
-        if (!environment.production) {
-            alert(`내부오류 : ${message}`);
-        }
+        // if (!environment.production) {
+        //     alert(`내부오류 : ${message}`);
+        // }
         console.assert(false, message);
     } else {
         //console.log('test =>', condition);

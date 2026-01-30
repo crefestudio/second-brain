@@ -7,7 +7,10 @@ import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
 import { NotionService } from '../../../services/notion.service';
 //import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 
-const NotionLifeupTemplateKey = "NOTION_LIFEUP_TEMPLATE_KEY";
+import { NACommonService } from '../../../services/common.service';
+
+
+const NotionLifeUpConnedtKey = "NotionLifeUpConnedtKey";
 
 @Component({
     selector: 'app-secondbrain-view',
@@ -19,18 +22,20 @@ const NotionLifeupTemplateKey = "NOTION_LIFEUP_TEMPLATE_KEY";
 export class SecondBrainViewComponent implements AfterViewInit {
     @ViewChild('graphContainer', { static: false }) graphContainer!: ElementRef;
     
+    state: string = 'connect'; // ready -> phoneNumber -> connectKey
+    phoneNumber: string = '';
+    connectKey: string | null = null;
+
     databaseData: any;
     private config = inject<AppConfig>(APP_CONFIG);
 
-    templateKey: string | null = null;
     
-    showConnectInput = false;
     inputValue = '';
  
     constructor(private notionService: NotionService, private router: Router) { }
 
     async ngOnInit() {
-        this.templateKey = localStorage.getItem(NotionLifeupTemplateKey);
+        this.connectKey = localStorage.getItem(NotionLifeUpConnedtKey);
 
         // try {
         //     this.databaseData = await this.notionService.getDatabase();
@@ -41,33 +46,60 @@ export class SecondBrainViewComponent implements AfterViewInit {
     }
 
     // Connect 버튼 클릭
-    openConnect() {
-        this.showConnectInput = true;
-
-        const baseUrl = window.location.origin;   // 현재 사이트의 도메인
-        const url = `${baseUrl}/secondbrain/connect`;
-        window.open(url, '_blank');  // 새 탭/창 열기
+    onSubmitConnect() {
+        this.state = 'phoneNumber';
     }
 
     // 뒤로가기 클릭 시 connect 화면으로 이동
-    goBackToConnect() {
-        this.showConnectInput = false;
+    // goBackToConnect() {
+    //     this.state = 'ready';
+    // }
+
+    goBackState() {
+        if (this.state == 'phoneNumber') {
+            this.phoneNumber = '';
+            this.state = 'connect';
+        } else if (this.state == 'connectKey') {
+            this.connectKey ='';
+            this.state = 'phoneNumber';
+        }
     }
 
     // 입력 후 확인
     saveKey() {
-        if(this.inputValue.trim()) {
-        localStorage.setItem(NotionLifeupTemplateKey, this.inputValue.trim());
-        this.templateKey = this.inputValue.trim();
-        this.showConnectInput = false;
-        // 이후 그래프 렌더 로직 호출 가능
-        }
+        // if(this.inputValue.trim()) {
+        // localStorage.setItem(NotionLifeupTemplateKey, this.inputValue.trim());
+        // this.templateKey = this.inputValue.trim();
+        // this.showConnectInput = false;
+        // // 이후 그래프 렌더 로직 호출 가능
+        // }
     }
 
     goToConnectPage() {
         // Angular 라우터로 이동
         this.router.navigate(['/secondbrain/connect']);
     }
+
+    formatPhoneNumber() {
+        if (!this.phoneNumber) return;
+
+        // 숫자만 남김
+        let digits = this.phoneNumber.replace(/\D/g, '');
+
+        // 최대 11자리 제한
+        if (digits.length > 11) {
+            digits = digits.slice(0, 11);
+        }
+
+        if (digits.length <= 3) {
+            this.phoneNumber = digits;
+        } else if (digits.length <= 7) {
+            this.phoneNumber = `${digits.slice(0, 3)}-${digits.slice(3)}`;
+        } else {
+            this.phoneNumber = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+        }
+    }
+
 
 
     ngAfterViewInit() {
@@ -156,6 +188,41 @@ export class SecondBrainViewComponent implements AfterViewInit {
         const setupPath = 'setup';
         const url = `${baseUrl}/${serviceName}/${setupPath}`;
         window.open(url, '_blank'); // 새 탭에서 열기
+    }
+
+    async onSubmitPhoneNumber() {
+        if (!this.phoneNumber) {
+            alert('휴대폰 번호를 입력해주세요.');
+            return;
+        }
+
+        // 1. 숫자만 추출
+        const normalized = this.phoneNumber.replace(/\D/g, '');
+
+        // 2. 전화번호 검증
+        const isValid = /^010\d{8}$/.test(normalized);
+        if (!isValid) {
+            alert('휴대폰 번호 형식이 올바르지 않습니다.');
+            return;
+        }
+
+        // 3. 암호화
+        const encrypted = await NACommonService.encrypt(normalized);
+
+        // 4. URL 이동
+        const baseUrl = window.location.origin;
+        const serviceName = 'secondbrain';
+        const setupPath = 'connect';
+
+        const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encrypted)}`;
+        window.open(url, '_blank');
+
+        this.state = 'connectKey'
+    }
+
+    // 최종 연결키 입력
+    onSubmitConnectKey() {
+
     }
 }
   

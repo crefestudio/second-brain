@@ -1,22 +1,99 @@
 <div class="view-wrapper">
-  <ng-container *ngIf="!templateKey">
-    <div class="connect-container">
-      <!-- 처음 Connect 버튼 -->
-      <!-- <button *ngIf="!showConnectInput" class="connect-btn" (click)="openConnect()">
-        CONNECT
-      </button> -->
-      <!-- 입력 상태일 때만 설명 + 입력 노출 -->
-      <ng-container>
+  <!-- Ready -->
+  <ng-container *ngIf="state=='connect'">
+    <button class="connect-btn" (click)="onSubmitConnect()">
+      CONNECT
+    </button>
+  </ng-container>
 
+  <!-- phoneNumber -->
+  <ng-container *ngIf="state=='phoneNumber'">
+    <div class="connect-container">
+      <div class="info-text" style="display:block;padding: 0 16px; line-height: 1.0em; font-size: 0.875rem; color:#ffffff; margin-bottom: 0px;font-size: 16px;">
+        <strong>Notionable · SecondBrain API</strong><br><br>
+      </div>
+      <small class="info-text" style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #aaaaaa; margin-bottom: 18px;font-size: 12px;">
+        API 연결을 위해 템플릿 구매 시 등록한 휴대폰 번호를 입력해주세요.<br/> 
+        ※ 입력하신 번호는 API연결과 구매자 확인 용도로만 사용됩니다.
+      </small>
+      <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;">
+        <button
+          class="back-btn"
+          (click)="goBackState()"
+          title="뒤로가기"
+          style="background:none; border:none; padding:0; cursor:pointer;"
+        >
+          <svg viewBox="0 0 1024 1024"
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              fill="currentColor">
+            <path d="M224 480h640a32 32 0 1 1 0 64H224a32 32 0 0 1 0-64z"></path>
+            <path d="m237.248 512 265.408 265.344a32 32 0 0 1-45.312 45.312l-288-288a32 32 0 0 1 0-45.312l288-288a32 32 0 1 1 45.312 45.312L237.248 512z"></path>
+          </svg>
+        </button>
+        <input
+          type="tel"
+          placeholder="구매 시 등록한 휴대폰 번호"
+          [(ngModel)]="phoneNumber"
+          (input)="formatPhoneNumber()"
+          style="padding: 8px; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc; width: 14ch; box-sizing: border-box;width: 24ch;font-size: 13px;"
+        />
+        <button (click)="onSubmitPhoneNumber()"style="padding: 8px 12px; font-size: 12px; border-radius: 6px; border:none; background:#007AFF; color:white; width:auto; flex-shrink:0;">
+          확인
+        </button>
+      </div>
+    </div>
+  </ng-container>
+
+  <!-- connectKey -->
+  <ng-container *ngIf="state=='connectKey'">
+    <div class="connect-container">
+      <div class="info-text" style="display:block;padding: 0 16px; line-height: 1.0em; font-size: 0.875rem; color:#ffffff; margin-bottom: 0px;font-size: 16px;">
+        <strong>Notionable · SecondBrain API</strong><br><br>
+      </div>
+      <small class="info-text" style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #aaaaaa; margin-bottom: 18px;font-size: 12px;">
+        새 브라우저 창에서 SecondBrain API 연결을 완료한 뒤, 발급된 연결 키를 아래에 입력해 주세요. 
+      </small>
+      <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;">
+        <button
+          class="back-btn"
+          (click)="goBackState()"
+          title="뒤로가기"
+          style="background:none; border:none; padding:0; cursor:pointer;"
+        >
+          <svg viewBox="0 0 1024 1024"
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              fill="currentColor">
+            <path d="M224 480h640a32 32 0 1 1 0 64H224a32 32 0 0 1 0-64z"></path>
+            <path d="m237.248 512 265.408 265.344a32 32 0 0 1-45.312 45.312l-288-288a32 32 0 0 1 0-45.312l288-288a32 32 0 1 1 45.312 45.312L237.248 512z"></path>
+          </svg>
+        </button>
+
+        <input
+          type="tel"
+          placeholder="연결키를 입력해주세요."
+          [(ngModel)]="connectKey"
+          style="padding: 8px; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc; width: 14ch; box-sizing: border-box;width: 32ch;font-size: 13px;"
+        />
+        <button (click)="onSubmitConnectKey()"style="padding: 8px 12px; font-size: 12px; border-radius: 6px; border:none; background:#007AFF; color:white; width:auto; flex-shrink:0;">
+          확인
+        </button>
+      </div>
+    </div>
+  </ng-container>
+    
         <!-- 설명 문구 -->
-        <small class="info-text">
+        <!-- <small class="info-text">
           API 연결을 위해 LIFEUP템플릿 구매 시 등록한 휴대폰 번호를 입력해주세요.<br /> 
           ※ 입력하신 번호는 연결과 구매자 확인 용도로만 사용됩니다.
-        </small>
+        </small> -->
 
         <!-- 입력 + 버튼 영역 -->
-        <div class="input-group"
-            style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+        <!-- <div class="input-group"
+            style="display:flex; align-items:center; gap:8px; margin-top:12px;"> -->
 
           <!-- 뒤로가기 버튼 -->
           <!-- <button
@@ -36,29 +113,28 @@
           </button> -->
 
           <!-- 키 입력 -->
-          <input
+          <!-- <input
             type="text"
             size="40"
             placeholder="LifeUp 템플릿 연결 Key를 입력해주세요."
             [(ngModel)]="inputValue"
-          />
+          /> -->
 
           <!-- 확인 버튼 -->
-          <button (click)="saveKey()">확인</button>
-        </div>
+          <!-- <button (click)="saveKey()">확인</button> -->
+        <!-- </div> -->
 
-      </ng-container>
+      <!-- </ng-container> -->
 
      
-    </div>
-  </ng-container>
+    <!-- </div>
+  </ng-container> -->
 
   <!-- 그래프 영역 -->
-  <div *ngIf="templateKey" class="graph-container">
-    <!-- 여기서 기존 vis-network 그래프 렌더 -->
+  <!-- <div *ngIf="templateKey" class="graph-container">
     <p style="color:white; text-align:center;">Graph will render here for key: {{templateKey}}</p>
-  </div>
-</div>
+  </div> -->
+<!-- </div> -->
 
 <!-- <div class="graph-wrapper">
   <div #graphContainer class="graph-container"></div>

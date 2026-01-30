@@ -1,15 +1,80 @@
-/* src/app/oauth-success/oauth-success.component.css */
-.container {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  color: #333;
+.success-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;      /* 세로 가운데 */
+  justify-content: center;  /* 가로 가운데 */
+  background: #0f0f10;
+  /* padding: 20px; */
 }
-button {
-  background-color: #4CAF50;
-  color: white;
+
+.success-card {
+  width: 100%;
+  max-width: 360px;         /* 데스크탑에서도 고정 폭 */
+  text-align: center;
+  background: #161618;
+  border-radius: 14px;
+  padding: 28px 22px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+
+.title {
+  font-size: 18px;
+  margin-bottom: 14px;
+}
+
+.desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #b5b5b5;
+  margin-bottom: 22px;
+}
+
+.key-box {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.key-input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid #2a2a2d;
+  background: #101012;
+  color: #eaeaea;
+}
+
+.key-input:focus {
+  outline: none;
+}
+
+.copy-btn {
+  padding: 0 14px;
+  border-radius: 8px;
   border: none;
-  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  background: #007aff;   /* 애플톤 블루 */
+  color: white;
+}
+
+.copy-btn:active {
+  opacity: 0.85;
+}
+
+.home-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px 0;
+  border-radius: 10px;
+  border: none;
+  background: #1f1f22;
+  color: #e0e0e0;
+  font-size: 13px;
   cursor: pointer;
 }
-button:hover {
-  background-color: #45a049;
+
+.home-btn:hover {
+  background: #2a2a2e;
 }

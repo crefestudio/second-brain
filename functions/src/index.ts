@@ -193,7 +193,7 @@ export const notionOAuthCallback = onRequest((req, res) => {
         });
 
       return res.redirect(
-        `https://notionable.net/oauth-success?userId=${encodeURIComponent(
+        `http://notionable.net/secondbrain/oauth-success?userId=${encodeURIComponent(
           userId
         )}`
       );
