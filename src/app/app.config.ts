@@ -14,9 +14,7 @@ export const appConfig: ApplicationConfig = {
     {
       provide: APP_CONFIG,
       useValue: {
-        functionsBaseUrl: isDevMode()
-          ? 'http://localhost:5001/notionable-secondbrain/us-central1'
-          : 'https://us-central1-notionable-secondbrain.cloudfunctions.net',
+        functionsBaseUrl: 'https://us-central1-notionable-secondbrain.cloudfunctions.net',
       },
     },      
   ]

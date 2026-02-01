@@ -1,20 +1,20 @@
 <div class="view-wrapper">  
-  <div class="connect-container" *ngIf="state === 'notpurchaser'">
+  <div class="connect-container" *ngIf="state === 'notjoin'">
     <p>
       죄송합니다.<br>
-      해당 휴대폰번호로 구매정보를 확인 할 수 없습니다.<br>
+      이메일 인증정보를 확인 할 수 없습니다.<br>
       아래 메일로 관리자에게 문의해주세요.<br>
       toto791&#64;gmail.com
     </p> 
   </div>  
-  <div class="connect-container" *ngIf="state === 'notjoin' || state === 'notconnected'">
+  <div class="connect-container" *ngIf="state === 'notconnected'">
       <h1>LifeUp 1.0<br>SecondBrain Notion API 연결</h1>
 
-      <p>LifeUp 템플릿에서 지식관리 기능을 사용하시려면 아래 안내에 따라 연결해주세요.</p>
-      <ul>
+      <p>LifeUp 템플릿의 노트를 AI가 분석해 키워드를 자동 생성하고, 이를 기반으로 세컨드브레인 그래프를 만듭니다.</p>
+      <!-- <ul>
           <li>LifeUp템플릿의 내 노트를 분석하여 AI가 자동으로 키워드를 생성합니다.</li>
           <li>생성 된 키워드로 세컨드브레인 그래프를 생성합니다.</li>
-      </ul> 
+      </ul>  -->
 
       <!-- 탭 버튼 -->
       <div class="tabs">

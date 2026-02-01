@@ -33,8 +33,8 @@ export class SecondBrainOauthSuccessComponent implements OnInit {
         });
     }
 
-async loadSecondBrainIntegrationInfo(userId: string) {
-        const data = await this.userService.getSecondBrainIntegration(userId);
+    async loadSecondBrainIntegrationInfo(userId: string) {
+        const data = await UserService.getSecondBrainIntegration(userId);
         _log('loadSecondBrainIntegrationInfo data =>', data);
 
         if (!data) {
@@ -43,16 +43,16 @@ async loadSecondBrainIntegrationInfo(userId: string) {
         }
 
         this.state = 'success';
-        this.botId = data.botId ?? null;
+        this.botId = data.botId ?? null;    // 보안상 botId를 connectKey로 저장한다. 
         this.workspaceName = data.workspaceName ?? null;
     }
    
-    goHome() {
-        window.location.href = '/';
-    }
+    // goHome() {
+    //     window.location.href = '/';
+    // }
 
-    copyKey() {
-        if (!this.botId) return;
-        navigator.clipboard.writeText(this.botId);
-    }
+    // copyKey() {
+    //     if (!this.botId) return;
+    //     navigator.clipboard.writeText(this.botId);
+    // }
 }

@@ -14,10 +14,10 @@
 
 /* 제목 */
 h1 {
-  font-size: 1.7rem;
+  font-size: 1.2rem;
   line-height: 1.3em;
   text-align: center;
-  margin: 16px 0 40px 0;
+  margin: 16px 5px 0;
 }
 
 /* 문단 */

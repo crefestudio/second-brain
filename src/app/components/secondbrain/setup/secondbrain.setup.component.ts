@@ -12,7 +12,7 @@ import { NotionService } from '../../../services/notion.service';
 })
 export class SecondBrainSetupComponent implements AfterViewInit {
 
-    databaseData: any;
+    //databaseData: any;
     private config = inject<AppConfig>(APP_CONFIG);
  
     constructor(private notionService: NotionService) { }

@@ -5,36 +5,37 @@
     <p>봇 ID: <strong>{{ botId }}</strong></p>
     <p>이제 LifeUp 템플릿에 데이터를 수집할 수 있습니다.</p>
     <button (click)="goHome()" style="padding:10px 20px; margin-top:20px;">홈으로 이동</button>
-  </div> -->
-
-  
+  </div> -->  
 </div>
 
 <div *ngIf="state=='success'" class="success-wrapper">
-    <div class="success-card">
-      <h1 class="title">🎉 Notion 연결 성공!</h1>
+  <div class="success-card">
+    <h1 class="title">🎉 Notion ↔ API 연결 성공!</h1>
+    <p class="desc">
+      SecondBrain API 연결키를 성공적으로 발급했습니다.<br>
+    </p>
+</div>
 
-      <p class="desc">
-        SecondBrain API 연결키를 성공적으로 발급했습니다.<br>
-        아래의 연결키를 <strong>LifeUp 템플릿 그래프 위젯</strong>에 등록해주셔야
-        연결이 완료됩니다.
-      </p>
+<!-- <div *ngIf="state=='success'" class="success-wrapper">
+  <div class="success-card">
+    <h1 class="title">🎉 Notion ↔ API 연결 성공!</h1>
 
-      <div class="key-box">
-        <input
-          type="text"
-          class="key-input"
-          [value]="botId"
-          readonly
-        />
-        <button class="copy-btn" (click)="copyKey()">
-          복사
-        </button>
-      </div>
+    <p class="desc">
+      SecondBrain API 연결키를 성공적으로 발급했습니다.<br>
+      ⚠️아래의 연결키를 <strong>LifeUp 템플릿 세컨드브래인 위젯</strong>에 등록해주셔야
+      연결이 완료됩니다.
+    </p>
 
-      <!-- <button class="home-btn" (click)="goHome()">
-        홈으로 이동
-      </button> -->
-
+    <div class="key-box">
+      <input
+        type="text"
+        class="key-input"
+        [value]="botId"
+        readonly
+      />
+      <button class="copy-btn" (click)="copyKey()">
+        복사
+      </button>
     </div>
   </div>
+</div> -->

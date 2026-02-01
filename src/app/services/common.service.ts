@@ -1,6 +1,6 @@
 export class NACommonService {
     static async encrypt(text: string): Promise<string> {
-        const SECRET_KEY = 'secondbrain-secret-key'; // 서버와 동일해야 함
+        const SECRET_KEY = 'notionable-encrypt-key'; // 서버와 동일해야 함
 
         const enc = new TextEncoder();
         const keyMaterial = await crypto.subtle.importKey(
@@ -37,7 +37,7 @@ export class NACommonService {
     }
 
     static async decrypt(token: string): Promise<string> {
-        const SECRET_KEY = 'secondbrain-secret-key'; // encrypt 때와 동일
+        const SECRET_KEY = 'notionable-encrypt-key'; // encrypt 때와 동일
         const enc = new TextEncoder();
         const dec = new TextDecoder();
 

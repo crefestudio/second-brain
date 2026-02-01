@@ -14,15 +14,15 @@
 }
 
 .connect-btn {
-  width: 120px;
+  width: 91px;
   height: 30px;
   border-radius: 15px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   background: transparent;
   color: #7c7c7c;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 2.0s ease;
 }
 
 .connect-btn:hover {
@@ -54,49 +54,215 @@
   cursor: pointer;
 }
 
+.error-message {
+  margin-top: 8px;
+  color: #ff4d4f;
+  font-size: 13px;
+}
+
 /*
 -------------------------------------------------------------------------------------- 
 */
 
 .graph-wrapper {
-  width: 100%;
-  height: 100vh;
-  position: relative;
-  padding: 0 24px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-sizing: border-box;
-  overflow: hidden;
-  background-color: #222222; /* 다크 배경 */
-} 
+  position: absolute;
+  inset: 0;
+  background-color: #000;
+}
 
-/* 그래프 컨테이너 */
+/* graph 아닐 때 */
+/* graph 아닐 때: 완전 제거 */
+.graph-wrapper.inactive {
+  display: none;
+}
+
+/* 그래프 영역 */
 .graph-container {
   width: 100%;
-  max-width: 1200px;
   height: 100%;
-  /* border: 1px solid #393E46;
-  border-radius: 8px; */
-  background-color: #222222; /* 그래프 내부 배경 */
+}
+
+/* 
+
+.graph-wrapper {
+  position: relative;  
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.graph-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: #000;
   overflow: hidden;
-}
+} 
+*/
 
-/* 설정 버튼 */
+.graph-menu-btn {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
 
-.settings-wrapper {
-  position: absolute;     /* 화면 기준으로 고정 */
-  bottom: 24px;        /* 화면 하단에서 24px 위 */
-  right: 24px;         /* 화면 오른쪽에서 24px 안쪽 */
-  z-index: 9999;       /* 항상 위 */
-  pointer-events: none; /* wrapper 자체는 클릭 무시 */
-}
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
 
-.settings-btn {
-  pointer-events: auto; /* 버튼은 클릭 가능 */
-  display: block;
-  width: 48px;
-  height: 48px;
+  background: #000;
+  border: 0px solid #2a2a2a;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
   cursor: pointer;
-  text-decoration: none; 
+  z-index: 20;
+}
+
+.graph-menu-btn svg {
+  width: 38px;
+  height: 38px;
+}
+
+/* 풀업 메뉴 */
+.graph-menu {
+  padding: 3px 0px;
+  position: absolute;
+  right: 13px;
+  bottom: 41px;
+  min-width: 100px;
+  background: transparent;
+  border: 1px solid #565656;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 40;
+}
+
+.menu-item {
+  padding: 3px 5px;
+  background: transparent;
+  border: none;
+
+  color: #cfd0d3;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  font-size: 12px;
+}
+
+.menu-item:hover {
+  background: rgba(207, 208, 211, 0.08);
+}
+
+.menu-item.danger {
+  color: #ff6b6b;
+}
+
+/* 아이콘 공통 */
+.menu-icon {
+  width: 18px;
+  height: 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+}
+
+.menu-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.menu-text {
+  white-space: nowrap;
+}
+
+
+/* confirm 텍스트 */
+.confirm-text {
+  padding: 8px;
+  color: #cfd0d3;
+  font-size: 14px;
+  text-align: center;
+  border-bottom: 1px solid #565656;
+}
+
+/* 버튼 영역 */
+.confirm-actions {
+  display: flex;
+}
+
+.confirm-btn {
+  flex: 1;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+
+  color: #cfd0d3;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.confirm-btn + .confirm-btn {
+  border-left: 1px solid #565656;
+}
+
+.confirm-btn:hover {
+  background: rgba(207, 208, 211, 0.08);
+}
+
+.confirm-btn.yes {
+  color: #ff6b6b;
+}
+
+
+/*
+  성공 알림
+*/
+
+.success-card {
+  width: 100%;
+  max-width: 360px;         /* 데스크탑에서도 고정 폭 */
+  text-align: center;
+  background: #161618;
+  border-radius: 14px;
+  padding: 28px 22px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+}
+
+.title {
+  font-size: 18px;
+  margin-bottom: 14px;
+}
+
+.desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #b5b5b5;
+  margin-bottom: 22px;
+}
+
+.home-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px 0;
+  border-radius: 10px;
+  border: none;
+  background: #1f1f22;
+  color: #e0e0e0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.home-btn:hover {
+  background: #2a2a2e;
 }
