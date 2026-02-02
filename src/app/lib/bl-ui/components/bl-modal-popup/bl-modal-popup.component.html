@@ -1,8 +1,0 @@
-<!--The content below is only a placeholder and can be replaced.-->
-<div class="container" deviceClass>
-    <div class="popup-bg" (click)="hide()" *ngIf="isShowBackground"></div>
-    
-    <div class="modal-wrap" *ngIf="isShowContainer" [ngClass]="{'active': isShowBackground, 'inactive': !isShowBackground}">  
-        <ng-container *ngTemplateOutlet="modalPopupBody"></ng-container>
-    </div>
-</div>

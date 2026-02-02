@@ -1,7 +1,7 @@
 // src/app/services/user.service.ts
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { collection, query, where, getDocs, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { firestore } from '../firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,56 +10,31 @@ const SB_USER_ID_KEY = 'sb_user_id';
 
 import { _log } from '../lib/cf-common/cf-common';
 
+export interface SecondBrainClient {
+    clientId: string;        // "24964e09-0f43-4163-8025-ac9bbcf02214"
+    origin: string;          // "http://localhost:4200"
+    userAgent: string;       // browser UA
+    revoked: boolean;        // false
+
+    createdAt: Timestamp;    // Firestore timestamp
+    lastAccessAt: Timestamp; // Firestore timestamp
+}
+
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 @Injectable({
     providedIn: 'root',
 })
 export class UserService {
     private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
-    constructor(private http: HttpClient) { }
+    constructor(private http: HttpClient) { } 
 
-    // 1. 구매자인지 확인
-    // async isPremiumPurchaser(phoneNumber: string): Promise<boolean> {
-    //     try {
-    //         // 1️⃣ 해당 전화번호로 doc 조회
-    //         const normalized = phoneNumber.replace(/\D/g, '');
-    //         const docRef = doc(firestore, 'purchasers', normalized);
-    //         const docSnap = await getDoc(docRef);
+    /////////////////////////////////////////////////////////////////////////////////////
+    //  firebase 직접 호출
 
-    //         //_log('docSnap =>', docSnap)
-
-    //         // 2️⃣ 문서 없으면 false
-    //         if (!docSnap.exists()) return false;
-
-    //         // 3️⃣ purchasedTemplateId 확인
-    //         const data: any = docSnap.data();
-    //         return data?.purchasedTemplateId === 'lifeup1.0';
-    //     } catch (error) {
-    //         console.error('구매자 확인 중 오류:', error);
-    //         return false;
-    //     }
-    // }
-
-    /**
-    * 전화번호로 userId 가져오기
-    */
-    // static async getUserIdByPhoneNumber(phoneNumber: string): Promise<string | null> {
-    //     const normalized = phoneNumber.replace(/\D/g, '');
-    //     _log('getUserIdByPhoneNumber normalized =>', normalized);
-    //     const usersCol = collection(firestore, 'users');
-    //     const q = query(usersCol, where('phoneNumber', '==', normalized));
-    //     const querySnap = await getDocs(q);
-
-    //     if (querySnap.empty) return null;
-
-    //     // 여러 개 나올 수도 있지만, 보통 1개만
-    //     const docSnap = querySnap.docs[0];
-    //     return docSnap.id; // 문서 ID(userId) 반환
-    // }
-
-    /**
-    * userId로 integration/secondbrain 연결 정보 가져오기
-    */
+    
+    /////////////////////////////////////////////////////////////////////////////////////
+    // userId로 integration/secondbrain 연결 정보 가져오기
+    
     static async getSecondBrainIntegration(userId: string): Promise<any | null> {
         if (!userId) return null;
 
@@ -84,46 +59,75 @@ export class UserService {
             ...docSnap.data(),
         };
     }
-        
-    /**
-     * 전화번호 기반으로 연결 정보 가져오기
-     */
-    // async getUserInfoByPhoneNumber(phoneNumber: string): Promise<any | null> {
-    //     const normalized = phoneNumber.replace(/\D/g, '');
-    //     _log('getUserInfoByPhoneNumber normalized =>', normalized);
 
-    //     const userId = await UserService.getUserIdByPhoneNumber(normalized);
-    //     _log('getUserInfoByPhoneNumber userId =>', userId);
-    //     if (!userId) return { userId: '', integration: null };
-    //     let integration = await UserService.getSecondBrainIntegration(userId);
-    //     return { userId: userId, integration: integration }
-    // }
+    /////////////////////////////////////////////////////////////////////////////////////
+    // userId + clientId로 secondbrain > clients > {clientId} 정보 가져오기
 
+    static async getSecondBrainClient(
+        userId: string,
+        clientId: string
+    ): Promise<SecondBrainClient | null> {
+        if (!userId || !clientId) return null;
 
+        const docRef = doc(
+            firestore,
+            'users',
+            userId,
+            'integrations',
+            'secondbrain',
+            'clients',
+            clientId
+        );
 
-    // static async memberJoinWIthPhoneNumber(phoneNumber: string): Promise<string> {
-    //     let userId = localStorage.getItem(SB_USER_ID_KEY);
+        const docSnap = await getDoc(docRef);
 
-    //     if (!userId) {
-    //         userId = uuidv4();
-    //         localStorage.setItem(SB_USER_ID_KEY, userId);
-    //     }
+        if (!docSnap.exists()) return null;
 
-    //     await setDoc(
-    //         doc(firestore, 'users', userId),
-    //         {
-    //             phoneNumber: phoneNumber,
-    //             updatedAt: serverTimestamp(),
-    //             createdAt: serverTimestamp(),
-    //         },
-    //         { merge: true }
-    //     );
-    //     return userId;
-    // }
+        return docSnap.data() as SecondBrainClient;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // userId + clientId로 secondbrain > clients > {clientId} 삭제
+
+    static async deleteSecondBrainClient(
+        userId: string,
+        clientId: string
+    ): Promise<boolean> {
+        if (!userId || !clientId) return false;
+
+        const docRef = doc(
+            firestore,
+            'users',
+            userId,
+            'integrations',
+            'secondbrain',
+            'clients',
+            clientId
+        );
+
+        const docSnap = await getDoc(docRef);
+
+        if (!docSnap.exists()) return false;
+
+        await deleteDoc(docRef);
+        return true;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    //  localstorage
+
 
     static getUserId(): string | null {
         return localStorage.getItem(SB_USER_ID_KEY);
     }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    //  firebase functions
+
+
+    /*
+        main verify
+    */
 
     async sendVerificationEmail(email: string): Promise<boolean> {
         if (!email) return false;
@@ -156,8 +160,70 @@ export class UserService {
             return null;
         }
     }
+
+    async syncNoteKeywords(userId: string): Promise<boolean> {
+        if (!userId) return false;
+
+        try {
+            await firstValueFrom(
+                this.http.post(`${this.functionsBaseUrl}/syncNoteKeywords`, { userId })
+            );
+            return true;
+        } catch (error) {
+            console.error('syncNoteKeywords failed', error);
+            return false;
+        }
+    }
+
+    async generateNoteConcepts(userId: string): Promise<boolean> {
+        if (!userId) return false;
+
+        try {
+            await firstValueFrom(
+                this.http.post(`${this.functionsBaseUrl}/generateNoteConcepts`, { userId })
+            );
+            return true;
+        } catch (error) {
+            console.error('generateNoteConcepts failed', error);
+            return false;
+        }
+    }
 }
 
+
+/**
+     * 전화번호 기반으로 연결 정보 가져오기
+     */
+    // async getUserInfoByPhoneNumber(phoneNumber: string): Promise<any | null> {
+    //     const normalized = phoneNumber.replace(/\D/g, '');
+    //     _log('getUserInfoByPhoneNumber normalized =>', normalized);
+
+    //     const userId = await UserService.getUserIdByPhoneNumber(normalized);
+    //     _log('getUserInfoByPhoneNumber userId =>', userId);
+    //     if (!userId) return { userId: '', integration: null };
+    //     let integration = await UserService.getSecondBrainIntegration(userId);
+    //     return { userId: userId, integration: integration }
+    // }
+
+    // static async memberJoinWIthPhoneNumber(phoneNumber: string): Promise<string> {
+    //     let userId = localStorage.getItem(SB_USER_ID_KEY);
+
+    //     if (!userId) {
+    //         userId = uuidv4();
+    //         localStorage.setItem(SB_USER_ID_KEY, userId);
+    //     }
+
+    //     await setDoc(
+    //         doc(firestore, 'users', userId),
+    //         {
+    //             phoneNumber: phoneNumber,
+    //             updatedAt: serverTimestamp(),
+    //             createdAt: serverTimestamp(),
+    //         },
+    //         { merge: true }
+    //     );
+    //     return userId;
+    // }
 
     // secondbrain api 연결 정보 가져오기
     // async getUserSecondBrainConnectInfo(userId: string): Promise<any | null> {
@@ -246,4 +312,41 @@ export class UserService {
     //     return await response.json();
     // }
 
+  // 1. 구매자인지 확인
+    // async isPremiumPurchaser(phoneNumber: string): Promise<boolean> {
+    //     try {
+    //         // 1️⃣ 해당 전화번호로 doc 조회
+    //         const normalized = phoneNumber.replace(/\D/g, '');
+    //         const docRef = doc(firestore, 'purchasers', normalized);
+    //         const docSnap = await getDoc(docRef);
 
+    //         //_log('docSnap =>', docSnap)
+
+    //         // 2️⃣ 문서 없으면 false
+    //         if (!docSnap.exists()) return false;
+
+    //         // 3️⃣ purchasedTemplateId 확인
+    //         const data: any = docSnap.data();
+    //         return data?.purchasedTemplateId === 'lifeup1.0';
+    //     } catch (error) {
+    //         console.error('구매자 확인 중 오류:', error);
+    //         return false;
+    //     }
+    // }
+
+    /**
+    * 전화번호로 userId 가져오기
+    */
+    // static async getUserIdByPhoneNumber(phoneNumber: string): Promise<string | null> {
+    //     const normalized = phoneNumber.replace(/\D/g, '');
+    //     _log('getUserIdByPhoneNumber normalized =>', normalized);
+    //     const usersCol = collection(firestore, 'users');
+    //     const q = query(usersCol, where('phoneNumber', '==', normalized));
+    //     const querySnap = await getDocs(q);
+
+    //     if (querySnap.empty) return null;
+
+    //     // 여러 개 나올 수도 있지만, 보통 1개만
+    //     const docSnap = querySnap.docs[0];
+    //     return docSnap.id; // 문서 ID(userId) 반환
+    // }

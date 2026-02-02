@@ -1,8 +1,0 @@
-.divider {
-    display: inline-block;
-    background: var(--border-divider);
-    height: 24px;
-    width: 1px;
-    vertical-align: middle;
-    /* margin: 0 8px; */
-}

@@ -6,8 +6,30 @@
   justify-content: center;
   align-items: center;
   color: white;
-  position: relative;
 }
+
+.center-box {
+  display: flex;
+  flex-direction: column; /* ⬅️ 세로로 */
+  align-items: center;
+}
+
+.error-message {
+  margin-top: 12px;
+  width: 100%;
+  text-align: center;
+  color: #ff5c5c;
+  font-size: 13px;
+}
+
+.warn-message {
+  margin-top: 12px;
+  width: 100%;
+  text-align: center;
+  color: #eccd43;
+  font-size: 13px;
+}
+
 
 .connect-container {
   text-align: center;
@@ -54,11 +76,6 @@
   cursor: pointer;
 }
 
-.error-message {
-  margin-top: 8px;
-  color: #ff4d4f;
-  font-size: 13px;
-}
 
 /*
 -------------------------------------------------------------------------------------- 

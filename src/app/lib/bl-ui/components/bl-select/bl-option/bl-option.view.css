@@ -1,8 +1,0 @@
-.item {
-    border: none;
-    margin: 0;
-    cursor: pointer;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow: hidden;
-}

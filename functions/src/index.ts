@@ -6,6 +6,15 @@ import * as admin from "firebase-admin";
 import "dotenv/config";
 import { defineSecret } from "firebase-functions/params";
 
+import OpenAI from "openai";
+const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+
+// notion
+// import { Client } from "@notionhq/client";
+// Notion 클라이언트
+// const notion = new Client({ auth: process.env.NOTION_API_KEY });
+
 admin.initializeApp();
 const db = admin.firestore();
 
@@ -103,6 +112,7 @@ export const getUserSecondBrainConnectInfo = onRequest(
 // Notion OAuth Callback
 // ----------------------
 export const notionOAuthCallback = onRequest(
+    { secrets: [NOTION_TOKEN] },
     withCors(async (req, res) => {
         const code = req.query.code as string | undefined;
         const userId = (req.query.state as string) || "default_user";
@@ -123,13 +133,13 @@ export const notionOAuthCallback = onRequest(
             const errorText = await tokenResponse.text();
             console.error("Notion OAuth failed:", errorText);
             return res.status(500).send("Notion OAuth failed");
-        }       
-        
+        }
+
         const notionToken = await tokenResponse.json();
-        
+
         // note Database ID 얻기
         const noteDatabaseId = await NotionService.getDatabaseIdByDatabaseName(notionToken.access_token, 'note');
-        
+
         // secondbrain 연결정보 저장
         await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
             accessToken: notionToken.access_token,
@@ -140,42 +150,12 @@ export const notionOAuthCallback = onRequest(
             noteDatabaseId: noteDatabaseId
         });
 
+        // // 처음 한번 기존 노트에 키워드를 가져와서 저장한다. 
+        // await NotionService.saveNotionKeywordsToFirestore(notionToken.access_token, userId, noteDatabaseId);
+
         return res.redirect(`http://notionable.net/secondbrain/oauth-success?userId=${encodeURIComponent(userId)}`);
     })
 );
-
-// ----------------------
-// NotionService
-// ----------------------
-class NotionService {
-    static apiVersion = '2025-09-03';
-
-    static async getDatabaseIdByDatabaseName(accessToken: string, databaseName: string): Promise<string> {
-        const url = 'https://api.notion.com/v1/search';
-        const body = { query: databaseName, filter: { property: 'object', value: 'data_source' } };
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Notion-Version': this.apiVersion,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-        });
-
-        const rawText = await response.text();
-        if (!response.ok) throw new Error(`Notion API 호출 실패: ${response.status} / ${rawText}`);
-
-        const data = JSON.parse(rawText);
-        const matched = data.results.filter((item: any) => (item.title?.map((t: any) => t.plain_text).join('') ?? '') === databaseName);
-
-        if (!matched.length) throw new Error(`"${databaseName}" Database를 찾을 수 없습니다.`);
-        if (matched.length > 1) throw new Error(`"${databaseName}" Database가 여러 개 존재합니다.`);
-
-        return matched[0].id;
-    }
-}
 
 // ----------------------
 // UserService
@@ -247,11 +227,9 @@ export const sendVerificationEmail = onRequest(
             from: 'Notionable <noreply@notionable.net>',
             to: email,
             subject: 'Notionable SecondBrain API연동 인증번호 안내',
-            text: `인증번호: ${code}
+            text: `인증번호: ${code} 유효시간: 10분
             Notionable SecondBrain API 연동을 위해 인증번호를 발급하였습니다.
-            요청하신 템플릿에서 아래 인증번호를 입력해 주세요.
-            이 인증번호는 10분간만 유효합니다.
-            * 만약 이 인증번호를 요청하지 않으셨다면 고객센터(toto791@gmail.com)로 문의 바랍니다.`,
+            요청하신 템플릿에서 아래 인증번호를 입력해 주세요.`,
         });
 
         return res.status(200).json({ success: true });
@@ -340,3 +318,298 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
     }
 }));
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+// NotionService
+
+class NotionService {
+    static apiVersion = '2025-09-03';
+    static async getDatabaseIdByDatabaseName(accessToken: string, databaseName: string): Promise<string> {
+        const url = 'https://api.notion.com/v1/search';
+        const body = { query: databaseName, filter: { property: 'object', value: 'data_source' } };
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Notion-Version': this.apiVersion,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+
+        const rawText = await response.text();
+        if (!response.ok) throw new Error(`Notion API 호출 실패: ${response.status} / ${rawText}`);
+
+        const data = JSON.parse(rawText);
+        const matched = data.results.filter((item: any) => (item.title?.map((t: any) => t.plain_text).join('') ?? '') === databaseName);
+
+        if (!matched.length) throw new Error(`"${databaseName}" Database를 찾을 수 없습니다.`);
+        if (matched.length > 1) throw new Error(`"${databaseName}" Database가 여러 개 존재합니다.`);
+
+        return matched[0].id;
+    }
+
+    // 노션 키워드 읽어서 Firestore 저장 함수
+    static async saveNotionKeywordsToFirestore(accessToken: string, userId: string, noteDatabaseId: string) {
+        let cursor: string | undefined = undefined;
+
+        console.log("[DEBUG] saveNotionKeywordsToFirestore 시작");
+        console.log("[DEBUG] userId:", userId, "noteDatabaseId:", noteDatabaseId);
+
+        do {
+            console.log("[DEBUG] 현재 cursor:", cursor);
+
+            const response: any = await NotionService.queryDatabase(accessToken, noteDatabaseId, cursor);
+            console.log("[DEBUG] queryDatabase 응답 확인, results 개수:", response.results?.length);
+
+            for (const page of response.results) {
+                const noteId = page.id;
+                const keywordsProperty = page.properties["키워드"];
+                const newKeywords: string[] = keywordsProperty && keywordsProperty.type === "multi_select"
+                    ? keywordsProperty.multi_select.map((item: any) => item.name)
+                    : [];
+
+                const docRef = db
+                    .collection("users")
+                    .doc(userId)
+                    .collection("integrations")
+                    .doc("secondbrain")
+                    .collection("notionData") // 
+                    .doc("note")                // note, project, folder....
+                    .collection(noteId)
+                    .doc("keywords");
+
+                const docSnap = await docRef.get();
+                const oldKeywords: string[] = docSnap.exists ? docSnap.data()?.keywords || [] : [];
+
+                // 비교 후 처리
+                if (oldKeywords.length === 0 && newKeywords.length > 0) {
+                    // create
+                    console.log("[DEBUG] 키워드 생성:", noteId, newKeywords);
+                    await docRef.set({ keywords: newKeywords });
+                } else if (oldKeywords.length > 0 && newKeywords.length === 0) {
+                    // delete
+                    console.log("[DEBUG] 키워드 삭제:", noteId);
+                    await docRef.delete();
+                } else if (JSON.stringify(oldKeywords) !== JSON.stringify(newKeywords)) {
+                    // update
+                    console.log("[DEBUG] 키워드 변경 업데이트:", noteId, newKeywords);
+                    await docRef.set({ keywords: newKeywords });
+                } else {
+                    // no change
+                    console.log("[DEBUG] 변화 없음, 저장 생략:", noteId);
+                }
+            }
+
+
+            cursor = response.has_more ? response.next_cursor : undefined;
+            console.log("[DEBUG] 다음 cursor:", cursor);
+
+        } while (cursor);
+
+        console.log("모든 노트 키워드 Firestore에 저장 완료");
+    }
+
+    // queryDatabase 함수
+    static async queryDatabase(accessToken: string, databaseId: string, startCursor?: string) {
+        const cleanDbId = databaseId.trim();
+        console.log("[DEBUG] 사용될 URL:", `https://api.notion.com/v1/databases/${cleanDbId}/query`);
+        console.log("[DEBUG] 사용될 AccessToken:", accessToken.slice(0, 8) + "...");
+        const body: any = { page_size: 100 };
+        if (startCursor) body.start_cursor = startCursor;
+
+        console.log("[DEBUG] queryDatabase 호출, databaseId:", databaseId, "startCursor:", startCursor);
+        console.log("[DEBUG] request body:", body);
+
+        const res = await fetch(`https://api.notion.com/v1/databases/${cleanDbId}/query`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                //'Notion-Version': '2025-09-03',
+                "Notion-Version": "2022-06-28",
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+
+        console.log("[DEBUG] HTTP status:", res.status);
+
+        if (!res.ok) {
+            const text = await res.text();
+            console.error("[DEBUG] Notion API 호출 실패:", text);
+            throw new Error(text);
+        }
+
+        const data = await res.json();
+        console.log("[DEBUG] queryDatabase 응답 확인:", {
+            has_more: data.has_more,
+            next_cursor: data.next_cursor,
+            results_count: data.results?.length
+        });
+
+        return data;
+    }
+
+}
+
+// Firebase HTTPS 함수
+export const syncNoteKeywords = onRequest(withCors(async (req, res) => {
+    try {
+        const { userId } = req.body;
+        if (!userId) {
+            res.status(400).send("userId를 전달해야 합니다.");
+            return;
+        }
+
+        // 1️⃣ Firestore에서 noteDatabaseId 가져오기
+        const sbDoc = await db
+            .collection("users")
+            .doc(userId)
+            .collection("integrations")
+            .doc("secondbrain")
+            .get();
+
+        if (!sbDoc.exists) {
+            res.status(404).send("secondbrain 문서를 찾을 수 없습니다.");
+            return;
+        }
+
+        const data = sbDoc.data();
+        const noteDatabaseId = data?.noteDatabaseId;
+        const accessToken = data?.accessToken;
+        if (!noteDatabaseId) {
+            res.status(404).send("noteDatabaseId가 Firestore에 존재하지 않습니다.");
+            return;
+        }
+        if (!accessToken) {
+            res.status(404).send("accessToken가 Firestore에 존재하지 않습니다.");
+            return;
+        }
+
+        // 2️⃣ 노션 키워드 Firestore에 저장
+        await NotionService.saveNotionKeywordsToFirestore(accessToken, userId, noteDatabaseId);
+
+        res.status(200).send("노션 키워드 Firestore 저장 완료");
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).send(error.message);
+    }
+}));
+
+// 타입 정의 (Node/Edge)
+interface Node { id: string; label: string; group?: string; }
+interface Edge { from: string; to: string; }
+
+export const generateNoteConcepts = onRequest(withCors(async (req, res) => {
+    try {
+        const { userId } = req.body;
+        if (!userId) return res.status(400).send("userId를 전달해야 합니다.");
+
+        // 1️⃣ Firestore에서 키워드 모아서 JSON 만들기
+        const notesSnapshot = await db
+            .collection("users")
+            .doc(userId)
+            .collection("integrations")
+            .doc("secondbrain")
+            .collection("notionData")
+            .doc("notes")           // <-- notes 컬렉션
+            .listCollections();     // notes 하위 noteId 컬렉션
+
+        const allKeywords: Record<string, string[]> = {};
+
+        for (const noteCol of notesSnapshot) {
+            const keywordsSnap = await noteCol.doc("keywords").get();
+            if (keywordsSnap.exists) {
+                const data: any = keywordsSnap.data();
+                if (data?.keywords?.length > 0) {
+                    allKeywords[noteCol.id] = data.keywords;
+                }
+            }
+        }
+
+        if (Object.keys(allKeywords).length === 0) {
+            return res.status(200).json({ message: "저장된 키워드가 없습니다." });
+        }
+
+        // 2️⃣ AI에 컨셉 요청
+        const prompt = `
+        아래 노트 키워드를 분석해서 각 노트의 컨셉을 만들어줘.
+        JSON 형태로 반환할 것. 
+        키는 noteId, 값은 컨셉 배열
+
+        ${JSON.stringify(allKeywords, null, 2)}
+        `;
+
+        const response = await clientAI.chat.completions.create({
+            model: "gpt-4.1-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+        });
+
+        const text = response.choices[0].message?.content || "{}";
+        let conceptsByNote: Record<string, string[]> = {};
+
+        try {
+            conceptsByNote = JSON.parse(text);
+        } catch (err) {
+            console.error("AI 응답 JSON 파싱 실패:", text);
+            return res.status(500).send("AI 응답 JSON 파싱 실패");
+        }
+
+        // 3️⃣ Firestore에 저장
+        for (const [noteId, concepts] of Object.entries(conceptsByNote)) {
+            await db
+                .collection("users")
+                .doc(userId)
+                .collection("integrations")
+                .doc("secondbrain")
+                .collection("notionData")
+                .doc("notes")            // <-- notes 컬렉션
+                .collection(noteId)       // 각 noteId 하위
+                .doc("concepts")          // concepts 문서
+                .set({ concepts, updatedAt: new Date() });
+        }
+
+
+        // 4️⃣ Node / Edge 데이터 생성
+        const nodesArray: Node[] = [];
+        const edgesArray: Edge[] = [];
+        let nodeCounter = 1;
+        const conceptToNodeId: Record<string, string> = {};
+
+        for (const [noteId, concepts] of Object.entries(conceptsByNote)) {
+            // 노트 노드
+            const noteNodeId = `note-${noteId}`;
+            nodesArray.push({ id: noteNodeId, label: `Note ${noteId}`, group: "note" });
+
+            for (const concept of concepts) {
+                // 컨셉 노드
+                if (!conceptToNodeId[concept]) {
+                    const conceptNodeId = `concept-${nodeCounter++}`;
+                    conceptToNodeId[concept] = conceptNodeId;
+                    nodesArray.push({ id: conceptNodeId, label: concept, group: "concept" });
+                }
+                // Edge: note -> concept
+                edgesArray.push({ from: noteNodeId, to: conceptToNodeId[concept] });
+            }
+        }
+
+        // 최종 결과 반환
+        return res.status(200).json({
+            conceptsByNote,
+            nodes: nodesArray,
+            edges: edgesArray,
+        });
+
+    } catch (error: any) {
+        console.error(error);
+        return res.status(500).send(error.message);
+    }
+})
+);
+
+
+// // 사용 예시
+// const userId = "exampleUserId";
+// const noteDatabaseId = "yourNotionDatabaseId";
+// saveNotionKeywordsToFirestore(userId, noteDatabaseId).catch(console.error);

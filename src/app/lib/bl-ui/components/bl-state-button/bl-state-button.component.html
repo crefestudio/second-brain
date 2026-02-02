@@ -1,9 +1,0 @@
-<!--The content below is only a placeholder and can be replaced.-->
-<ng-container *ngTemplateOutlet="viewTemplate"></ng-container>
-
-<ng-template #viewTemplate>
-    <button type="button" class="toolbar-btn" 
-        [style]="{height: height+'px', width: width + 'px'}" (click)="onClick($event)" [ngClass]="{'on': currentState.value == 'on'}" [disabled]="disabled">
-        <img [src]="currentState.img" [alt]="currentState.value"/>
-    </button>
-</ng-template>
