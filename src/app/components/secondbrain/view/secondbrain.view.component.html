@@ -43,8 +43,7 @@
         </div>
         <small class="info-text"
           style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #aaaaaa; margin-bottom: 18px;font-size: 12px;">
-          API 연결을 위해 템플릿 구매 시 등록한 이메일을 입력해주세요.<br />
-          ※ 구매 시 등록 한 이메일이 기억나지 않는다면 우선 현재 사용하는 이메일로 인증 후 변경가능합니다.
+          API 연결을 위해 템플릿 구매 시 등록한 이메일을 입력해주세요.<br />  
         </small>
         <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;">
           <button class="back-btn" (click)="goBackState()" title="뒤로가기"
@@ -63,6 +62,14 @@
             확인
           </button>
         </div>
+         <small class="info-text"
+          style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #5c5c5c; margin-bottom: 18px;font-size: 12px;">
+          • 세컨드브레인 API는 노션 계정당 LifeUp 템플릿 1개에서만 사용할 수 있습니다. (연결 시 템플릿 선택 가능)
+          • 여러 장치에서 이용할 수 있으며, 각 장치에서는 최초 1회 인증이 필요합니다.<br/>
+          • 첫 API 연결은 데스크톱 환경에서만 진행할 수 있습니다.<br/>
+          • 구매 시 등록한 이메일이 기억나지 않는 경우, 현재 사용 중인 이메일로 먼저 인증 후 변경하실 수 있습니다.
+          • API 연결과 이용에 대한 문의는 <strong>toto791@gmail.com</strong> 으로 해주세요.
+        </small>
       </div>
     </ng-container>
 
@@ -223,8 +230,8 @@
     <div class="graph-wrapper" [class.inactive]="state !== 'graph'">
       <ng-container *ngIf="state=='graph'">
         <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;font-size: 14px;">
-          <button class="connect-btn" (click)="onClickSyncNoteKeywords()">
-            syncNoteKeywords
+          <button class="connect-btn" (click)="onClickgenerateNotionNoteKMDataBatch()">
+            generateNotionNoteKMDataBatch
           </button>
         </div>
         <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;font-size: 14px;">

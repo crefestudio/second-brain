@@ -233,9 +233,9 @@ export class SecondBrainViewComponent implements AfterViewInit {
         return true;       
     }
 
-    async onClickSyncNoteKeywords() {
+    async onClickgenerateNotionNoteKMDataBatch() {
         if (!this.session || !this.session.userId) { return; }
-        await this.userService.syncNoteKeywords(this.session?.userId);
+        await this.userService.generateNotionNoteKMDataBatch(this.session?.userId);
     }
 
     async onClickGenerateNoteConcepts() {

@@ -161,16 +161,16 @@ export class UserService {
         }
     }
 
-    async syncNoteKeywords(userId: string): Promise<boolean> {
+    async generateNotionNoteKMDataBatch(userId: string): Promise<boolean> {
         if (!userId) return false;
 
         try {
             await firstValueFrom(
-                this.http.post(`${this.functionsBaseUrl}/syncNoteKeywords`, { userId })
+                this.http.post(`${this.functionsBaseUrl}/generateNotionNoteKMDataBatch`, { userId })
             );
             return true;
         } catch (error) {
-            console.error('syncNoteKeywords failed', error);
+            console.error('generateNotionNoteKMDataBatch failed', error);
             return false;
         }
     }
