@@ -11,9 +11,7 @@ const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
 // notion
-// import { Client } from "@notionhq/client";
-// Notion 클라이언트
-// const notion = new Client({ auth: process.env.NOTION_API_KEY });
+import { Client } from "@notionhq/client";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -319,9 +317,12 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 }));
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// NotionService
+// NotionService #notion
 
 class NotionService {
+    // Notion 클라이언트
+    notionApi = null; 
+
     static apiVersion = '2022-06-28';
     static async getDatabaseIdByDatabaseName(accessToken: string, databaseName: string): Promise<string> {
         const url = 'https://api.notion.com/v1/search';
@@ -390,6 +391,32 @@ class NotionService {
         });
 
         return data;
+    }
+
+    static async applyKeywordsToNotionPages(accessToken: string,  aiResultKeyword: Record<string, string[]>) {
+        for (const [pageId, keywords] of Object.entries(aiResultKeyword)) {
+            if (!keywords || keywords.length === 0) continue;
+
+            const notion = new Client({
+                auth: accessToken,
+            });
+
+            try {
+                await notion.pages.update({
+                    page_id: pageId,
+                    properties: {
+                        키워드: {
+                            multi_select: keywords.map((keyword) => ({
+                                name: keyword,
+                            })),
+                        },
+                    },
+                });
+                console.log(`✅ 키워드 반영 완료: ${pageId}`);
+            } catch (error) {
+                console.error(`❌ 키워드 반영 실패: ${pageId}`, error);
+            }
+        }
     }
 
     // 노션 키워드 읽어서 Firestore 저장 함수
@@ -682,7 +709,7 @@ class NotionService {
 // }));
 
 
-// #main
+// #main #메인
 // 노션 page의 속성(title, content, keywords 등)을 Firestore에 저장하는 HTTPS 함수 
 export const generateNotionNoteKMDataBatch = onRequest(
     {
@@ -722,9 +749,12 @@ export const generateNotionNoteKMDataBatch = onRequest(
         // page.content가져오느라 시간이 많이 걸리는 부분
         let testIndex = 0;
         for (const page of response.results) {
-            try {
-                 const pageData = await updateNotePropertiesInFirestore(userId, page, accessToken);
-                 batchPages.push(pageData);
+            try {     
+                // keyword가 db에 없으면 노션에서 가져옴
+                const pageData: { pageId: string; title: string; content: string; keywords: string[]; } | null  
+                    = await updateNotePropertiesInFirestore(userId, page, accessToken);
+                if (!pageData) { continue; }
+                batchPages.push(pageData);
                 successCount++;
             } catch (err) {
                 console.error("노트 속성 저장 실패:", err);
@@ -735,39 +765,16 @@ export const generateNotionNoteKMDataBatch = onRequest(
         }
         console.error("[DEBUG] batchPages =>", batchPages);
 
-        // const BATCH_SIZE = 15;
-        // for (let i = 0; i < batchPages.length; i += BATCH_SIZE) {
-        //     const batch = batchPages.slice(i, i + BATCH_SIZE);
-        //     const aiInput: Record<string, { title: string; content: string; keywords: string[] }> = {};
-        //     batch.forEach(n => { aiInput[n.noteId] = { title: n.title, content: n.content, keywords: n.keywords }; });
-
-        //     try {
-        //         const aiResult = await requestPageKeywordsFromAI(aiInput);
-        //         console.log(`[DEBUG] AI 처리 결과 배치 ${i/BATCH_SIZE + 1}:`, aiResult);
-
-        //         // AI 결과 Firestore 저장
-        //         for (const noteId of Object.keys(aiResult)) {
-        //             await db.collection("users").doc(userId).collection("integrations").doc("secondbrain")
-        //                 .collection("pages").doc(noteId).set({ keywords: aiResult[noteId] }, { merge: true });
-        //         }
-
-        //         // requestPageConceptsFromAI
-        //     } catch (err) {
-        //         console.error("AI 처리 실패:", err);
-        //     }
-        // }
-        // res.status(200).json({ message: "노트 속성 + AI keywords 저장 완료", successCount, failCount });
-
-        const BATCH_SIZE = 15;
+        const BATCH_SIZE = 10;
         for (let i = 0; i < batchPages.length; i += BATCH_SIZE) {
             const batch = batchPages.slice(i, i + BATCH_SIZE);
-            const aiInput: Record<
+            const pageData: Record<
                 string,
                 { title: string; content: string; keywords: string[] }
             > = {};
 
             batch.forEach(n => {
-                aiInput[n.pageId] = {
+                pageData[n.pageId] = {
                     title: n.title,
                     content: n.content,
                     keywords: n.keywords,
@@ -776,40 +783,45 @@ export const generateNotionNoteKMDataBatch = onRequest(
 
             try {
                 /* 1️⃣ 키워드 추출 */ 
-                const aiResultKeyword = await requestPageKeywordsFromAI(aiInput); // 제목, 컨텐츠, 키워드 사용
+                const aiResultKeyword = await requestPageKeywordsFromAI(pageData); // 제목, 컨텐츠, 키워드 사용
                 console.log(`[DEBUG] Keywords 배치  ${i / BATCH_SIZE + 1} aiResultKeyword =>`, aiResultKeyword);
 
-                // AI 결과 Firestore 저장
+                // notion에 keyword반영
+                await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeyword);
+
+                /////////////////
+                // 2️⃣ 컨셉 추출       
+                
+                // 기존 컨셉 리스트 가져오기
+                let existingConcepts: string[] = await loadConceptsFromCache(userId); 
+
+                // 컨셉 추출
+                const conceptResult = await requestPageConceptsFromAI(pageData, existingConcepts, { 
+                    primaryLanguage: "Korean", 
+                    caseStyle: "Title",
+                    acronymPreference: "AI"
+                });
+
+                /////////////////
+                // 3️⃣ AI 결과 Firestore 저장
                 for (const pageId of Object.keys(aiResultKeyword)) {
                     await db.collection("users").doc(userId).collection("integrations")
                         .doc("secondbrain").collection("pages")
                         .doc(pageId)
-                        .set({ keywords: aiResultKeyword[pageId] }, { merge: true });
+                        .set({ 
+                            keywords: aiResultKeyword[pageId],
+                            title: pageData[pageId].title,
+                            concepts: conceptResult[pageId]
+                        }, { merge: true });
                 }
 
-                /* 2️⃣ 컨셉 추출 (keywords 사용) */
-                // const conceptInput: Record<
-                //     string,
-                //     { title: string; content: string; keywords: string[] }
-                // > = {};
+                // 컨셉 캐시 업데이트
+                let newExistingConcepts: string[] = await loadConceptsFromPages(userId);
+                console.log('newExistingConcepts =>', newExistingConcepts);
+                upsertConcepts(userId, newExistingConcepts);
 
-                // for (const noteId of Object.keys(aiInput)) {
-                //     conceptInput[noteId] = { 
-                //         title: aiInput[noteId].title,
-                //         content: aiInput[noteId].content,
-                //         keywords: keywordResult[noteId] ?? [],
-                //     };
-                // }
-
-                // const conceptResult = await requestPageConceptsFromAI(conceptInput, keywordResult, {
-                //     primaryLanguage: "Korean", 
-                //     caseStyle: "Title",
-                //     acronymPreference: "AI"
-                // });
-                // console.log(`[DEBUG] Concepts 배치 ${i / BATCH_SIZE + 1}:`, conceptResult);
-                //successCount += batch.length;
-
-
+                console.log(`[DEBUG] Concepts 배치 ${i / BATCH_SIZE + 1}:`, conceptResult);
+                successCount += batch.length;
             } catch (err) {
                 console.error("AI 처리 실패:", err);
                 failCount += batch.length;
@@ -828,44 +840,160 @@ export const generateNotionNoteKMDataBatch = onRequest(
     }
 }));
 
+// pages/pageId/concepts에서 컨셉을 가져와서 합친다.
+async function loadConceptsFromPages(userId: string): Promise<string[]> {
+  const snapshot = await db
+    .collection("users")
+    .doc(userId)
+    .collection("integrations")
+    .doc("secondbrain")
+    .collection("pages")
+    .get();
+
+    const conceptSet = new Set<string>();
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        if (Array.isArray(data.concepts)) {
+            data.concepts.forEach((c: string) => conceptSet.add(c));
+        }
+    });
+    return Array.from(conceptSet);
+}
+
+async function loadConceptsFromCache(userId: string): Promise<string[]> {
+  const snapshot = await db
+    .collection("users")
+    .doc(userId)
+    .collection("integrations")
+    .doc("secondbrain")
+    .collection("concepts")
+    .get();
+  return snapshot.docs.map(d => d.id);
+}
+
+async function upsertConcepts(userId: string, concepts: string[]) {
+  const baseRef = db
+    .collection("users")
+    .doc(userId)
+    .collection("integrations")
+    .doc("secondbrain")
+    .collection("concepts");
+
+  for (const concept of concepts) {
+    const ref = baseRef.doc(concept);
+    await ref.set(
+      {
+        name: concept,
+        updatedAt: new Date(),
+        noteCount: admin.firestore.FieldValue.increment(1),
+      },
+      { merge: true }
+    );
+  }
+}
+
+
 // Notion page에서 제목, 내용, 키워드 Firestore 저장 (외부 함수)
 // Notion page에서 제목, 내용(text 블록만), 키워드 Firestore 저장
 
 // 노트의 title, keywords, content Firestore 저장 (중간 로그 포함)
-async function updateNotePropertiesInFirestore(userId: string, page: any, accessToken: string): Promise<{ 
-    pageId: string; title: string; content: string; keywords: string[] }> {
-    const pageId = page.id;
+// async function updateNotePropertiesInFirestore(userId: string, page: any, accessToken: string): Promise<{ 
+//     pageId: string; title: string; content: string; keywords: string[] }> {
+//     const pageId = page.id;
+
+//     // 1️⃣ 제목
+//     const titleProperty = page.properties["이름"] || page.properties["제목"] || page.properties["Title"];
+//     let title = "";
+//     if (titleProperty && titleProperty.type === "title" && Array.isArray(titleProperty.title)) {
+//         title = titleProperty.title.map((t: any) => t.plain_text).join("");
+//         if (["새 문서", "Untitled"].includes(title.trim())) title = "";
+//     }
+
+//     // 2️⃣ 키워드
+//     const keywordsProperty = page.properties["키워드"];
+//     const keywords: string[] = (keywordsProperty && keywordsProperty.type === "multi_select")
+//         ? keywordsProperty.multi_select.map((item: any) => item.name)
+//         : [];
+
+//     // 3️⃣ 내용 (블록 텍스트)
+//     const content = await getPageContentText(pageId, accessToken);
+
+//     // 4️⃣ 중간 로그
+//     console.log(`[DEBUG] updateNotePropertiesInFirestore - noteId: ${pageId}`);
+//     console.log(`         title: ${title}`);
+//     console.log(`         keywords: ${keywords.join(", ")}`);
+//     console.log(`         content length: ${content.length}`);
+
+//     // 5️⃣ Firestore 업데이트
+//     // 당장에 쓸거 아니고 직절로 하면 매우 느리니 await 뺌
+//     updateNotePropertiesInFirestoreInternal(userId, pageId, keywords);
+
+//     console.log(`[DEBUG] Firestore 업데이트 완료 - pageId: ${pageId}`);
+//     return { pageId, title, content, keywords };
+// }
+
+async function updateNotePropertiesInFirestore(
+    userId: string,
+    page: any,
+    accessToken: string
+): Promise<{
+    pageId: string;
+    title: string;
+    content: string;
+    keywords: string[];
+} | null> {
+    const pageId = page.id;   
+
+    // 🚫 0️⃣ Firestore에 이미 keywords 있으면 스킵
+    const pageDocRef = db.collection("users").doc(userId).collection("integrations").doc("secondbrain").collection("pages").doc(pageId);
+    const pageSnap = await pageDocRef.get();
+    if (pageSnap.exists) {
+        const data = pageSnap.data();
+        if (data?.keywords && data?.title && data?.concepts) {
+            console.log(
+                `[SKIP] pageId: ${pageId} - Firestore에 이미 KM Property 존재 (${data.keywords.length}개)`
+            );
+            return null;
+        }
+    }
+
 
     // 1️⃣ 제목
-    const titleProperty = page.properties["이름"] || page.properties["제목"] || page.properties["Title"];
+    const titleProperty =
+        page.properties["이름"] ||
+        page.properties["제목"] ||
+        page.properties["Title"];
+
     let title = "";
-    if (titleProperty && titleProperty.type === "title" && Array.isArray(titleProperty.title)) {
+    if (
+        titleProperty &&
+        titleProperty.type === "title" &&
+        Array.isArray(titleProperty.title)
+    ) {
         title = titleProperty.title.map((t: any) => t.plain_text).join("");
         if (["새 문서", "Untitled"].includes(title.trim())) title = "";
     }
 
-    // 2️⃣ 키워드
-    const keywordsProperty = page.properties["키워드"];
-    const keywords: string[] = (keywordsProperty && keywordsProperty.type === "multi_select")
-        ? keywordsProperty.multi_select.map((item: any) => item.name)
-        : [];
+    // 2️⃣ 키워드 (비어 있음 확정 상태)
+    const keywords: string[] = [];
 
-    // 3️⃣ 내용 (블록 텍스트)
+    // 3️⃣ 내용 (여기부터 비싼 작업)
     const content = await getPageContentText(pageId, accessToken);
 
-    // 4️⃣ 중간 로그
+    // 4️⃣ 로그
     console.log(`[DEBUG] updateNotePropertiesInFirestore - noteId: ${pageId}`);
     console.log(`         title: ${title}`);
-    console.log(`         keywords: ${keywords.join(", ")}`);
+    console.log(`         keywords: 없음 (새로 생성 예정)`);
     console.log(`         content length: ${content.length}`);
 
-    // 5️⃣ Firestore 업데이트
-    // 당장에 쓸거 아니고 직절로 하면 매우 느리니 await 뺌
+    // 5️⃣ Firestore 업데이트 (비동기)
     updateNotePropertiesInFirestoreInternal(userId, pageId, keywords);
 
     console.log(`[DEBUG] Firestore 업데이트 완료 - pageId: ${pageId}`);
+
     return { pageId, title, content, keywords };
 }
+
 
 // Firestore에 실제 저장 (내부 함수)
 async function updateNotePropertiesInFirestoreInternal(
@@ -1050,6 +1178,13 @@ Input Usage:
 - Use Title and Existing Keywords only to reinforce or disambiguate terms.
 - Do not invent terms that do not appear in Title or Content.
 
+Critical Constraints:
+- Keywords MUST be copied verbatim from the original Title or Content.
+- Do NOT translate, localize, paraphrase, or rewrite keywords.
+- Preserve the original language, spelling, spacing, and casing exactly as they appear.
+- If a term appears in English, keep it in English.
+- If a term appears in Korean, keep it in Korean.
+
 Rules:
 - Extract words or short noun phrases (1–3 words).
 - Prefer terms that actually appear in the text.
@@ -1122,6 +1257,8 @@ async function requestPageConceptsFromAI(
     acronymPreference: string; // e.g. "AI" | "Artificial Intelligence"
   }
 ): Promise<Record<string, string[]>> {
+
+    console.log('requestPageConceptsFromAI existingConcepts =>', existingConcepts);
 
   let prompt = `
 Extract representative concepts from the note.
@@ -1353,36 +1490,18 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
     //        업데이트 -> 마지막 작성 이후 수정된 것만 작성 => 이때만 db 저장 정보가 필요한가? => 키워드, 범주 노션에 갱신 할때 
 
 
-/////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 할일
 // #todo
-
-- 노션에서 키워드 읽기 -> db에 저장, updatedAt  
-    - updateNotePropertiesInFirestore
-- 키워드 생성 
-- 다시 노션에 저장 
-
-    - 키워드 반영 / 머지  
+- 키워드 - 다시 노션에 저장 
+- updateNotePropertiesInFirestore 
+    - 이미 변환한 것은 건너띠고 변환하기
+    - 한번에 5개만 작업하기
+=======================================================================================================
 - 컨셉 생성
     - 존제하는 컨셉 리스트 만들기
-
-- updateNotePropertiesInFirestore 
-    - 이미 변환한것은 건너띠고 변환하기
-    - 한번에 5개만 작업하기
-    
-    - 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
-    - 안내 추가(임시)
-    - 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
-    - 변환 안내하기
-    - 변환 작업에 시간이 매우 오래 걸려, 기존 노트들을 한번에 변환하지 않습니다. 
-    - 다만, 새로운 노트를 만들거나 페이지가 수정되면 해당 페이지에 대하여 바로 작업 됩니다. 
-    - 초기에 content -> keyword작업 
-    - 오픈 후 : 초기화 후 재생성 : 프로그래스, 수종 작업 버튼, 전체 전환율
-    - 오픈 전 : 
-        - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
-        - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
-
-        - 노트가 삭제 되었을때
+=======================================================================================================
+   
 
 - 이벤트 처리
     새로운 이벤트가 오면 1개 개별 변환하기
@@ -1408,8 +1527,23 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
 - 로그 숨기기
 - 강제 업데이트
 
-===================================================================================
+- 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
+- 안내 추가(임시)
+- 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
+- 변환 안내하기
+- 변환 작업에 시간이 매우 오래 걸려, 기존 노트들을 한번에 변환하지 않습니다. 
+- 다만, 새로운 노트를 만들거나 페이지가 수정되면 해당 페이지에 대하여 바로 작업 됩니다. 
+- 초기에 content -> keyword작업 
+- 오픈 후 : 초기화 후 재생성 : 프로그래스, 수종 작업 버튼, 전체 전환율
+- 오픈 전 : 
+    - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
+    - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
+    - 노트가 삭제 되었을때
+
+=======================================================================================================
 - 도메인 ai 생성 (2차)
+- 키워드 반영 / 머지  => ai가 하는 것이라 => 내가 넣은 키워드를 삭제 했음 !!!!!!!!!!!!!!!(키워드는 개별 수정하지 마라) 2차에서 머지하겠음.
+
 
 - 검색 - 키워드 기반 (2차)
 - [ ]  템플릿 연결 안내 보강(2차) - 첫 화면에서 워크스페이스를 선택함 > 연결 할 템플릿을 선택함 밑에 선택한 후 페이지에서 이 LifeUp템플릿
@@ -1421,8 +1555,8 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
     - 크레딧 관리(2차)
     - 모바일에서 설정하기 : 세션 - email연결 필요 (2차)
     - [ ]  메뉴 - 버전 확인 / 업데이트(2차)
-
-
-
+- keyword저장하면 최근노트로 나옴 : 현재는 어쩔 수 없음 (2차)
+- 제목 자동 작성 기능 (2차)
+컨셉 생성 옵션 사용자 설정 (2차)
 
 */
