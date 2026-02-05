@@ -403,19 +403,24 @@ export class SecondBrainViewComponent implements AfterViewInit {
     ) {
         network.on('hoverNode', (params) => {
             const nodeId = params.node;
-            const connectedNodeIds = network.getConnectedNodes(nodeId) as any[];
+            const connectedNodeIds = network.getConnectedNodes(nodeId) as string[];
             const connectedEdgeIds = network.getConnectedEdges(nodeId);
 
             const nodeUpdates: Node[] = [];
             const edgeUpdates: Edge[] = [];
 
             nodes.forEach((node) => {
-                const isActive =
-                    node.id === nodeId || connectedNodeIds.includes(node.id);
+                if (!node || !node.id) return;
+                const nodeIdStr = node.id.toString(); // 항상 string
+                const isActive = nodeIdStr === nodeId.toString() || connectedNodeIds.includes(nodeIdStr);
 
                 nodeUpdates.push({
                     id: node.id,
-                    opacity: isActive ? 1 : 0.15
+                    hidden: !isActive, // 연결 안된 노드는 숨기기
+                    color: {
+                        ...(node.color as any || {}),
+                        opacity: 1 // hidden이면 완전히 안보이므로 opacity 유지
+                    }
                 });
             });
 
@@ -424,11 +429,12 @@ export class SecondBrainViewComponent implements AfterViewInit {
 
                 edgeUpdates.push({
                     id: edge.id,
+                    hidden: !isActive, // 연결 안된 엣지도 숨기기
                     color: {
-                        opacity: isActive ? 1 : 0.1
+                        ...(edge.color as any || {}),
+                        opacity: 1
                     }
-                    });
-
+                });
             });
 
             nodes.update(nodeUpdates);
@@ -442,15 +448,21 @@ export class SecondBrainViewComponent implements AfterViewInit {
             nodes.forEach((node) => {
                 nodeReset.push({
                     id: node.id,
-                    opacity: 1
+                    hidden: false, // 모두 보이기
+                    color: {
+                        ...(node.color as any || {}),
+                        opacity: 1
+                    }
                 });
             });
 
             edges.forEach((edge) => {
                 edgeReset.push({
                     id: edge.id,
-                     color: {
-                        opacity: 1 
+                    hidden: false, // 모두 보이기
+                    color: {
+                        ...(edge.color as any || {}),
+                        opacity: 1
                     }
                 });
             });
@@ -511,18 +523,19 @@ export class SecondBrainViewComponent implements AfterViewInit {
                 },
                 // groups: {
                 //     keyword: {
-                //         color: {
-                //             background: '#8B5DFF', // 배경색 유지
-                //             border: '#8B5DFF'      // 배경보다 조금 밝은 정도
-                //         }
-                //     },
-                //     page: {
-                //         color: {
-                //             background: '#FF8F00', // 배경색 유지
-                //             border: '#FF8F00'      // 배경보다 조금 밝은 정도
-                //         }
-                //     }
-                // }, 
+                        // color: {
+                        //     background: '#8B5DFF', // 배경색 유지
+                        //     border: '#8B5DFF'      // 배경보다 조금 밝은 정도
+                        // }
+                    // },
+                    // page: {
+                        //shape: 'box',
+                        // color: {
+                        //     background: '#FF8F00', // 배경색 유지
+                        //     border: '#FF8F00'      // 배경보다 조금 밝은 정도
+                        // }
+                    //}
+                //}, 
                 physics: {
                     enabled: true,  // physics 계속 켬
                     stabilization: false, // 초기 안정화는 끄거나 최소화
