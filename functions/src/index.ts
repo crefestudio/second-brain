@@ -1844,12 +1844,15 @@ interface Node {
     id: string;
     label: string;
     group?: string;
+    size?: number; // 참조 수 기반 노드 크기
+    color?: any;
 }
 
 interface Edge {
     from: string;
     to: string;
     weight?: number;
+    color?: any;
 }
 
 export const getKeywordGraphData = onRequest(
@@ -1865,7 +1868,6 @@ export const getKeywordGraphData = onRequest(
                 `graphType은 "keyword-only" 또는 "note-keyword"만 가능합니다. 전달된 값: ${graphType}`
                 );
             }
-
 
             const storeService = new StoreService();
             const pagesKeywords = await storeService.getNoteKeywords(userId);
@@ -1947,34 +1949,39 @@ class StoreService {
 // Firestore에 컨셉 저장 및 노드/엣지 그래프 데이터 생성 함수
 
 function generateKeywordGraphDataNoteKeywordType(
-    pagesKeywords: Record<string, string[]>
+    pagesKeywords: Record<string, { title: string; keywords: string[] }>
 ): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
     const keywordToNodeId: Record<string, string> = {};
     let keywordCounter = 1;
 
-    for (const [pageId, keywords] of Object.entries(pagesKeywords)) {
-        const noteNodeId = `note-${pageId}`;
+    for (const [pageId, { title, keywords }] of Object.entries(pagesKeywords)) {
+        const noteNodeId = `page-${pageId}`;
+        // note label: title 50자 제한
         nodes.push({
             id: noteNodeId,
-            label: pageId,
-            group: "note",
+            label: title.length > 50 ? title.slice(0, 50) + "…" : title,
+            group: "page",
         });
 
         for (const keyword of keywords) {
-            if (!keywordToNodeId[keyword]) {
+            const trimmedKeyword = keyword.trim();
+            if (!trimmedKeyword) continue;
+
+            if (!keywordToNodeId[trimmedKeyword]) {
                 const keywordNodeId = `keyword-${keywordCounter++}`;
-                keywordToNodeId[keyword] = keywordNodeId;
+                keywordToNodeId[trimmedKeyword] = keywordNodeId;
                 nodes.push({
                     id: keywordNodeId,
-                    label: keyword,
+                    label: trimmedKeyword,
                     group: "keyword",
                 });
             }
+
             edges.push({
                 from: noteNodeId,
-                to: keywordToNodeId[keyword],
+                to: keywordToNodeId[trimmedKeyword],
                 weight: 1,
             });
         }
@@ -1983,36 +1990,86 @@ function generateKeywordGraphDataNoteKeywordType(
     return { nodes, edges };
 }
 
+// function generateKeywordGraphDataOnlyKeywordType(
+//     pagesKeywords: Record<string, { title: string; keywords: string[] }>
+// ): { nodes: Node[]; edges: Edge[] } {
+//     const nodes: Node[] = [];
+//     const edges: Edge[] = [];
+//     const keywordCountMap: Record<string, number> = {}; // 키워드 참조 수
+//     const edgeMap: Record<string, number> = {};
 
+//     // 키워드 등장 횟수 및 엣지 생성
+//     for (const { keywords } of Object.values(pagesKeywords)) {
+//         const uniqueKeywords = Array.from(
+//             new Set(keywords.map(k => k.trim()).filter(k => k))
+//         );
+
+//         // 키워드 참조 수 계산
+//         for (const keyword of uniqueKeywords) {
+//             keywordCountMap[keyword] = (keywordCountMap[keyword] || 0) + 1;
+//         }
+
+//         // 페이지 기반 키워드 엣지 생성
+//         for (let i = 0; i < uniqueKeywords.length; i++) {
+//             for (let j = i + 1; j < uniqueKeywords.length; j++) {
+//                 const [k1, k2] = [uniqueKeywords[i], uniqueKeywords[j]].sort();
+//                 const key = `${k1}|${k2}`;
+//                 edgeMap[key] = (edgeMap[key] || 0) + 1;
+//             }
+//         }
+//     }
+
+//     const counts = Object.values(keywordCountMap);
+//     const minCount = Math.min(...counts);
+//     const maxCount = Math.max(...counts);
+
+//     // 노드 생성 (참조 수 기반 size + 명도)
+//     for (const [keyword, count] of Object.entries(keywordCountMap)) {
+//         // 명도를 30%~100% 범위로 매핑
+//         const brightness = minCount === maxCount
+//             ? 0.7 // 모두 동일하면 중간값
+//             : 0.3 + ((count - minCount) / (maxCount - minCount)) * 0.7;
+
+//         nodes.push({
+//             id: `keyword-${keyword}`,
+//             label: keyword,
+//             group: "keyword",
+//             size: 10 + count * 2, // 기존 크기 유지
+//             color: `hsl(200, 70%, ${brightness * 100}%)`, // 파랑 계열 예시
+//         });
+//     }
+
+//     // 엣지 생성
+//     for (const [key, weight] of Object.entries(edgeMap)) {
+//         const [k1, k2] = key.split("|");
+//         edges.push({
+//             from: `keyword-${k1}`,
+//             to: `keyword-${k2}`,
+//             weight, // 공통 등장 수
+//         });
+//     }
+
+//     return { nodes, edges };
+// }
 
 function generateKeywordGraphDataOnlyKeywordType(
-    pagesKeywords: Record<string, string[]>
+    pagesKeywords: Record<string, { title: string; keywords: string[] }>
 ): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
-    const keywordSet = new Set<string>();
+    const keywordCountMap: Record<string, number> = {};
     const edgeMap: Record<string, number> = {};
 
-    // 모든 키워드 수집
-    for (const keywords of Object.values(pagesKeywords)) {
-        for (const k of keywords) {
-            const keyword = k.trim();
-            if (keyword) keywordSet.add(keyword);
+    // 1️⃣ 키워드 등장 횟수와 엣지 생성
+    for (const { keywords } of Object.values(pagesKeywords)) {
+        const uniqueKeywords = Array.from(
+            new Set(keywords.map(k => k.trim()).filter(k => k))
+        );
+
+        for (const keyword of uniqueKeywords) {
+            keywordCountMap[keyword] = (keywordCountMap[keyword] || 0) + 1;
         }
-    }
 
-    // 노드 생성
-    for (const keyword of keywordSet) {
-        nodes.push({
-            id: `keyword-${keyword}`,
-            label: keyword,
-            group: "keyword",
-        });
-    }
-
-    // 페이지 기반 키워드 엣지 생성
-    for (const keywords of Object.values(pagesKeywords)) {
-        const uniqueKeywords = Array.from(new Set(keywords.map(k => k.trim()).filter(k => k)));
         for (let i = 0; i < uniqueKeywords.length; i++) {
             for (let j = i + 1; j < uniqueKeywords.length; j++) {
                 const [k1, k2] = [uniqueKeywords[i], uniqueKeywords[j]].sort();
@@ -2022,18 +2079,73 @@ function generateKeywordGraphDataOnlyKeywordType(
         }
     }
 
-    // edgeMap -> edges 배열
+    const counts = Object.values(keywordCountMap);
+    const minCount = Math.min(...counts);
+    const maxCount = Math.max(...counts);
+
+    // 2️⃣ HSL → HEX 변환
+    function hslToHex(h: number, s: number, l: number) {
+        l /= 100;
+        const a = s * Math.min(l, 1 - l) / 100;
+        const f = (n: number) => {
+            const k = (n + h / 30) % 12;
+            const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+            return Math.round(255 * color).toString(16).padStart(2, '0');
+        };
+        return `#${f(0)}${f(8)}${f(4)}`;
+    }
+
+    // 3️⃣ 노드 생성 (size + brightness 적용, 최대값 70%로 제한)
+    for (const [keyword, count] of Object.entries(keywordCountMap)) {
+        // log 스케일 적용 (weight 범위 넓을 때)
+        const logCount = Math.log(count + 1);
+        const logMin = Math.log(minCount + 1);
+        const logMax = Math.log(maxCount + 1);
+
+        const brightness = logMin === logMax
+            ? 50
+            : 30 + ((logCount - logMin) / (logMax - logMin)) * 40; // 30~70%
+
+        const colorHex = hslToHex(200, 70, brightness);
+
+        nodes.push({
+            id: `keyword-${keyword}`,
+            label: keyword,
+            group: "keyword",
+            size: 10 + count * 2,
+            color: {
+                background: colorHex,
+                border: "#003366",
+                highlight: {
+                    background: colorHex,
+                    border: "#003366"
+                },
+                hover: {
+                    background: colorHex,
+                    border: "#003366"
+                },
+                opacity: 1
+            }
+        });
+    }
+
+    // 4️⃣ 엣지 생성
     for (const [key, weight] of Object.entries(edgeMap)) {
         const [k1, k2] = key.split("|");
         edges.push({
             from: `keyword-${k1}`,
             to: `keyword-${k2}`,
             weight,
+            color: {
+                color: "#393E46",
+                opacity: 1
+            }
         });
     }
 
     return { nodes, edges };
 }
+
 
 
 
@@ -2047,7 +2159,7 @@ function generateKeywordGraphDataOnlyKeywordType(
     3. generateKMData 
         secondrain/pagess/{noteId}/keywords, keywords, domain => secondbrain/kmData / 바로 그래프로 사용할 수 있는 JSON
 
-
+    
 {
   "keywords": [],       노션에 저장(O) / 사용자 (O) / AI (O)
    "keywords": [],      노션에 저장(X) / 사용자 (X) / AI (O) // 1차에서는 
@@ -2071,6 +2183,8 @@ function generateKeywordGraphDataOnlyKeywordType(
 
 =======================================================================================================
 >>> 그래프 그리기    
+- 키워드 그래프 => 크기, 색상 모두 적용 / hover까지 
+
 - 이벤트 처리
     새로운 이벤트가 오면 1개 개별 변환하기
     키워드 수정 
@@ -2104,6 +2218,11 @@ function generateKeywordGraphDataOnlyKeywordType(
             - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
             - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
             - 노트가 삭제 되었을때
+
+- 초기 그래프 로딩 속도 빠르게 - 그래프 데이타 캐시
+- 데이타 자기 개발 쪽 꼬임 버그
+
+
 ======================================================================================================= 1.1차
 - 템플릿 두개 선택 주의 설명
 - 강제 업데이트

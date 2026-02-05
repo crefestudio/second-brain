@@ -464,11 +464,9 @@ export class SecondBrainViewComponent implements AfterViewInit {
 
     // #graph
     //userId: string, graphType: "note-keyword" | "keyword-only"
-    async loadGraph() {
+    async loadGraph(graphType: "note-keyword" | "keyword-only" = "note-keyword") {
         try {
             if(!this.session || !this.session.userId) { return; }
-            let graphType = "note-keyword"; 
-            //let graphType = "keyword-only"
             let userId: string = this.session.userId;
             // 1️⃣ API 호출
             const response: any = await this.userService.getKeywordGraphData(userId, graphType);
@@ -511,35 +509,31 @@ export class SecondBrainViewComponent implements AfterViewInit {
                         roundness: 0.5
                     }
                 },
-                groups: {
-                    main: {
-                        color: {
-                            background: '#00ADB5',
-                            border: '#00ADB5'
-                        }
-                    },
-                    secondary: {
-                        color: {
-                            background: '#555B66',
-                            border: '#555B66'
-                        }
-                    }
-                }, 
+                // groups: {
+                //     keyword: {
+                //         color: {
+                //             background: '#8B5DFF', // 배경색 유지
+                //             border: '#8B5DFF'      // 배경보다 조금 밝은 정도
+                //         }
+                //     },
+                //     page: {
+                //         color: {
+                //             background: '#FF8F00', // 배경색 유지
+                //             border: '#FF8F00'      // 배경보다 조금 밝은 정도
+                //         }
+                //     }
+                // }, 
                 physics: {
-                    enabled: true, // physics 켜기
-                    stabilization: {
-                        enabled: true,       // 초기 안정화
-                        iterations: 500,    // 충분히 크게
-                        updateInterval: 50, 
-                        onlyDynamicEdges: false,
-                        fit: true,           // 초기 레이아웃 자동 맞춤
-                    },
+                    enabled: true,  // physics 계속 켬
+                    stabilization: false, // 초기 안정화는 끄거나 최소화
                     barnesHut: {
                         gravitationalConstant: -2000,
                         springLength: 150,
-                        springConstant: 0.05,
-                        damping: 0.3,       // 움직임 감쇠 (너무 요동치는 경우)
-                    }
+                        springConstant: 0.02, // 낮추면 느리고 부드럽게 움직임
+                        damping: 0.4,          // 높으면 요동 감소, 낮으면 더 움직임
+                        centralGravity: 0.1,   // 중심으로 모이는 힘
+                    },
+                    minVelocity: 0.1,          // 아주 작은 움직임도 유지
                 },
                 interaction: {
                     hover: true,
