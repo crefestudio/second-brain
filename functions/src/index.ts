@@ -321,7 +321,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 
 class NotionService {
     // Notion 클라이언트
-    notionApi = null; 
+    notionApi = null;
 
     static apiVersion = '2022-06-28';
     static async getDatabaseIdByDatabaseName(accessToken: string, databaseName: string): Promise<string> {
@@ -350,7 +350,7 @@ class NotionService {
 
         return matched[0].id;
     }
-  
+
     // queryDatabase 함수
     static async queryDatabase(accessToken: string, databaseId: string, startCursor?: string) {
         const cleanDbId = databaseId.trim();
@@ -394,12 +394,12 @@ class NotionService {
     }
 
 
-    static async applyKeywordsToNotionPages(accessToken: string,  aiResultKeyword: Record<string, string[]>) {
-        
+    static async applyKeywordsToNotionPages(accessToken: string, aiResultKeyword: Record<string, string[]>) {
+
         for (const [pageId, keywords] of Object.entries(aiResultKeyword)) {
             if (!keywords || keywords.length === 0) continue;
 
-            const cleanedKeywords = aiResultKeyword[pageId].flatMap(k => 
+            const cleanedKeywords = aiResultKeyword[pageId].flatMap(k =>
                 k.split(',').map(s => s.trim()).filter(Boolean)
             );
 
@@ -489,88 +489,6 @@ class NotionService {
 
 
 
-//class StoreService {
-
-    // pages 컬렉션에서 모든 노트의 키워드 가져오기
-    // async getNoteKeywords(userId: string): Promise<Record<string, string[]> | null> {
-    //     // 1️⃣ pages 컬렉션에서 note 문서들 가져오기
-    //     const pagesSnap = await db
-    //         .collection("users")
-    //         .doc(userId)
-    //         .collection("integrations")
-    //         .doc("secondbrain")
-    //         .collection("pages")
-    //         .get();
-
-    //     const allKeywords: Record<string, string[]> = {};
-
-    //     pagesSnap.forEach(doc => {
-    //         const data = doc.data();
-    //         if (Array.isArray(data?.keywords) && data.keywords.length > 0) {
-    //             allKeywords[doc.id] = data.keywords;
-    //         }
-    //     });
-
-    //     if (Object.keys(allKeywords).length === 0) {
-    //         return null;
-    //     }
-    //     return allKeywords;
-    // }
-//}
-
-
-// Firestore에 컨셉 저장 및 노드/엣지 그래프 데이터 생성 함수
-// async function saveKeywordsAndBuildGraph(userId: string, keywordsByNote: Record<string, string[]>): Promise<{ nodes: Node[]; edges: Edge[] }> {
-//     const batch = db.batch();
-//     for (const [noteId, keywords] of Object.entries(keywordsByNote)) {
-//         const noteRef = db
-//             .collection("users")
-//             .doc(userId)
-//             .collection("integrations")
-//             .doc("secondbrain")
-//             .collection("pages")
-//             .doc(noteId);
-//         batch.set(
-//             noteRef,
-//             {
-//                 keywords,
-//                 updatedAt: new Date(),
-//             },
-//             { merge: true }
-//         );
-//     }
-//     await batch.commit();
-
-//     const nodes: Node[] = [];
-//     const edges: Edge[] = [];
-//     const conceptToNodeId: Record<string, string> = {};
-//     let conceptCounter = 1;
-//     for (const [noteId, keywords] of Object.entries(keywordsByNote)) {
-//         const noteNodeId = `note-${noteId}`;
-//         nodes.push({
-//             id: noteNodeId,
-//             label: noteId,
-//             group: "note",
-//         });
-//         for (const concept of keywords) {
-//             if (!conceptToNodeId[concept]) {
-//                 const conceptNodeId = `concept-${conceptCounter++}`;
-//                 conceptToNodeId[concept] = conceptNodeId;
-//                 nodes.push({
-//                     id: conceptNodeId,
-//                     label: concept,
-//                     group: "concept",
-//                 });
-//             }
-//             edges.push({
-//                 from: noteNodeId,
-//                 to: conceptToNodeId[concept],
-//             });
-//         }
-//     }
-//     return { nodes, edges };
-// }
-
 
 
 // Firebase HTTPS 함수
@@ -617,48 +535,6 @@ class NotionService {
 //     }
 // }));
 
-// 타입 정의 (Node/Edge)
-// interface Node { id: string; label: string; group?: string; }
-// interface Edge { from: string; to: string; }
-
-// export const generateNoteKMData = onRequest(
-//     withCors(async (req, res) => {
-//         try {
-//             const { userId } = req.body;
-//             if (!userId) {
-//                 return res.status(400).send("userId를 전달해야 합니다.");
-//             }
-
-//             // 1️⃣ pages 컬렉션에서 note 문서들 가져오기
-//             const storeService = new StoreService();
-//             const noteKeywords = await storeService.getNoteKeywords(userId);
-
-//             if (!noteKeywords) {
-//                 return res.status(200).json({ message: "저장된 키워드가 없습니다." });
-//             }
-
-
-//             // 2️⃣ AI에 컨셉 요청
-//             const keywordsByNote = await requestKeywordsFromAI(noteKeywords);
-
-//             //////////////////////////////////////////////////
-
-//             // 3️⃣ Firestore에 컨셉 저장 및 노드/엣지 그래프 데이터 생성
-//             const { nodes, edges } = await saveKeywordsAndBuildGraph(userId, keywordsByNote);
-
-//             // 4️⃣ 결과 반환
-//             return res.status(200).json({
-//                 keywordsByNote,
-//                 nodes,
-//                 edges,
-//             });
-
-//         } catch (error: any) {
-//             console.error(error);
-//             return res.status(500).send(error.message);
-//         }
-//     })
-// );
 
 
 // export const updateNoteData = onRequest(withCors(async (req, res) => {
@@ -721,145 +597,141 @@ export const generateNotionNoteKMDataBatch = onRequest(
         memory: "1GiB",
     },
     withCors(async (req, res) => {
-    try {
-        const { userId } = req.body;
-        if (!userId) {
-            return res.status(400).send("userId를 전달해야 합니다.");
-        }
-
-        // Firestore에서 Notion accessToken, noteDatabaseId 가져오기
-        const sbDoc = await db
-            .collection("users")
-            .doc(userId)
-            .collection("integrations")
-            .doc("secondbrain")
-            .get();
-
-        if (!sbDoc.exists) {
-            return res.status(404).send("secondbrain 문서를 찾을 수 없습니다.");
-        }
-        const data = sbDoc.data();
-        const noteDatabaseId = data?.noteDatabaseId;
-        const accessToken = data?.accessToken;
-        if (!noteDatabaseId || !accessToken) {
-            return res.status(404).send("noteDatabaseId 또는 accessToken이 Firestore에 존재하지 않습니다.");
-        }
-        
-        // Notion DB에서 모든 page 가져오기
-        const response = await NotionService.queryDatabase(accessToken, noteDatabaseId);
-        let successCount = 0, failCount = 0;
-        const batchPages: { pageId: string; title: string; content: string; keywords: string[] }[] = [];
-
-        // page.content가져오느라 시간이 많이 걸리는 부분
-        let testIndex = 0;
-        for (const page of response.results) {
-            try {     
-                // keyword가 db에 없으면 노션에서 가져옴
-                const pageData: { pageId: string; title: string; content: string; keywords: string[]; } | null  
-                    = await updateNotePropertiesInFirestore(userId, page, accessToken);
-                if (!pageData) { continue; }
-                batchPages.push(pageData);
-                successCount++;
-            } catch (err) {
-                console.error("노트 속성 저장 실패:", err);
-                failCount++;
+        try {
+            const { userId } = req.body;
+            if (!userId) {
+                return res.status(400).send("userId를 전달해야 합니다.");
             }
-            testIndex++;
-            if (testIndex >= 5) break; // 테스트용으로 5개만 처리
-        }
-        console.error("[DEBUG] batchPages =>", batchPages);
 
-        const BATCH_SIZE = 10;
-        for (let i = 0; i < batchPages.length; i += BATCH_SIZE) {
-            const batch = batchPages.slice(i, i + BATCH_SIZE);
-            const pageData: Record<
-                string,
-                { title: string; content: string; keywords: string[] }
-            > = {};
+            // Firestore에서 Notion accessToken, noteDatabaseId 가져오기
+            const sbDoc = await db
+                .collection("users")
+                .doc(userId)
+                .collection("integrations")
+                .doc("secondbrain")
+                .get();
 
-            batch.forEach(n => {
-                pageData[n.pageId] = {
-                    title: n.title,
-                    content: n.content,
-                    keywords: n.keywords,
-                };
+            if (!sbDoc.exists) {
+                return res.status(404).send("secondbrain 문서를 찾을 수 없습니다.");
+            }
+            const data = sbDoc.data();
+            const noteDatabaseId = data?.noteDatabaseId;
+            const accessToken = data?.accessToken;
+            if (!noteDatabaseId || !accessToken) {
+                return res.status(404).send("noteDatabaseId 또는 accessToken이 Firestore에 존재하지 않습니다.");
+            }
+
+            // Notion DB에서 모든 page 가져오기
+            const response = await NotionService.queryDatabase(accessToken, noteDatabaseId);
+            let successCount = 0, failCount = 0;
+            const batchPages: { pageId: string; title: string; content: string; keywords: string[] }[] = [];
+
+            // page.content가져오느라 시간이 많이 걸리는 부분
+            let testIndex = 0;
+            for (const page of response.results) {
+                try {
+                    // keyword가 db에 없으면 노션에서 가져옴
+                    const pageData: { pageId: string; title: string; content: string; keywords: string[]; } | null
+                        = await updateNotePropertiesInFirestore(userId, page, accessToken);
+                    if (!pageData) { continue; }
+                    batchPages.push(pageData);
+                    successCount++;
+                } catch (err) {
+                    console.error("노트 속성 저장 실패:", err);
+                    failCount++;
+                }
+                testIndex++;
+                if (testIndex >= 5) break; // 테스트용으로 5개만 처리
+            }
+            console.error("[DEBUG] batchPages =>", batchPages);
+
+            const BATCH_SIZE = 10;
+            for (let i = 0; i < batchPages.length; i += BATCH_SIZE) {
+                const batch = batchPages.slice(i, i + BATCH_SIZE);
+                const pageData: Record<
+                    string,
+                    { title: string; content: string; keywords: string[] }
+                > = {};
+
+                batch.forEach(n => {
+                    pageData[n.pageId] = {
+                        title: n.title,
+                        content: n.content,
+                        keywords: n.keywords,
+                    };
+                });
+
+                try {
+                    /////////////////
+                    // 키워드 추출       
+
+                    // 기존 키워드 리스트 가져오기
+                    let existingKeywords: string[] = await loadKeywordsFromCache(userId);
+
+                    // ai 키워드 추출
+                    let aiResultKeywords = await requestPageKeywordsFromAI(pageData, existingKeywords);
+                    aiResultKeywords = filterUndefinedId(pageData, aiResultKeywords);
+
+                    const normalized: Record<string, string[]> = {};
+                    for (const [key, keywords] of Object.entries(aiResultKeywords)) {
+                        normalized[key] = Array.from(
+                            new Set(
+                                keywords.map(keyword =>
+                                    normalizeKeyword(keyword, existingKeywords)
+                                )
+                            )
+                        );
+                    }
+                    aiResultKeywords = normalized;
+
+                    // notion에 keyword반영
+                    await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeywords);
+
+                    //////////////////////////////////
+                    // 3️⃣ AI 결과 Firestore 저장
+                    for (const pageId of Object.keys(aiResultKeywords)) {
+                        await db
+                            .collection("users")
+                            .doc(userId)
+                            .collection("integrations")
+                            .doc("secondbrain")
+                            .collection("pages")
+                            .doc(pageId)
+                            .set(
+                                {
+                                    keywords: aiResultKeywords[pageId] || [], // 안전하게 배열 초기화
+                                    title: pageData[pageId]?.title || "",   // 안전하게 title 처리
+                                },
+                                { merge: true }
+                            );
+                    }
+
+                    // 키워드 캐시 업데이트 // 키워드 모두 읽어서 한곳에 저장
+                    let newExistingKeywords: string[] = await loadKeywordsFromPages(userId);
+                    console.log('newExistingKeywords =>', newExistingKeywords);
+                    upsertKeywords(userId, newExistingKeywords);
+
+                    console.log(`[DEBUG] Keywords 배치 ${i / BATCH_SIZE + 1}:`, aiResultKeywords);
+                    successCount += batch.length;
+                } catch (err) {
+                    console.error("AI 처리 실패:", err);
+                    failCount += batch.length;
+                }
+            }
+
+            // generateGroupsFromKeywords();
+
+            res.status(200).json({
+                message: "노트 속성 + AI keywords + keywords 저장 완료",
+                successCount,
+                failCount,
             });
 
-            try {
-                /* 키워드 추출 */ 
-                // let aiResultKeyword = await requestPageKeywordsFromAI(pageData); // 제목, 컨텐츠, 키워드 사용
-                // console.log(`[DEBUG] Keywords 배치  ${i / BATCH_SIZE + 1} aiResultKeyword =>`, aiResultKeyword);
-                // aiResultKeyword = filterUndefinedId(pageData, aiResultKeyword);
-                
-                /////////////////
-                // 컨셉 추출       
-                
-                // 기존 컨셉 리스트 가져오기
-                let existingKeywords: string[] = await loadKeywordsFromCache(userId);
-
-                // 컨셉 추출
-                let aiResultKeywords = await requestPageKeywordsFromAI(pageData, existingKeywords);
-                aiResultKeywords = filterUndefinedId(pageData, aiResultKeywords);
-
-                const normalized: Record<string, string[]> = {};
-                for (const [key, keywords] of Object.entries(aiResultKeywords)) {
-                    normalized[key] = Array.from(
-                        new Set(
-                            keywords.map(keyword =>
-                                normalizeKeyword(keyword, existingKeywords)
-                            )
-                        )
-                    );
-                }
-                aiResultKeywords = normalized;
-
-
-                // notion에 keyword반영
-                await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeywords);
-
-                //////////////////////////////////
-                // 3️⃣ AI 결과 Firestore 저장
-                for (const pageId of Object.keys(aiResultKeywords)) {
-                    await db
-                        .collection("users")
-                        .doc(userId)
-                        .collection("integrations")
-                        .doc("secondbrain")
-                        .collection("pages")
-                        .doc(pageId)
-                        .set(
-                        {
-                            keywords: aiResultKeywords[pageId] || [], // 안전하게 배열 초기화
-                            title: pageData[pageId]?.title || "",   // 안전하게 title 처리
-                        },
-                        { merge: true }
-                    );
-                }
-
-                // 키워드 캐시 업데이트 // 키워드 모두 읽어서 한곳에 저장
-                let newExistingKeywords: string[] = await loadKeywordsFromPages(userId);
-                console.log('newExistingKeywords =>', newExistingKeywords);
-                upsertKeywords(userId, newExistingKeywords);
-
-                console.log(`[DEBUG] Keywords 배치 ${i / BATCH_SIZE + 1}:`, aiResultKeywords);
-                successCount += batch.length;
-            } catch (err) {
-                console.error("AI 처리 실패:", err);
-                failCount += batch.length;
-            }
+        } catch (error: any) {
+            console.error(error);
+            res.status(500).send(error.message);
         }
-
-        res.status(200).json({
-            message: "노트 속성 + AI keywords + keywords 저장 완료",
-            successCount,
-            failCount,
-        });
-
-    } catch (error: any) {
-        console.error(error);
-        res.status(500).send(error.message);
-    }
-}));
+    }));
 
 // type NormalizeResult = {
 //     canonical: string;
@@ -888,12 +760,15 @@ function filterUndefinedId<T>(
 
     for (const id of Object.keys(source)) {
         if (id in aiResult && aiResult[id] !== undefined && aiResult[id] !== null) {
-        filtered[id] = aiResult[id];
+            filtered[id] = aiResult[id];
         }
     }
 
     return filtered;
 }
+
+//////////////////////////////////////////////////////////
+// #keywords
 
 // pages/pageId/keywords에서 컨셉을 가져와서 합친다.
 async function loadKeywordsFromPages(userId: string): Promise<string[]> {
@@ -905,7 +780,7 @@ async function loadKeywordsFromPages(userId: string): Promise<string[]> {
         .collection("pages")
         .get();
 
-  const keywordsSet = new Set<string>();
+    const keywordsSet = new Set<string>();
 
     snapshot.forEach(doc => {
         const data = doc.data();
@@ -917,14 +792,14 @@ async function loadKeywordsFromPages(userId: string): Promise<string[]> {
 }
 
 async function loadKeywordsFromCache(userId: string): Promise<string[]> {
-  const snapshot = await db
-    .collection("users")
-    .doc(userId)
-    .collection("integrations")
-    .doc("secondbrain")
-    .collection("keywords")
-    .get();
-  return snapshot.docs.map(d => d.id);
+    const snapshot = await db
+        .collection("users")
+        .doc(userId)
+        .collection("integrations")
+        .doc("secondbrain")
+        .collection("keywords")
+        .get();
+    return snapshot.docs.map(d => d.id);
 }
 
 async function upsertKeywords(userId: string, keywords?: string[]) {
@@ -937,18 +812,176 @@ async function upsertKeywords(userId: string, keywords?: string[]) {
         .collection("keywords");
 
     for (const keyword of keywords) {
-    if (!keyword) continue;
+        if (!keyword) continue;
         const ref = baseRef.doc(keyword);
         await ref.set(
             {
                 name: keyword,
                 updatedAt: new Date(),
-                noteCount: admin.firestore.FieldValue.increment(1),
+                refCount: admin.firestore.FieldValue.increment(1),
             },
             { merge: true }
         );
     }
 }
+
+//////////////////////////////////////////////////////////
+// #groups
+
+// async function generateGroupsFromKeywords(userId: string) {
+//     // 1. pages 에서 키워드 수집
+//     const existingKeywords = await loadKeywordsFromPages(userId);
+//     if (existingKeywords.length === 0) return;
+
+//     // 2. AI로 그룹 생성
+//     const aiResultGroups =
+//         await requestGroupsFromKeywordsByAI(existingKeywords);
+//     // 형태: Record<groupName, string[]>
+
+//     // 3. 기존 groups 캐시 로드 (중복 방지 / refCount 관리용)
+//     const existingGroups = await loadGroupsFromCache(userId);
+
+//     // 4. upsert
+//     await upsertGroups(userId, aiResultGroups, existingGroups);
+// }
+
+// async function requestGroupsFromKeywordsByAI(existingKeywords: string[]): Promise<Record<string, string[]>> {
+
+//     console.log('requestGroupsFromKeywordsByAI existingKeywords =>', existingKeywords);
+
+//   let prompt = `
+// 당신은 지식 관리 시스템을 위한 도메인 및 키워드 구조 설계 전문가입니다.
+
+// 다음에 주어지는 키워드 목록을 보고,
+// 각 키워드가 속해야 할 “도메인(domain)”을 분류하라.
+
+// [도메인의 정의]
+// - 도메인은 지식의 최상위 개념이며, “이 지식이 어느 세계의 이야기인가”를 나타낸다.
+// - 도메인은 세부 주제나 기능명이 아니라, 넓고 안정적인 의미 영역이어야 한다.
+
+// 아래 규칙을 반드시 따르세요.
+
+// 1. 전체 도메인 수는 기존 도메인을 포함하여 5~8개 이내를 유지한다.
+// 2. 도메인은 의미의 최상위 개념이어야 합니다.
+//    - 단일 주제, 단기 유행, 일회성 개념은 도메인이 될 수 없습니다.
+//    - 여러 키워드를 안정적으로 포괄할 수 있어야 합니다.
+
+// 2. 기존 도메인을 최우선으로 활용하세요.
+//    - 이미 존재하는 도메인으로 충분히 설명 가능한 경우,새로운 도메인을 생성하지 마세요.
+//    - 새 도메인은 기존 도메인으로는 의미가 명확히 담기지 않을 때만 생성합니다.
+
+// 3. 키워드 번역 원칙 
+//     - 추가할 도메인이 영어이면 한글로 번역 후 기존 도메인에 동의어가 있으면 동의어로 등록한다. 
+//     - 추가 할 도메인이 'tech'이면 한글로 번역하면 '테크'이고 기존 키워드 목록에 '태크'이 있으면 '테크'으로 등록합니다. 
+//    - 이 규칙은 키워드 중복과 의미 파편화를 방지하기 위한 필수 규칙입니다.
+
+// 4. 파편화 방지를 최우선 원칙으로 삼으세요.
+//    - 도메인과 키워드의 목적은 세분화가 아니라 맥락의 유지입니다.
+//    - 지식 구조가 의미 없이 잘게 쪼개지지 않도록, 가능한 한 기존 구조 안으로 흡수·정리하세요.
+//    - 도메인과 키워드는 최소 개수로 유지되어야 합니다.
+
+// 5. 도메인은 시간이 지나도 유효해야 합니다.
+//    - 툴 이름, 유행어, 특정 콘텐츠명은 도메인이 아닙니다.
+//    - 사고방식, 활동 영역, 역할, 시스템 단위의 개념을 우선합니다.
+
+// 6. 결과는 아래 형식을 따르세요.
+//    - 도메인명은 한국어로 간결하게 작성합니다.
+//    - 각 도메인에 포함되는 키워드 목록을 함께 제공합니다.
+
+// 출력은 반드시 JSON 형식으로만 반환하세요.
+// 설명 문장, 마크다운, 부가 텍스트는 포함하지 마세요.
+
+// `;
+
+//     // 🔹 Existing keywords (global context)
+//     if (existingKeywords.length) {
+//         prompt += `\n[keywords]\n${existingKeywords.join(", ")}\n`;
+//     }
+
+//     console.log('requestGroupsFromKeywordsByAI prompt =>', prompt);
+
+//     const response = await clientAI.chat.completions.create({
+//         model: "gpt-4.1-mini",
+//         messages: [
+//         {
+//             role: "system",
+//             content: `
+// You are a strict JSON generator.
+// Return valid raw JSON only.
+// Do not include markdown, code blocks, or explanations.
+// `
+//       },
+//       {
+//         role: "user",
+//         content: prompt
+//       }
+//     ],
+//         temperature: 0.3,
+//     });
+
+//     const text = response.choices[0].message?.content || "";
+//     console.log("[DEBUG] requestGroupsFromKeywordsByAI::AI Keywords 응답 텍스트:", text);
+
+//     try {
+//         return safeParseAIJson(text);
+//     } catch (err) {
+//         console.error("AI Keywords JSON 파싱 실패:", {
+//         error: err,
+//         rawResponse: text,
+//         });
+//         throw err;
+//     }
+// }
+
+// async function loadGroupsFromCache(userId: string): Promise<string[]> {
+//     const snapshot = await db
+//         .collection("users")
+//         .doc(userId)
+//         .collection("integrations")
+//         .doc("secondbrain")
+//         .collection("groups")
+//         .get();
+
+//     return snapshot.docs.map(d => d.id);
+// }
+
+// async function upsertGroups(
+//     userId: string,
+//     aiGroups: Record<string, string[]>,
+//     existingGroups: string[] = []
+// ) {
+//     if (!aiGroups || Object.keys(aiGroups).length === 0) return;
+
+//     const baseRef = db
+//         .collection("users")
+//         .doc(userId)
+//         .collection("integrations")
+//         .doc("secondbrain")
+//         .collection("groups");
+
+//     for (const [groupName, keywords] of Object.entries(aiGroups)) {
+//         if (!groupName) continue;
+
+//         const groupId = groupName; // 🔑 지금은 이름 = ID 전략
+//         const ref = baseRef.doc(groupId);
+
+//         const isExisting = existingGroups.includes(groupId);
+
+//         await ref.set(
+//             {
+//                 groupId,
+//                 name: groupName,
+//                 keywords: keywords ?? [],
+//                 updatedAt: new Date(),
+//                 refCount: isExisting
+//                     ? admin.firestore.FieldValue.increment(0)
+//                     : admin.firestore.FieldValue.increment(1),
+//             },
+//             { merge: true }
+//         );
+//     }
+// }
+
 
 
 // Notion page에서 제목, 내용, 키워드 Firestore 저장 (외부 함수)
@@ -1000,7 +1033,7 @@ async function updateNotePropertiesInFirestore(
     content: string;
     keywords: string[];
 } | null> {
-    const pageId = page.id;   
+    const pageId = page.id;
 
     // 🚫 0️⃣ Firestore에 이미 keywords 있으면 스킵
     const pageDocRef = db.collection("users").doc(userId).collection("integrations").doc("secondbrain").collection("pages").doc(pageId);
@@ -1160,8 +1193,18 @@ async function getPageContentText(pageId: string, accessToken: string): Promise<
     }
 
     const finalContent = content.join("\n");
-    console.log(`[DEBUG] getPageContentText - pageId: ${pageId}, content length: ${finalContent.length}`);
-    return finalContent;
+
+    // text를 최대 5000자 이내로 줄임
+    const MAX_LENGTH = 5000;
+    const trimmedContent =
+        finalContent.length > MAX_LENGTH
+            ? finalContent.slice(0, MAX_LENGTH)
+            : finalContent;
+
+    console.log(
+        `[DEBUG] getPageContentText - pageId: ${pageId}, original length: ${finalContent.length}, trimmed length: ${trimmedContent.length}`
+    );
+    return trimmedContent;
 }
 
 /**
@@ -1171,26 +1214,26 @@ async function getPageContentText(pageId: string, accessToken: string): Promise<
 const SIMILARITY_THRESHOLD = 0.8;
 
 function normalizeForCompare(s: string) {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '');
+    return s
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '');
 }
 
 function buildAliasIndex(existing: string[]) {
-  const map = new Map<string, string>();
+    const map = new Map<string, string>();
 
-  for (const k of existing) {
+    for (const k of existing) {
         map.set(normalizeForCompare(k), k);
 
         // 👇 영어로 쓰일 가능성 있는 경우 대비
         const en = toEnglishGuess(k);
         if (en) {
-        map.set(normalizeForCompare(en), k);
+            map.set(normalizeForCompare(en), k);
         }
-  }
+    }
 
-  return map;
+    return map;
 }
 
 function toEnglishGuess(korean: string): string | null {
@@ -1203,9 +1246,9 @@ function toEnglishGuess(korean: string): string | null {
 }
 
 function normalizeKeyword(
-        raw: string,
-        existingKeywords: string[]
-    ): string {
+    raw: string,
+    existingKeywords: string[]
+): string {
     const aliasIndex = buildAliasIndex(existingKeywords);
     const key = normalizeForCompare(raw);
 
@@ -1218,11 +1261,11 @@ function normalizeKeyword(
 
     for (const k of existingKeywords) {
         const score = similarity(
-        normalizeForCompare(raw),
-        normalizeForCompare(k)
+            normalizeForCompare(raw),
+            normalizeForCompare(k)
         );
         if (score >= SIMILARITY_THRESHOLD && (!best || score > best.score)) {
-        best = { k, score };
+            best = { k, score };
         }
     }
 
@@ -1323,25 +1366,25 @@ function normalizeKeyword(
 // ]);
 
 function levenshtein(a: string, b: string): number {
-  const matrix = Array.from({ length: a.length + 1 }, () =>
-    Array(b.length + 1).fill(0)
-  );
+    const matrix = Array.from({ length: a.length + 1 }, () =>
+        Array(b.length + 1).fill(0)
+    );
 
-  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
-  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+    for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+    for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
 
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,
-        matrix[i][j - 1] + 1,
-        matrix[i - 1][j - 1] + cost
-      );
+    for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(
+                matrix[i - 1][j] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j - 1] + cost
+            );
+        }
     }
-  }
 
-  return matrix[a.length][b.length];
+    return matrix[a.length][b.length];
 }
 
 function similarity(a: string, b: string): number {
@@ -1478,7 +1521,7 @@ function similarity(a: string, b: string): number {
 //       prompt += `Existing Keywords: ${keywords.join(", ")}\n`;
 //     }
 //   }
-  
+
 //     const response = await clientAI.chat.completions.create({
 //         model: "gpt-4.1-mini",
 //         messages: [
@@ -1513,59 +1556,59 @@ function similarity(a: string, b: string): number {
 // }
 
 async function requestPageKeywordsFromAI(
-  noteData: Record<string, { title?: string; content?: string; keywords: string[] }>,
-  existingKeywords: string[]): Promise<Record<string, string[]>> {
+    noteData: Record<string, { title?: string; content?: string; keywords: string[] }>,
+    existingKeywords: string[]): Promise<Record<string, string[]>> {
 
     console.log('requestPageKeywordsFromAI existingKeywords =>', existingKeywords);
-// Extract representative keywords from the note.
+    // Extract representative keywords from the note.
 
-// Input Usage:
-// - Use the Note Content as the primary source of meaning.
-// - Use Keywords only as supporting hints.
-// - Refer to Existing Keywords to avoid semantic duplication.
-// - Apply the Concept Normalization Preference strictly.
+    // Input Usage:
+    // - Use the Note Content as the primary source of meaning.
+    // - Use Keywords only as supporting hints.
+    // - Refer to Existing Keywords to avoid semantic duplication.
+    // - Apply the Concept Normalization Preference strictly.
 
-// Goals:
-// - Extract 3–6 core keywords that best represent this note.
-// - Keywords must be reusable semantic units in a knowledge graph.
+    // Goals:
+    // - Extract 3–6 core keywords that best represent this note.
+    // - Keywords must be reusable semantic units in a knowledge graph.
 
-// Rules:
-// - Do NOT decide keywords from keywords alone; always consider the full content.
-// - Prefer higher-level, abstract keywords that represent the overall topic.
-// - Absorb tools, implementations, examples, and features into broader keywords.
-// - Do NOT invent obscure or overly specific keywords.
-// - Each concept must be a noun or short noun phrase (1–3 words).
-// - Use singular form only.
-// - Prefer abstract and general terms over specific products or libraries.
+    // Rules:
+    // - Do NOT decide keywords from keywords alone; always consider the full content.
+    // - Prefer higher-level, abstract keywords that represent the overall topic.
+    // - Absorb tools, implementations, examples, and features into broader keywords.
+    // - Do NOT invent obscure or overly specific keywords.
+    // - Each concept must be a noun or short noun phrase (1–3 words).
+    // - Use singular form only.
+    // - Prefer abstract and general terms over specific products or libraries.
 
-// Existing Concept Priority (Anti-fragmentation):
-// - Before creating a new concept, always check the Existing Keywords list.
-// - If a semantically equivalent concept already exists, reuse it.
-// - Do NOT create a new concept if an existing one matches semantically.
+    // Existing Concept Priority (Anti-fragmentation):
+    // - Before creating a new concept, always check the Existing Keywords list.
+    // - If a semantically equivalent concept already exists, reuse it.
+    // - Do NOT create a new concept if an existing one matches semantically.
 
-// New Concept Creation:
-// - Create a new concept only if no existing concept matches semantically.
-// - A new concept must be suitable to grow into an independent knowledge document.
+    // New Concept Creation:
+    // - Create a new concept only if no existing concept matches semantically.
+    // - A new concept must be suitable to grow into an independent knowledge document.
 
-// Concept Normalization Policy:
-// - Primary Language: ${normalizationPreference.primaryLanguage}
-// - Case Style: ${normalizationPreference.caseStyle}
-// - Acronym Preference: ${normalizationPreference.acronymPreference}
+    // Concept Normalization Policy:
+    // - Primary Language: ${normalizationPreference.primaryLanguage}
+    // - Case Style: ${normalizationPreference.caseStyle}
+    // - Acronym Preference: ${normalizationPreference.acronymPreference}
 
-// Normalization Rules:
-// - Use standard, widely accepted terminology.
-// - Prefer the most commonly used expression.
-// - Maintain consistency with existing keywords whenever possible.
+    // Normalization Rules:
+    // - Use standard, widely accepted terminology.
+    // - Prefer the most commonly used expression.
+    // - Maintain consistency with existing keywords whenever possible.
 
-// Output Format Contract:
-// - Return a single JSON object
-// - Each key MUST be a pageId from the input
-// - Each value MUST be an array of strings (normalized concept names only)
-// - Do NOT include explanations, markdown, comments, or trailing commas
-// - Output MUST be valid raw JSON and directly parseable
+    // Output Format Contract:
+    // - Return a single JSON object
+    // - Each key MUST be a pageId from the input
+    // - Each value MUST be an array of strings (normalized concept names only)
+    // - Do NOT include explanations, markdown, comments, or trailing commas
+    // - Output MUST be valid raw JSON and directly parseable
 
 
-  let prompt = `
+    let prompt = `
 당신은 개인 지식 관리 시스템의 키워드 정제 AI입니다.
 다음 노트 데이터를 바탕으로 노트의 핵심 키워드을 추출하십시오.
 
@@ -1660,19 +1703,19 @@ Critical Constraints:
     const response = await clientAI.chat.completions.create({
         model: "gpt-4.1-mini",
         messages: [
-        {
-            role: "system",
-            content: `
+            {
+                role: "system",
+                content: `
 You are a strict JSON generator.
 Return valid raw JSON only.
 Do not include markdown, code blocks, or explanations.
 `
-      },
-      {
-        role: "user",
-        content: prompt
-      }
-    ],
+            },
+            {
+                role: "user",
+                content: prompt
+            }
+        ],
         temperature: 0.3,
     });
 
@@ -1683,8 +1726,8 @@ Do not include markdown, code blocks, or explanations.
         return safeParseAIJson(text);
     } catch (err) {
         console.error("AI Keywords JSON 파싱 실패:", {
-        error: err,
-        rawResponse: text,
+            error: err,
+            rawResponse: text,
         });
         throw err;
     }
@@ -1716,7 +1759,7 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
 
     for (const [key, value] of Object.entries(parsed)) {
         if (!Array.isArray(value)) {
-        throw new Error(`Invalid keywords format for pageId: ${key}`);
+            throw new Error(`Invalid keywords format for pageId: ${key}`);
         }
     }
 
@@ -1769,7 +1812,7 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
 //         //     console.error("AI 키워드 생성 실패:", err);
 //         //     return res.status(500).send("AI 키워드 생성 실패");
 //         // }
- 
+
 
 //         // 결과 저장
 //         let successCount = 0, failCount = 0;
@@ -1791,6 +1834,208 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
 //         res.status(500).send(error.message);
 //     }
 // }));
+
+///////////////////////////////////////////////////////////////////////////////
+// 
+//      #graph
+
+// 타입 정의 (Node/Edge)
+interface Node {
+    id: string;
+    label: string;
+    group?: string;
+}
+
+interface Edge {
+    from: string;
+    to: string;
+    weight?: number;
+}
+
+export const getKeywordGraphData = onRequest(
+    withCors(async (req, res) => {
+        try {
+            const { userId, graphType } = req.body;
+            if (!userId) {
+                return res.status(400).send("userId를 전달해야 합니다.");
+            }
+
+            if (graphType !== "keyword-only" && graphType !== "note-keyword") {
+                return res.status(400).send(
+                `graphType은 "keyword-only" 또는 "note-keyword"만 가능합니다. 전달된 값: ${graphType}`
+                );
+            }
+
+
+            const storeService = new StoreService();
+            const pagesKeywords = await storeService.getNoteKeywords(userId);
+            if (!pagesKeywords) {
+                return res.status(200).json({ message: "저장된 키워드가 없습니다." });
+            }
+
+            let graphData: { nodes: Node[]; edges: Edge[] } =  { nodes: [], edges: [] };
+            if (graphType === "keyword-only") {
+                graphData = generateKeywordGraphDataOnlyKeywordType(pagesKeywords);
+            } else if (graphType === "note-keyword") {
+                // 기본: note + keyword
+                graphData = generateKeywordGraphDataNoteKeywordType(pagesKeywords);
+            }
+            return res.status(200).json(graphData);
+
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).send(error.message);
+        }
+    })
+);
+
+class StoreService {
+    // pages 컬렉션에서 모든 노트의 키워드 가져오기 (페이지 이름 포함, 50자 제한)
+    async getNoteKeywords(userId: string): Promise<Record<string, { title: string; keywords: string[] }> | null> {
+        // 1️⃣ pages 컬렉션에서 note 문서들 가져오기
+        const pagesSnap = await db
+            .collection("users")
+            .doc(userId)
+            .collection("integrations")
+            .doc("secondbrain")
+            .collection("pages")
+            .get();
+
+        const allKeywords: Record<string, { title: string; keywords: string[] }> = {};
+
+        pagesSnap.forEach(doc => {
+            const page = doc.data();
+            const keywords: string[] = Array.isArray(page?.keywords) ? page.keywords : [];
+
+            if (keywords.length > 0) {
+                // 페이지 제목 가져오기, 최대 50자
+                let title = (page?.title ?? "제목 없음").toString();
+                if (title.length > 50) title = title.slice(0, 50);
+
+                allKeywords[doc.id] = { title, keywords };
+            }
+        });
+
+        if (Object.keys(allKeywords).length === 0) {
+            return null;
+        }
+        return allKeywords;
+    }
+}
+
+
+/*
+        // --- 노드 데이터 ---
+        const nodesArray: Node[] = [
+            { id: 1, label: "Jean Valjean", group: "main" },
+            { id: 2, label: "Javert", group: "secondary" },
+            { id: 3, label: "Fantine", group: "secondary" },
+            { id: 4, label: "Cosette", group: "main" },
+            { id: 5, label: "Marius", group: "secondary" }
+        ];
+
+        // --- 엣지 데이터 ---
+        const edgesArray: Edge[] = [
+            { from: 1, to: 2 },
+            { from: 1, to: 3 },
+            { from: 1, to: 4 },
+            { from: 4, to: 5 },
+            { from: 2, to: 3 },
+        ];
+*/
+
+// Firestore에 컨셉 저장 및 노드/엣지 그래프 데이터 생성 함수
+
+function generateKeywordGraphDataNoteKeywordType(
+    pagesKeywords: Record<string, string[]>
+): { nodes: Node[]; edges: Edge[] } {
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+    const keywordToNodeId: Record<string, string> = {};
+    let keywordCounter = 1;
+
+    for (const [pageId, keywords] of Object.entries(pagesKeywords)) {
+        const noteNodeId = `note-${pageId}`;
+        nodes.push({
+            id: noteNodeId,
+            label: pageId,
+            group: "note",
+        });
+
+        for (const keyword of keywords) {
+            if (!keywordToNodeId[keyword]) {
+                const keywordNodeId = `keyword-${keywordCounter++}`;
+                keywordToNodeId[keyword] = keywordNodeId;
+                nodes.push({
+                    id: keywordNodeId,
+                    label: keyword,
+                    group: "keyword",
+                });
+            }
+            edges.push({
+                from: noteNodeId,
+                to: keywordToNodeId[keyword],
+                weight: 1,
+            });
+        }
+    }
+
+    return { nodes, edges };
+}
+
+
+
+function generateKeywordGraphDataOnlyKeywordType(
+    pagesKeywords: Record<string, string[]>
+): { nodes: Node[]; edges: Edge[] } {
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+    const keywordSet = new Set<string>();
+    const edgeMap: Record<string, number> = {};
+
+    // 모든 키워드 수집
+    for (const keywords of Object.values(pagesKeywords)) {
+        for (const k of keywords) {
+            const keyword = k.trim();
+            if (keyword) keywordSet.add(keyword);
+        }
+    }
+
+    // 노드 생성
+    for (const keyword of keywordSet) {
+        nodes.push({
+            id: `keyword-${keyword}`,
+            label: keyword,
+            group: "keyword",
+        });
+    }
+
+    // 페이지 기반 키워드 엣지 생성
+    for (const keywords of Object.values(pagesKeywords)) {
+        const uniqueKeywords = Array.from(new Set(keywords.map(k => k.trim()).filter(k => k)));
+        for (let i = 0; i < uniqueKeywords.length; i++) {
+            for (let j = i + 1; j < uniqueKeywords.length; j++) {
+                const [k1, k2] = [uniqueKeywords[i], uniqueKeywords[j]].sort();
+                const key = `${k1}|${k2}`;
+                edgeMap[key] = (edgeMap[key] || 0) + 1;
+            }
+        }
+    }
+
+    // edgeMap -> edges 배열
+    for (const [key, weight] of Object.entries(edgeMap)) {
+        const [k1, k2] = key.split("|");
+        edges.push({
+            from: `keyword-${k1}`,
+            to: `keyword-${k2}`,
+            weight,
+        });
+    }
+
+    return { nodes, edges };
+}
+
+
 
 /*
 
@@ -1824,16 +2069,6 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
 // 할일
 // #todo
 
-
-- 키워드 - 다시 노션에 저장
-- updateNotePropertiesInFirestore 
-    - 이미 변환한 것은 건너띠고 변환하기
-    - 한번에 5개만 작업하기
-- 컨셉 생성
-    - 존제하는 컨셉 리스트 만들기
-    - 키워드 추출 안함
-    - 기존 컨셉을 키워드로 변경함 
-
 =======================================================================================================
 >>> 그래프 그리기    
 - 이벤트 처리
@@ -1845,35 +2080,41 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
     - tag => 카테고리
     - 도메인 => 범주 
 
-=======================================================================================================  
-
-
 >>> 인증 UX 마무리
 - [ ]  숫자 입력 시 뒤로 가기 안됨
 - [ ]  숫자 입력창 영어 입력이 됨
 - [ ]  이메일 입력창 → 아이폰에서 숫자로 나옴
 - [ ]  메인 인증 버튼 누르고 disable처리 하기
 
->>> 마무리
-- 템플릿 두개 선택 주의 설명
-- 로그 숨기기
-- 강제 업데이트
+=======================================================================================================  
 
+>>> 마무리
+ - 보안 
+    - 세션이 없는데 api호출하면 동작함 / 키를 올려주고 키체크가 필요함
+- 디버그 로그 숨기기
 - 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
 - 안내 추가(임시)
-- 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
-- 변환 안내하기
-- 변환 작업에 시간이 매우 오래 걸려, 기존 노트들을 한번에 변환하지 않습니다. 
-- 다만, 새로운 노트를 만들거나 페이지가 수정되면 해당 페이지에 대하여 바로 작업 됩니다. 
-- 초기에 content -> keyword작업 
-- 오픈 후 : 초기화 후 재생성 : 프로그래스, 수종 작업 버튼, 전체 전환율
-- 오픈 전 : 
-    - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
-    - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
-    - 노트가 삭제 되었을때
+    - 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
+    - 변환 안내하기
+    - 변환 작업에 시간이 매우 오래 걸려, 기존 노트들을 한번에 변환하지 않습니다. 
+    - 다만, 새로운 노트를 만들거나 페이지가 수정되면 해당 페이지에 대하여 바로 작업 됩니다. 
+    - 초기에 content -> keyword작업 
+        - 오픈 후 : 초기화 후 재생성 : 프로그래스, 수종 작업 버튼, 전체 전환율
+        - 오픈 전 : 
+            - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
+            - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
+            - 노트가 삭제 되었을때
+======================================================================================================= 1.1차
+- 템플릿 두개 선택 주의 설명
+- 강제 업데이트
+- 베타 표시
 
-=======================================================================================================
+- 앱이 업데이트 되면 localhost날아가나 => 인증 완료 되면 -> 연결 다시 하나? / 기존 연결자 되살리기
+
+
+======================================================================================================= 2차
 - 도메인 ai 생성 (2차)
+- 전화 인증 
 - 키워드 반영 / 머지  => ai가 하는 것이라 => 내가 넣은 키워드를 삭제 했음 !!!!!!!!!!!!!!!(키워드는 개별 수정하지 마라) 2차에서 머지하겠음.
 
 
@@ -1893,4 +2134,6 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
 - 키워드 수정 시 반영된게 함 (2차)
 - 키워드 개수에 따라 색상 변경하기 (2차)
 - 키워드 normalizeConcept(2차) - 번역
+
+- 라이트 버전
 */

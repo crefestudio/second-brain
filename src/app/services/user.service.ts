@@ -20,6 +20,19 @@ export interface SecondBrainClient {
     lastAccessAt: Timestamp; // Firestore timestamp
 }
 
+export interface Node {
+    id: string;
+    label: string;
+    group?: string;
+}
+
+export interface Edge {
+    from: string;
+    to: string;
+    weight?: number;
+}
+
+
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 @Injectable({
     providedIn: 'root',
@@ -188,6 +201,31 @@ export class UserService {
             return false;
         }
     }
+
+    async getKeywordGraphData(
+        userId: string,
+        graphType: string
+    ): Promise<{ nodes: Node[]; edges: Edge[] } | null> {
+        if (!userId) return null;
+
+        try {
+            // HTTP POST 호출 및 결과 받기
+            const result = await firstValueFrom(
+                this.http.post<{ nodes: Node[]; edges: Edge[] }>(
+                    `${this.functionsBaseUrl}/getKeywordGraphData`,
+                    { userId, graphType }
+                )
+            );
+
+            // 성공 시 { nodes, edges } 반환
+            return result;
+
+        } catch (error) {
+            console.error("getKeywordGraphData failed", error);
+            return null; // 실패 시 null 반환
+        }
+    }
+
 }
 
 
