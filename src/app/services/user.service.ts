@@ -216,19 +216,19 @@ export class UserService {
         }
     }
 
-    async generateNoteConcepts(userId: string): Promise<boolean> {
-        if (!userId) return false;
+    // async generateNoteConcepts(userId: string): Promise<boolean> {
+    //     if (!userId) return false;
 
-        try {
-            await firstValueFrom(
-                this.http.post(`${this.functionsBaseUrl}/generateNoteConcepts`, { userId })
-            );
-            return true;
-        } catch (error) {
-            console.error('generateNoteConcepts failed', error);
-            return false;
-        }
-    }
+    //     try {
+    //         await firstValueFrom(
+    //             this.http.post(`${this.functionsBaseUrl}/generateNoteConcepts`, { userId })
+    //         );
+    //         return true;
+    //     } catch (error) {
+    //         console.error('generateNoteConcepts failed', error);
+    //         return false;
+    //     }
+    // }
 
     async getKeywordGraphData(
         userId: string,

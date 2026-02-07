@@ -13,7 +13,6 @@ import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 import { UserService } from '../../../services/user.service';
 import { _log } from '../../../lib/cf-common/cf-common';
 import { NACommonService } from '../../../services/common.service';
-import { stringify } from 'uuid';
 
 /*
 => 회원 가입 : notinable - user //특정 템플릿 구매자 확인 : notinable - user - (json - secondbrain - isPremiumMember / isCreatorCompanion) 
@@ -93,6 +92,12 @@ import { stringify } from 'uuid';
     user : integration - secondbrain (accessToken) - client (장치별 설정)
 
 */
+const pageIcon = `data:image/svg+xml;utf8,
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>
+  <rect x='0' y='0' width='10' height='10' fill='%23ffff00'/>
+</svg>`;
+
+
 
 export interface SecondBrainLocalSession {
     userId: string;
@@ -369,19 +374,19 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // test button
 
-    async onClickgenerateNotionNoteKMDataBatch() {
+    async onClickGenerateNotionNoteKMDataBatch() {
         if (!this.clientId) { return; }
         let session = this.getLocalSession(this.clientId)
         if(!session || !session.userId) { return; }
         await this.userService.generateNotionNoteKMDataBatch(session.userId);
     }
 
-    async onClickGenerateNoteConcepts() {
-        if (!this.clientId) { return; }
-        let session = this.getLocalSession(this.clientId)
-        if(!session || !session.userId) { return; }
-        await this.userService.generateNoteConcepts(session.userId);
-    }
+    // async onClickGenerateNoteConcepts() {
+    //     if (!this.clientId) { return; }
+    //     let session = this.getLocalSession(this.clientId)
+    //     if(!session || !session.userId) { return; }
+    //     await this.userService.generateNoteConcepts(session.userId);
+    // }
 
     
     getLocalSession(clientId: string): SecondBrainLocalSession | null {
@@ -555,6 +560,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // #graph
     //userId: string, graphType: "note-keyword" | "keyword-only"
+
     async loadGraph(graphType: "note-keyword" | "keyword-only" = "note-keyword") {
         try {
             if (!this.clientId) { return; }
@@ -565,9 +571,11 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             const response: any = await this.userService.getKeywordGraphData(userId, graphType);
             _log('loadGraph response =>', response);
             if (!response) { return; }
-            if (response.errorCode == 100) {
-                
+            if (response.errorCode == 200) {
+                this.state = 'graph-nodata';                
                 return;
+            } else {
+                this.state = 'graph';
             }
             // if(response.message) {
             //     this.warnMessage = response.message;
@@ -609,21 +617,19 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                         roundness: 0.5
                     }
                 },
-                // groups: {
-                //     keyword: {
-                        // color: {
-                        //     background: '#8B5DFF', // 배경색 유지
-                        //     border: '#8B5DFF'      // 배경보다 조금 밝은 정도
-                        // }
+                groups: {
+                    // keyword: {
+                    //     color: {
+                    //         background: '#8B5DFF', // 배경색 유지
+                    //         border: '#8B5DFF'      // 배경보다 조금 밝은 정도
+                    //     }
                     // },
-                    // page: {
-                        //shape: 'box',
-                        // color: {
-                        //     background: '#FF8F00', // 배경색 유지
-                        //     border: '#FF8F00'      // 배경보다 조금 밝은 정도
-                        // }
-                    //}
-                //}, 
+                    page: {
+                        shape: 'image',
+                        image: pageIcon,
+                        size: 8,
+                    }
+                }, 
                 physics: {
                     enabled: true,  // physics 계속 켬
                     stabilization: false, // 초기 안정화는 끄거나 최소화

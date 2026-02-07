@@ -91,8 +91,8 @@
         <br/>
         <small class="info-text"
               style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 12px; color: #959595; margin-bottom: 18px; text-align: left;">
-          • <span style="color: #b36443;">세컨드브레인 API를 처음 연결 하실 때는 <strong>웹브라우저</strong> 환경에서만 진행할 수 있습니다.</span><br/>
-          • <span style="color: #b36443;">연결 후 <strong>모바일 장치</strong>에서 추가 연결 할 수 있으며, 각 장치에서는 보안상 별도 인증이 필요합니다.</span><br/>
+          • <span style="color: #b34347;">세컨드브레인 API를 처음 연결 하실 때는 <strong>웹브라우저</strong> 환경에서만 진행할 수 있습니다.</span><br/>
+          • <span style="color: #b34347;">연결 후 <strong>모바일 장치</strong>에서 추가 연결 할 수 있으며, 각 장치에서는 보안상 별도 인증이 필요합니다.</span><br/>
           • 세컨드브레인 API는 노션 계정당 LifeUp 템플릿 1개만 사용 가능합니다. 연결 할 때 이용 할 템플릿을 선택해주세요.<br/>
           • 구매 시 등록한 이메일을 잊어버린 경우, 현재 사용 중인 이메일로 먼저 연결 한 후 관리자에게 문의해주세요.<br/>
           • 기타 API 연결 및 이용 관련 문의는 <strong>toto791&#64;gmail.com</strong>으로 연락해 주세요.<br/>
@@ -255,11 +255,52 @@
       </div>
     </ng-container>
 
+
     <!-- 에러메세지 -->
     <div *ngIf="state !== 'graph'" class="error-message" [innerHTML]="errorMessage">
     </div>
     <div *ngIf="state !== 'graph'" class="warn-message" [innerHTML]="warnMessage">
     </div>
+
+    <!-- 그래프 오류 - 데이터 없음 -->
+    <ng-container *ngIf="state=='graph-nodata'">
+      <div class="success-wrapper">
+        <div class="success-card">
+          <h1 class="title">⛔ 그래프를 표시할 데이터가 없습니다.</h1>
+
+          <small class="info-text"
+              style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 13px; color: #959595; margin-bottom: 18px; text-align: left;">
+            새 노트를 작성하면 AI가 내용을 분석해 키워드를 자동으로 생성하고, 완료 후 노트의 ‘키워드’ 속성에 표시됩니다.<br>
+            생성된 키워드를 기반으로 그래프가 구성됩니다.<br><br>
+            초기 연결 시 기존 노트는 자동 변환이 지원되지 않으며,<br>
+            처리 시간 문제로 현재는 5개씩 수동 변환 방식으로 제공되고 있습니다.
+          </small>
+
+           <!-- <small class="info-text"
+              style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 12px; color: #959595; margin-bottom: 18px; text-align: left;">
+          • <span style="color: #b34347;">세컨드브레인 API를 처음 연결 하실 때는 <strong>웹브라우저</strong> 환경에서만 진행할 수 있습니다.</span><br/>
+          • <span style="color: #b34347;">연결 후 <strong>모바일 장치</strong>에서 추가 연결 할 수 있으며, 각 장치에서는 보안상 별도 인증이 필요합니다.</span><br/>
+          • 세컨드브레인 API는 노션 계정당 LifeUp 템플릿 1개만 사용 가능합니다. 연결 할 때 이용 할 템플릿을 선택해주세요.<br/>
+          • 구매 시 등록한 이메일을 잊어버린 경우, 현재 사용 중인 이메일로 먼저 연결 한 후 관리자에게 문의해주세요.<br/>
+          • 기타 API 연결 및 이용 관련 문의는 <strong>toto791&#64;gmail.com</strong>으로 연락해 주세요.<br/>
+        </small> -->
+
+          <!-- <p class="desc">
+            새로운 노트를 작성하면 AI가 내용을 분석해 자동으로 키워드를 생성하고,<br>
+            작업이 완료되면 노트의 ‘키워드’ 속성에 반영됩니다.<br>
+            이 키워드를 기반으로 세컨드 브레인 그래프가 생성됩니다.<br>
+
+            초기 연결 시 기존 노트의 자동 변환 기능은 아직 준비 중입니다.<br>
+            처리 시간이 소요되는 관계로, 현재는 한 번에 5개씩<br>
+            아래 버튼을 눌러 수동으로 변환할 수 있습니다.
+          </p> -->
+
+          <button class="home-btn" (click)="onClickGenerateNotionNoteKMDataBatch()">
+            AI 노트 데이터 전환하기 - 5개
+          </button>
+        </div>
+      </div>
+    </ng-container>
 
 
     <!-- 그래프 영역 -->
@@ -283,8 +324,13 @@
           </span>
           <span class="menu-text">설정</span>
         </button> -->
-        <!-- 노트-키워드 그래프 -->
-
+        <!-- 노트-키워드 그래프 -->  
+        <button class="menu-item" (click)="onClickGenerateNotionNoteKMDataBatch()">
+          <span class="menu-icon">
+            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M4 4C4 3.44772 4.44772 3 5 3H14H14.5858C14.851 3 15.1054 3.10536 15.2929 3.29289L19.7071 7.70711C19.8946 7.89464 20 8.149 20 8.41421V20C20 20.5523 19.5523 21 19 21H5C4.44772 21 4 20.5523 4 20V4Z" stroke="#cfd0d3" stroke-width="2" stroke-linecap="round"></path> <path d="M20 8H15V3" stroke="#cfd0d3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path> <path d="M9 17L10 13H11L12 17" stroke="#cfd0d3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> <path d="M9.5 16L11.5 16" stroke="#cfd0d3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> <path d="M14 13V17" stroke="#cfd0d3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>
+          </span>
+          <span class="menu-text">AI 노트 키워드 전환</span>
+        </button>
         <button class="menu-item" (click)="loadGraph('note-keyword')">
           <span class="menu-icon">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M17.8321 9.5547C18.1384 9.09517 18.0142 8.4743 17.5547 8.16795C17.0952 7.8616 16.4743 7.98577 16.168 8.4453L13.3925 12.6085L10.0529 10.3542C9.421 9.92768 8.55941 10.1339 8.18917 10.8004L6.12584 14.5144C5.85763 14.9971 6.03157 15.6059 6.51436 15.8742C6.99714 16.1424 7.60594 15.9684 7.87416 15.4856L9.56672 12.439L12.8571 14.66C13.4546 15.0634 14.2662 14.9035 14.6661 14.3036L17.8321 9.5547Z" fill="#cfd0d3"></path> <path fill-rule="evenodd" clip-rule="evenodd" d="M7 2C4.23858 2 2 4.23858 2 7V17C2 19.7614 4.23858 22 7 22H17C19.7614 22 22 19.7614 22 17V7C22 4.23858 19.7614 2 17 2H7ZM4 7C4 5.34315 5.34315 4 7 4H17C18.6569 4 20 5.34315 20 7V17C20 18.6569 18.6569 20 17 20H7C5.34315 20 4 18.6569 4 17V7Z" fill="#cfd0d3"></path> </g></svg>
