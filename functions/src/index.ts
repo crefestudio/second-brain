@@ -1,14 +1,20 @@
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
 import { Resend } from "resend";
-import * as crypto from 'crypto';
 import * as admin from "firebase-admin";
 import "dotenv/config";
 import { defineSecret } from "firebase-functions/params";
-
+//import * as functions from 'firebase-functions';
+import * as crypto from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import OpenAI from "openai";
-const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { customAlphabet } from 'nanoid';
 
+const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const nanoid = customAlphabet(
+  '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  8
+);
 
 // notion
 import { Client } from "@notionhq/client";
@@ -155,9 +161,16 @@ export const notionOAuthCallback = onRequest(
     })
 );
 
+
+
 // ----------------------
 // UserService
 // ----------------------
+interface IssueClientKeyResult {
+  clientKey: string;
+  expiresAt: string;
+}
+
 class UserService {
     static async saveClientInfo(params: { userId: string; clientId: string; origin?: string; userAgent?: string }) {
         const { userId, clientId, origin, userAgent } = params;
@@ -167,12 +180,46 @@ class UserService {
             clientId,
             origin: origin ?? null,
             userAgent: userAgent ?? null,
-            revoked: false,
             lastAccessAt: admin.firestore.FieldValue.serverTimestamp(),
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
     }
 
+    static async issueClientKey( userId: string, clientId: string): Promise<IssueClientKeyResult> {
+        if (!userId || !clientId) {
+            throw new Error('Missing userId or clientId');
+        }
+
+        // 랜덤 32바이트 clientKey 생성
+        const clientKey = randomBytes(32).toString('hex');
+        const hashedKey = createHash('sha256').update(clientKey).digest('hex');
+
+        const now = admin.firestore.Timestamp.now();
+        const expiresAt = admin.firestore.Timestamp.fromDate(
+            new Date(Date.now() + 1000 * 60 * 60 * 24 * 30) // 30일
+        );
+
+        const ref = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('secondbrain')
+            .collection('clients')
+            .doc(clientId);
+
+        await ref.set({
+            clientKey: hashedKey,
+            createdAt: now,
+            expiresAt
+        }, { 
+            merge: true 
+        });
+
+        return {
+            clientKey,
+            expiresAt: expiresAt.toDate().toISOString(),
+        };
+    }
     // static async getSecondBrainIntegrations(userId: string) {
     //     const docSnap = await db.collection('users').doc(userId).collection('integrations').doc('secondbrain').get();
     //     return docSnap.exists ? docSnap.data() : null;
@@ -287,7 +334,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             userId = userQuerySnap.docs[0].id;
         } else {
             // 3️⃣ 없으면 새 user 생성
-            userId = crypto.randomUUID();
+            userId = nanoid(); //crypto.randomUUID();
             await db.collection('users').doc(userId).set({
                 email,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -295,7 +342,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         }
 
         // 4️⃣ clientId는 항상 새로 생성
-        const clientId = crypto.randomUUID();
+        const clientId = nanoid(); //crypto.randomUUID();
 
         // clients/{clientId} 저장
         await UserService.saveClientInfo({
@@ -305,11 +352,13 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             userAgent: req.get('user-agent') || undefined,
         });
 
+        let resultClientKey: IssueClientKeyResult = await UserService.issueClientKey( userId, clientId);
+
         // 5️⃣ 사용 후 인증번호 삭제
         await docRef.delete();
 
         // 6️⃣ 성공 결과 반환
-        return res.status(200).json({ userId, clientId });
+        return res.status(200).json({ userId, clientId, clientKey: resultClientKey.clientKey });
     } catch (error: any) {
         console.error('verifyCode error:', error);
         return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
@@ -1865,17 +1914,20 @@ export const getKeywordGraphData = onRequest(
 
             if (graphType !== "keyword-only" && graphType !== "note-keyword") {
                 return res.status(400).send(
-                `graphType은 "keyword-only" 또는 "note-keyword"만 가능합니다. 전달된 값: ${graphType}`
+                    `graphType은 "keyword-only" 또는 "note-keyword"만 가능합니다. 전달된 값: ${graphType}`
                 );
             }
 
             const storeService = new StoreService();
             const pagesKeywords = await storeService.getNoteKeywords(userId);
             if (!pagesKeywords) {
-                return res.status(200).json({ message: "저장된 키워드가 없습니다." });
+                return res.status(200).json({ 
+                    errorCode: 200,
+                    message: "저장된 키워드가 없습니다." 
+                });
             }
 
-            let graphData: { nodes: Node[]; edges: Edge[] } =  { nodes: [], edges: [] };
+            let graphData: { nodes: Node[]; edges: Edge[] } = { nodes: [], edges: [] };
             if (graphType === "keyword-only") {
                 graphData = generateKeywordGraphDataOnlyKeywordType(pagesKeywords);
             } else if (graphType === "note-keyword") {
@@ -2146,6 +2198,130 @@ function generateKeywordGraphDataOnlyKeywordType(
     return { nodes, edges };
 }
 
+export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+            return;
+        }
+
+        const userId = req.body.userId;
+        const clientId = req.body.clientId;
+
+        // Authorization 헤더에서 Bearer 토큰 추출
+        const authHeader = req.headers['authorization'] as string | undefined;
+        const clientKey = authHeader?.split(' ')[1];
+
+        if (!userId || !clientId || !clientKey) {
+            res.status(400).json({ error: 'Missing parameters' });
+            return;
+        }
+
+        const ref = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('secondbrain')
+            .collection('clients')
+            .doc(clientId);
+
+        const docSnap = await ref.get();
+        if (!docSnap.exists) {
+            res.status(404).json({ error: 'Client not found' });
+            return;
+        }
+
+        const data = docSnap.data();
+
+        // clientKey 검증
+        const hashedKey = createHash('sha256').update(clientKey).digest('hex');
+        if (data?.clientKey !== hashedKey) {
+            res.status(401).json({ error: 'INVALID_CLIENT_KEY' });
+            return;
+        }
+
+        // if (data?.revoked) {
+        //     res.status(401).json({ error: 'CLIENT_REVOKED' });
+        //     return;
+        // }
+
+        if (data?.expiresAt.toDate() < new Date()) {
+            res.status(401).json({ error: 'CLIENT_EXPIRED' });
+            return;
+        }
+
+        // clientKey는 내려주지 않고 metadata만 반환
+        res.json({
+            clientId,
+            createdAt: data.createdAt.toDate().toISOString(),
+            expiresAt: data.expiresAt.toDate().toISOString(),
+            lastAccessAt: data.lastAccessAt,
+            userAgent: data.userAgent,
+            //revoked: data.revoked,
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+}));
+
+
+
+// export const verifyClientKey = functions.https.onRequest(
+//     withCors(async (req, res) => {
+//         try {
+//             if (req.method !== 'POST') {
+//                 res.status(405).json({ valid: false, reason: 'METHOD_NOT_ALLOWED' });
+//                 return;
+//             }
+
+//             const { userId, clientId } = req.body;
+//             const clientKey = req.headers['x-client-key'] as string;
+
+//             if (!userId || !clientId || !clientKey) {
+//                 res.status(400).json({ valid: false, reason: 'MISSING_PARAMS' });
+//                 return;
+//             }
+
+//             const ref = db
+//                 .collection('users')
+//                 .doc(userId)
+//                 .collection('integrations')
+//                 .doc('secondbrain')
+//                 .collection('clients')
+//                 .doc(clientId);
+
+//             const snap = await ref.get();
+//             if (!snap.exists) {
+//                 res.status(401).json({ valid: false, reason: 'NOT_FOUND' });
+//                 return;
+//             }
+
+//             const data = snap.data()!;
+//             const hashedKey = createHash('sha256').update(clientKey).digest('hex');
+
+//             // if (data.revoked) {
+//             //     res.status(401).json({ valid: false, reason: 'REVOKED' });
+//             //     return;
+//             // }
+
+//             if (data.hashedKey !== hashedKey) {
+//                 res.status(401).json({ valid: false, reason: 'INVALID_KEY' });
+//                 return;
+//             }
+
+//             if (data.expiresAt.toDate() < new Date()) {
+//                 res.status(401).json({ valid: false, reason: 'EXPIRED' });
+//                 return;
+//             }
+
+//             res.json({ valid: true });
+//         } catch (e) {
+//             console.error(e);
+//             res.status(500).json({ valid: false, reason: 'SERVER_ERROR' });
+//         }
+//     })
+// );
 
 
 
@@ -2158,10 +2334,9 @@ function generateKeywordGraphDataOnlyKeywordType(
     * 주의! 여기서 keyword는 가져오는 것과 추가하는 것이 같은 필드 : 기존값을 토대로 새로운 값을 업데이트 함, ai가 판단  
     3. generateKMData 
         secondrain/pagess/{noteId}/keywords, keywords, domain => secondbrain/kmData / 바로 그래프로 사용할 수 있는 JSON
-
     
 {
-  "keywords": [],       노션에 저장(O) / 사용자 (O) / AI (O)
+   "keywords": [],       노션에 저장(O) / 사용자 (O) / AI (O)
    "keywords": [],      노션에 저장(X) / 사용자 (X) / AI (O) // 1차에서는 
    "domain": "",        노션에 저장(X) / 사용자 (X) / AI (O) // 2차에서 노션에 저장 도메인 관리
   ------------------------------ 
@@ -2177,82 +2352,84 @@ function generateKeywordGraphDataOnlyKeywordType(
     //        업데이트 -> 마지막 작성 이후 수정된 것만 작성 => 이때만 db 저장 정보가 필요한가? => 키워드, 범주 노션에 갱신 할때 
 
 
+
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 할일
 // #todo
 
 =======================================================================================================
->>> 그래프 그리기    
-- 키워드 그래프 => 크기, 색상 모두 적용 / hover까지 
 
-- 이벤트 처리
+>>> 그래프 그리기  
+=> 초기 데이타 없을 때 대비
+=> 노트 아이콘으로 하기 
+=> 이벤트 처리
     새로운 이벤트가 오면 1개 개별 변환하기
-    키워드 수정 
-        - 이미 생성된 키워드에서 삭제 하면 -> 삭제
-        - 추가하면 추가  
-- 템플릿 수정
-    - tag => 카테고리
-    - 도메인 => 범주 
-
+    
 >>> 인증 UX 마무리
 - [ ]  숫자 입력 시 뒤로 가기 안됨
 - [ ]  숫자 입력창 영어 입력이 됨
 - [ ]  이메일 입력창 → 아이폰에서 숫자로 나옴
 - [ ]  메인 인증 버튼 누르고 disable처리 하기
 
-=======================================================================================================  
+- 인증번호 입력시 첫글자에 입력 포커스 가기
+
+=======================================================================================================
 
 >>> 마무리
- - 보안 
-    - 세션이 없는데 api호출하면 동작함 / 키를 올려주고 키체크가 필요함
 - 디버그 로그 숨기기
-- 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
+
 - 안내 추가(임시)
     - 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
-    - 변환 안내하기
-    - 변환 작업에 시간이 매우 오래 걸려, 기존 노트들을 한번에 변환하지 않습니다. 
-    - 다만, 새로운 노트를 만들거나 페이지가 수정되면 해당 페이지에 대하여 바로 작업 됩니다. 
+    - 초기 변환 안내하기
+        - 변환 작업에 시간이 매우 오래 걸려, 기존 노트들을 한번에 변환하지 않습니다. 
+        - 다만, 새로운 노트를 만들거나 페이지가 수정되면 해당 페이지에 대하여 바로 작업 됩니다. 
     - 초기에 content -> keyword작업 
         - 오픈 후 : 초기화 후 재생성 : 프로그래스, 수종 작업 버튼, 전체 전환율
         - 오픈 전 : 
             - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
             - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
             - 노트가 삭제 되었을때
+    - AI 사용 회수 관련 안내
+    - 각종 불편, 유료, 개선 접수 
+    - 키워드 데이타 생성 관련 오류 신고
+    - 템플릿 두개 선택 주의 설명
+    - 베타 표시
+    - 안내 : 앱이 업데이트 되면 localhost날아가나 => 인증 완료 되면 -> 연결 다시 하나? / 기존 연결자 되살리기
+    - 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
+    - 라이트 버전 
 
-- 초기 그래프 로딩 속도 빠르게 - 그래프 데이타 캐시
-- 데이타 자기 개발 쪽 꼬임 버그
 
-
-======================================================================================================= 1.1차
-- 템플릿 두개 선택 주의 설명
+======================================================================================================= 1.1차 / 오픈 직후 바로 1주일이내 진행
 - 강제 업데이트
-- 베타 표시
+- getSecondBrainIntegration 보안을 위해서 서버 함수로 변경, clientKey인증
 
-- 앱이 업데이트 되면 localhost날아가나 => 인증 완료 되면 -> 연결 다시 하나? / 기존 연결자 되살리기
 
 
 ======================================================================================================= 2차
+- 초기 그래프 로딩 속도 빠르게 - 그래프 데이타 캐시 2차
+
+키워드 수정 
+        - 이미 생성된 키워드에서 삭제 하면 -> 삭제
+        - 추가하면 추가  
+- 전화 인증
 - 도메인 ai 생성 (2차)
-- 전화 인증 
 - 키워드 반영 / 머지  => ai가 하는 것이라 => 내가 넣은 키워드를 삭제 했음 !!!!!!!!!!!!!!!(키워드는 개별 수정하지 마라) 2차에서 머지하겠음.
-
-
 - 검색 - 키워드 기반 (2차)
 - [ ]  템플릿 연결 안내 보강(2차) - 첫 화면에서 워크스페이스를 선택함 > 연결 할 템플릿을 선택함 밑에 선택한 후 페이지에서 이 LifeUp템플릿
 - 설정 
     - [ ]  유효하지 않은 클라이언트 확인 하고 삭제하기(2차)
     - 노트 변환상태 / 변환 하기 메뉴  
     - 이벤트 표시 (2차)
-    - 도메인 작업 (2차)
     - 크레딧 관리(2차)
     - 모바일에서 설정하기 : 세션 - email연결 필요 (2차)
     - [ ]  메뉴 - 버전 확인 / 업데이트(2차)
-- keyword저장하면 최근노트로 나옴 : 현재는 어쩔 수 없음 (2차)
+- keyword 저장하면 최근노트로 나옴 : 현재는 어쩔 수 없음 (2차)
 - 제목 자동 작성 기능 (2차)
-컨셉 생성 옵션 사용자 설정 (2차)
+- 컨셉 생성 옵션 사용자 설정 (2차)
 - 키워드 수정 시 반영된게 함 (2차)
-- 키워드 개수에 따라 색상 변경하기 (2차)
 - 키워드 normalizeConcept(2차) - 번역
+- 도메인 => 범주 
 
-- 라이트 버전
 */

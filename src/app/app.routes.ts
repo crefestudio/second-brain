@@ -2,11 +2,10 @@ import { Routes } from '@angular/router';
 
 //import { LoginPage } from './components/login/login.page';
 
-import { SecondBrainViewComponent } from './components/secondbrain/view/secondbrain.view.component'; 
+import { SecondBrainWidgetComponent } from './components/secondbrain/widget/secondbrain.widget.component'; 
 import { SecondBrainSetupComponent } from './components/secondbrain/setup/secondbrain.setup.component'; 
 import { SecondBrainConnectComponent } from './components/secondbrain/connect/secondbrain.connectcomponent'; 
 import { SecondBrainOauthSuccessComponent } from './components/secondbrain/oauth-success/secondbrain.oauth-success.component'; 
-
 
 export const routes: Routes = [
 	// {
@@ -14,8 +13,12 @@ export const routes: Routes = [
 	// 	component: LoginPage,
 	// },
 	{
-		path: 'secondbrain/view',
-		component: SecondBrainViewComponent,
+		path: 'secondbrain/widget',
+		component: SecondBrainWidgetComponent,
+	},
+	{
+		path: 'secondbrain/widget/:clientId',
+		component: SecondBrainWidgetComponent,
 	},
 	{
 		path: 'secondbrain/setup',
@@ -31,7 +34,7 @@ export const routes: Routes = [
 	},
 	{
 		path: '',
-		redirectTo: 'secondbrain/view',
+		redirectTo: 'secondbrain/widget',
 		pathMatch: 'full',
 	},
 	{

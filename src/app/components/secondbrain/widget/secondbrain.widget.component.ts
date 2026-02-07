@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Component, AfterViewInit, ViewChild, ElementRef, HostListener, ViewChildren, QueryList } from '@angular/core';
 import { Router } from '@angular/router';
 
@@ -12,8 +13,33 @@ import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 import { UserService } from '../../../services/user.service';
 import { _log } from '../../../lib/cf-common/cf-common';
 import { NACommonService } from '../../../services/common.service';
+import { stringify } from 'uuid';
 
 /*
+=> 회원 가입 : notinable - user //특정 템플릿 구매자 확인 : notinable - user - (json - secondbrain - isPremiumMember / isCreatorCompanion) 
+=> 노션 연결 : notinable - user - secondbrain - noteDatabaseId
+=> 장치 연결 : notinable - user - secondbrain - client
+        => clientId별로 accessToken
+
+<ui state>
+-> loading
+-> email-input          -> 메일 입력
+-> email-certification  -> 메일 인증창
+-> embed주소 바꾸기 단계
+-> connect-button        
+-> connect-notion      -> 연결 확인
+-> graph
+
+-> no-session        
+-> member               userId
+-> client-connected     clientId / clientKey    
+-> notion-connected     notionNoteDbId
+
+
+// - localhost 겹치는 문제 / 같은브라우저에서 호출 되는 문제 => 임베디드 바꾸기 기능으로 해결 / clientId
+// - email인증 : 프리미엄 구매자 확인을 위해 이메일 확인을 정확히 하기 위해 함 / 1회에 한함 / 이메일은 구매자 확인용    
+
+////////////////////////////////////////////////////////////////////////
 
 1. connect 
 2. emial(phoneNumber) 
@@ -68,38 +94,32 @@ import { NACommonService } from '../../../services/common.service';
 
 */
 
-
-const SB_LOCAL_SESSION_KEY = 'SB_LOCAL_SESSION';
 export interface SecondBrainLocalSession {
     userId: string;
-    clientId: string;
+    clientKey: string;
 }
 
 @Component({
-    selector: 'app-secondbrain-view',
+    selector: 'app-secondbrain-widget',
     standalone: true,
-    templateUrl: './secondbrain.view.component.html',
+    templateUrl: './secondbrain.widget.component.html',
     imports: [CommonModule, FormsModule],
-    styleUrls: ['./secondbrain.view.component.css']
+    styleUrls: ['./secondbrain.widget.component.css']
 })
-export class SecondBrainViewComponent implements AfterViewInit {
+export class SecondBrainWidgetComponent implements AfterViewInit {
     @ViewChild('graphContainer', { static: false }) graphContainer!: ElementRef;
     @ViewChildren('input') inputs!: QueryList<ElementRef>;
 
+    clientId: string | null = null;
+    //userId: string | null = null;
+    //clientKey: string | null = null;
+
     codeArray: string[] = ['', '', '', '', '', ''];
 
+    state: string = 'loading';
 
-    /*    
-    state
-    -> null
-    -> nosession    
-    -> session      
-    -> email
-    -> email-certification -> 연결창 띄움 
-    -> graph
-*/
-
-    state: string = '';
+    // state propery
+    isEmailSending: boolean = false;
     isGraphMenuOpen = false;
     isDisconnectConfirmOpen = false;
     errorMessage: string = '';
@@ -111,19 +131,26 @@ export class SecondBrainViewComponent implements AfterViewInit {
     // phoneNumber: string = '';
     // connectKey: string = '';
 
-    // key
-    session: SecondBrainLocalSession | null = null;
-
     //databaseData: any;
     //private config = inject<AppConfig>(APP_CONFIG);    
     //inputValue = '';
 
-    constructor(private notionService: NotionService, private router: Router, private userService: UserService) { }
+    constructor(private notionService: NotionService, private route: ActivatedRoute, private userService: UserService) { }
 
     async ngOnInit() {
+        // 1️⃣ snapshot 방식 (컴포넌트 생성 시 한 번만)
+        //this.userId = this.route.snapshot.paramMap.get('userId');
+        this.clientId = this.route.snapshot.paramMap.get('clientId');
+        console.log('snapshot clientId =>', this.clientId);
 
+        // 2️⃣ observable 방식 (URL 변경 시 자동 업데이트)
+        this.route.paramMap.subscribe(params => {
+            //this.userId = params.get('userId');
+            this.clientId = params.get('clientId');
+            console.log('subscribe clientId =>', this.clientId);
+        });
     }
-
+    
     ngAfterViewInit() {
         setTimeout(() => {
             this.init();
@@ -131,9 +158,16 @@ export class SecondBrainViewComponent implements AfterViewInit {
     }
 
     init() {
+        this.initStateData();
+        this.stateProc();
+    }
+
+    initStateData() {
         this.errorMessage = '';
         this.warnMessage = '';
-        this.sesstionStateProc();
+        this.isVerifying = false;
+        this.isEmailSending = false;
+        this.codeArray = Array(6).fill('');
     }
 
     /*
@@ -162,108 +196,103 @@ export class SecondBrainViewComponent implements AfterViewInit {
             웹이면 4. 연결창 띄우기
             모바일앱이면 => 웹에서 연결작업을 진행해달라고 안내함
     */
-    async sesstionStateProc(): Promise<boolean> {
-        // 세션 체크
-        const session = this.getLocalSession();
-        if (session && session.userId && session.clientId) {
-            this.session = session;
-        } else {
-            this.state = 'nosession'; // 세션이 없는 상태
+
+// <ui state>
+// -> loading
+// -> connect-button        
+// -> email-input          -> 메일 입력     // 비회원 일떄
+// -> email-certification  -> 메일 인증창   => userId (없으면 생성) / client 새로 생성                      
+// -> change-client-url
+// -> connect-client        
+// -> connect-notion      -> 연결 확인     => notionDbId// accessToken     // 비연결일때 
+// -> graph                                => clientId     
+
+
+// <연결 state>
+// -> no-member        
+// -> no-user               userId           
+// -> client-connected     clientId
+// -> notion-connected     연결여부체크
+
+    // #main
+    async stateProc(): Promise<boolean> {
+        _log('stateProc clientId =>', this.clientId);
+        if (!this.clientId) {
+            this.state = 'connect-button';
             return false;
         }
 
-        // 셔션의 유효성 체크 - userId
-        let userId = this.session?.userId;
-        let clientId = this.session?.clientId;
-
-        /*
-        1. userId -> user.email가져오기 => 메인 인증 완료됨
-            => 안되면, nosession 메일 인증 필요
-        2. userId -> user.integrations.scondbrain.accessToken 가져오기 => 연결도 완료됨
-            => 안되면, session 연결창 띄우기
-        3. clientId -> user.integrations.scondbrain.client 정보 => 이 클라언트도 유효함
-            => 안되면, client 추가
-        
-        * client 삭제
-        
-        */
+        // clientKey 체크
+        const session: SecondBrainLocalSession | null = this.getLocalSession(this.clientId);        
+        if (!session || !session.userId || !session.clientKey) {
+            this.state = 'connect-button'; // 세션이 없는 상태
+            this.clearLocalSession(this.clientId);
+            return false;
+        }
+        let userId = session.userId;        // from localstorage
+        let clientKey = session.clientKey;  // from localstorage
+        let clientId = this.clientId;       // from url
 
         // user 체크 
         const user = await UserService.getUser(userId);
-        _log('sesstionStateProc userId, user =>', userId, user);
+        _log('stateProc userId, user =>', userId, user);
         if (!user || !user.email || user.email.length == 0) {
-            this.state = 'nosession';
+            this.state = 'connect-button';
             this.errorMessage = '등록한 사용자정보를 확인 할 수 없어 연결을 초기화하였습니다.<br>문제가 지속될 경우 관리자(toto791@gmail.com)에 문의바랍니다.';
-            this.clearLocalSession(); // 어차피 user못가져오니까 초기화 함
+            this.clearLocalSession(this.clientId); // 어차피 user못가져오니까 초기화 함
             return false;
         }
 
-        // client 체크 
-        const client = await UserService.getSecondBrainClient(userId, clientId);
+        // client 체크 // clientKey 검증
+        const client = await this.userService.getSecondBrainClient(userId, clientId, clientKey);
         _log('sesstionStateProc client =>', client);
-        if (!client || client.revoked) {
-            this.state = 'nosession';
-            this.errorMessage = '등록한 장치의 연결정보를 확인 할 수 없어 연결을 초기화하였습니다.<br>문제가 지속될 경우 관리자(toto791@gmail.com)에 문의바랍니다.';
-            this.clearLocalSession(); // 어차피 user못가져오니까 초기화 함
+        if (!client || !client.clientId) {
+            this.state = 'connect-button';
+            this.errorMessage = '이 장치의 연결이 해지되었습니다.<br>보안을 위해 연결 유효기간은 한 장치당 1개월입니다.<br>다시 연결하려면 이메일 인증을 진행해 주세요.';
+            this.clearLocalSession(this.clientId); // 어차피 user못가져오니까 초기화 함
             return false;
         }
 
         // 노션 연결 체크 : 연결 정상인지? 연결 토큰, dbId등
         const data = await UserService.getSecondBrainIntegration(userId);
         _log('sesstionStateProc userId, data =>', userId, data);
-
         if (!(data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length > 0)) {
             // 연결창 띄우기
-            this.state = 'session';
-
-            // 4. URL 이동
-            const encrypted = await NACommonService.encrypt(this.session.userId);
+            this.state = 'connect-notion';
+            // 노션 연결
+            const encryptedUserId = await NACommonService.encrypt(session.userId); // 암호화해서 userId를 넘긴다.
             const baseUrl = window.location.origin;
             const serviceName = 'secondbrain';
             const setupPath = 'connect';
-            const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encrypted)}`;
+            const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
             window.open(url, '_blank');
             return false;
         }
 
-        // graph
-        this.graphState();
-        //        this.state = 'dev';
-
-        return true;
-    }
-
-    async onClickgenerateNotionNoteKMDataBatch() {
-        if (!this.session || !this.session.userId) { return; }
-        await this.userService.generateNotionNoteKMDataBatch(this.session?.userId);
-    }
-
-    async onClickGenerateNoteConcepts() {
-        if (!this.session || !this.session.userId) { return; }
-        await this.userService.generateNoteConcepts(this.session?.userId);
-    }
-
-    graphState() {
         this.state = 'graph';
         setTimeout(() => {
             this.loadGraph();
         }, 1);
+
+        return true;
     }
 
-    //////////////////////////////////////////////////////
+    async onClickConnectBtn() {
+        this.initStateData();  
 
-    onClickConnectBtn() {
-        if (this.state == 'nosession') {
-            this.state = 'email';
-            this.errorMessage = '';
-            this.isVerifying = false;
-        } else if (this.state == 'session') {
-            // 연결창 띄우기
-            this.sesstionStateProc();
-        }
+        // let session = this.clientId ? this.getLocalSession(this.clientId) : null;
+        // if (this.clientId && session && session.userId && this.state == 'no-notion-connect') {
+        //     this.state = 'connect-notion';
+          
+        // } else {
+             // 이메일 인증
+            this.initStateData();
+            this.state = 'email-input';
+        //} 
     }
 
     async onSubmitEmail() {
+        this.isEmailSending = true;
         this.errorMessage = '';
         // 1️⃣ 이메일 입력 여부
         if (!this.email) {
@@ -285,10 +314,11 @@ export class SecondBrainViewComponent implements AfterViewInit {
                 this.errorMessage = '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.';
                 return;
             }
+            this.isEmailSending = false;
 
             // 5️⃣ 인증 단계로 전환
             this.state = 'email-certification';
-            this.codeArray = Array(6).fill('');
+            this.initStateData(); // this.email초기화 하면 안됨
         } catch (e) {
             this.errorMessage = '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.';
         } finally {
@@ -296,8 +326,70 @@ export class SecondBrainViewComponent implements AfterViewInit {
         }
     }
 
-    getLocalSession(): SecondBrainLocalSession | null {
-        const raw = localStorage.getItem(SB_LOCAL_SESSION_KEY);
+        // 이메일 인증번호 확인
+    async submitCertificationNumber() {
+        this.isVerifying = true;
+        this.errorMessage = '';
+        
+        if (!this.email) { return; }
+        const result: any = await this.userService.verifyCode(this.email, this.getVerificationCode());
+
+        _log('submitCertificationNumber result =>', result);
+        if (result && result.userId && result.clientId && result.clientKey) {
+            console.log('메일 인증 성공!', result.userId, result.clientId);
+            // 로컬 스토리지나 상태 관리에 저장
+            this.saveLocalSession(result.clientId, { userId: result.userId, clientKey: result.clientKey });
+            this.clientId = result.clientId;
+  
+            // 세션 단계로 넘어감   
+            this.initStateData();
+            this.state = 'change-client-url';
+        } else if (result.message) {
+            console.warn('인증 실패');
+            this.errorMessage = result.message;
+        }
+        this.isVerifying = false;
+    }
+
+    // session 단계에서 연결을 기다리는 중
+    async onClickCheckConnecttBtn() {
+        this.errorMessage = '';
+        let isConnected = await this.stateProc();
+        if (isConnected) {
+            this.errorMessage = '';
+        } else {
+            this.errorMessage = '아직 연결이 완됴되지 않았습니다.<br>연결작업에 문제가 있을 경우 toto791@gmail.com으로 연락주시면 확인해드리겠습니다.';
+        }
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+    // test button
+
+    async onClickgenerateNotionNoteKMDataBatch() {
+        if (!this.clientId) { return; }
+        let session = this.getLocalSession(this.clientId)
+        if(!session || !session.userId) { return; }
+        await this.userService.generateNotionNoteKMDataBatch(session.userId);
+    }
+
+    async onClickGenerateNoteConcepts() {
+        if (!this.clientId) { return; }
+        let session = this.getLocalSession(this.clientId)
+        if(!session || !session.userId) { return; }
+        await this.userService.generateNoteConcepts(session.userId);
+    }
+
+    
+    getLocalSession(clientId: string): SecondBrainLocalSession | null {
+        // const clientKey = localStorage.getItem(clientId);
+        // _log('getLocalSession clientKey =>', clientKey);
+        // if (!clientKey) return null;
+
+        let raw = localStorage.getItem(clientId);
         _log('getLocalSession raw =>', raw);
         if (!raw) return null;
 
@@ -308,8 +400,7 @@ export class SecondBrainViewComponent implements AfterViewInit {
             // 구조 체크
             if (
                 typeof parsed !== 'object' ||
-                !parsed.userId ||
-                !parsed.clientId
+                !parsed.userId || !parsed.clientKey 
             ) {
                 return null;
             }
@@ -317,47 +408,35 @@ export class SecondBrainViewComponent implements AfterViewInit {
             _log('getLocalSession parsed2 =>', parsed);
 
             return {
-                userId: String(parsed.userId),
-                clientId: parsed.clientId ? String(parsed.clientId) : ''
+                userId: parsed.userId ? String(parsed.userId) : '', 
+                clientKey: parsed.clientKey ? String(parsed.clientKey) : ''
             };
         } catch {
             return null;
         }
     }
 
-    saveLocalSession(session: SecondBrainLocalSession): void {
+    saveLocalSession(clientId: string, session: SecondBrainLocalSession): void {
         localStorage.setItem(
-            SB_LOCAL_SESSION_KEY,
+            clientId,
             JSON.stringify(session)
         );
     }
 
-    clearLocalSession(): void {
-        localStorage.removeItem(SB_LOCAL_SESSION_KEY);
-        this.session = null;
+    clearLocalSession(clientId: string): void {
+        localStorage.removeItem(clientId);
     }
 
-    /*    
-    state
-    -> null
-    -> nosession    email
-    -> session      connect
-    -> email        
-    -> email-certification
-    -> graph
-*/
-
     goBackState() {
-        if (this.state == 'email') {
+        if (this.state == 'email-input') {
             this.email = '';
-            this.state = 'nosession';
+            this.state = 'connect-button';
         }
         if (this.state == 'email-certification') {
             this.email = '';
             this.codeArray = Array(6).fill('');
-            this.state = 'email';
+            this.state = 'email-input';
         }
-
     }
 
     goGraph() {
@@ -478,12 +557,21 @@ export class SecondBrainViewComponent implements AfterViewInit {
     //userId: string, graphType: "note-keyword" | "keyword-only"
     async loadGraph(graphType: "note-keyword" | "keyword-only" = "note-keyword") {
         try {
-            if(!this.session || !this.session.userId) { return; }
-            let userId: string = this.session.userId;
+            if (!this.clientId) { return; }
+            let session = this.getLocalSession(this.clientId)
+            if(!session || !session.userId) { return; }
+            let userId: string = session.userId;
             // 1️⃣ API 호출
             const response: any = await this.userService.getKeywordGraphData(userId, graphType);
             _log('loadGraph response =>', response);
             if (!response) { return; }
+            if (response.errorCode == 100) {
+                
+                return;
+            }
+            // if(response.message) {
+            //     this.warnMessage = response.message;
+            // }
             const graphData: { nodes: Node[]; edges: Edge[] } = await response;
 
             // // 2️⃣ vis-network용 DataSet 생성
@@ -604,12 +692,14 @@ export class SecondBrainViewComponent implements AfterViewInit {
     // 연결 끊기
     async confirmDisconnect() {
         this.isDisconnectConfirmOpen = false;
-        this.state = 'nosession';
-        const session = this.getLocalSession();
-        if (session && session.userId && session.clientId) {
-            await UserService.deleteSecondBrainClient(session.userId, session.clientId);
+        this.state = 'connect-button';
+        if (this.clientId) {
+            const session = this.getLocalSession(this.clientId);
+            if (session && session.userId && session.clientKey) {
+                await UserService.deleteSecondBrainClientKey(session.userId, this.clientId);
+                this.clearLocalSession(this.clientId); // 어차피 user못가져오니까 초기화 함
+            } 
         }
-        this.clearLocalSession(); // 어차피 user못가져오니까 초기화 함
     }
 
     cancelDisconnect() {
@@ -619,34 +709,34 @@ export class SecondBrainViewComponent implements AfterViewInit {
     ////////////////////////////////////////////////////////
     // 인증 숫자 6개
     onInputNumber(event: any, index: number) {
-        _log('onInputNumber i =>', index);
         const value = event.target.value;
 
         // 숫자만 허용
-        if (!/^\d$/.test(value)) {
-            event.target.value = ''; // 직접 input 클리어
-            this.codeArray[index] = '';
-            return;
-        }
+        if (/^[0-9]$/.test(value)) {
+            this.codeArray[index] = value;
 
-        this.codeArray[index] = value; // 직접 배열에 세팅
-
-        // 다음 input으로 포커스 이동
-        if (index < this.codeArray.length - 1) {
+            // 다음 input으로 자동 포커스
             const nextInput = event.target.nextElementSibling;
-            if (nextInput) nextInput.focus();
+            if (nextInput) {
+                nextInput.focus();
+            } 
+        } else {
+            event.target.value = ''; // 숫자가 아니면 초기화
         }
-
+        
         if (index == 5) {
             this.submitCertificationNumber();
         }
     }
 
+    
+
     onBackspace(event: any, index: number) {
-        // 뒤로가기 시 이전 input으로 이동
-        if (this.codeArray[index] === '' && index > 0) {
+        if (!this.codeArray[index]) {
             const prevInput = event.target.previousElementSibling;
             if (prevInput) prevInput.focus();
+        } else {
+            this.codeArray[index] = '';
         }
     }
 
@@ -654,42 +744,11 @@ export class SecondBrainViewComponent implements AfterViewInit {
         return this.codeArray.join('');
     }
 
-    // 이메일 인증번호 확인
-    async submitCertificationNumber() {
-        this.isVerifying = true;
-        this.errorMessage = '';
-        if (!this.email) { return; }
-        const result: any = await this.userService.verifyCode(this.email, this.getVerificationCode());
+    // async createNewClient(userId: string, clientId: string, clientKey: string) {
+    //     // 로컬 스토리지나 상태 관리에 저장
+    //     this.saveLocalSession(clientId, clientKey);
+    // }
 
-        _log('submitCertificationNumber result =>', result);
-        if (result && result.userId && result.clientId) {
-            console.log('메일 인증 성공!', result.userId, result.clientId);
-            this.createNewClient(result.userId, result.clientId);
-
-            // 세션 단계로 넘어감   
-            this.sesstionStateProc();
-        } else if (result.message) {
-            console.warn('인증 실패');
-            this.errorMessage = result.message;
-        }
-        this.isVerifying = false;
-    }
-
-    async createNewClient(userId: string, clientId: string) {
-        // 로컬 스토리지나 상태 관리에 저장
-        this.saveLocalSession({ userId: userId, clientId: clientId });
-    }
-
-    // session 단계에서 연결을 기다리는 중
-    async onClickCheckConnecttBtn() {
-        this.errorMessage = '';
-        let isConnected = await this.sesstionStateProc();
-        if (isConnected) {
-            this.errorMessage = '';
-        } else {
-            this.errorMessage = '아직 연결이 완됴되지 않았습니다.<br>연결작업에 문제가 있을 경우 toto791@gmail.com으로 연락주시면 확인해드리겠습니다.';
-        }
-    }
     ////////////////////////////////////////////////////////
 
 

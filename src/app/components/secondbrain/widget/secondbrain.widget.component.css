@@ -60,7 +60,7 @@
 }
 
 .input-group input {
-  padding: 8px 12px;
+  padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid #555;
   background: #111;
@@ -74,6 +74,52 @@
   background: #007AFF;
   color: white;
   cursor: pointer;
+}
+
+
+.input-group button {
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: none;
+  color: white;
+  width: auto;
+  flex-shrink: 0;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* 활성 상태 */
+.input-group .btn-active {
+  background-color: #007AFF;
+  cursor: pointer;
+}
+
+/* 비활성 상태 */
+.input-group .btn-disabled {
+  background-color: #3b3b3b;
+  color: #838383;
+  cursor: not-allowed;
+}
+
+
+.code-container {
+  display: flex;
+  gap: 0.5rem; /* 칸 사이 간격 */
+}
+
+.code-input {
+  width: 1.5rem;
+  height: 2rem;
+  text-align: center;
+  font-size: 1.2rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  transition: border-color 0.2s;
+}
+
+.code-input:focus {
+  border-color: #007AFF;
+  outline: none;
 }
 
 
@@ -179,7 +225,7 @@
 }
 
 .menu-item.danger {
-  color: #ff6b6b;
+  color: #e17245;
 }
 
 /* 아이콘 공통 */

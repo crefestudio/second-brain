@@ -1,11 +1,35 @@
 <div class="view-wrapper">
   <div class="center-box">
-    <!-- nosession -->
-    <div *ngIf="state=='nosession'">
+    <!-- connect-button -->
+    <div *ngIf="state=='connect-button'">
       <button class="connect-btn" (click)="onClickConnectBtn()">
         CONNECT
       </button>
     </div>
+    
+    <!-- <div *ngIf="state=='connect-client'">
+        회원가입 됨 => 유저 이름 표시 가능
+        이 클라이어트 연결이 안된 상태
+        전체 클라이언트 연결 상태 표시 / 연결 끊기 버튼 
+        보안을 위해서 가능한 '연결 끊기' 상태로 해두기
+        연결끊기 후 다시 이메일인증하면 연결됨
+
+        => 전체 연결 끊기 (노션 연결 포함해서) 
+        => 이 장치만 연결 끊기
+
+        1. clientId없이 불린 경우 
+        웹에서 클라이언트 url을 생성함 => 클라이언트에서 등록함 Notionable/secondbrain/clientId [ 복사 ]
+        오른쪽 상단 메뉴에 '...' 클릭 > 바꾸기 선택 후 '붙여넣기'
+
+        2. clientId있는 상태로 불린 경우  
+        
+        Notionable/secondbrain/clientId에서 서버에서 발행한 clientId 인증키 localhost에 등록 
+        이 인증키는 보안상 1주일간 유효합니다.
+      
+        로그인 / 로그아웃
+
+        이 장치에서만 로그아웃합니다.
+    </div> -->
     
 
     <!-- <div *ngIf="state=='session'">
@@ -13,29 +37,30 @@
       모바일앱이라면 최초 연동은 데스크탑에서 진행해야 함
       인증 되었으니 데스크탑에서 연동하면 리로드하면 연결 될 것임
     </div> -->
-    <!-- session -->
-    <ng-container *ngIf="state=='session'">
+    <!-- connect-notion -->
+    <ng-container *ngIf="state=='connect-notion'">
       <div class="connect-container">
         <div class="info-text"
-          style="display:block;padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color:#ffffff; margin-bottom: 0px;font-size: 16px;">
-          <strong>브라우저에 열린 창에서 연결작업을 완료한 후,<br>아래 버튼을 눌러주세요.</strong><br><br>
+          style="display:block;padding: 8px 16px; line-height: 1.5em; font-size: 0.875rem; color:#ffffff; margin-bottom: 0px;font-size: 16px;">
+          <strong>브라우저에 열린 창에서 연결작업을 완료한 후,<br>아래 버튼을 눌러주세요.</strong><br>
         </div>
-        <small class="info-text"
-          style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #aaaaaa; margin-bottom: 18px;font-size: 12px;">
-          노션 모바일 앱에서는 새 창이 열리지 않아 연결을 완료 할 수 없습니다.<br>
-          최초 연결은 반드시 데스크톱에서 진행해주세요.<br>
-          데스크톱에서 연결이 완료되면 아래 버튼을 눌러 연동을 마무리할 수 있습니다.<br>
-        </small>
         <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;font-size: 14px;">
           <button class="connect-btn" (click)="onClickCheckConnecttBtn()">
             연결 확인
           </button>
         </div>
+        <br>
+        <small class="info-text"
+              style="display:block; padding: 8px 16px; line-height: 1.5em; font-size: 12px; color: #959595; margin-bottom: 18px; text-align: left;">
+          • <span style="color: #fd5712;">노션 모바일 앱에서는 새 창이 열리지 않아 연결을 완료 할 수 없습니다.</span><br/>
+          • <span style="color: #fd5712;">세컨드브레인 API를 처음 연결 하실 때는 <strong>웹브라우저</strong> 환경에서만 진행할 수 있습니다.</span><br/>
+          • 기타 API 연결 및 이용 관련 문의는 <strong>toto791&#64;gmail.com</strong>으로 연락해 주세요.<br/>
+        </small>
       </div>
     </ng-container>
 
     <!-- emial -->
-    <ng-container *ngIf="state=='email'">
+    <ng-container *ngIf="state=='email-input'">
       <div class="connect-container">
         <div class="info-text"
           style="display:block;padding: 0 16px; line-height: 1.0em; font-size: 0.875rem; color:#ffffff; margin-bottom: 0px;font-size: 16px;">
@@ -43,7 +68,7 @@
         </div>
         <small class="info-text"
           style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #aaaaaa; margin-bottom: 18px;font-size: 12px;">
-          API 연결을 위해 템플릿 구매 시 등록한 이메일을 입력해주세요.<br />  
+          API 연결을 위해 템플릿 <span style="color: #e17245;">구매 시 등록한 이메일</span>을 입력해주세요.<br />  
         </small>
         <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;">
           <button class="back-btn" (click)="goBackState()" title="뒤로가기"
@@ -55,21 +80,25 @@
               </path>
             </svg>
           </button>
-          <input type="tel" placeholder="이메일을 입력해주세요." [(ngModel)]="email"
+          <input type="text" placeholder="이메일을 입력해주세요." [(ngModel)]="email"
             style="padding: 8px; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc; width: 14ch; box-sizing: border-box;width: 24ch;font-size: 13px;" />
-          <button (click)="onSubmitEmail()"
-            style="padding: 8px 12px; font-size: 12px; border-radius: 6px; border:none; background:#007AFF; color:white; width:auto; flex-shrink:0;">
+          <button [disabled]="isEmailSending" 
+                  (click)="onSubmitEmail()"
+                  [ngClass]="{'btn-disabled': isEmailSending, 'btn-active': !isEmailSending}">
             확인
           </button>
         </div>
-         <small class="info-text"
-          style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #5c5c5c; margin-bottom: 18px;font-size: 12px;">
-          • 세컨드브레인 API는 노션 계정당 LifeUp 템플릿 1개에서만 사용할 수 있습니다. (연결 시 템플릿 선택 가능)
-          • 여러 장치에서 이용할 수 있으며, 각 장치에서는 최초 1회 인증이 필요합니다.<br/>
-          • 첫 API 연결은 데스크톱 환경에서만 진행할 수 있습니다.<br/>
-          • 구매 시 등록한 이메일이 기억나지 않는 경우, 현재 사용 중인 이메일로 먼저 인증 후 변경하실 수 있습니다.
-          • API 연결과 이용에 대한 문의는 <strong>toto791&#64;gmail.com</strong> 으로 해주세요.
+        <br/>
+        <small class="info-text"
+              style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 12px; color: #959595; margin-bottom: 18px; text-align: left;">
+          • <span style="color: #b36443;">세컨드브레인 API를 처음 연결 하실 때는 <strong>웹브라우저</strong> 환경에서만 진행할 수 있습니다.</span><br/>
+          • <span style="color: #b36443;">연결 후 <strong>모바일 장치</strong>에서 추가 연결 할 수 있으며, 각 장치에서는 보안상 별도 인증이 필요합니다.</span><br/>
+          • 세컨드브레인 API는 노션 계정당 LifeUp 템플릿 1개만 사용 가능합니다. 연결 할 때 이용 할 템플릿을 선택해주세요.<br/>
+          • 구매 시 등록한 이메일을 잊어버린 경우, 현재 사용 중인 이메일로 먼저 연결 한 후 관리자에게 문의해주세요.<br/>
+          • 기타 API 연결 및 이용 관련 문의는 <strong>toto791&#64;gmail.com</strong>으로 연락해 주세요.<br/>
         </small>
+
+
       </div>
     </ng-container>
 
@@ -95,24 +124,19 @@
             </svg>
           </button>
 
-          <input type="text" maxlength="1" [value]="codeArray[0]" [disabled]="isVerifying"
-            (input)="onInputNumber($event, 0)" (keydown.backspace)="onBackspace($event, 0)"
-            style="width: 0.7rem; height: 1.2rem; text-align: center; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc;" />
-          <input type="text" maxlength="1" [value]="codeArray[1]" [disabled]="isVerifying"
-            (input)="onInputNumber($event, 1)" (keydown.backspace)="onBackspace($event, 1)"
-            style="width: 0.7rem; height: 1.2rem; text-align: center; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc;" />
-          <input type="text" maxlength="1" [value]="codeArray[2]" [disabled]="isVerifying"
-            (input)="onInputNumber($event, 2)" (keydown.backspace)="onBackspace($event, 2)"
-            style="width: 0.7rem; height: 1.2rem; text-align: center; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc;" />
-          <input type="text" maxlength="1" [value]="codeArray[3]" [disabled]="isVerifying"
-            (input)="onInputNumber($event, 3)" (keydown.backspace)="onBackspace($event, 3)"
-            style="width: 0.7rem; height: 1.2rem; text-align: center; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc;" />
-          <input type="text" maxlength="1" [value]="codeArray[4]" [disabled]="isVerifying"
-            (input)="onInputNumber($event, 4)" (keydown.backspace)="onBackspace($event, 4)"
-            style="width: 0.7rem; height: 1.2rem; text-align: center; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc;" />
-          <input type="text" maxlength="1" [value]="codeArray[5]" [disabled]="isVerifying"
-            (input)="onInputNumber($event, 5)" (keydown.backspace)="onBackspace($event, 5)"
-            style="width: 0.7rem; height: 1.2rem; text-align: center; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc;" />
+          <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[0]" [disabled]="isVerifying" 
+            (input)="onInputNumber($event, 0)" (keydown.backspace)="onBackspace($event, 0)"/>
+          <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[1]" [disabled]="isVerifying" 
+            (input)="onInputNumber($event, 1)" (keydown.backspace)="onBackspace($event, 1)"/>
+          <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[2]" [disabled]="isVerifying" 
+            (input)="onInputNumber($event, 2)" (keydown.backspace)="onBackspace($event, 2)"/>
+          <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[3]" [disabled]="isVerifying" 
+            (input)="onInputNumber($event, 3)" (keydown.backspace)="onBackspace($event, 3)"/>
+          <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[4]" [disabled]="isVerifying" 
+            (input)="onInputNumber($event, 4)" (keydown.backspace)="onBackspace($event, 4)"/>
+          <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[5]" [disabled]="isVerifying" 
+            (input)="onInputNumber($event, 5)" (keydown.backspace)="onBackspace($event, 5)"/>
+         
 
           <!-- <button (click)="onSubmitCertificationNumber()"style="padding: 8px 12px; font-size: 12px; border-radius: 6px; border:none; background:#007AFF; color:white; width:auto; flex-shrink:0;">
           확인
@@ -201,6 +225,18 @@
     </div>
   </ng-container> -->
 
+    <ng-container *ngIf="state=='change-client-url'">
+
+      이 위치에 세컨드브레인 고유 위젯 주소입니다.
+      이 주소를 현재 주소와 교체를 진행해야 다음단계로 노션 연결이 진행됩니다. 
+      아래 주소를 복사해서 이 화면 우측 상단에 메뉴>바꾸기 를 한 후 주소를 붙여넣기 해주세요.
+
+      https://notionable.net/secondbrain/widget/{{clientId}}
+
+      secondbrain 인증, 클라이언트 인증 성공 / 아직 노션 연결은 안함
+      위젯 주소 교체
+
+    </ng-container>
 
     <!-- 연결 성공 표시 -->
     <ng-container *ngIf="state=='success'">
@@ -228,18 +264,6 @@
 
     <!-- 그래프 영역 -->
     <div class="graph-wrapper" [class.inactive]="state !== 'graph'">
-      <!-- <ng-container *ngIf="state=='graph'">
-        <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;font-size: 14px;">
-          <button class="connect-btn" (click)="onClickgenerateNotionNoteKMDataBatch()">
-            generateNotionNoteKMDataBatch
-          </button>
-        </div>
-        <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;font-size: 14px;">
-          <button class="connect-btn" (click)="onClickGenerateNoteConcepts()">
-            generateNoteConcepts
-          </button>
-        </div>
-      </ng-container> -->
       <div class="graph-container" #graphContainer>
       </div>
 

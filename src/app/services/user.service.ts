@@ -1,7 +1,7 @@
 // src/app/services/user.service.ts
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { collection, query, where, getDocs, getDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, deleteDoc, Timestamp, updateDoc, deleteField } from 'firebase/firestore';
 import { firestore } from '../firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,7 +14,7 @@ export interface SecondBrainClient {
     clientId: string;        // "24964e09-0f43-4163-8025-ac9bbcf02214"
     origin: string;          // "http://localhost:4200"
     userAgent: string;       // browser UA
-    revoked: boolean;        // false
+    //revoked: boolean;        // false
 
     createdAt: Timestamp;    // Firestore timestamp
     lastAccessAt: Timestamp; // Firestore timestamp
@@ -39,23 +39,21 @@ const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfuncti
 })
 export class UserService {
     private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
-    constructor(private http: HttpClient) { } 
+    constructor(private http: HttpClient) { }
 
     /////////////////////////////////////////////////////////////////////////////////////
     //  firebase 직접 호출
 
-    
+
     /////////////////////////////////////////////////////////////////////////////////////
     // userId로 integration/secondbrain 연결 정보 가져오기
-    
+
     static async getSecondBrainIntegration(userId: string): Promise<any | null> {
         if (!userId) return null;
 
         const docRef = doc(firestore, 'users', userId, 'integrations', 'secondbrain');
         const docSnap = await getDoc(docRef);
-
         if (!docSnap.exists()) return null;
-
         return docSnap.data(); // { botId, connectedAt, ... }
     }
 
@@ -73,39 +71,64 @@ export class UserService {
         };
     }
 
-    /////////////////////////////////////////////////////////////////////////////////////
-    // userId + clientId로 secondbrain > clients > {clientId} 정보 가져오기
-
-    static async getSecondBrainClient(
+    async getSecondBrainClient(
         userId: string,
-        clientId: string
+        clientId: string,
+        clientKey: string
     ): Promise<SecondBrainClient | null> {
-        if (!userId || !clientId) return null;
+        if (!userId || !clientId || !clientKey) return null;
 
-        const docRef = doc(
-            firestore,
-            'users',
-            userId,
-            'integrations',
-            'secondbrain',
-            'clients',
-            clientId
-        );
-
-        const docSnap = await getDoc(docRef);
-
-        if (!docSnap.exists()) return null;
-
-        return docSnap.data() as SecondBrainClient;
+        try {
+            const result = await firstValueFrom(
+                this.http.post<SecondBrainClient> (
+                    `${this.functionsBaseUrl}/getSecondBrainClient`,
+                    { userId, clientId },
+                    {
+                        headers: { 
+                            'Authorization': `Bearer ${clientKey}`
+                        }
+                    }
+                )
+            );
+            return result;
+        } catch (error: any) {
+            console.error('getSecondBrainClient failed', error.error?.error || error.message);
+            return null;
+        }
     }
 
+    /*
+    verifyClientKey     아직 구현 안함 / getSecondBrainClient 이거 호출 하면 clientKey 유효성 체크됨
+
+
+
+    */
     /////////////////////////////////////////////////////////////////////////////////////
     // userId + clientId로 secondbrain > clients > {clientId} 삭제
 
-    static async deleteSecondBrainClient(
+    // static async deleteSecondBrainClient( userId: string, clientId: string): Promise<boolean> {
+    //     if (!userId || !clientId) return false;
+
+    //     const docRef = doc(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         'integrations',
+    //         'secondbrain',
+    //         'clients',
+    //         clientId
+    //     );
+
+    //     const docSnap = await getDoc(docRef);
+    //     if (!docSnap.exists()) return false;
+    //     await deleteDoc(docRef);
+    //     return true;
+    // }
+   
+    static async deleteSecondBrainClientKey(
         userId: string,
         clientId: string
-    ): Promise<boolean> {
+        ): Promise<boolean> {
         if (!userId || !clientId) return false;
 
         const docRef = doc(
@@ -119,12 +142,17 @@ export class UserService {
         );
 
         const docSnap = await getDoc(docRef);
-
         if (!docSnap.exists()) return false;
 
-        await deleteDoc(docRef);
+        // clientKey 필드만 삭제
+        await updateDoc(docRef, {
+            clientKey: deleteField(),
+            expiresAt: deleteField()
+        });
+
         return true;
     }
+
 
     /////////////////////////////////////////////////////////////////////////////////////
     //  localstorage
@@ -232,159 +260,159 @@ export class UserService {
 /**
      * 전화번호 기반으로 연결 정보 가져오기
      */
-    // async getUserInfoByPhoneNumber(phoneNumber: string): Promise<any | null> {
-    //     const normalized = phoneNumber.replace(/\D/g, '');
-    //     _log('getUserInfoByPhoneNumber normalized =>', normalized);
+// async getUserInfoByPhoneNumber(phoneNumber: string): Promise<any | null> {
+//     const normalized = phoneNumber.replace(/\D/g, '');
+//     _log('getUserInfoByPhoneNumber normalized =>', normalized);
 
-    //     const userId = await UserService.getUserIdByPhoneNumber(normalized);
-    //     _log('getUserInfoByPhoneNumber userId =>', userId);
-    //     if (!userId) return { userId: '', integration: null };
-    //     let integration = await UserService.getSecondBrainIntegration(userId);
-    //     return { userId: userId, integration: integration }
-    // }
+//     const userId = await UserService.getUserIdByPhoneNumber(normalized);
+//     _log('getUserInfoByPhoneNumber userId =>', userId);
+//     if (!userId) return { userId: '', integration: null };
+//     let integration = await UserService.getSecondBrainIntegration(userId);
+//     return { userId: userId, integration: integration }
+// }
 
-    // static async memberJoinWIthPhoneNumber(phoneNumber: string): Promise<string> {
-    //     let userId = localStorage.getItem(SB_USER_ID_KEY);
+// static async memberJoinWIthPhoneNumber(phoneNumber: string): Promise<string> {
+//     let userId = localStorage.getItem(SB_USER_ID_KEY);
 
-    //     if (!userId) {
-    //         userId = uuidv4();
-    //         localStorage.setItem(SB_USER_ID_KEY, userId);
-    //     }
+//     if (!userId) {
+//         userId = uuidv4();
+//         localStorage.setItem(SB_USER_ID_KEY, userId);
+//     }
 
-    //     await setDoc(
-    //         doc(firestore, 'users', userId),
-    //         {
-    //             phoneNumber: phoneNumber,
-    //             updatedAt: serverTimestamp(),
-    //             createdAt: serverTimestamp(),
-    //         },
-    //         { merge: true }
-    //     );
-    //     return userId;
-    // }
+//     await setDoc(
+//         doc(firestore, 'users', userId),
+//         {
+//             phoneNumber: phoneNumber,
+//             updatedAt: serverTimestamp(),
+//             createdAt: serverTimestamp(),
+//         },
+//         { merge: true }
+//     );
+//     return userId;
+// }
 
-    // secondbrain api 연결 정보 가져오기
-    // async getUserSecondBrainConnectInfo(userId: string): Promise<any | null> {
-    //     if (!userId) return null;
+// secondbrain api 연결 정보 가져오기
+// async getUserSecondBrainConnectInfo(userId: string): Promise<any | null> {
+//     if (!userId) return null;
 
-    //     try {
-    //         const url = `${this.functionsBaseUrl}/getUserSecondBrainConnectInfo?userId=${userId}`;
-    //         const data: any = await firstValueFrom(this.http.get<any>(url));
+//     try {
+//         const url = `${this.functionsBaseUrl}/getUserSecondBrainConnectInfo?userId=${userId}`;
+//         const data: any = await firstValueFrom(this.http.get<any>(url));
 
-    //         // 연결 정보가 없는 경우 (서버 기준)
-    //         if (!data || !data.botId) {
-    //             return null;
-    //         }
+//         // 연결 정보가 없는 경우 (서버 기준)
+//         if (!data || !data.botId) {
+//             return null;
+//         }
 
-    //         return data;
-    //     } catch (error) {
-    //         console.error('getUserConnectedInfo failed', error);
-    //         return null;
-    //     }
-    // }
+//         return data;
+//     } catch (error) {
+//         console.error('getUserConnectedInfo failed', error);
+//         return null;
+//     }
+// }
 
-    // static async saveEmbedInfo(params: {
-    //     userId: string;
-    //     embedId: string;
-    //     origin?: string;
-    //     userAgent?: string;
-    // }): Promise<void> {
-    //     const { userId, embedId, origin, userAgent } = params;
+// static async saveEmbedInfo(params: {
+//     userId: string;
+//     embedId: string;
+//     origin?: string;
+//     userAgent?: string;
+// }): Promise<void> {
+//     const { userId, embedId, origin, userAgent } = params;
 
-    //     const embedRef = doc(
-    //         firestore,
-    //         'users',
-    //         userId,
-    //         'integrations',
-    //         'secondbrain',
-    //         'embeds',
-    //         embedId
-    //     );
+//     const embedRef = doc(
+//         firestore,
+//         'users',
+//         userId,
+//         'integrations',
+//         'secondbrain',
+//         'embeds',
+//         embedId
+//     );
 
-    //     await setDoc(
-    //         embedRef,
-    //         {
-    //             embedId,
-    //             origin: origin ?? null,
-    //             userAgent: userAgent ?? null,
-    //             revoked: false,
-    //             lastAccessAt: serverTimestamp(),
-    //             createdAt: serverTimestamp(),
-    //         },
-    //         { merge: true } // 이미 있으면 업데이트
-    //     );
-    // }
+//     await setDoc(
+//         embedRef,
+//         {
+//             embedId,
+//             origin: origin ?? null,
+//             userAgent: userAgent ?? null,
+//             revoked: false,
+//             lastAccessAt: serverTimestamp(),
+//             createdAt: serverTimestamp(),
+//         },
+//         { merge: true } // 이미 있으면 업데이트
+//     );
+// }
 
-    // static async deleteEmbed(userId: string, embedId: string): Promise<void> {
-    //     const embedRef = doc(
-    //         firestore,
-    //         'users',
-    //         userId,
-    //         'integrations',
-    //         'secondbrain',
-    //         'embeds',
-    //         embedId
-    //     );
-    //     await deleteDoc(embedRef);
-    // }
+// static async deleteEmbed(userId: string, embedId: string): Promise<void> {
+//     const embedRef = doc(
+//         firestore,
+//         'users',
+//         userId,
+//         'integrations',
+//         'secondbrain',
+//         'embeds',
+//         embedId
+//     );
+//     await deleteDoc(embedRef);
+// }
 
-    // static async createSecondBrainIntegrationData(params: {
-    //     userId: string;
-    //     embedId: string;
-    // }): Promise<{ success: boolean; dbId?: string; message?: string }> {
-    //     const response = await fetch(
-    //         `${functionsBaseUrl}/createSecondBrainIntegrationData`,
-    //         {
-    //             method: 'POST',
-    //             headers: {
-    //                 'Content-Type': 'application/json',
-    //             },
-    //             body: JSON.stringify(params),
-    //         }
-    //     );
+// static async createSecondBrainIntegrationData(params: {
+//     userId: string;
+//     embedId: string;
+// }): Promise<{ success: boolean; dbId?: string; message?: string }> {
+//     const response = await fetch(
+//         `${functionsBaseUrl}/createSecondBrainIntegrationData`,
+//         {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json',
+//             },
+//             body: JSON.stringify(params),
+//         }
+//     );
 
-    //     if (!response.ok) {
-    //         throw new Error('서버 요청 실패');
-    //     }
+//     if (!response.ok) {
+//         throw new Error('서버 요청 실패');
+//     }
 
-    //     return await response.json();
-    // }
+//     return await response.json();
+// }
 
-  // 1. 구매자인지 확인
-    // async isPremiumPurchaser(phoneNumber: string): Promise<boolean> {
-    //     try {
-    //         // 1️⃣ 해당 전화번호로 doc 조회
-    //         const normalized = phoneNumber.replace(/\D/g, '');
-    //         const docRef = doc(firestore, 'purchasers', normalized);
-    //         const docSnap = await getDoc(docRef);
+// 1. 구매자인지 확인
+// async isPremiumPurchaser(phoneNumber: string): Promise<boolean> {
+//     try {
+//         // 1️⃣ 해당 전화번호로 doc 조회
+//         const normalized = phoneNumber.replace(/\D/g, '');
+//         const docRef = doc(firestore, 'purchasers', normalized);
+//         const docSnap = await getDoc(docRef);
 
-    //         //_log('docSnap =>', docSnap)
+//         //_log('docSnap =>', docSnap)
 
-    //         // 2️⃣ 문서 없으면 false
-    //         if (!docSnap.exists()) return false;
+//         // 2️⃣ 문서 없으면 false
+//         if (!docSnap.exists()) return false;
 
-    //         // 3️⃣ purchasedTemplateId 확인
-    //         const data: any = docSnap.data();
-    //         return data?.purchasedTemplateId === 'lifeup1.0';
-    //     } catch (error) {
-    //         console.error('구매자 확인 중 오류:', error);
-    //         return false;
-    //     }
-    // }
+//         // 3️⃣ purchasedTemplateId 확인
+//         const data: any = docSnap.data();
+//         return data?.purchasedTemplateId === 'lifeup1.0';
+//     } catch (error) {
+//         console.error('구매자 확인 중 오류:', error);
+//         return false;
+//     }
+// }
 
-    /**
-    * 전화번호로 userId 가져오기
-    */
-    // static async getUserIdByPhoneNumber(phoneNumber: string): Promise<string | null> {
-    //     const normalized = phoneNumber.replace(/\D/g, '');
-    //     _log('getUserIdByPhoneNumber normalized =>', normalized);
-    //     const usersCol = collection(firestore, 'users');
-    //     const q = query(usersCol, where('phoneNumber', '==', normalized));
-    //     const querySnap = await getDocs(q);
+/**
+* 전화번호로 userId 가져오기
+*/
+// static async getUserIdByPhoneNumber(phoneNumber: string): Promise<string | null> {
+//     const normalized = phoneNumber.replace(/\D/g, '');
+//     _log('getUserIdByPhoneNumber normalized =>', normalized);
+//     const usersCol = collection(firestore, 'users');
+//     const q = query(usersCol, where('phoneNumber', '==', normalized));
+//     const querySnap = await getDocs(q);
 
-    //     if (querySnap.empty) return null;
+//     if (querySnap.empty) return null;
 
-    //     // 여러 개 나올 수도 있지만, 보통 1개만
-    //     const docSnap = querySnap.docs[0];
-    //     return docSnap.id; // 문서 ID(userId) 반환
-    // }
+//     // 여러 개 나올 수도 있지만, 보통 1개만
+//     const docSnap = querySnap.docs[0];
+//     return docSnap.id; // 문서 ID(userId) 반환
+// }
