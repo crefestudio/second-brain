@@ -10,6 +10,8 @@ import { randomBytes, createHash } from 'crypto';
 import OpenAI from "openai";
 import { customAlphabet } from 'nanoid';
 
+//import { writeUserEvent } from './services/eventService';
+
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
   '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
@@ -26,6 +28,38 @@ const NOTION_TOKEN = defineSecret("NOTION_TOKEN");
 const REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionOAuthCallback";
 
 const allowedOrigins = ["http://localhost:4200", "https://notionable.net"];
+
+export type EventStatus = 'start' | 'running' | 'completed' | 'failed';
+
+export interface EventPayload {
+  eventType: string;
+  status: EventStatus;
+  targetData?: Record<string, unknown>;
+  eventTitle?: string;
+  eventDescription?: string;
+}
+
+/**
+ * 사용자 이벤트 로그를 Firestore에 저장한다.
+ *
+ * @param userId - 사용자 ID
+ * @param payload - 이벤트 데이터
+ */
+export async function writeUserEvent(
+  userId: string,
+  payload: EventPayload,
+): Promise<void> {
+  await db
+    .collection('users')
+    .doc(userId)
+    .collection('event')
+    .add({
+      ...payload,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+}
+
+
 
 export function withCors(handler: (req: any, res: any) => Promise<void> | void) {
     return async (req: any, res: any) => {
@@ -646,8 +680,8 @@ export const generateNotionNoteKMDataBatch = onRequest(
         memory: "1GiB",
     },
     withCors(async (req, res) => {
+        const { userId } = req.body;
         try {
-            const { userId } = req.body;
             if (!userId) {
                 return res.status(400).send("userId를 전달해야 합니다.");
             }
@@ -677,11 +711,21 @@ export const generateNotionNoteKMDataBatch = onRequest(
 
             // page.content가져오느라 시간이 많이 걸리는 부분
             let testIndex = 0;
-            for (const page of response.results) {
+            for (const page of response.results) { 
                 try {
                     // keyword가 db에 없으면 노션에서 가져옴
                     const pageData: { pageId: string; title: string; content: string; keywords: string[]; } | null
                         = await updateNotePropertiesInFirestore(userId, page, accessToken);
+
+                    // ✅ 이벤트  
+                    if (pageData) {
+                        await writeUserEvent(userId, {
+                            eventType: "generate-note-keyword",
+                            status: "running",
+                            eventTitle: `${pageData.title}노트를 노션에서 읽는중입니다.`
+                        });
+                    }
+
                     if (!pageData) { continue; }
                     batchPages.push(pageData);
                     successCount++;
@@ -762,13 +806,25 @@ export const generateNotionNoteKMDataBatch = onRequest(
 
                     console.log(`[DEBUG] Keywords 배치 ${i / BATCH_SIZE + 1}:`, aiResultKeywords);
                     successCount += batch.length;
+
+                    // ✅ 이벤트  
+                    await writeUserEvent(userId, {
+                        eventType: "generate-note-keyword",
+                        status: "running",
+                        eventTitle: `10개 이내의 노트 키워드 생성을 완료했습니다.`
+                    });                
                 } catch (err) {
                     console.error("AI 처리 실패:", err);
                     failCount += batch.length;
                 }
             }
 
-            // generateGroupsFromKeywords();
+            // ❌ 페이지 변환 실패 이벤트 (1회)
+            await writeUserEvent(userId, {
+                eventType: "generate-note-keyword",
+                status: "completed",
+                eventTitle: `요청한 노트 ${successCount}개의 키워드 생성을 완료하였습니다.`
+            });
 
             res.status(200).json({
                 message: "노트 속성 + AI keywords + keywords 저장 완료",
@@ -779,8 +835,15 @@ export const generateNotionNoteKMDataBatch = onRequest(
         } catch (error: any) {
             console.error(error);
             res.status(500).send(error.message);
+
+            // ❌ 페이지 변환 실패 이벤트 (1회)
+            await writeUserEvent(userId, {
+                eventType: "generate-note-keyword",
+                status: "failed",
+                eventTitle: `변환중 오류가 발생했습니다.`
+            });
         }
-    }));
+}));
 
 // type NormalizeResult = {
 //     canonical: string;
@@ -2362,7 +2425,7 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 =======================================================================================================
 
 >>> 그래프 그리기  
-=> 초기 데이타 없을 때 대비
+=> 초기 데이타 없을 때 대비 => 전환작업 완료되면 그래프 reload
 => 노트 아이콘으로 하기 
 => 이벤트 처리
     새로운 이벤트가 오면 1개 개별 변환하기
