@@ -1,8 +1,10 @@
+import { Component, AfterViewInit, ViewChild, ElementRef, HostListener, ViewChildren, QueryList, OnInit, OnDestroy } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { Component, AfterViewInit, ViewChild, ElementRef, HostListener, ViewChildren, QueryList } from '@angular/core';
-import { Router } from '@angular/router';
+import { Observable, map } from 'rxjs';
+import { EventListenerService, UserEvent } from '../../../services/event-listener.service';
 
 //import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
 import { NotionService } from '../../../services/notion.service';
@@ -13,6 +15,7 @@ import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 import { UserService } from '../../../services/user.service';
 import { _log } from '../../../lib/cf-common/cf-common';
 import { NACommonService } from '../../../services/common.service';
+
 
 /*
 => 회원 가입 : notinable - user //특정 템플릿 구매자 확인 : notinable - user - (json - secondbrain - isPremiumMember / isCreatorCompanion) 
@@ -116,6 +119,14 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     @ViewChild('codeInput0') codeInput0!: ElementRef<HTMLInputElement>;
     @ViewChildren('input') inputs!: QueryList<ElementRef>;
 
+    // event
+    events: UserEvent[] = [];
+    private unsubscribe?: () => void;
+
+    // toast
+    isShowToast = false;
+    toastMessage!: SafeHtml;
+
     clientId: string | null = null;
     //userId: string | null = null;
     //clientKey: string | null = null;
@@ -126,7 +137,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // state propery
     isEmailSending: boolean = false;
-    isGraphMenuOpen = false;
+    isMenuOpen = false;
     isDisconnectConfirmOpen = false;
     errorMessage: string = '';
     warnMessage: string = '';
@@ -141,26 +152,97 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     //private config = inject<AppConfig>(APP_CONFIG);    
     //inputValue = '';
 
-    constructor(private notionService: NotionService, private route: ActivatedRoute, private userService: UserService) { }
+    constructor(
+        private notionService: NotionService, 
+        private route: ActivatedRoute, 
+        private userService: UserService,
+        private eventListenerService: EventListenerService,
+        private sanitizer: DomSanitizer
+    ) { }
 
     async ngOnInit() {
         // 1️⃣ snapshot 방식 (컴포넌트 생성 시 한 번만)
-        //this.userId = this.route.snapshot.paramMap.get('userId');
         this.clientId = this.route.snapshot.paramMap.get('clientId');
         console.log('snapshot clientId =>', this.clientId);
 
         // 2️⃣ observable 방식 (URL 변경 시 자동 업데이트)
         this.route.paramMap.subscribe(params => {
-            //this.userId = params.get('userId');
             this.clientId = params.get('clientId');
             console.log('subscribe clientId =>', this.clientId);
         });
+    }
+   
+    ngOnDestroy() {
+        // 🔥 컴포넌트 제거 시 리스너 해제
+        this.unsubscribe?.();
+    }
+
+    initEvent(userId: string) {
+        // event
+        this.unsubscribe = this.eventListenerService.listenUserEventsRealtime( userId, event => 
+            {
+                this.onEvent(event);
+            }
+        );
     }
     
     ngAfterViewInit() {
         setTimeout(() => {
             this.init();
         }, 1);
+    }
+
+    onEvent(event: UserEvent) {
+        this.showEventToast(event);
+        if(event.eventType == 'generate-note-keyword' && event.status == 'completed') {
+            this.updateGraphData();
+            setTimeout(() => {
+                this.showToast('키워드 추출작업이 완료되어 그래프를 다시 그립니다.');
+           }, 1000);
+        }
+    }
+
+    async updateGraphData() {
+        if (!this.clientId) { return; }
+        let session = this.getLocalSession(this.clientId)
+        if(!session || !session.userId) { return; }
+        let userId: string = session.userId;
+        // 1️⃣ API 호출
+        const response: any = await this.userService.getKeywordGraphData(userId, this.currGraphType);
+        _log('loadGraph response =>', response);
+        if (!response) { return; }
+        if (response.errorCode == 200) {
+            return;
+        } 
+        const data: { nodes: Node[]; edges: Edge[] } = await response;
+        this.graphData.edges.update(data.edges);
+        this.graphData.nodes.update(data.nodes);
+    }
+
+// export interface UserEvent {
+//     id: string;
+//     eventType: string;
+//     status: 'start' | 'running' | 'completed' | 'failed';
+//     targetData?: any;
+//     eventTitle?: string;
+//     eventDescription?: string;
+//     updatedAt: any;
+// }
+
+    showEventToast(event: UserEvent) {
+        if(event.eventTitle) {
+            this.showToast(event.eventTitle);
+        }
+    }
+
+    showToast(message: string, duration = 3500) {
+        this.toastMessage = this.sanitizer.bypassSecurityTrustHtml(message);;
+        this.isShowToast = true;
+
+        // hide
+        setTimeout(() => {
+            this.isShowToast = false;
+        }, duration);
     }
 
     init() {
@@ -248,6 +330,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             this.clearLocalSession(this.clientId); // 어차피 user못가져오니까 초기화 함
             return false;
         }
+
+        this.initEvent(userId);
 
         // client 체크 // clientKey 검증
         const client = await this.userService.getSecondBrainClient(userId, clientId, clientKey);
@@ -376,16 +460,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-
-
-    // test button
-
-    async onClickGenerateNotionNoteKMDataBatch() {
-        if (!this.clientId) { return; }
-        let session = this.getLocalSession(this.clientId)
-        if(!session || !session.userId) { return; }
-        await this.userService.generateNotionNoteKMDataBatch(session.userId);
-    }
 
     // async onClickGenerateNoteConcepts() {
     //     if (!this.clientId) { return; }
@@ -566,9 +640,19 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // #graph
     //userId: string, graphType: "note-keyword" | "keyword-only"
+    graphData = {
+        nodes: new DataSet<Node>(),
+        edges: new DataSet<Edge>(),
+    };
+    currGraphType: string = "note-keyword";
 
-    async loadGraph(graphType: "note-keyword" | "keyword-only" = "note-keyword") {
+    async loadGraph(graphType: string = "note-keyword") {
         try {
+            let graphTypeName: string = '';
+            if (graphType == 'note-keyword') graphTypeName = '노트-키워드';
+            else if (graphType == 'keyword-only') graphTypeName = '키워드';
+            this.showToast(`<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`, 2000);
+            
             if (!this.clientId) { return; }
             let session = this.getLocalSession(this.clientId)
             if(!session || !session.userId) { return; }
@@ -597,10 +681,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             //     edges: new DataSet<Edge>(graphData.edges),
             // };
 
-            const data = {
-                nodes: new DataSet<Node>(graphData.nodes),
-                edges: new DataSet<Edge>(graphData.edges),
-            };
 
             // --- 옵션 설정 ---
             const options = {
@@ -655,30 +735,24 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             };
 
             // --- 네트워크 생성 ---
-            const network = new Network(this.graphContainer.nativeElement, data, options);
+            const network = new Network(this.graphContainer.nativeElement, this.graphData, options);
+
+            this.graphData.nodes.clear();
+            this.graphData.edges.clear();
+            this.graphData.nodes.add(graphData.nodes);
+            this.graphData.edges.add(graphData.edges);
 
             // 🔥 hover 강조 적용
-            this.applyHoverHighlight(network, data.nodes, data.edges);
+            this.applyHoverHighlight(network, this.graphData.nodes, this.graphData.edges);
         } catch (err) {
             console.error("그래프 로드 중 오류 발생:", err);
         }
     }
-    openGraphMenu(event: MouseEvent) {
-        event.stopPropagation();
-        this.isGraphMenuOpen = !this.isGraphMenuOpen;
-    }
-
-    // 화면 아무 곳이나 클릭 시 닫힘
-    @HostListener('document:click')
-    closeAllOverlays() {
-        this.isGraphMenuOpen = false;
-        this.isDisconnectConfirmOpen = false;
-    }
-
+ 
     // async onSettings() {
     //     if (!this.session) { return; }
 
-    //     this.isGraphMenuOpen = false;
+    //     this.isMenuOpen = false;
     //     console.log('설정 클릭');
 
     //     const baseUrl = window.location.origin;
@@ -695,28 +769,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     //     window.open(url, '_blank'); // 새 탭에서 열기
     // }
 
-    // client연결 끊기
-    onClickDisconnect() {
-        this.isGraphMenuOpen = false;
-        this.isDisconnectConfirmOpen = true; // 여기서 컨펌 오픈  
-    }
-
-    // 연결 끊기
-    async confirmDisconnect() {
-        this.isDisconnectConfirmOpen = false;
-        this.state = 'connect-button';
-        if (this.clientId) {
-            const session = this.getLocalSession(this.clientId);
-            if (session && session.userId && session.clientKey) {
-                await UserService.deleteSecondBrainClientKey(session.userId, this.clientId);
-                this.clearLocalSession(this.clientId); // 어차피 user못가져오니까 초기화 함
-            } 
-        }
-    }
-
-    cancelDisconnect() {
-        this.isDisconnectConfirmOpen = false;
-    }
 
     ////////////////////////////////////////////////////////
     // 인증 숫자 6개
@@ -758,11 +810,85 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         return this.codeArray.join('');
     }
 
-    // async createNewClient(userId: string, clientId: string, clientKey: string) {
-    //     // 로컬 스토리지나 상태 관리에 저장
-    //     this.saveLocalSession(clientId, clientKey);
-    // }
+    
 
+    //////////////////////////////////////////////////////////////////////
+    // menu
+
+    openGraphMenu(event: MouseEvent) {
+        event.stopPropagation();
+        this.isMenuOpen = !this.isMenuOpen;
+    }
+
+    // 화면 아무 곳이나 클릭 시 닫힘
+    @HostListener('document:click')
+    closeAllOverlays() {
+        this.isMenuOpen = false;
+        this.isDisconnectConfirmOpen = false;
+    }
+
+    async onClickGenerateNotionNoteKMDataBatch() {
+        this.isMenuOpen = false;
+
+        this.showToast('AI 키워드 추출 작업을 시작했습니다.', 3000);
+        setTimeout(() => {
+            this.showToast('키워드 추출이 진행 중입니다. 한 번에 최대 5개의 노트를 처리하며 약 5분 정도 소요됩니다.', 3000); 
+            setTimeout(() => {
+                this.showToast('키워드 추출이 완료되면 그래프가 자동으로 업데이트됩니다.', 3000); 
+            }, 4000);
+        }, 4000);
+
+        if (!this.clientId) { return; }
+        let session = this.getLocalSession(this.clientId)
+        if(!session || !session.userId) { return; }
+        await this.userService.generateNotionNoteKMDataBatch(session.userId);
+    }
+
+    onClickSelectGraphType(graphType: string) {
+        this.currGraphType = graphType;
+        this.loadGraph(graphType);
+    }
+ 
+    
+    onClickSettings() {
+        this.isMenuOpen = false;
+        alert('setup')
+    }
+    
+    onClickReloadGraph() {
+        this.isMenuOpen = false;
+        this.state = 'graph';
+        setTimeout(() => {
+            this.init();
+        }, 1);
+    }
+    
+    // client연결 끊기
+    onClickDisconnect() {
+        this.isMenuOpen = false;
+        this.isDisconnectConfirmOpen = true; // 여기서 컨펌 오픈  
+    }
+
+    // 연결 끊기
+    async confirmDisconnect() {
+        this.isDisconnectConfirmOpen = false;
+        this.state = 'connect-button';
+        if (this.clientId) {
+            const session = this.getLocalSession(this.clientId);
+            if (session && session.userId && session.clientKey) {
+                await UserService.deleteSecondBrainClientKey(session.userId, this.clientId);
+                this.clearLocalSession(this.clientId); // 어차피 user못가져오니까 초기화 함
+            } 
+        }
+    }
+
+    cancelDisconnect() {
+        this.isDisconnectConfirmOpen = false;
+    }
+
+
+
+    
     ////////////////////////////////////////////////////////
 
 

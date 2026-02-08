@@ -60,7 +60,6 @@ export async function writeUserEvent(
 }
 
 
-
 export function withCors(handler: (req: any, res: any) => Promise<void> | void) {
     return async (req: any, res: any) => {
         const origin = req.headers.origin;
@@ -723,7 +722,7 @@ export const generateNotionNoteKMDataBatch = onRequest(
                         await writeUserEvent(userId, {
                             eventType: "generate-note-keyword",
                             status: "running",
-                            eventTitle: `${pageData.title}노트를 노션에서 읽는중입니다.`
+                            eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트의 키워드 추출 작업을 진행중입니다.`
                         });
                     }
 
@@ -809,11 +808,11 @@ export const generateNotionNoteKMDataBatch = onRequest(
                     successCount += batch.length;
 
                     // ✅ 이벤트  
-                    await writeUserEvent(userId, {
-                        eventType: "generate-note-keyword",
-                        status: "running",
-                        eventTitle: `10개 이내의 노트 키워드 생성을 완료했습니다.`
-                    });                
+                    // await writeUserEvent(userId, {
+                    //     eventType: "generate-note-keyword",
+                    //     status: "running",
+                    //     eventTitle: `10개이내 노트의 키워드 생성을 완료했습니다.`
+                    // });                
                 } catch (err) {
                     console.error("AI 처리 실패:", err);
                     failCount += batch.length;
@@ -824,7 +823,7 @@ export const generateNotionNoteKMDataBatch = onRequest(
             await writeUserEvent(userId, {
                 eventType: "generate-note-keyword",
                 status: "completed",
-                eventTitle: `요청한 노트 ${successCount}개의 키워드 생성을 완료하였습니다.`
+                eventTitle: `요청한 ${successCount}개의 노트의 키워드 추출 작업을 완료하였습니다.`
             });
 
             res.status(200).json({
@@ -841,7 +840,7 @@ export const generateNotionNoteKMDataBatch = onRequest(
             await writeUserEvent(userId, {
                 eventType: "generate-note-keyword",
                 status: "failed",
-                eventTitle: `변환중 오류가 발생했습니다.`
+                eventTitle: `키워드 추출 작업 중 오류가 발생했습니다.`
             });
         }
 }));
@@ -2064,17 +2063,58 @@ class StoreService {
 
 // Firestore에 컨셉 저장 및 노드/엣지 그래프 데이터 생성 함수
 
+// function generateKeywordGraphDataNoteKeywordType(
+//     pagesKeywords: Record<string, { title: string; keywords: string[] }>
+// ): { nodes: Node[]; edges: Edge[] } {
+//     const nodes: Node[] = [];
+//     const edges: Edge[] = [];
+//     const keywordToNodeId: Record<string, string> = {};
+//     let keywordCounter = 1;
+
+//     for (const [pageId, { title, keywords }] of Object.entries(pagesKeywords)) {
+//         const noteNodeId = `page-${pageId}`;
+//         // note label: title 50자 제한
+//         nodes.push({
+//             id: noteNodeId,
+//             label: title.length > 50 ? title.slice(0, 50) + "…" : title,
+//             group: "page",
+//         });
+
+//         for (const keyword of keywords) {
+//             const trimmedKeyword = keyword.trim();
+//             if (!trimmedKeyword) continue;
+
+//             if (!keywordToNodeId[trimmedKeyword]) {
+//                 const keywordNodeId = `keyword-${keywordCounter++}`;
+//                 keywordToNodeId[trimmedKeyword] = keywordNodeId;
+//                 nodes.push({
+//                     id: keywordNodeId,
+//                     label: trimmedKeyword,
+//                     group: "keyword",
+//                 });
+//             }
+
+//             edges.push({
+//                 from: noteNodeId,
+//                 to: keywordToNodeId[trimmedKeyword],
+//                 weight: 1,
+//             });
+//         }
+//     }
+
+//     return { nodes, edges };
+// }
+
 function generateKeywordGraphDataNoteKeywordType(
     pagesKeywords: Record<string, { title: string; keywords: string[] }>
 ): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
     const keywordToNodeId: Record<string, string> = {};
-    let keywordCounter = 1;
 
     for (const [pageId, { title, keywords }] of Object.entries(pagesKeywords)) {
         const noteNodeId = `page-${pageId}`;
-        // note label: title 50자 제한
+
         nodes.push({
             id: noteNodeId,
             label: title.length > 50 ? title.slice(0, 50) + "…" : title,
@@ -2086,8 +2126,9 @@ function generateKeywordGraphDataNoteKeywordType(
             if (!trimmedKeyword) continue;
 
             if (!keywordToNodeId[trimmedKeyword]) {
-                const keywordNodeId = `keyword-${keywordCounter++}`;
+                const keywordNodeId = `keyword-${encodeURIComponent(trimmedKeyword)}`;
                 keywordToNodeId[trimmedKeyword] = keywordNodeId;
+
                 nodes.push({
                     id: keywordNodeId,
                     label: trimmedKeyword,
@@ -2096,87 +2137,31 @@ function generateKeywordGraphDataNoteKeywordType(
             }
 
             edges.push({
+                id: `${noteNodeId}-${keywordToNodeId[trimmedKeyword]}`,
                 from: noteNodeId,
                 to: keywordToNodeId[trimmedKeyword],
                 weight: 1,
-            });
+            } as any);
         }
     }
 
     return { nodes, edges };
 }
 
-// function generateKeywordGraphDataOnlyKeywordType(
-//     pagesKeywords: Record<string, { title: string; keywords: string[] }>
-// ): { nodes: Node[]; edges: Edge[] } {
-//     const nodes: Node[] = [];
-//     const edges: Edge[] = [];
-//     const keywordCountMap: Record<string, number> = {}; // 키워드 참조 수
-//     const edgeMap: Record<string, number> = {};
-
-//     // 키워드 등장 횟수 및 엣지 생성
-//     for (const { keywords } of Object.values(pagesKeywords)) {
-//         const uniqueKeywords = Array.from(
-//             new Set(keywords.map(k => k.trim()).filter(k => k))
-//         );
-
-//         // 키워드 참조 수 계산
-//         for (const keyword of uniqueKeywords) {
-//             keywordCountMap[keyword] = (keywordCountMap[keyword] || 0) + 1;
-//         }
-
-//         // 페이지 기반 키워드 엣지 생성
-//         for (let i = 0; i < uniqueKeywords.length; i++) {
-//             for (let j = i + 1; j < uniqueKeywords.length; j++) {
-//                 const [k1, k2] = [uniqueKeywords[i], uniqueKeywords[j]].sort();
-//                 const key = `${k1}|${k2}`;
-//                 edgeMap[key] = (edgeMap[key] || 0) + 1;
-//             }
-//         }
-//     }
-
-//     const counts = Object.values(keywordCountMap);
-//     const minCount = Math.min(...counts);
-//     const maxCount = Math.max(...counts);
-
-//     // 노드 생성 (참조 수 기반 size + 명도)
-//     for (const [keyword, count] of Object.entries(keywordCountMap)) {
-//         // 명도를 30%~100% 범위로 매핑
-//         const brightness = minCount === maxCount
-//             ? 0.7 // 모두 동일하면 중간값
-//             : 0.3 + ((count - minCount) / (maxCount - minCount)) * 0.7;
-
-//         nodes.push({
-//             id: `keyword-${keyword}`,
-//             label: keyword,
-//             group: "keyword",
-//             size: 10 + count * 2, // 기존 크기 유지
-//             color: `hsl(200, 70%, ${brightness * 100}%)`, // 파랑 계열 예시
-//         });
-//     }
-
-//     // 엣지 생성
-//     for (const [key, weight] of Object.entries(edgeMap)) {
-//         const [k1, k2] = key.split("|");
-//         edges.push({
-//             from: `keyword-${k1}`,
-//             to: `keyword-${k2}`,
-//             weight, // 공통 등장 수
-//         });
-//     }
-
-//     return { nodes, edges };
-// }
 
 function generateKeywordGraphDataOnlyKeywordType(
     pagesKeywords: Record<string, { title: string; keywords: string[] }>
 ): { nodes: Node[]; edges: Edge[] } {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
+
     const keywordCountMap: Record<string, number> = {};
     const edgeMap: Record<string, number> = {};
 
-    // 1️⃣ 키워드 등장 횟수와 엣지 생성
+    // 🔑 keyword → nodeId 매핑
+    const keywordIdMap: Record<string, string> = {};
+
+    // 1️⃣ 키워드 등장 횟수 + 엣지 계산
     for (const { keywords } of Object.values(pagesKeywords)) {
         const uniqueKeywords = Array.from(
             new Set(keywords.map(k => k.trim()).filter(k => k))
@@ -2184,6 +2169,11 @@ function generateKeywordGraphDataOnlyKeywordType(
 
         for (const keyword of uniqueKeywords) {
             keywordCountMap[keyword] = (keywordCountMap[keyword] || 0) + 1;
+
+            // ⭐ 여기서 id를 한 번만 생성
+            if (!keywordIdMap[keyword]) {
+                keywordIdMap[keyword] = `keyword-${nanoid(6)}`;
+            }
         }
 
         for (let i = 0; i < uniqueKeywords.length; i++) {
@@ -2199,7 +2189,7 @@ function generateKeywordGraphDataOnlyKeywordType(
     const minCount = Math.min(...counts);
     const maxCount = Math.max(...counts);
 
-    // 2️⃣ HSL → HEX 변환
+    // 2️⃣ HSL → HEX
     function hslToHex(h: number, s: number, l: number) {
         l /= 100;
         const a = s * Math.min(l, 1 - l) / 100;
@@ -2211,21 +2201,20 @@ function generateKeywordGraphDataOnlyKeywordType(
         return `#${f(0)}${f(8)}${f(4)}`;
     }
 
-    // 3️⃣ 노드 생성 (size + brightness 적용, 최대값 70%로 제한)
+    // 3️⃣ 노드 생성
     for (const [keyword, count] of Object.entries(keywordCountMap)) {
-        // log 스케일 적용 (weight 범위 넓을 때)
         const logCount = Math.log(count + 1);
         const logMin = Math.log(minCount + 1);
         const logMax = Math.log(maxCount + 1);
 
         const brightness = logMin === logMax
             ? 50
-            : 30 + ((logCount - logMin) / (logMax - logMin)) * 40; // 30~70%
+            : 30 + ((logCount - logMin) / (logMax - logMin)) * 40;
 
         const colorHex = hslToHex(200, 70, brightness);
 
         nodes.push({
-            id: `keyword-${keyword}`,
+            id: keywordIdMap[keyword],
             label: keyword,
             group: "keyword",
             size: 10 + count * 2,
@@ -2248,9 +2237,10 @@ function generateKeywordGraphDataOnlyKeywordType(
     // 4️⃣ 엣지 생성
     for (const [key, weight] of Object.entries(edgeMap)) {
         const [k1, k2] = key.split("|");
+
         edges.push({
-            from: `keyword-${k1}`,
-            to: `keyword-${k2}`,
+            from: keywordIdMap[k1],
+            to: keywordIdMap[k2],
             weight,
             color: {
                 color: "#393E46",
@@ -2415,15 +2405,17 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 할일
 
+
+일 -
+
+
 // #todo
+** 토스트에 노트이름 색 다르게 나오게
 
-** 연결 페이지 작업
-
->>> 그래프 그리기  
-=> 초기 데이타 없을 때 대비 => 전환작업 완료되면 그래프 reload
+** 연결 페이지 html 작업 
 => 이벤트 처리
     새로운 이벤트가 오면 1개 개별 변환하기
 
@@ -2453,8 +2445,8 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 
 =======================================================================================================
 >>> 검수
-- [ ]  숫자 입력창 영어 입력이 됨 (아이폰 검수)
-- [ ]  이메일 입력창 → 아이폰에서 숫자로 나옴 (아이폰 검수)
+- 숫자 입력창 영어 입력이 됨 (아이폰 검수)
+- 이메일 입력창 → 아이폰에서 숫자로 나옴 (아이폰 검수)
 
 
 
@@ -2465,7 +2457,9 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 
 
 ======================================================================================================= 2차
-- 초기 그래프 로딩 속도 빠르게 - 그래프 데이타 캐시 2차
+- 초기 그래프 로딩 속도 빠르게 
+    - 그래프 데이타 캐시 2차
+    - api 호출 중 로딩 상태 표시 
 
 키워드 수정 
         - 이미 생성된 키워드에서 삭제 하면 -> 삭제
