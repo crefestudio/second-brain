@@ -4,8 +4,15 @@
 
 //import { environment } from "src/environments/environment";
 
+
+export const _log = (...args: any[]) => {
+  if (typeof ngDevMode === 'undefined' || ngDevMode) {
+    console.log(...args);
+  }
+};
+
 // log
-export var _log = console.log.bind(window.console);
+//export var _log = console.log.bind(window.console);
 // if (!environment.isShowLog) {
 //     console.log = () => { };
 //     _log = () => { };

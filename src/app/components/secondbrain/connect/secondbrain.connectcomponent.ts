@@ -143,7 +143,7 @@ export class SecondBrainConnectComponent implements OnInit {
     // if (!integration) {
     // alert('해당 번호로 연결된 정보가 없습니다.');
     // } else {
-    // console.log('연결 정보:', integration);
+    // _log('연결 정보:', integration);
     // }
 
     // async onConfirm() {
@@ -191,7 +191,7 @@ export class SecondBrainConnectComponent implements OnInit {
         //         // 기존 유저
         //         this.userId = userId;
         //         this.state = 'logined';
-        //         console.log('이미 등록된 사용자', userId);
+        //         _log('이미 등록된 사용자', userId);
         //     } else {
         //         // 신규 유저 생성 → userId 반환받기
         //         const newUserId = await UserService.savePhoneNumber(this.phoneNumber);

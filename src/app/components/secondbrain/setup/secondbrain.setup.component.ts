@@ -20,7 +20,7 @@ export class SecondBrainSetupComponent implements AfterViewInit {
     async ngOnInit() {
         // try {
         //     this.databaseData = await this.notionService.getDatabase();
-        //     console.log(this.databaseData);
+        //     _log(this.databaseData);
         // } catch (err) {
         //     console.error(err);
         // }

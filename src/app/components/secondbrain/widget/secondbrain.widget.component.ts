@@ -145,6 +145,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // form
     email: string = '';
+    clientUrl: string = 'https://notionable.net/secondbrain/widget/ddddddd';
     // phoneNumber: string = '';
     // connectKey: string = '';
 
@@ -163,12 +164,12 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     async ngOnInit() {
         // 1️⃣ snapshot 방식 (컴포넌트 생성 시 한 번만)
         this.clientId = this.route.snapshot.paramMap.get('clientId');
-        console.log('snapshot clientId =>', this.clientId);
+        _log('snapshot clientId =>', this.clientId);
 
         // 2️⃣ observable 방식 (URL 변경 시 자동 업데이트)
         this.route.paramMap.subscribe(params => {
             this.clientId = params.get('clientId');
-            console.log('subscribe clientId =>', this.clientId);
+            _log('subscribe clientId =>', this.clientId);
         });
     }
    
@@ -313,6 +314,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         // clientKey 체크
         const session: SecondBrainLocalSession | null = this.getLocalSession(this.clientId);        
         if (!session || !session.userId || !session.clientKey) {
+            this.showToast('이 장치의 인증 정보가 확인되지 않습니다. 보안을 위해 다시 인증해 주세요.<br>(장치별 연결 유효기간은 1개월입니다.)');
             this.state = 'connect-button'; // 세션이 없는 상태
             this.clearLocalSession(this.clientId);
             return false;
@@ -431,7 +433,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
         _log('submitCertificationNumber result =>', result);
         if (result && result.userId && result.clientId && result.clientKey) {
-            console.log('메일 인증 성공!', result.userId, result.clientId);
+            _log('메일 인증 성공!', result.userId, result.clientId);
             // 로컬 스토리지나 상태 관리에 저장
             this.saveLocalSession(result.clientId, { userId: result.userId, clientKey: result.clientKey });
             this.clientId = result.clientId;
@@ -753,7 +755,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     //     if (!this.session) { return; }
 
     //     this.isMenuOpen = false;
-    //     console.log('설정 클릭');
+    //     _log('설정 클릭');
 
     //     const baseUrl = window.location.origin;
     //     const serviceName = 'secondbrain';
@@ -887,7 +889,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
 
-
+    copyUrl() {
+    }
     
     ////////////////////////////////////////////////////////
 
@@ -1023,7 +1026,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     //         embedId,
     //     });
 
-    //     console.log('createConnect result =>', result2);
+    //     _log('createConnect result =>', result2);
 
     //     if (!result2.success) {
     //         this.state = 'fail';

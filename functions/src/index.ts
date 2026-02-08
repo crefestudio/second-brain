@@ -316,21 +316,21 @@ export const sendVerificationEmail = onRequest(
 
 export const verifyCode = onRequest(withCors(async (req, res) => {
     try {
-        const { _email, _code } = req.body;
-        if (!_email || !_code) {
+        const { email, code } = req.body;
+        if (!email || !code) {
             return res.status(200).json({ message: '이메일과 인증번호가 필요합니다.' });
         }
-        const email = _email.trim().toLowerCase();
-        const code = _code.trim();
+        let nomalizedEMail: string = email.trim().toLowerCase();
+        let nomalizedCode = code.trim();
 
         // 이메일 형식 검증
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(nomalizedEMail)) {
             return res.status(200).json({ message: '이메일 형식이 올바르지 않습니다.' });
         }
 
         // Firestore에서 인증 코드 가져오기
-        const docRef = db.collection('email_verifications').doc(email);
+        const docRef = db.collection('email_verifications').doc(nomalizedEMail);
         const docSnap = await docRef.get();
 
         if (!docSnap.exists) {
@@ -338,7 +338,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         }
 
         const data = docSnap.data();
-        const hashedInput = crypto.createHash('sha256').update(code).digest('hex');
+        const hashedInput = crypto.createHash('sha256').update(nomalizedCode).digest('hex');
 
         // 만료 확인
         const now = admin.firestore.Timestamp.now();
@@ -357,7 +357,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 
         // 1️⃣ 기존 user 조회 (email 기준)
         const userQuerySnap = await db.collection('users')
-            .where('email', '==', email)
+            .where('email', '==', nomalizedEMail)
             .limit(1)
             .get();
 
@@ -370,7 +370,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             // 3️⃣ 없으면 새 user 생성
             userId = nanoid(); //crypto.randomUUID();
             await db.collection('users').doc(userId).set({
-                email,
+                nomalizedEMail,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
         }
@@ -2148,7 +2148,6 @@ function generateKeywordGraphDataNoteKeywordType(
     return { nodes, edges };
 }
 
-
 function generateKeywordGraphDataOnlyKeywordType(
     pagesKeywords: Record<string, { title: string; keywords: string[] }>
 ): { nodes: Node[]; edges: Edge[] } {
@@ -2158,7 +2157,7 @@ function generateKeywordGraphDataOnlyKeywordType(
     const keywordCountMap: Record<string, number> = {};
     const edgeMap: Record<string, number> = {};
 
-    // 🔑 keyword → nodeId 매핑
+    // 🔑 keyword → nodeId 매핑 (deterministic)
     const keywordIdMap: Record<string, string> = {};
 
     // 1️⃣ 키워드 등장 횟수 + 엣지 계산
@@ -2168,17 +2167,28 @@ function generateKeywordGraphDataOnlyKeywordType(
         );
 
         for (const keyword of uniqueKeywords) {
-            keywordCountMap[keyword] = (keywordCountMap[keyword] || 0) + 1;
+            const trimmedKeyword = keyword.trim();
+            if (!trimmedKeyword) continue;
 
-            // ⭐ 여기서 id를 한 번만 생성
-            if (!keywordIdMap[keyword]) {
-                keywordIdMap[keyword] = `keyword-${nanoid(6)}`;
+            keywordCountMap[trimmedKeyword] =
+                (keywordCountMap[trimmedKeyword] || 0) + 1;
+
+            // ✅ keyword 기반으로 항상 같은 id 생성
+            if (!keywordIdMap[trimmedKeyword]) {
+                keywordIdMap[trimmedKeyword] =
+                    `keyword-${encodeURIComponent(trimmedKeyword)}`;
             }
         }
 
         for (let i = 0; i < uniqueKeywords.length; i++) {
             for (let j = i + 1; j < uniqueKeywords.length; j++) {
-                const [k1, k2] = [uniqueKeywords[i], uniqueKeywords[j]].sort();
+                const [k1, k2] = [
+                    uniqueKeywords[i].trim(),
+                    uniqueKeywords[j].trim()
+                ].sort();
+
+                if (!k1 || !k2) continue;
+
                 const key = `${k1}|${k2}`;
                 edgeMap[key] = (edgeMap[key] || 0) + 1;
             }
@@ -2207,9 +2217,10 @@ function generateKeywordGraphDataOnlyKeywordType(
         const logMin = Math.log(minCount + 1);
         const logMax = Math.log(maxCount + 1);
 
-        const brightness = logMin === logMax
-            ? 50
-            : 30 + ((logCount - logMin) / (logMax - logMin)) * 40;
+        const brightness =
+            logMin === logMax
+                ? 50
+                : 30 + ((logCount - logMin) / (logMax - logMin)) * 40;
 
         const colorHex = hslToHex(200, 70, brightness);
 
@@ -2238,19 +2249,27 @@ function generateKeywordGraphDataOnlyKeywordType(
     for (const [key, weight] of Object.entries(edgeMap)) {
         const [k1, k2] = key.split("|");
 
+        const from = keywordIdMap[k1];
+        const to = keywordIdMap[k2];
+
+        // ✅ edge id 고정
+        const edgeId = `edge-${from}-${to}`;
+
         edges.push({
-            from: keywordIdMap[k1],
-            to: keywordIdMap[k2],
+            id: edgeId,
+            from,
+            to,
             weight,
             color: {
                 color: "#393E46",
                 opacity: 1
             }
-        });
+        } as any);
     }
 
     return { nodes, edges };
 }
+
 
 export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
     try {
@@ -2408,21 +2427,23 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 할일
 
-
-일 -
-
-
 // #todo
-** 토스트에 노트이름 색 다르게 나오게
-
 ** 연결 페이지 html 작업 
-=> 이벤트 처리
-    새로운 이벤트가 오면 1개 개별 변환하기
+=> 노션 hook 이벤트 처리
+새로운 이벤트가 오면 1개 개별 변환하기
 
 =======================================================================================================
 
 >>> 마무리
-- 디버그 로그 숨기기
+
+=======================================================================================================
+>>> 검수
+- 숫자 입력창 영어 입력이 됨 (아이폰 검수)
+- 이메일 입력창 → 아이폰에서 숫자로 나옴 (아이폰 검수)
+
+
+>>> 템플릿 작업
+- 각종 불편, 유료, 개선 접수 => 탈리폼으로 함
 - 안내 추가(임시)
     - 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
     - 초기 변환 안내하기
@@ -2434,19 +2455,15 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
             - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
             - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
             - 노트가 삭제 되었을때
+
     - AI 사용 회수 관련 안내
-    - 각종 불편, 유료, 개선 접수 
     - 키워드 데이타 생성 관련 오류 신고
     - 템플릿 두개 선택 주의 설명
     - 베타 표시
     - 안내 : 앱이 업데이트 되면 localhost날아가나 => 인증 완료 되면 -> 연결 다시 하나? / 기존 연결자 되살리기
     - 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
     - 라이트 버전 
-
-=======================================================================================================
->>> 검수
-- 숫자 입력창 영어 입력이 됨 (아이폰 검수)
-- 이메일 입력창 → 아이폰에서 숫자로 나옴 (아이폰 검수)
+    - 일기예보 탭플릿에 넣었을 때 문제
 
 
 
@@ -2455,8 +2472,8 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 - getSecondBrainIntegration 보안을 위해서 서버 함수로 변경, clientKey인증
 
 
-
 ======================================================================================================= 2차
+- 창열기 메뉴 - 아이프레임에서만 나오는 메뉴 // 모바일에서 숨김, 웹에서 숨김, 노션 앱에서 숨김
 - 초기 그래프 로딩 속도 빠르게 
     - 그래프 데이타 캐시 2차
     - api 호출 중 로딩 상태 표시 
