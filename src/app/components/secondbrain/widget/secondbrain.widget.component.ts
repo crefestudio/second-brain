@@ -113,6 +113,7 @@ export interface SecondBrainLocalSession {
 })
 export class SecondBrainWidgetComponent implements AfterViewInit {
     @ViewChild('graphContainer', { static: false }) graphContainer!: ElementRef;
+    @ViewChild('codeInput0') codeInput0!: ElementRef<HTMLInputElement>;
     @ViewChildren('input') inputs!: QueryList<ElementRef>;
 
     clientId: string | null = null;
@@ -283,17 +284,19 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     async onClickConnectBtn() {
-        this.initStateData();  
-
-        // let session = this.clientId ? this.getLocalSession(this.clientId) : null;
-        // if (this.clientId && session && session.userId && this.state == 'no-notion-connect') {
-        //     this.state = 'connect-notion';
-          
-        // } else {
-             // 이메일 인증
-            this.initStateData();
-            this.state = 'email-input';
-        //} 
+        this.initStateData();
+        this.state = 'email-input';
+    }
+    
+    focusFirstCodeInput() {
+        setTimeout(() => {
+            if (this.codeInput0) {
+                // disabled 풀린 다음 포커스 주는 게 안전
+                this.codeInput0.nativeElement.focus();
+            } else {
+                alert('11')
+            }
+        }, 1000);
     }
 
     async onSubmitEmail() {
@@ -314,7 +317,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
         try {
             // 4️⃣ 인증번호 이메일 발송 API 호출
-            let isSuccess = await this.userService.sendVerificationEmail(this.email);
+            const _email = this.email.trim().toLowerCase();
+            let isSuccess = await this.userService.sendVerificationEmail(_email);
             if (!isSuccess) {
                 this.errorMessage = '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.';
                 return;
@@ -324,6 +328,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             // 5️⃣ 인증 단계로 전환
             this.state = 'email-certification';
             this.initStateData(); // this.email초기화 하면 안됨
+            this.focusFirstCodeInput();    
+
         } catch (e) {
             this.errorMessage = '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.';
         } finally {
@@ -434,12 +440,12 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     goBackState() {
         if (this.state == 'email-input') {
-            this.email = '';
+            this.initStateData();
             this.state = 'connect-button';
         }
         if (this.state == 'email-certification') {
             this.email = '';
-            this.codeArray = Array(6).fill('');
+            this.initStateData();
             this.state = 'email-input';
         }
     }
@@ -738,12 +744,14 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     
 
     onBackspace(event: any, index: number) {
-        if (!this.codeArray[index]) {
+        _log('onBackspace index =>', index);
+        if(index == 0) { return; }
+        //if (!this.codeArray[index]) {
             const prevInput = event.target.previousElementSibling;
             if (prevInput) prevInput.focus();
-        } else {
+        //} else {
             this.codeArray[index] = '';
-        }
+        //}
     }
 
     getVerificationCode(): string {

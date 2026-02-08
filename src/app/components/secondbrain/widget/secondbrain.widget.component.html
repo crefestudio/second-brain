@@ -68,7 +68,7 @@
         </div>
         <small class="info-text"
           style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 0.875rem; color: #aaaaaa; margin-bottom: 18px;font-size: 12px;">
-          API 연결을 위해 템플릿 <span style="color: #e17245;">구매 시 등록한 이메일</span>을 입력해주세요.<br />  
+          API 연결을 위해 템플릿 <span style="color: #F2561D;">구매 시 등록한 이메일</span>을 입력해주세요.<br />  
         </small>
         <div class="input-group" style="display:flex; gap: 8px; padding: 0 16px;">
           <button class="back-btn" (click)="goBackState()" title="뒤로가기"
@@ -103,7 +103,7 @@
     </ng-container>
 
     <!-- certification -->
-    <ng-container *ngIf="state=='email-certification'">
+    <div class="email-certi-wrapper" [class.inactive]="state !== 'email-certification'">
       <div class="connect-container">
         <div class="info-text"
           style="display:block;padding: 0 16px; line-height: 1.0em; font-size: 0.875rem; color:#ffffff; margin-bottom: 0px;font-size: 16px;">
@@ -124,7 +124,7 @@
             </svg>
           </button>
 
-          <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[0]" [disabled]="isVerifying" 
+          <input #codeInput0 class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[0]" [disabled]="isVerifying" 
             (input)="onInputNumber($event, 0)" (keydown.backspace)="onBackspace($event, 0)"/>
           <input class="code-input" type="text"  inputmode="numeric" pattern="[0-9]" maxlength="1" [value]="codeArray[1]" [disabled]="isVerifying" 
             (input)="onInputNumber($event, 1)" (keydown.backspace)="onBackspace($event, 1)"/>
@@ -143,7 +143,7 @@
         </button> -->
         </div>
       </div>
-    </ng-container>   
+    </div>   
 
     <!-- phoneNumber -->
     <!-- <ng-container *ngIf="state=='phoneNumber'">
@@ -235,6 +235,9 @@
 
       secondbrain 인증, 클라이언트 인증 성공 / 아직 노션 연결은 안함
       위젯 주소 교체
+      복사 
+
+      바꾸기 그림 설명
 
     </ng-container>
 

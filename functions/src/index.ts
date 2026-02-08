@@ -317,11 +317,12 @@ export const sendVerificationEmail = onRequest(
 
 export const verifyCode = onRequest(withCors(async (req, res) => {
     try {
-        const { email, code } = req.body;
-
-        if (!email || !code) {
+        const { _email, _code } = req.body;
+        if (!_email || !_code) {
             return res.status(200).json({ message: '이메일과 인증번호가 필요합니다.' });
         }
+        const email = _email.trim().toLowerCase();
+        const code = _code.trim();
 
         // 이메일 형식 검증
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -2329,7 +2330,6 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 }));
 
 
-
 // export const verifyClientKey = functions.https.onRequest(
 //     withCors(async (req, res) => {
 //         try {
@@ -2387,19 +2387,18 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 // );
 
 
-
 /*
 
-    0. export updateNotePropertiesInFirestore
-        notion page에서 페이지 제목, 페이지 내용, '키워드' => secondrain/pages/{noteId}/title, content, keyword 에 저장
-    1. export updateAllNotePropertiesInFirestore : notion note database에서 모든 노트 읽어서 필요한 필드를 firestore에 저장 
-    2. generateNoteKMProperties : secondrain/pages/{noteId}/title, content, keyword => secondrain/pages/{noteId}/keywords, keywords, domain 에 만들어서 넣음
-    * 주의! 여기서 keyword는 가져오는 것과 추가하는 것이 같은 필드 : 기존값을 토대로 새로운 값을 업데이트 함, ai가 판단  
-    3. generateKMData 
-        secondrain/pagess/{noteId}/keywords, keywords, domain => secondbrain/kmData / 바로 그래프로 사용할 수 있는 JSON
-    
-{
-   "keywords": [],       노션에 저장(O) / 사용자 (O) / AI (O)
+0. export updateNotePropertiesInFirestore
+    notion page에서 페이지 제목, 페이지 내용, '키워드' => secondrain/pages/{noteId}/title, content, keyword 에 저장
+1. export updateAllNotePropertiesInFirestore : notion note database에서 모든 노트 읽어서 필요한 필드를 firestore에 저장 
+2. generateNoteKMProperties : secondrain/pages/{noteId}/title, content, keyword => secondrain/pages/{noteId}/keywords, keywords, domain 에 만들어서 넣음
+* 주의! 여기서 keyword는 가져오는 것과 추가하는 것이 같은 필드 : 기존값을 토대로 새로운 값을 업데이트 함, ai가 판단  
+3. generateKMData 
+    secondrain/pagess/{noteId}/keywords, keywords, domain => secondbrain/kmData / 바로 그래프로 사용할 수 있는 JSON
+
+
+   "keywords": [],      노션에 저장(O) / 사용자 (O) / AI (O)
    "keywords": [],      노션에 저장(X) / 사용자 (X) / AI (O) // 1차에서는 
    "domain": "",        노션에 저장(X) / 사용자 (X) / AI (O) // 2차에서 노션에 저장 도메인 관리
   ------------------------------ 
@@ -2416,33 +2415,22 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 
 
 
-
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 할일
+
 // #todo
 
-=======================================================================================================
+** 연결 페이지 작업
 
 >>> 그래프 그리기  
 => 초기 데이타 없을 때 대비 => 전환작업 완료되면 그래프 reload
-=> 노트 아이콘으로 하기 
 => 이벤트 처리
     새로운 이벤트가 오면 1개 개별 변환하기
-    
->>> 인증 UX 마무리
-- [ ]  숫자 입력 시 뒤로 가기 안됨
-- [ ]  숫자 입력창 영어 입력이 됨
-- [ ]  이메일 입력창 → 아이폰에서 숫자로 나옴
-- [ ]  메인 인증 버튼 누르고 disable처리 하기
-
-- 인증번호 입력시 첫글자에 입력 포커스 가기
 
 =======================================================================================================
 
 >>> 마무리
 - 디버그 로그 숨기기
-
 - 안내 추가(임시)
     - 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
     - 초기 변환 안내하기
@@ -2462,6 +2450,12 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
     - 안내 : 앱이 업데이트 되면 localhost날아가나 => 인증 완료 되면 -> 연결 다시 하나? / 기존 연결자 되살리기
     - 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
     - 라이트 버전 
+
+=======================================================================================================
+>>> 검수
+- [ ]  숫자 입력창 영어 입력이 됨 (아이폰 검수)
+- [ ]  이메일 입력창 → 아이폰에서 숫자로 나옴 (아이폰 검수)
+
 
 
 ======================================================================================================= 1.1차 / 오픈 직후 바로 1주일이내 진행
