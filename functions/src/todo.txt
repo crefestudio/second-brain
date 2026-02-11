@@ -65,8 +65,7 @@
 >>> 마무리
 
 - clientId없애고 // userId, userAccessKey로 
-- ios localhost 확인 
-
+- ios localhost 확인
 - 들어가면 바로 토스트 나오기
 
 

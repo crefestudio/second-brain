@@ -20,8 +20,10 @@ import { NACommonService } from '../../../services/common.service';
 /*
 => 회원 가입 : notinable - user //특정 템플릿 구매자 확인 : notinable - user - (json - secondbrain - isPremiumMember / isCreatorCompanion) 
 => 노션 연결 : notinable - user - secondbrain - noteDatabaseId
+=> 장치 연결 : notinable - user - secondbrain - client
+        => clientId별로 accessToken
 
-// - localhost 겹치는 문제 / 같은브라우저에서 호출 되는 문제 => 임베디드 바꾸기 기능으로 해결 / userId
+// - localhost 겹치는 문제 / 같은브라우저에서 호출 되는 문제 => 임베디드 바꾸기 기능으로 해결 / clientId
 // - email인증 : 프리미엄 구매자 확인을 위해 이메일 확인을 정확히 하기 위해 함 / 1회에 한함 / 이메일은 구매자 확인용    
 
 ////////////////////////////////////////////////////////////////////////
@@ -30,8 +32,9 @@ import { NACommonService } from '../../../services/common.service';
 2. emial(phoneNumber) 
 3. certification 
     - 서버에 
-        - usersId 저장 
-    - localstorage session 저장     -> accessKey
+        - usersId 저장
+        - clientId 저장
+    - localstorage session 저장     -> userID, clientId // 로컬 설정을 위해, 화면 크기 등 clientId가 필요함
 4. api-connectKey 
     - connected client에 추가  
 
@@ -66,14 +69,6 @@ import { NACommonService } from '../../../services/common.service';
     - 못가져오면
         => 웹이라면 노션 연결 작업 완료 => session에 clientId저장  
         => 모바일엡이라면
-
-
-====================================================================
-- 이메일 인증하고 -> 회원가입 -> userId -> 임베드 주소 변경함 
-- clientId개념은 없앰
-
-
-
 
 
 

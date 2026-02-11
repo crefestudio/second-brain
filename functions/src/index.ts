@@ -209,33 +209,33 @@ export const notionOAuthCallback = onRequest(
 // ----------------------
 // UserService
 // ----------------------
-interface CreateUserAccessKeyResult {
-    accessKey: string;
+interface IssueClientKeyResult {
+    clientKey: string;
     expiresAt: string;
 }
 
 class UserService {
-    // static async saveClientInfo(params: { userId: string; clientId: string; origin?: string; userAgent?: string }) {
-    //     const { userId, clientId, origin, userAgent } = params;
-    //     const embedRef = db.collection('users').doc(userId).collection('integrations').doc('secondbrain').collection('clients').doc(clientId);
+    static async saveClientInfo(params: { userId: string; clientId: string; origin?: string; userAgent?: string }) {
+        const { userId, clientId, origin, userAgent } = params;
+        const embedRef = db.collection('users').doc(userId).collection('integrations').doc('secondbrain').collection('clients').doc(clientId);
 
-    //     await embedRef.set({
-    //         clientId,
-    //         origin: origin ?? null,
-    //         userAgent: userAgent ?? null,
-    //         lastAccessAt: admin.firestore.FieldValue.serverTimestamp(),
-    //         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    //     }, { merge: true });
-    // }
+        await embedRef.set({
+            clientId,
+            origin: origin ?? null,
+            userAgent: userAgent ?? null,
+            lastAccessAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+    }
 
-    static async createUserAccessKey(userId: string/*, clientId: string*/): Promise<CreateUserAccessKeyResult> {
-        if (!userId /*|| !clientId*/) {
-            throw new Error('Missing userId or userId');
+    static async issueClientKey(userId: string, clientId: string): Promise<IssueClientKeyResult> {
+        if (!userId || !clientId) {
+            throw new Error('Missing userId or clientId');
         }
 
         // 랜덤 32바이트 clientKey 생성
-        const accessKey = randomBytes(32).toString('hex');
-        const hashedKey = createHash('sha256').update(accessKey).digest('hex');
+        const clientKey = randomBytes(32).toString('hex');
+        const hashedKey = createHash('sha256').update(clientKey).digest('hex');
 
         const now = admin.firestore.Timestamp.now();
         const expiresAt = admin.firestore.Timestamp.fromDate(
@@ -245,13 +245,13 @@ class UserService {
         const ref = db
             .collection('users')
             .doc(userId)
-            // .collection('integrations')
-            // .doc('secondbrain')
-            // .collection('clients')
-            // .doc(clientId);
+            .collection('integrations')
+            .doc('secondbrain')
+            .collection('clients')
+            .doc(clientId);
 
         await ref.set({
-            accessKey: hashedKey,
+            clientKey: hashedKey,
             createdAt: now,
             expiresAt
         }, {
@@ -259,7 +259,7 @@ class UserService {
         });
 
         return {
-            accessKey,
+            clientKey,
             expiresAt: expiresAt.toDate().toISOString(),
         };
     }
@@ -386,23 +386,23 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         }
 
         // 4️⃣ clientId는 항상 새로 생성
-        // const clientId = nanoid(); //crypto.randomUUID();
+        const clientId = nanoid(); //crypto.randomUUID();
 
-        // // clients/{clientId} 저장
-        // await UserService.saveClientInfo({
-        //     userId,
-        //     clientId,
-        //     origin: req.get('origin') || undefined,
-        //     userAgent: req.get('user-agent') || undefined,
-        // });
+        // clients/{clientId} 저장
+        await UserService.saveClientInfo({
+            userId,
+            clientId,
+            origin: req.get('origin') || undefined,
+            userAgent: req.get('user-agent') || undefined,
+        });
 
-        let resultUserAccessKey: CreateUserAccessKeyResult = await UserService.createUserAccessKey(userId);
+        let resultClientKey: IssueClientKeyResult = await UserService.issueClientKey(userId, clientId);
 
         // 5️⃣ 사용 후 인증번호 삭제
         await docRef.delete();
 
         // 6️⃣ 성공 결과 반환
-        return res.status(200).json({ userId, accessKey: resultUserAccessKey.accessKey });
+        return res.status(200).json({ userId, clientId, clientKey: resultClientKey.clientKey });
     } catch (error: any) {
         console.error('verifyCode error:', error);
         return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
@@ -2667,72 +2667,72 @@ function generateKeywordGraphDataOnlyKeywordType(
 }
 
 
-// export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
-//     try {
-//         if (req.method !== 'POST') {
-//             res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
-//             return;
-//         }
+export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+            return;
+        }
 
-//         const userId = req.body.userId;
-//         const clientId = req.body.clientId;
+        const userId = req.body.userId;
+        const clientId = req.body.clientId;
 
-//         // Authorization 헤더에서 Bearer 토큰 추출
-//         const authHeader = req.headers['authorization'] as string | undefined;
-//         const clientKey = authHeader?.split(' ')[1];
+        // Authorization 헤더에서 Bearer 토큰 추출
+        const authHeader = req.headers['authorization'] as string | undefined;
+        const clientKey = authHeader?.split(' ')[1];
 
-//         if (!userId || !clientId || !clientKey) {
-//             res.status(400).json({ error: 'Missing parameters' });
-//             return;
-//         }
+        if (!userId || !clientId || !clientKey) {
+            res.status(400).json({ error: 'Missing parameters' });
+            return;
+        }
 
-//         const ref = db
-//             .collection('users')
-//             .doc(userId)
-//             .collection('integrations')
-//             .doc('secondbrain')
-//             .collection('clients')
-//             .doc(clientId);
+        const ref = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('secondbrain')
+            .collection('clients')
+            .doc(clientId);
 
-//         const docSnap = await ref.get();
-//         if (!docSnap.exists) {
-//             res.status(404).json({ error: 'Client not found' });
-//             return;
-//         }
+        const docSnap = await ref.get();
+        if (!docSnap.exists) {
+            res.status(404).json({ error: 'Client not found' });
+            return;
+        }
 
-//         const data = docSnap.data();
+        const data = docSnap.data();
 
-//         // clientKey 검증
-//         const hashedKey = createHash('sha256').update(clientKey).digest('hex');
-//         if (data?.clientKey !== hashedKey) {
-//             res.status(401).json({ error: 'INVALID_CLIENT_KEY' });
-//             return;
-//         }
+        // clientKey 검증
+        const hashedKey = createHash('sha256').update(clientKey).digest('hex');
+        if (data?.clientKey !== hashedKey) {
+            res.status(401).json({ error: 'INVALID_CLIENT_KEY' });
+            return;
+        }
 
-//         // if (data?.revoked) {
-//         //     res.status(401).json({ error: 'CLIENT_REVOKED' });
-//         //     return;
-//         // }
+        // if (data?.revoked) {
+        //     res.status(401).json({ error: 'CLIENT_REVOKED' });
+        //     return;
+        // }
 
-//         if (data?.expiresAt.toDate() < new Date()) {
-//             res.status(401).json({ error: 'CLIENT_EXPIRED' });
-//             return;
-//         }
+        if (data?.expiresAt.toDate() < new Date()) {
+            res.status(401).json({ error: 'CLIENT_EXPIRED' });
+            return;
+        }
 
-//         // clientKey는 내려주지 않고 metadata만 반환
-//         res.json({
-//             clientId,
-//             createdAt: data.createdAt.toDate().toISOString(),
-//             expiresAt: data.expiresAt.toDate().toISOString(),
-//             lastAccessAt: data.lastAccessAt,
-//             userAgent: data.userAgent,
-//             //revoked: data.revoked,
-//         });
-//     } catch (e) {
-//         console.error(e);
-//         res.status(500).json({ error: 'Internal Server Error' });
-//     }
-// }));
+        // clientKey는 내려주지 않고 metadata만 반환
+        res.json({
+            clientId,
+            createdAt: data.createdAt.toDate().toISOString(),
+            expiresAt: data.expiresAt.toDate().toISOString(),
+            lastAccessAt: data.lastAccessAt,
+            userAgent: data.userAgent,
+            //revoked: data.revoked,
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+}));
 
 
 // export const verifyClientKey = functions.https.onRequest(
