@@ -20,25 +20,8 @@ import { NACommonService } from '../../../services/common.service';
 /*
 => 회원 가입 : notinable - user //특정 템플릿 구매자 확인 : notinable - user - (json - secondbrain - isPremiumMember / isCreatorCompanion) 
 => 노션 연결 : notinable - user - secondbrain - noteDatabaseId
-=> 장치 연결 : notinable - user - secondbrain - client
-        => clientId별로 accessToken
 
-<ui state>
--> loading
--> email-input          -> 메일 입력
--> email-certification  -> 메일 인증창
--> embed주소 바꾸기 단계
--> connect-button        
--> connect-notion      -> 연결 확인
--> graph
-
--> no-session        
--> member               userId
--> client-connected     clientId / clientKey    
--> notion-connected     notionNoteDbId
-
-
-// - localhost 겹치는 문제 / 같은브라우저에서 호출 되는 문제 => 임베디드 바꾸기 기능으로 해결 / clientId
+// - localhost 겹치는 문제 / 같은브라우저에서 호출 되는 문제 => 임베디드 바꾸기 기능으로 해결 / userId
 // - email인증 : 프리미엄 구매자 확인을 위해 이메일 확인을 정확히 하기 위해 함 / 1회에 한함 / 이메일은 구매자 확인용    
 
 ////////////////////////////////////////////////////////////////////////
@@ -47,9 +30,8 @@ import { NACommonService } from '../../../services/common.service';
 2. emial(phoneNumber) 
 3. certification 
     - 서버에 
-        - usersId 저장
-        - clientId 저장
-    - localstorage session 저장     -> userID, clientId // 로컬 설정을 위해, 화면 크기 등 clientId가 필요함
+        - usersId 저장 
+    - localstorage session 저장     -> accessKey
 4. api-connectKey 
     - connected client에 추가  
 
@@ -86,6 +68,14 @@ import { NACommonService } from '../../../services/common.service';
         => 모바일엡이라면
 
 
+====================================================================
+- 이메일 인증하고 -> 회원가입 -> userId -> 임베드 주소 변경함 
+- clientId개념은 없앰
+
+
+
+
+
 
 
 
@@ -99,8 +89,6 @@ const pageIcon = `data:image/svg+xml;utf8,
 <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>
   <rect x='0' y='0' width='10' height='10' fill='%23ffff00'/>
 </svg>`;
-
-
 
 export interface SecondBrainLocalSession {
     userId: string;
@@ -117,6 +105,7 @@ export interface SecondBrainLocalSession {
 export class SecondBrainWidgetComponent implements AfterViewInit {
     @ViewChild('graphContainer', { static: false }) graphContainer!: ElementRef;
     @ViewChild('codeInput0') codeInput0!: ElementRef<HTMLInputElement>;
+    @ViewChild('emailInput') emailInput!: ElementRef<HTMLInputElement>;
     @ViewChildren('input') inputs!: QueryList<ElementRef>;
 
     // event
@@ -145,7 +134,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // form
     email: string = '';
-    clientUrl: string = 'https://notionable.net/secondbrain/widget/ddddddd';
+    clientUrl: string = '';
+    isCopied: boolean = false;
     // phoneNumber: string = '';
     // connectKey: string = '';
 
@@ -372,6 +362,9 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     async onClickConnectBtn() {
         this.initStateData();
         this.state = 'email-input';
+        setTimeout(() => {
+            this.emailInput.nativeElement.focus();            
+        }, 100);
     }
     
     focusFirstCodeInput() {
@@ -440,6 +433,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
   
             // 세션 단계로 넘어감   
             this.initStateData();
+            this.clientUrl = 'https://notionable.net/secondbrain/widget/' + this.clientId;
             this.state = 'change-client-url';
         } else if (result.message) {
             console.warn('인증 실패');
@@ -516,6 +510,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     goBackState() {
         if (this.state == 'email-input') {
+            this.email = '';
             this.initStateData();
             this.state = 'connect-button';
         }
@@ -831,6 +826,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     async onClickGenerateNotionNoteKMDataBatch() {
         this.isMenuOpen = false;
+        this.state = 'graph';
 
         this.showToast('AI 키워드 추출 작업을 시작했습니다.', 3000);
         setTimeout(() => {
@@ -847,6 +843,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     onClickSelectGraphType(graphType: string) {
+         this.isMenuOpen = false;
         this.currGraphType = graphType;
         this.loadGraph(graphType);
     }
@@ -854,14 +851,19 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     
     onClickSettings() {
         this.isMenuOpen = false;
-        alert('setup')
+        // const baseUrl = window.location.origin;
+        // const serviceName = 'secondbrain';
+        // const setupPath = 'connect';
+
+        // const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encrypted)}`;
+        // window.open(url, '_blank');
     }
     
     onClickReloadGraph() {
         this.isMenuOpen = false;
         this.state = 'graph';
         setTimeout(() => {
-            this.init();
+            this.loadGraph(this.currGraphType);
         }, 1);
     }
     
@@ -890,6 +892,22 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
 
     copyUrl() {
+        if (!this.clientUrl) return;
+        this.isCopied = true;
+        setTimeout(() => {
+            this.isCopied = false;
+        }, 3000);
+
+        const input = document.createElement("input");
+        input.value = this.clientUrl;
+        document.body.appendChild(input);
+        input.select();
+        try {
+            document.execCommand("copy");
+        } catch (err) {
+            console.error("복사 실패", err);
+        }
+        document.body.removeChild(input);
     }
     
     ////////////////////////////////////////////////////////

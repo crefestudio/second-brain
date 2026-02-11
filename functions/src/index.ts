@@ -10,16 +10,26 @@ import { randomBytes, createHash } from 'crypto';
 import OpenAI from "openai";
 import { customAlphabet } from 'nanoid';
 
-//import { writeUserEvent } from './services/eventService';
+// notion
+import { Client } from "@notionhq/client";
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
-  '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
-  8
+    '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    8
 );
 
-// notion
-import { Client } from "@notionhq/client";
+/**
+ * 텍스트 변경 감지용 해시
+ * - Firestore 저장용
+ * - 원문(content)은 저장하지 않음
+ */
+export function hashContent(text: string): string {
+    return crypto
+        .createHash("sha256")
+        .update(text || "", "utf8")
+        .digest("hex");
+}
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -32,11 +42,11 @@ const allowedOrigins = ["http://localhost:4200", "https://notionable.net"];
 export type EventStatus = 'start' | 'running' | 'completed' | 'failed';
 
 export interface EventPayload {
-  eventType: string;
-  status: EventStatus;
-  targetData?: Record<string, unknown>;
-  eventTitle?: string;
-  eventDescription?: string;
+    eventType: string;
+    status: EventStatus;
+    targetData?: Record<string, unknown>;
+    eventTitle?: string;
+    eventDescription?: string;
 }
 
 /**
@@ -46,17 +56,17 @@ export interface EventPayload {
  * @param payload - 이벤트 데이터
  */
 export async function writeUserEvent(
-  userId: string,
-  payload: EventPayload,
+    userId: string,
+    payload: EventPayload,
 ): Promise<void> {
-  await db
-    .collection('users')
-    .doc(userId)
-    .collection('event')
-    .add({
-      ...payload,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    await db
+        .collection('users')
+        .doc(userId)
+        .collection('event')
+        .add({
+            ...payload,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
 }
 
 
@@ -199,33 +209,33 @@ export const notionOAuthCallback = onRequest(
 // ----------------------
 // UserService
 // ----------------------
-interface IssueClientKeyResult {
-  clientKey: string;
-  expiresAt: string;
+interface CreateUserAccessKeyResult {
+    accessKey: string;
+    expiresAt: string;
 }
 
 class UserService {
-    static async saveClientInfo(params: { userId: string; clientId: string; origin?: string; userAgent?: string }) {
-        const { userId, clientId, origin, userAgent } = params;
-        const embedRef = db.collection('users').doc(userId).collection('integrations').doc('secondbrain').collection('clients').doc(clientId);
+    // static async saveClientInfo(params: { userId: string; clientId: string; origin?: string; userAgent?: string }) {
+    //     const { userId, clientId, origin, userAgent } = params;
+    //     const embedRef = db.collection('users').doc(userId).collection('integrations').doc('secondbrain').collection('clients').doc(clientId);
 
-        await embedRef.set({
-            clientId,
-            origin: origin ?? null,
-            userAgent: userAgent ?? null,
-            lastAccessAt: admin.firestore.FieldValue.serverTimestamp(),
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-    }
+    //     await embedRef.set({
+    //         clientId,
+    //         origin: origin ?? null,
+    //         userAgent: userAgent ?? null,
+    //         lastAccessAt: admin.firestore.FieldValue.serverTimestamp(),
+    //         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    //     }, { merge: true });
+    // }
 
-    static async issueClientKey( userId: string, clientId: string): Promise<IssueClientKeyResult> {
-        if (!userId || !clientId) {
-            throw new Error('Missing userId or clientId');
+    static async createUserAccessKey(userId: string/*, clientId: string*/): Promise<CreateUserAccessKeyResult> {
+        if (!userId /*|| !clientId*/) {
+            throw new Error('Missing userId or userId');
         }
 
         // 랜덤 32바이트 clientKey 생성
-        const clientKey = randomBytes(32).toString('hex');
-        const hashedKey = createHash('sha256').update(clientKey).digest('hex');
+        const accessKey = randomBytes(32).toString('hex');
+        const hashedKey = createHash('sha256').update(accessKey).digest('hex');
 
         const now = admin.firestore.Timestamp.now();
         const expiresAt = admin.firestore.Timestamp.fromDate(
@@ -235,21 +245,21 @@ class UserService {
         const ref = db
             .collection('users')
             .doc(userId)
-            .collection('integrations')
-            .doc('secondbrain')
-            .collection('clients')
-            .doc(clientId);
+            // .collection('integrations')
+            // .doc('secondbrain')
+            // .collection('clients')
+            // .doc(clientId);
 
         await ref.set({
-            clientKey: hashedKey,
+            accessKey: hashedKey,
             createdAt: now,
             expiresAt
-        }, { 
-            merge: true 
+        }, {
+            merge: true
         });
 
         return {
-            clientKey,
+            accessKey,
             expiresAt: expiresAt.toDate().toISOString(),
         };
     }
@@ -376,23 +386,23 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         }
 
         // 4️⃣ clientId는 항상 새로 생성
-        const clientId = nanoid(); //crypto.randomUUID();
+        // const clientId = nanoid(); //crypto.randomUUID();
 
-        // clients/{clientId} 저장
-        await UserService.saveClientInfo({
-            userId,
-            clientId,
-            origin: req.get('origin') || undefined,
-            userAgent: req.get('user-agent') || undefined,
-        });
+        // // clients/{clientId} 저장
+        // await UserService.saveClientInfo({
+        //     userId,
+        //     clientId,
+        //     origin: req.get('origin') || undefined,
+        //     userAgent: req.get('user-agent') || undefined,
+        // });
 
-        let resultClientKey: IssueClientKeyResult = await UserService.issueClientKey( userId, clientId);
+        let resultUserAccessKey: CreateUserAccessKeyResult = await UserService.createUserAccessKey(userId);
 
         // 5️⃣ 사용 후 인증번호 삭제
         await docRef.delete();
 
         // 6️⃣ 성공 결과 반환
-        return res.status(200).json({ userId, clientId, clientKey: resultClientKey.clientKey });
+        return res.status(200).json({ userId, accessKey: resultUserAccessKey.accessKey });
     } catch (error: any) {
         console.error('verifyCode error:', error);
         return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
@@ -476,6 +486,64 @@ class NotionService {
         return data;
     }
 
+    static async getNotionPage(accessToken: string, pageId: string) {
+        const formattedPageId = pageId.replace(/-/g, "");
+        console.log("[DEBUG] getNotionPage 호출, pageId:", pageId);
+
+        // 1️⃣ 페이지 속성 가져오기
+        const pageRes = await fetch(`https://api.notion.com/v1/pages/${formattedPageId}`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Notion-Version": this.apiVersion,
+                "Content-Type": "application/json",
+            },
+        });
+
+        if (!pageRes.ok) {
+            const text = await pageRes.text();
+            console.error("[DEBUG] Notion API 페이지 조회 실패:", text);
+            throw new Error(`페이지 조회 실패: ${text}`);
+        }
+
+        const pageData = await pageRes.json();
+
+        // 2️⃣ 페이지 블록(children) 가져오기
+        const blocks: any[] = [];
+        let cursor: string | undefined = undefined;
+        do {
+            const childrenRes: any = await fetch(
+                `https://api.notion.com/v1/blocks/${formattedPageId}/children?page_size=100${cursor ? `&start_cursor=${cursor}` : ""}`,
+                {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Notion-Version": this.apiVersion,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            if (!childrenRes.ok) {
+                const text = await childrenRes.text();
+                console.error("[DEBUG] Notion API 블록 조회 실패:", text);
+                throw new Error(`블록 조회 실패: ${text}`);
+            }
+
+            const childrenData = await childrenRes.json();
+            blocks.push(...childrenData.results);
+            cursor = childrenData.has_more ? childrenData.next_cursor : undefined;
+        } while (cursor);
+
+        // 반환: 페이지 속성 + 블록
+        return {
+            id: pageData.id,
+            properties: pageData.properties,
+            blocks: blocks,
+        };
+    }
+
+
 
     static async applyKeywordsToNotionPages(accessToken: string, aiResultKeyword: Record<string, string[]>) {
 
@@ -505,69 +573,6 @@ class NotionService {
             }
         }
     }
-
-    // 노션 키워드 읽어서 Firestore 저장 함수
-    // static async genetateNotionNoteKMData(accessToken: string, userId: string, noteDatabaseId: string) {
-    //     let cursor: string | undefined = undefined;
-
-    //     console.log("[DEBUG] genetateNotionNoteKMData 시작");
-    //     console.log("[DEBUG] userId:", userId, "noteDatabaseId:", noteDatabaseId);
-
-    //     do {
-    //         console.log("[DEBUG] 현재 cursor:", cursor);
-
-    //         const response: any = await NotionService.queryDatabase(accessToken, noteDatabaseId, cursor);
-    //         console.log("[DEBUG] queryDatabase 응답 확인, results 개수:", response.results?.length);
-
-    //         // sateNoteKeywordsToFirestore 부분 => 이거 함수로 뺴서 호출            
-    //         for (const page of response.results) {
-    //             const noteId = page.id;
-    //             const docRef = db
-    //                 .collection("users")
-    //                 .doc(userId)
-    //                 .collection("integrations")
-    //                 .doc("secondbrain")
-    //                 .collection("pages")  // pages, projects, folders....
-    //                 .doc(noteId)  // noteId 문서에 바로 keywords 필드
-
-    //             const docSnap = await docRef.get();
-
-    //             // const oldKeywords: string[] = docSnap.exists ? docSnap.data()?.keywords || [] : [];
-
-    //             //키워드 업데이트 하기
-    //             // const keywordsProperty = page.properties["키워드"];
-    //             // const newKeywords: string[] = keywordsProperty && keywordsProperty.type === "multi_select"
-    //             //     ? keywordsProperty.multi_select.map((item: any) => item.name)
-    //             //     : [];
-
-    //             // // 비교 후 처리
-    //             // if (oldKeywords.length === 0 && newKeywords.length > 0) {
-    //             //     // create
-    //             //     console.log("[DEBUG] 키워드 생성:", noteId, newKeywords);
-    //             //     await docRef.set({ keywords: newKeywords });
-    //             // } else if (oldKeywords.length > 0 && newKeywords.length === 0) {
-    //             //     // delete
-    //             //     console.log("[DEBUG] 키워드 삭제:", noteId);
-    //             //     await docRef.update({ keywords: admin.firestore.FieldValue.delete() });
-    //             // } else if (JSON.stringify(oldKeywords) !== JSON.stringify(newKeywords)) {
-    //             //     // update
-    //             //     console.log("[DEBUG] 키워드 변경 업데이트:", noteId, newKeywords);
-    //             //     await docRef.set({ keywords: newKeywords }, { merge: true });
-    //             // } else {
-    //             //     // no change
-    //             //     console.log("[DEBUG] 변화 없음, 저장 생략:", noteId);
-    //             // }
-    //         }
-
-
-    //         cursor = response.has_more ? response.next_cursor : undefined;
-    //         console.log("[DEBUG] 다음 cursor:", cursor);
-
-    //     } while (cursor);
-
-    //     console.log("모든 노트 키워드 Firestore에 저장 완료");
-    // }
-
 }
 
 
@@ -674,176 +679,484 @@ class NotionService {
 
 // #main #메인
 // 노션 page의 속성(title, content, keywords 등)을 Firestore에 저장하는 HTTPS 함수 
-export const generateNotionNoteKMDataBatch = onRequest(
-    {
-        timeoutSeconds: 540,
-        memory: "1GiB",
-    },
+export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, memory: "1GiB", },
     withCors(async (req, res) => {
-        const { userId } = req.body;
-        try {
-            if (!userId) {
-                return res.status(400).send("userId를 전달해야 합니다.");
-            }
-
-            // Firestore에서 Notion accessToken, noteDatabaseId 가져오기
-            const sbDoc = await db
-                .collection("users")
-                .doc(userId)
-                .collection("integrations")
-                .doc("secondbrain")
-                .get();
-
-            if (!sbDoc.exists) {
-                return res.status(404).send("secondbrain 문서를 찾을 수 없습니다.");
-            }
-            const data = sbDoc.data();
-            const noteDatabaseId = data?.noteDatabaseId;
-            const accessToken = data?.accessToken;
-            if (!noteDatabaseId || !accessToken) {
-                return res.status(404).send("noteDatabaseId 또는 accessToken이 Firestore에 존재하지 않습니다.");
-            }
-
-            // Notion DB에서 모든 page 가져오기
-            const response = await NotionService.queryDatabase(accessToken, noteDatabaseId);
-            let successCount = 0, failCount = 0;
-            const batchPages: { pageId: string; title: string; content: string; keywords: string[] }[] = [];
-
-            // page.content가져오느라 시간이 많이 걸리는 부분
-            let testIndex = 0;
-            for (const page of response.results) { 
-                try {
-                    // keyword가 db에 없으면 노션에서 가져옴
-                    const pageData: { pageId: string; title: string; content: string; keywords: string[]; } | null
-                        = await updateNotePropertiesInFirestore(userId, page, accessToken);
-
-                    // ✅ 이벤트  
-                    if (pageData) {
-                        await writeUserEvent(userId, {
-                            eventType: "generate-note-keyword",
-                            status: "running",
-                            eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트의 키워드 추출 작업을 진행중입니다.`
-                        });
-                    }
-
-                    if (!pageData) { continue; }
-                    batchPages.push(pageData);
-                    successCount++;
-                } catch (err) {
-                    console.error("노트 속성 저장 실패:", err);
-                    failCount++;
-                }
-                testIndex++;
-                if (testIndex >= 5) break; // 테스트용으로 5개만 처리
-            }
-            console.error("[DEBUG] batchPages =>", batchPages);
-
-            const BATCH_SIZE = 10;
-            for (let i = 0; i < batchPages.length; i += BATCH_SIZE) {
-                const batch = batchPages.slice(i, i + BATCH_SIZE);
-                const pageData: Record<
-                    string,
-                    { title: string; content: string; keywords: string[] }
-                > = {};
-
-                batch.forEach(n => {
-                    pageData[n.pageId] = {
-                        title: n.title,
-                        content: n.content,
-                        keywords: n.keywords,
-                    };
-                });
-
-                try {
-                    /////////////////
-                    // 키워드 추출       
-
-                    // 기존 키워드 리스트 가져오기
-                    let existingKeywords: string[] = await loadKeywordsFromCache(userId);
-
-                    // ai 키워드 추출
-                    let aiResultKeywords = await requestPageKeywordsFromAI(pageData, existingKeywords);
-                    aiResultKeywords = filterUndefinedId(pageData, aiResultKeywords);
-
-                    const normalized: Record<string, string[]> = {};
-                    for (const [key, keywords] of Object.entries(aiResultKeywords)) {
-                        normalized[key] = Array.from(
-                            new Set(
-                                keywords.map(keyword =>
-                                    normalizeKeyword(keyword, existingKeywords)
-                                )
-                            )
-                        );
-                    }
-                    aiResultKeywords = normalized;
-
-                    // notion에 keyword반영
-                    await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeywords);
-
-                    //////////////////////////////////
-                    // 3️⃣ AI 결과 Firestore 저장
-                    for (const pageId of Object.keys(aiResultKeywords)) {
-                        await db
-                            .collection("users")
-                            .doc(userId)
-                            .collection("integrations")
-                            .doc("secondbrain")
-                            .collection("pages")
-                            .doc(pageId)
-                            .set(
-                                {
-                                    keywords: aiResultKeywords[pageId] || [], // 안전하게 배열 초기화
-                                    title: pageData[pageId]?.title || "",   // 안전하게 title 처리
-                                },
-                                { merge: true }
-                            );
-                    }
-
-                    // 키워드 캐시 업데이트 // 키워드 모두 읽어서 한곳에 저장
-                    let newExistingKeywords: string[] = await loadKeywordsFromPages(userId);
-                    console.log('newExistingKeywords =>', newExistingKeywords);
-                    upsertKeywords(userId, newExistingKeywords);
-
-                    console.log(`[DEBUG] Keywords 배치 ${i / BATCH_SIZE + 1}:`, aiResultKeywords);
-                    successCount += batch.length;
-
-                    // ✅ 이벤트  
-                    // await writeUserEvent(userId, {
-                    //     eventType: "generate-note-keyword",
-                    //     status: "running",
-                    //     eventTitle: `10개이내 노트의 키워드 생성을 완료했습니다.`
-                    // });                
-                } catch (err) {
-                    console.error("AI 처리 실패:", err);
-                    failCount += batch.length;
-                }
-            }
-
-            // ❌ 페이지 변환 실패 이벤트 (1회)
-            await writeUserEvent(userId, {
-                eventType: "generate-note-keyword",
-                status: "completed",
-                eventTitle: `요청한 ${successCount}개의 노트의 키워드 추출 작업을 완료하였습니다.`
-            });
-
-            res.status(200).json({
-                message: "노트 속성 + AI keywords + keywords 저장 완료",
-                successCount,
-                failCount,
-            });
-
-        } catch (error: any) {
-            console.error(error);
-            res.status(500).send(error.message);
-
-            // ❌ 페이지 변환 실패 이벤트 (1회)
-            await writeUserEvent(userId, {
-                eventType: "generate-note-keyword",
-                status: "failed",
-                eventTitle: `키워드 추출 작업 중 오류가 발생했습니다.`
-            });
+    const { userId } = req.body;
+    try {
+        if (!userId) {
+            return res.status(400).send("userId를 전달해야 합니다.");
         }
+
+        // Firestore에서 Notion accessToken, noteDatabaseId 가져오기
+        const sbDoc = await db
+            .collection("users")
+            .doc(userId)
+            .collection("integrations")
+            .doc("secondbrain")
+            .get();
+
+        if (!sbDoc.exists) {
+            return res.status(404).send("secondbrain 문서를 찾을 수 없습니다.");
+        }
+        const data = sbDoc.data();
+        const noteDatabaseId = data?.noteDatabaseId;
+        const accessToken = data?.accessToken;
+        if (!noteDatabaseId || !accessToken) {
+            return res.status(404).send("noteDatabaseId 또는 accessToken이 Firestore에 존재하지 않습니다.");
+        }
+
+        // Notion DB에서 모든 page 가져오기
+        const response = await NotionService.queryDatabase(accessToken, noteDatabaseId);
+        let successCount = 0, failCount = 0;
+        const batchPages: { pageId: string; title: string; content: string; }[] = [];
+
+        // page.content가져오느라 시간이 많이 걸리는 부분
+        let testIndex = 0;
+        for (const page of response.results) {
+            try {
+                // keyword가 db에 없으면 노션에서 가져옴
+                const pageData: { pageId: string; title: string; content: string; } | null
+                    = await getAndUpdatePageData(userId, page, accessToken,  { skipIfKeywordsExist: true });
+
+                // ✅ 이벤트  
+                if (pageData) {
+                    await writeUserEvent(userId, {
+                        eventType: "generate-note-keyword",
+                        status: "running",
+                        eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트의 키워드 추출 작업을 진행중입니다.`
+                    });
+                }
+
+                if (!pageData) { continue; }
+                batchPages.push(pageData);
+                successCount++;
+            } catch (err) {
+                console.error("노트 속성 저장 실패:", err);
+                failCount++;
+            }
+            testIndex++;
+            if (testIndex >= 5) break; // 테스트용으로 5개만 처리
+        }
+        console.error("[DEBUG] batchPages =>", batchPages);
+
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < batchPages.length; i += BATCH_SIZE) {
+            const batch = batchPages.slice(i, i + BATCH_SIZE);
+            const pageData: Record<
+                string,
+                { title: string; content: string }
+            > = {};
+
+            batch.forEach(n => {
+                pageData[n.pageId] = {
+                    title: n.title,
+                    content: n.content,
+                    //keywords: n.keywords,
+                };
+            });
+
+            try {
+                /////////////////
+                // 키워드 추출       
+
+                // 기존 키워드 리스트 가져오기
+                let existingKeywords: string[] = await loadKeywordsFromCache(userId);
+
+                // ai 키워드 추출
+                let aiResultKeywords = await requestPageKeywordsFromAI(pageData, existingKeywords);
+                aiResultKeywords = filterUndefinedId(pageData, aiResultKeywords);
+
+                const normalized: Record<string, string[]> = {};
+                for (const [key, keywords] of Object.entries(aiResultKeywords)) {
+                    normalized[key] = Array.from(
+                        new Set(
+                            keywords.map(keyword =>
+                                normalizeKeyword(keyword, existingKeywords)
+                            )
+                        )
+                    );
+                }
+                aiResultKeywords = normalized;
+
+                // notion에 keyword반영
+                await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeywords);
+
+                //////////////////////////////////
+                // 3️⃣ AI 결과 Firestore 저장
+                for (const pageId of Object.keys(aiResultKeywords)) {
+                    await db
+                        .collection("users")
+                        .doc(userId)
+                        .collection("integrations")
+                        .doc("secondbrain")
+                        .collection("pages")
+                        .doc(pageId)
+                        .set(
+                            {
+                                keywords: aiResultKeywords[pageId] || [], // 안전하게 배열 초기화
+                                title: pageData[pageId]?.title || "",   // 안전하게 title 처리
+                            },
+                            { merge: true }
+                        );
+                }
+
+                // 키워드 캐시 업데이트 // 키워드 모두 읽어서 한곳에 저장
+                let newExistingKeywords: string[] = await loadKeywordsFromPages(userId);
+                console.log('newExistingKeywords =>', newExistingKeywords);
+                upsertKeywords(userId, newExistingKeywords);
+
+                console.log(`[DEBUG] Keywords 배치 ${i / BATCH_SIZE + 1}:`, aiResultKeywords);
+                successCount += batch.length;
+
+                // ✅ 이벤트  
+                // await writeUserEvent(userId, {
+                //     eventType: "generate-note-keyword",
+                //     status: "running",
+                //     eventTitle: `10개이내 노트의 키워드 생성을 완료했습니다.`
+                // });                
+            } catch (err) {
+                console.error("AI 처리 실패:", err);
+                failCount += batch.length;
+            }
+        }
+
+        // ❌ 페이지 변환 실패 이벤트 (1회)
+        await writeUserEvent(userId, {
+            eventType: "generate-note-keyword",
+            status: "completed",
+            eventTitle: `요청한 ${successCount}개의 노트의 키워드 추출 작업을 완료하였습니다.`
+        });
+
+        res.status(200).json({
+            message: "노트 속성 + AI keywords + keywords 저장 완료",
+            successCount,
+            failCount,
+        });
+
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).send(error.message);
+
+        // ❌ 페이지 변환 실패 이벤트 (1회)
+        await writeUserEvent(userId, {
+            eventType: "generate-note-keyword",
+            status: "failed",
+            eventTitle: `키워드 추출 작업 중 오류가 발생했습니다.`
+        });
+    }
 }));
+
+
+
+const DEBOUNCE_DELAY = 30 * 1000; // 3초: 마지막 이벤트 후 대기 시간
+
+// #webhook
+export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 300, memory: "512MiB" }, withCors(async (req, res) => {
+    const event = req.body;
+    console.log("[Notion Webhook Payload]", event);
+
+    // 🔑 구독 인증 토큰 확인
+    if (event.type === "webhook_verification") {
+        console.log("[Webhook Verification] token:", event.token);
+        return res.status(200).send(event.token);
+    }
+
+    // 1️⃣ "페이지 콘텐츠 업데이트됨" 이벤트만 처리
+    if (event.type !== "page.content_updated") {
+        return res.status(200).json({ message: `이벤트 타입 ${event.type}은 처리하지 않음.` });
+    }
+
+    const pageId = event.entity?.id;
+    const databaseId = event.data?.parent?.id;
+
+    if (!pageId || !databaseId) {
+        return res.status(400).json({ message: "페이지 ID 또는 DB ID 누락" });
+    }
+
+    try {
+        // ----------------------------
+        // 2️⃣ Firestore에서 userId / accessToken 찾기
+        // ----------------------------
+        const usersSnapshot = await db.collection("users").get();
+        let userId: string | null = null;
+        let accessToken: string | null = null;
+
+        for (const userDoc of usersSnapshot.docs) {
+            const sbDoc = await userDoc.ref.collection("integrations").doc("secondbrain").get();
+            if (!sbDoc.exists) continue;
+
+            const sbData = sbDoc.data();
+            if (sbData?.noteDatabaseId === databaseId) {
+                userId = userDoc.id;
+                accessToken = sbData?.accessToken;
+                break;
+            }
+        }
+
+        if (!userId || !accessToken) {
+            return res.status(404).json({ message: "해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음" });
+        }
+
+        // ----------------------------
+        // 3️⃣ Firestore에 이벤트 큐 기록 (마지막 이벤트 덮어쓰기)
+        // ----------------------------
+        const queueRef = db
+            .collection("users")
+            .doc(userId)
+            .collection("integrations")
+            .doc("secondbrain")
+            .collection("webhook_queue")
+            .doc(pageId);
+
+        const now = Date.now();
+        await queueRef.set(
+            {
+                lastEventTimestamp: now,
+                lastEventPayload: event,
+            },
+            { merge: true }
+        );
+
+        // ----------------------------
+        // 4️⃣ 마지막 이벤트만 처리: DEBOUNCE_DELAY 이후
+        // ----------------------------
+        const queueDoc = await queueRef.get();
+        const lastEventTimestamp = queueDoc.data()?.lastEventTimestamp || 0;
+
+        // 현재 이벤트가 마지막 이벤트인지 확인
+        if (now - lastEventTimestamp < DEBOUNCE_DELAY) {
+            // 짧게 기다렸다가 처리
+            setTimeout(async () => {
+                const latestDoc = await queueRef.get();
+                if (latestDoc.data()?.lastEventTimestamp !== lastEventTimestamp) {
+                    console.log(`[${pageId}] 새로운 이벤트 들어와서 스킵`);
+                    return;
+                }
+
+                await processWebhookEvent(userId!, accessToken!, pageId);
+                // 큐 정리
+                await queueRef.delete();
+            }, DEBOUNCE_DELAY);
+            return res.status(200).json({ message: "마지막 이벤트 대기 중" });
+        }
+
+        // 즉시 처리 (보통 서버리스 함수에서 setTimeout 보장이 약간 불안정, 
+        // 여러 요청이 겹칠 수 있으므로 Firestore 기준 확인)
+        await processWebhookEvent(userId, accessToken, pageId);
+        await queueRef.delete();
+
+        return res.status(200).json({ message: "이벤트 처리 완료" });
+    } catch (error: any) {
+        console.error("노션 웹훅 처리 실패:", error);
+        return res.status(500).json({ message: error.message });
+    }
+})
+);
+
+// ----------------------------
+// 페이지 처리 함수
+// ----------------------------
+// #page
+
+async function processWebhookEvent(userId: string, accessToken: string, pageId: string) {
+    // notion API에서 페이지의 propery(title), block 가져오기
+    const page = await NotionService.getNotionPage(accessToken, pageId);
+    console.log(`processWebhookEvent page property, blocks => [${page}]`);
+
+    const pageData = await getAndUpdatePageData(userId, page, accessToken);
+    if (!pageData) {
+        console.log(`[${pageId}] 페이지 데이터 없음`);
+        return;
+    }
+
+    // 진행 이벤트 기록
+    await writeUserEvent(userId, {
+        eventType: "generate-note-keyword-webhook",
+        status: "running",
+        eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트 키워드 추출 진행`,
+    });
+
+    // ----------------------------
+    // AI 키워드 추출
+    const existingKeywords = await loadKeywordsFromCache(userId);
+    const aiResultRaw = await requestPageKeywordsFromAI({ [pageId]: pageData }, existingKeywords);
+    const aiResult = filterUndefinedId({ [pageId]: pageData }, aiResultRaw);
+
+    const normalized: Record<string, string[]> = {};
+    for (const [key, keywords] of Object.entries(aiResult)) {
+        normalized[key] = Array.from(
+            new Set(keywords.map((kw) => normalizeKeyword(kw, existingKeywords)))
+        );
+    }
+
+    // Notion 반영
+    await NotionService.applyKeywordsToNotionPages(accessToken, normalized);
+
+    // Firestore 저장
+    const pageRef = db
+        .collection("users")
+        .doc(userId)
+        .collection("integrations")
+        .doc("secondbrain")
+        .collection("pages")
+        .doc(pageId);
+    await pageRef.set(
+        {
+            keywords: normalized[pageId] || []
+        },
+        { merge: true }
+    );
+
+    // 키워드 캐시 업데이트
+    const newExistingKeywords = await loadKeywordsFromCache(userId);
+    upsertKeywords(userId, newExistingKeywords);
+
+    // 완료 이벤트
+    await writeUserEvent(userId, {
+        eventType: "generate-note-keyword-webhook",
+        status: "completed",
+        eventTitle: `${pageData.title} 노트 키워드 추출 완료`,
+    });
+
+    console.log(`[${pageId}] 처리 완료`);
+}
+
+
+
+//////////////////////////////////////////////////////////////////////
+
+// export const handleNotionWebhookSinglePage = onRequest(
+//     { timeoutSeconds: 300, memory: "512MiB" },
+//     withCors(async (req, res) => {
+//         console.log("[Notion Webhook Payload]", req.body);
+//         const event = req.body;
+//         const eventType = event.type;
+
+//         // 🔑 구독 인증 토큰 확인
+//         if (req.body.type === "webhook_verification") {
+//             console.log("[Webhook Verification] payload:", req.body);
+//             console.log("[Webhook Verification] token:", req.body.token);
+//             return res.status(200).send(req.body.token);
+//         }
+
+
+//         // 1️⃣ "페이지 콘텐츠 업데이트됨" 이벤트만 처리
+//         if (eventType !== "page.content_updated") {
+//             return res.status(200).json({ message: `이벤트 타입 ${eventType}은 처리하지 않음.` });
+//         }
+
+//         try {
+//             // 2️⃣ pageId / databaseId 추출
+//             const pageId = event.entity?.id;
+//             const databaseId = event.data?.parent?.id;
+//             if (!pageId || !databaseId) {
+//                 return res.status(400).json({ message: "페이지 ID 또는 DB ID 누락" });
+//             }
+
+//             // ----------------------------
+//             // Firestore에서 userId 찾기
+//             // ----------------------------
+//             // secondbrain integration에서 noteDatabaseId와 비교
+//             const usersSnapshot = await db.collection("users").get();
+//             let userId: string | null = null;
+//             let accessToken: string | null = null;
+
+//             for (const userDoc of usersSnapshot.docs) {
+//                 const sbDoc = await userDoc.ref.collection("integrations").doc("secondbrain").get();
+//                 if (!sbDoc.exists) continue;
+
+//                 const sbData = sbDoc.data();
+//                 if (sbData?.noteDatabaseId === databaseId) {
+//                     userId = userDoc.id;
+//                     accessToken = sbData?.accessToken;
+//                     break;
+//                 }
+//             }
+
+//             if (!userId || !accessToken) {
+//                 return res.status(404).json({ message: "해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음" });
+//             }
+
+//             // ----------------------------
+//             // 4️⃣ 페이지 속성 업데이트
+//             // ----------------------------
+//             const pageData = await updateNotePropertiesInFirestore(userId, { id: pageId }, accessToken);
+
+//             if (!pageData) {
+//                 return res.status(200).json({ message: "페이지 데이터 없음 또는 업데이트할 속성 없음" });
+//             }
+
+//             // 진행 이벤트 기록
+//             await writeUserEvent(userId, {
+//                 eventType: "generate-note-keyword-webhook",
+//                 status: "running",
+//                 eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트의 키워드 추출 작업을 진행중입니다.`,
+//             });
+
+//             // ----------------------------
+//             // 5️⃣ AI 키워드 추출
+//             // ----------------------------
+//             const existingKeywords = await loadKeywordsFromCache(userId);
+//             const aiResultKeywordsRaw = await requestPageKeywordsFromAI({ [pageId]: pageData }, existingKeywords);
+//             const aiResultKeywords = filterUndefinedId({ [pageId]: pageData }, aiResultKeywordsRaw);
+
+//             const normalized: Record<string, string[]> = {};
+//             for (const [key, keywords] of Object.entries(aiResultKeywords)) {
+//                 normalized[key] = Array.from(
+//                     new Set(keywords.map((kw) => normalizeKeyword(kw, existingKeywords)))
+//                 );
+//             }
+
+//             // Notion에 키워드 반영
+//             await NotionService.applyKeywordsToNotionPages(accessToken, normalized);
+
+//             // Firestore에 저장
+//             for (const pid of Object.keys(normalized)) {
+//                 await db
+//                     .collection("users")
+//                     .doc(userId)
+//                     .collection("integrations")
+//                     .doc("secondbrain")
+//                     .collection("pages")
+//                     .doc(pid)
+//                     .set(
+//                         {
+//                             title: pageData.title,
+//                             keywords: normalized[pid] || [],
+//                         },
+//                         { merge: true }
+//                     );
+//             }
+
+//             // 키워드 캐시 업데이트
+//             const newExistingKeywords = await loadKeywordsFromCache(userId);
+//             upsertKeywords(userId, newExistingKeywords);
+
+//             // 완료 이벤트
+//             await writeUserEvent(userId, {
+//                 eventType: "generate-note-keyword-webhook",
+//                 status: "completed",
+//                 eventTitle: `${pageData.title} 노트의 키워드 추출 완료`,
+//             });
+
+//             return res.status(200).json({ message: "단일 페이지 키워드 처리 완료", pageId, keywords: normalized[pageId] });
+//         } catch (error: any) {
+//             console.error("노션 웹훅 단일 페이지 처리 실패:", error);
+
+//             // 이벤트 기록
+//             if (error.userId) {
+//                 await writeUserEvent(error.userId, {
+//                     eventType: "generate-note-keyword-webhook",
+//                     status: "failed",
+//                     eventTitle: `페이지 키워드 추출 중 오류 발생: ${error.message}`,
+//                 });
+//             }
+
+//             return res.status(500).json({ message: error.message });
+//         }
+//     }
+// ));
+
 
 // type NormalizeResult = {
 //     canonical: string;
@@ -1134,76 +1447,22 @@ async function upsertKeywords(userId: string, keywords?: string[]) {
 //     console.log(`[DEBUG] Firestore 업데이트 완료 - pageId: ${pageId}`);
 //     return { pageId, title, content, keywords };
 // }
-
-async function updateNotePropertiesInFirestore(
+async function getAndUpdatePageData(
     userId: string,
     page: any,
-    accessToken: string
+    accessToken: string,
+    options?: {
+        skipIfKeywordsExist?: boolean;
+    }
 ): Promise<{
     pageId: string;
     title: string;
     content: string;
-    keywords: string[];
+    contentHash: string;
 } | null> {
     const pageId = page.id;
 
-    // 🚫 0️⃣ Firestore에 이미 keywords 있으면 스킵
-    const pageDocRef = db.collection("users").doc(userId).collection("integrations").doc("secondbrain").collection("pages").doc(pageId);
-    const pageSnap = await pageDocRef.get();
-    if (pageSnap.exists) {
-        const data = pageSnap.data();
-        if (data?.keywords && data?.title && data?.keywords) {
-            console.log(
-                `[SKIP] pageId: ${pageId} - Firestore에 이미 KM Property 존재 (${data.keywords.length}개)`
-            );
-            return null;
-        }
-    }
-
-    // 1️⃣ 제목
-    const titleProperty =
-        page.properties["이름"] ||
-        page.properties["제목"] ||
-        page.properties["Title"];
-
-    let title = "";
-    if (
-        titleProperty &&
-        titleProperty.type === "title" &&
-        Array.isArray(titleProperty.title)
-    ) {
-        title = titleProperty.title.map((t: any) => t.plain_text).join("");
-        if (["새 문서", "Untitled"].includes(title.trim())) title = "";
-    }
-
-    // 2️⃣ 키워드 (비어 있음 확정 상태)
-    const keywords: string[] = [];
-
-    // 3️⃣ 내용 (여기부터 비싼 작업)
-    const content = await getPageContentText(pageId, accessToken);
-
-    // 4️⃣ 로그
-    console.log(`[DEBUG] updateNotePropertiesInFirestore - noteId: ${pageId}`);
-    console.log(`         title: ${title}`);
-    console.log(`         keywords: 없음 (새로 생성 예정)`);
-    console.log(`         content length: ${content.length}`);
-
-    // 5️⃣ Firestore 업데이트 (비동기)
-    updateNotePropertiesInFirestoreInternal(userId, pageId, keywords);
-
-    console.log(`[DEBUG] Firestore 업데이트 완료 - pageId: ${pageId}`);
-
-    return { pageId, title, content, keywords };
-}
-
-
-// Firestore에 실제 저장 (내부 함수)
-async function updateNotePropertiesInFirestoreInternal(
-    userId: string,
-    pageId: string,
-    keywords?: string[]
-): Promise<void> {
-    const docRef = db
+    const pageRef = db
         .collection("users")
         .doc(userId)
         .collection("integrations")
@@ -1211,17 +1470,154 @@ async function updateNotePropertiesInFirestoreInternal(
         .collection("pages")
         .doc(pageId);
 
-    // 저장할 데이터 객체 구성 (값 있는 것만)
-    const dataToSave: any = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-    if (Array.isArray(keywords) && keywords.length > 0) {
-        dataToSave.keywords = keywords;
+    // 1️⃣ 기존 데이터 조회
+    const oldSnap = await pageRef.get();
+    const oldData = oldSnap.exists ? oldSnap.data() : undefined;
+
+    const oldTitle = oldData?.title ?? "";
+    const oldContentHash = oldData?.contentHash ?? "";
+    const oldKeywords: string[] = Array.isArray(oldData?.keywords)
+        ? oldData!.keywords
+        : [];
+
+    // 1-1️⃣ keyword 이미 존재하면 skip (옵션이 true일 때만)
+    if (
+        options?.skipIfKeywordsExist === true &&
+        oldKeywords.length > 0
+    ) {
+        console.log(
+            `[SKIP] pageId: ${pageId} - keywords 이미 존재 (${oldKeywords.length}개)`
+        );
+        return null;
     }
 
-    // 값이 하나라도 있으면 Firestore에 저장
-    if (Object.keys(dataToSave).length > 1) { // updatedAt 제외한 필드가 있으면
-        await docRef.set(dataToSave, { merge: true });
+    // 2️⃣ 새 데이터 추출 (Notion)
+    const { title, content } = await extractPageTitleAndContent(
+        page,
+        accessToken
+    );
+
+    const contentHash = hashContent(content);
+
+    // 3️⃣ 변경 없음 → 스킵
+    if (title === oldTitle && contentHash === oldContentHash) {
+        console.log(`[${pageId}] 변경 없음 → 처리 패스`);
+        return null;
     }
+
+    // 4️⃣ 변경 있음 → Firestore 저장
+    await pageRef.set(
+        {
+            title,
+            contentHash,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+    );
+
+    console.log(`[${pageId}] 변경 감지 및 Firestore 업데이트 완료`);
+
+    // 5️⃣ 후속 처리를 위한 데이터 반환
+    return {
+        pageId,
+        title,
+        content,
+        contentHash,
+    };
 }
+
+async function extractPageTitleAndContent(
+    page: any,
+    accessToken: string
+): Promise<{
+    pageId: string;
+    title: string;
+    content: string;
+}> {
+    const pageId = page.id;
+
+    // 1️⃣ 제목 추출
+    const titleProperty =
+        page.properties?.["이름"] ||
+        page.properties?.["제목"] ||
+        page.properties?.["Title"];
+
+    let title = "";
+    if (
+        titleProperty?.type === "title" &&
+        Array.isArray(titleProperty.title)
+    ) {
+        title = titleProperty.title
+            .map((t: any) => t.plain_text)
+            .join("")
+            .trim();
+
+        if (["새 문서", "Untitled"].includes(title)) {
+            title = "";
+        }
+    }
+
+    // 2️⃣ 페이지 content (비싼 작업)
+    let content = await getPageContentText(pageId, accessToken);
+    console.log('extractPageTitleAndContent content =>', content);
+
+    // 아래 문구 content에서 제거
+    // ▪문서 편집
+    // ▪기타
+    // ▪AI 도구 - 문서, 기획
+    // ▪AI 도구 - 회의록 작성
+
+    // 템플릿 공통 문구 제거
+    const TEMPLATE_PHRASES = [
+        "▪문서 편집",
+        "▪기타",
+        "▪AI 도구 - 문서, 기획",
+        "▪AI 도구 - 회의록 작성",
+        "⚡ AI 도구 바로 가기"
+    ];
+
+    // 각 문구 + 앞뒤 공백/줄바꿈 제거
+    for (const phrase of TEMPLATE_PHRASES) {
+        const regex = new RegExp(`\\s*${phrase}\\s*`, "g");
+        content = content.replace(regex, "");
+    }
+
+    // 마지막에 공백 정리
+    content = content.trim();
+    console.log("extractPageTitleAndContent content =>", content);
+    return { pageId, title, content };
+}
+
+
+
+
+// Firestore에 실제 저장 (내부 함수)
+// async function updateNotePropertiesInFirestoreInternal(
+//     userId: string,
+//     pageId: string
+// //    keywords?: string[]
+// ): Promise<void> {
+//     const docRef = db
+//         .collection("users")
+//         .doc(userId)
+//         .collection("integrations")
+//         .doc("secondbrain")
+//         .collection("pages")
+//         .doc(pageId);
+
+//     docRef.set(     ,{ merge: true });
+
+//     // 저장할 데이터 객체 구성 (값 있는 것만)
+//     // const dataToSave: any = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+//     // if (Array.isArray(keywords) && keywords.length > 0) {
+//     //     dataToSave.keywords = keywords;
+//     // }
+
+//     // 값이 하나라도 있으면 Firestore에 저장
+//     // if (Object.keys(dataToSave).length > 1) { // updatedAt 제외한 필드가 있으면
+//     //     await docRef.set(dataToSave, { merge: true });
+//     // }
+// }
 
 
 
@@ -1668,7 +2064,7 @@ function similarity(a: string, b: string): number {
 // }
 
 async function requestPageKeywordsFromAI(
-    noteData: Record<string, { title?: string; content?: string; keywords: string[] }>,
+    noteData: Record<string, { title?: string; content?: string; /*keywords: string[]*/ }>,
     existingKeywords: string[]): Promise<Record<string, string[]>> {
 
     console.log('requestPageKeywordsFromAI existingKeywords =>', existingKeywords);
@@ -1984,9 +2380,9 @@ export const getKeywordGraphData = onRequest(
             const storeService = new StoreService();
             const pagesKeywords = await storeService.getNoteKeywords(userId);
             if (!pagesKeywords) {
-                return res.status(200).json({ 
+                return res.status(200).json({
                     errorCode: 200,
-                    message: "저장된 키워드가 없습니다." 
+                    message: "저장된 키워드가 없습니다."
                 });
             }
 
@@ -2271,72 +2667,72 @@ function generateKeywordGraphDataOnlyKeywordType(
 }
 
 
-export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
-    try {
-        if (req.method !== 'POST') {
-            res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
-            return;
-        }
+// export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
+//     try {
+//         if (req.method !== 'POST') {
+//             res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+//             return;
+//         }
 
-        const userId = req.body.userId;
-        const clientId = req.body.clientId;
+//         const userId = req.body.userId;
+//         const clientId = req.body.clientId;
 
-        // Authorization 헤더에서 Bearer 토큰 추출
-        const authHeader = req.headers['authorization'] as string | undefined;
-        const clientKey = authHeader?.split(' ')[1];
+//         // Authorization 헤더에서 Bearer 토큰 추출
+//         const authHeader = req.headers['authorization'] as string | undefined;
+//         const clientKey = authHeader?.split(' ')[1];
 
-        if (!userId || !clientId || !clientKey) {
-            res.status(400).json({ error: 'Missing parameters' });
-            return;
-        }
+//         if (!userId || !clientId || !clientKey) {
+//             res.status(400).json({ error: 'Missing parameters' });
+//             return;
+//         }
 
-        const ref = db
-            .collection('users')
-            .doc(userId)
-            .collection('integrations')
-            .doc('secondbrain')
-            .collection('clients')
-            .doc(clientId);
+//         const ref = db
+//             .collection('users')
+//             .doc(userId)
+//             .collection('integrations')
+//             .doc('secondbrain')
+//             .collection('clients')
+//             .doc(clientId);
 
-        const docSnap = await ref.get();
-        if (!docSnap.exists) {
-            res.status(404).json({ error: 'Client not found' });
-            return;
-        }
+//         const docSnap = await ref.get();
+//         if (!docSnap.exists) {
+//             res.status(404).json({ error: 'Client not found' });
+//             return;
+//         }
 
-        const data = docSnap.data();
+//         const data = docSnap.data();
 
-        // clientKey 검증
-        const hashedKey = createHash('sha256').update(clientKey).digest('hex');
-        if (data?.clientKey !== hashedKey) {
-            res.status(401).json({ error: 'INVALID_CLIENT_KEY' });
-            return;
-        }
+//         // clientKey 검증
+//         const hashedKey = createHash('sha256').update(clientKey).digest('hex');
+//         if (data?.clientKey !== hashedKey) {
+//             res.status(401).json({ error: 'INVALID_CLIENT_KEY' });
+//             return;
+//         }
 
-        // if (data?.revoked) {
-        //     res.status(401).json({ error: 'CLIENT_REVOKED' });
-        //     return;
-        // }
+//         // if (data?.revoked) {
+//         //     res.status(401).json({ error: 'CLIENT_REVOKED' });
+//         //     return;
+//         // }
 
-        if (data?.expiresAt.toDate() < new Date()) {
-            res.status(401).json({ error: 'CLIENT_EXPIRED' });
-            return;
-        }
+//         if (data?.expiresAt.toDate() < new Date()) {
+//             res.status(401).json({ error: 'CLIENT_EXPIRED' });
+//             return;
+//         }
 
-        // clientKey는 내려주지 않고 metadata만 반환
-        res.json({
-            clientId,
-            createdAt: data.createdAt.toDate().toISOString(),
-            expiresAt: data.expiresAt.toDate().toISOString(),
-            lastAccessAt: data.lastAccessAt,
-            userAgent: data.userAgent,
-            //revoked: data.revoked,
-        });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-}));
+//         // clientKey는 내려주지 않고 metadata만 반환
+//         res.json({
+//             clientId,
+//             createdAt: data.createdAt.toDate().toISOString(),
+//             expiresAt: data.expiresAt.toDate().toISOString(),
+//             lastAccessAt: data.lastAccessAt,
+//             userAgent: data.userAgent,
+//             //revoked: data.revoked,
+//         });
+//     } catch (e) {
+//         console.error(e);
+//         res.status(500).json({ error: 'Internal Server Error' });
+//     }
+// }));
 
 
 // export const verifyClientKey = functions.https.onRequest(
@@ -2398,7 +2794,7 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 
 /*
 
-0. export updateNotePropertiesInFirestore
+0. export extractPageTitleAndContent
     notion page에서 페이지 제목, 페이지 내용, '키워드' => secondrain/pages/{noteId}/title, content, keyword 에 저장
 1. export updateAllNotePropertiesInFirestore : notion note database에서 모든 노트 읽어서 필요한 필드를 firestore에 저장 
 2. generateNoteKMProperties : secondrain/pages/{noteId}/title, content, keyword => secondrain/pages/{noteId}/keywords, keywords, domain 에 만들어서 넣음
@@ -2424,80 +2820,5 @@ export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
 
 
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 할일
-
-// #todo
-** 연결 페이지 html 작업 
-=> 노션 hook 이벤트 처리
-새로운 이벤트가 오면 1개 개별 변환하기
-
-=======================================================================================================
-
->>> 마무리
-
-=======================================================================================================
->>> 검수
-- 숫자 입력창 영어 입력이 됨 (아이폰 검수)
-- 이메일 입력창 → 아이폰에서 숫자로 나옴 (아이폰 검수)
-
-
->>> 템플릿 작업
-- 각종 불편, 유료, 개선 접수 => 탈리폼으로 함
-- 안내 추가(임시)
-    - 새로운 노트를 만들거나 수정하면 자동으로 AI 태깅 작업이 진행됩니다. 
-    - 초기 변환 안내하기
-        - 변환 작업에 시간이 매우 오래 걸려, 기존 노트들을 한번에 변환하지 않습니다. 
-        - 다만, 새로운 노트를 만들거나 페이지가 수정되면 해당 페이지에 대하여 바로 작업 됩니다. 
-    - 초기에 content -> keyword작업 
-        - 오픈 후 : 초기화 후 재생성 : 프로그래스, 수종 작업 버튼, 전체 전환율
-        - 오픈 전 : 
-            - 초기화 후 재생성 작업 없음 // 신규 작업 부터 데이타 반영됨 // 기존 노트 반영은 기다려달라
-            - 설치후에는 10개 페이지만 반영됨 // 한번 버튼 누루면 다시 5개
-            - 노트가 삭제 되었을때
-
-    - AI 사용 회수 관련 안내
-    - 키워드 데이타 생성 관련 오류 신고
-    - 템플릿 두개 선택 주의 설명
-    - 베타 표시
-    - 안내 : 앱이 업데이트 되면 localhost날아가나 => 인증 완료 되면 -> 연결 다시 하나? / 기존 연결자 되살리기
-    - 키워드 생성작업 않은 노트를 확인하고 추가로 5개의 노트는 변환합니다. 추가 5개 번환하기 버튼(임시) 
-    - 라이트 버전 
-    - 일기예보 탭플릿에 넣었을 때 문제
-
-
-
-======================================================================================================= 1.1차 / 오픈 직후 바로 1주일이내 진행
-- 강제 업데이트
-- getSecondBrainIntegration 보안을 위해서 서버 함수로 변경, clientKey인증
-
-
-======================================================================================================= 2차
-- 창열기 메뉴 - 아이프레임에서만 나오는 메뉴 // 모바일에서 숨김, 웹에서 숨김, 노션 앱에서 숨김
-- 초기 그래프 로딩 속도 빠르게 
-    - 그래프 데이타 캐시 2차
-    - api 호출 중 로딩 상태 표시 
-
-키워드 수정 
-        - 이미 생성된 키워드에서 삭제 하면 -> 삭제
-        - 추가하면 추가  
-- 전화 인증
-- 도메인 ai 생성 (2차)
-- 키워드 반영 / 머지  => ai가 하는 것이라 => 내가 넣은 키워드를 삭제 했음 !!!!!!!!!!!!!!!(키워드는 개별 수정하지 마라) 2차에서 머지하겠음.
-- 검색 - 키워드 기반 (2차)
-- [ ]  템플릿 연결 안내 보강(2차) - 첫 화면에서 워크스페이스를 선택함 > 연결 할 템플릿을 선택함 밑에 선택한 후 페이지에서 이 LifeUp템플릿
-- 설정 
-    - [ ]  유효하지 않은 클라이언트 확인 하고 삭제하기(2차)
-    - 노트 변환상태 / 변환 하기 메뉴  
-    - 이벤트 표시 (2차)
-    - 크레딧 관리(2차)
-    - 모바일에서 설정하기 : 세션 - email연결 필요 (2차)
-    - [ ]  메뉴 - 버전 확인 / 업데이트(2차)
-- keyword 저장하면 최근노트로 나옴 : 현재는 어쩔 수 없음 (2차)
-- 제목 자동 작성 기능 (2차)
-- 컨셉 생성 옵션 사용자 설정 (2차)
-- 키워드 수정 시 반영된게 함 (2차)
-- 키워드 normalizeConcept(2차) - 번역
-- 도메인 => 범주 
 
 */

@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
-    <g data-name="src_warning" style="opacity:.6">
-        <path style="fill:none" d="M0 0h22v22H0z"/>
-        <path d="M11 0A11 11 0 1 1 0 11 11 11 0 0 1 11 0z" style="fill:#e02d3f"/>
-        <path data-name="패스 1390" d="M7574-2448v-4h4v4zm0-6v-10h4v10z" transform="translate(-7565 2467)" style="fill:#fcfcfc"/>
-    </g>
-</svg>

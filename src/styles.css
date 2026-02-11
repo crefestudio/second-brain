@@ -19,3 +19,33 @@ body {
   background-color: #000000; /* 전체 배경: 다크 */
   color: #EEEEEE;             /* 기본 글자 색상 */
 }
+
+/* =========================
+   전체 스크롤바 스타일
+   ========================= */
+
+.sb-change-url::-webkit-scrollbar,
+.connect-container::-webkit-scrollbar,
+.toast::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sb-change-url::-webkit-scrollbar-track,
+.connect-container::-webkit-scrollbar-track,
+.toast::-webkit-scrollbar-track {
+  background: #111;
+}
+
+.sb-change-url::-webkit-scrollbar-thumb,
+.connect-container::-webkit-scrollbar-thumb,
+.toast::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 4px;
+  border: 2px solid #111;
+}
+
+.sb-change-url::-webkit-scrollbar-thumb:hover,
+.connect-container::-webkit-scrollbar-thumb:hover,
+.toast::-webkit-scrollbar-thumb:hover {
+  background-color: #888;
+}

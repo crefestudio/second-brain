@@ -8,6 +8,7 @@
   color: white;
 }
 
+
 .center-box {
   display: flex;
   flex-direction: column; /* ⬅️ 세로로 */
@@ -33,6 +34,7 @@
 
 .connect-container {
   text-align: center;
+  
 }
 
 .connect-btn {
@@ -481,6 +483,9 @@ toast
   opacity: 0;
   pointer-events: none;
 
+  box-sizing: border-box;  /* 패딩 포함 폭 계산 */
+  word-break: break-word;  /* 긴 텍스트 줄바꿈 */
+  
   transition:
     opacity 0.25s ease,
     transform 0.25s ease;
@@ -490,6 +495,16 @@ toast
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+@media (max-width: 480px) {
+  .toast {
+    left: 50%; /* 중앙 유지 */
+    transform: translateX(-50%) translateY(10px);
+    width: 90vw;      /* 화면 폭의 90%로 제한 */
+    max-width: none;   /* max-width 제거 */
+  }
+}
+
 
 /* =====================================================
    Change Client URL Step (isolated)
@@ -501,8 +516,10 @@ toast
   line-height: 0.8em;
   gap: 0px;
   padding: 0 20px;
-}
 
+  max-height: 80vh;      /* 화면 높이의 80%까지만 표시 */
+  overflow-y: auto;      /* 내용이 넘치면 스크롤 */
+}
 /* 제목 */
 .sb-change-url .title-text {
   font-size: 20px;
@@ -546,7 +563,7 @@ toast
 
 /* 이미지 자리 */
 .sb-change-url .image-placeholder {
-  margin: 12px 0 3px;
+  /* margin: 12px 0 3px;
   height: 90px;
 
   display: flex;
@@ -558,5 +575,19 @@ toast
 
   background: #0f0f10;
   border: 1px dashed #333;
-  border-radius: 8px;
+  border-radius: 8px; */
+}
+
+
+.image-placeholder {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px;
+}
+
+.guide-image {
+  max-width: 332px;
+  height: auto;
+  display: block;
 }
