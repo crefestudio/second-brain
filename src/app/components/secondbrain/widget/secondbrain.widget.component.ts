@@ -464,9 +464,9 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         // const clientKey = localStorage.getItem(clientId);
         // _log('getLocalSession clientKey =>', clientKey);
         // if (!clientKey) return null;
-
         let raw = localStorage.getItem(clientId);
-        _log('getLocalSession raw =>', raw);
+        // this.showToast(clientId + '/' + raw, 10000);
+        // _log('getLocalSession raw =>', raw);
         if (!raw) return null;
 
         try {
@@ -497,6 +497,10 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             clientId,
             JSON.stringify(session)
         );
+
+        let raw = localStorage.getItem(clientId);
+        this.showToast(clientId + '/' + JSON.stringify(session), 5000);
+        _log('saveLocalSession raw =>', raw);
     }
 
     clearLocalSession(clientId: string): void {
