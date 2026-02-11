@@ -17,7 +17,7 @@ export const routes: Routes = [
 		component: SecondBrainWidgetComponent,
 	},
 	{
-		path: 'secondbrain/widget/:clientId',
+		path: 'secondbrain/widget/:userId',
 		component: SecondBrainWidgetComponent,
 	},
 	{

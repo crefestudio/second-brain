@@ -372,17 +372,25 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             .get();
 
         let userId: string;
-
+        let accessKeyData: CreateUserAccessKeyResult;
         // 2️⃣ user가 이미 존재하면 재사용
-        if (!userQuerySnap.empty) {
-            userId = userQuerySnap.docs[0].id;
-        } else {
+        if (userQuerySnap.empty) {
             // 3️⃣ 없으면 새 user 생성
             userId = nanoid(); //crypto.randomUUID();
             await db.collection('users').doc(userId).set({
                 nomalizedEMail,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+        } else {
+            const userDoc = userQuerySnap.docs[0];
+            userId = userDoc.id;   
+        } 
+        const userDoc = userQuerySnap.docs[0];
+        let userData: any = userDoc.data();
+        if (userData.accessKey && userData.expiresAt) {
+            accessKeyData = { accessKey: userDoc.data().accessKey, expiresAt: userDoc.data().expiresAt };
+        } else {
+            accessKeyData = await UserService.createUserAccessKey(userId);
         }
 
         // 4️⃣ clientId는 항상 새로 생성
@@ -396,13 +404,12 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         //     userAgent: req.get('user-agent') || undefined,
         // });
 
-        let resultUserAccessKey: CreateUserAccessKeyResult = await UserService.createUserAccessKey(userId);
 
         // 5️⃣ 사용 후 인증번호 삭제
         await docRef.delete();
 
         // 6️⃣ 성공 결과 반환
-        return res.status(200).json({ userId, accessKey: resultUserAccessKey.accessKey });
+        return res.status(200).json({ userId, accessKey: accessKeyData.accessKey });
     } catch (error: any) {
         console.error('verifyCode error:', error);
         return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
@@ -886,6 +893,9 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 300, me
             if (!sbDoc.exists) continue;
 
             const sbData = sbDoc.data();
+
+            // 이걸로 유저를 찾는 것은 위험하다.
+            // 1:1관계이니까 상괸없다. 
             if (sbData?.noteDatabaseId === databaseId) {
                 userId = userDoc.id;
                 accessToken = sbData?.accessToken;
@@ -2665,6 +2675,72 @@ function generateKeywordGraphDataOnlyKeywordType(
 
     return { nodes, edges };
 }
+
+export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+            return;
+        }
+
+        const userId = req.body.userId;
+
+        // Authorization 헤더에서 Bearer 토큰 추출
+        const authHeader = req.headers['authorization'] as string | undefined;
+        const accessKey = authHeader?.split(' ')[1];
+
+        if (!userId || !accessKey) {
+            res.status(400).json({ error: 'Missing parameters' });
+            return;
+        }
+
+        const ref = db
+            .collection('users')
+            .doc(userId)
+            // .collection('integrations')
+            // .doc('secondbrain')
+            // .collection('clients')
+            // .doc(clientId);
+
+        const docSnap = await ref.get();
+        if (!docSnap.exists) {
+            res.status(404).json({ error: 'Client not found' });
+            return;
+        }
+
+        const data = docSnap.data();
+
+        // clientKey 검증
+        //const hashedKey = createHash('sha256').update(accessKey).digest('hex');
+        if (data?.accessKey !== accessKey) {
+            res.status(401).json({ error: 'INVALID_USER_ACCESS_KEY' });
+            return;
+        }
+
+        // if (data?.revoked) {
+        //     res.status(401).json({ error: 'CLIENT_REVOKED' });
+        //     return;
+        // }
+
+        if (data?.expiresAt.toDate() < new Date()) {
+            res.status(401).json({ error: 'USER_ACCESS_KEY_EXPIRED' });
+            return;
+        }
+
+        // clientKey는 내려주지 않고 metadata만 반환
+        res.json({
+            userId,
+            createdAt: data.createdAt.toDate().toISOString(),
+            // expiresAt: data.expiresAt.toDate().toISOString(),
+            // lastAccessAt: data.lastAccessAt,
+            // userAgent: data.userAgent,
+            //revoked: data.revoked,
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+}));
 
 
 // export const getSecondBrainClient = onRequest(withCors(async (req, res) => {

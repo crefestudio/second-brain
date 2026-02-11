@@ -10,14 +10,15 @@ const SB_USER_ID_KEY = 'sb_user_id';
 
 import { _log } from '../lib/cf-common/cf-common';
 
-export interface SecondBrainClient {
-    clientId: string;        // "24964e09-0f43-4163-8025-ac9bbcf02214"
-    origin: string;          // "http://localhost:4200"
-    userAgent: string;       // browser UA
-    //revoked: boolean;        // false
+export interface SecondBrainUser {
+    userId: string
+    // clientId: string;        // "24964e09-0f43-4163-8025-ac9bbcf02214"
+    // origin: string;          // "http://localhost:4200"
+    // userAgent: string;       // browser UA
+    // //revoked: boolean;        // false
 
     createdAt: Timestamp;    // Firestore timestamp
-    lastAccessAt: Timestamp; // Firestore timestamp
+    // lastAccessAt: Timestamp; // Firestore timestamp
 }
 
 export interface Node {
@@ -71,31 +72,58 @@ export class UserService {
         };
     }
 
-    async getSecondBrainClient(
+    // async getSecondBrainClient(
+    //     userId: string,
+    //     clientId: string,
+    //     clientKey: string
+    // ): Promise<SecondBrainClient | null> {
+    //     if (!userId || !clientId || !clientKey) return null;
+
+    //     try {
+    //         const result = await firstValueFrom(
+    //             this.http.post<SecondBrainClient> (
+    //                 `${this.functionsBaseUrl}/getSecondBrainClient`,
+    //                 { userId, clientId },
+    //                 {
+    //                     headers: { 
+    //                         'Authorization': `Bearer ${clientKey}`
+    //                     }
+    //                 }
+    //             )
+    //         );
+    //         return result;
+    //     } catch (error: any) {
+    //         console.error('getSecondBrainClient failed', error.error?.error || error.message);
+    //         return null;
+    //     }
+    // }
+
+    async checkUserAccessKey(
         userId: string,
-        clientId: string,
-        clientKey: string
-    ): Promise<SecondBrainClient | null> {
-        if (!userId || !clientId || !clientKey) return null;
+        accessKey: string
+    ): Promise<SecondBrainUser | null> {
+        if (!userId || !accessKey) return null;
 
         try {
             const result = await firstValueFrom(
-                this.http.post<SecondBrainClient> (
-                    `${this.functionsBaseUrl}/getSecondBrainClient`,
-                    { userId, clientId },
+                this.http.post<SecondBrainUser> (
+                    `${this.functionsBaseUrl}/checkUserAccessKey`,
+                    { userId },
                     {
                         headers: { 
-                            'Authorization': `Bearer ${clientKey}`
+                            'Authorization': `Bearer ${accessKey}`
                         }
                     }
                 )
             );
             return result;
         } catch (error: any) {
-            console.error('getSecondBrainClient failed', error.error?.error || error.message);
+            console.error('checkUserAccessKey failed', error.error?.error || error.message);
             return null;
         }
     }
+
+    
 
     /*
     verifyClientKey     아직 구현 안함 / getSecondBrainClient 이거 호출 하면 clientKey 유효성 체크됨
@@ -125,33 +153,33 @@ export class UserService {
     //     return true;
     // }
    
-    static async deleteSecondBrainClientKey(
-        userId: string,
-        clientId: string
-        ): Promise<boolean> {
-        if (!userId || !clientId) return false;
+    // static async deleteUserAccessKey(
+    //     userId: string,
+    //     clientId: string
+    //     ): Promise<boolean> {
+    //     if (!userId /*|| !clientId*/) return false;
 
-        const docRef = doc(
-            firestore,
-            'users',
-            userId,
-            'integrations',
-            'secondbrain',
-            'clients',
-            clientId
-        );
+    //     const docRef = doc(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         // 'integrations',
+    //         // 'secondbrain',
+    //         // 'clients',
+    //         // clientId
+    //     );
 
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) return false;
+    //     const docSnap = await getDoc(docRef);
+    //     if (!docSnap.exists()) return false;
 
-        // clientKey 필드만 삭제
-        await updateDoc(docRef, {
-            clientKey: deleteField(),
-            expiresAt: deleteField()
-        });
+    //     // clientKey 필드만 삭제
+    //     await updateDoc(docRef, {
+    //         accessKey: deleteField(),
+    //         expiresAt: deleteField()
+    //     });
 
-        return true;
-    }
+    //     return true;
+    // }
 
 
     /////////////////////////////////////////////////////////////////////////////////////
@@ -185,12 +213,12 @@ export class UserService {
     }
 
     // 인증번호 확인
-    async verifyCode(email: string, code: string): Promise<{ userId: string; clientId: string } | null> {
+    async verifyCode(email: string, code: string): Promise<{ userId: string, accessKey: string, message?: string } | null> {
         if (!email || !code) return null;
 
         try {
             const result = await firstValueFrom(
-                this.http.post<{ userId: string; clientId: string }>(
+                this.http.post<{ userId: string; accessKey: string }>(
                     `${this.functionsBaseUrl}/verifyCode`,
                     { email, code }
                 )
