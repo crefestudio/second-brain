@@ -6,9 +6,9 @@
 
 
 export const _log = (...args: any[]) => {
-  if (typeof ngDevMode === 'undefined' || ngDevMode) {
+  //if (typeof ngDevMode === 'undefined' || ngDevMode) {
     console.log(...args);
-  }
+  //}
 };
 
 // log

@@ -89,7 +89,7 @@ export class SecondBrainConnectComponent implements OnInit {
             return;
         }
 
-        if (data.accessToken) {
+        if (data.accessToken && data.noteDatabaseId) {
             this.state = 'connected';
         } else {
             this.state = 'notconnected';

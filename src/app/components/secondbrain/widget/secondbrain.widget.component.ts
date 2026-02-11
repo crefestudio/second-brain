@@ -436,6 +436,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             
         } else if (!result || result.message) {
             console.warn('인증 실패');
+            this.initStateData();
             this.errorMessage = result && result.message ? result.message : '인증에 실패하였습니다. 문제가 지속되면 관리자 ( toto791@gmail.com) 에게 문의바랍니다.';
         }
         this.isVerifying = false;

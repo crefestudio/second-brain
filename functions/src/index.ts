@@ -6,7 +6,7 @@ import "dotenv/config";
 import { defineSecret } from "firebase-functions/params";
 //import * as functions from 'firebase-functions';
 import * as crypto from 'crypto';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes } from 'crypto';
 import OpenAI from "openai";
 import { customAlphabet } from 'nanoid';
 
@@ -228,16 +228,16 @@ class UserService {
     //     }, { merge: true });
     // }
 
-    static async createUserAccessKey(userId: string/*, clientId: string*/): Promise<CreateUserAccessKeyResult> {
+    static async createAndSetUserAccessKey(userId: string): Promise<CreateUserAccessKeyResult> {
         if (!userId /*|| !clientId*/) {
             throw new Error('Missing userId or userId');
         }
 
         // 랜덤 32바이트 clientKey 생성
         const accessKey = randomBytes(32).toString('hex');
-        const hashedKey = createHash('sha256').update(accessKey).digest('hex');
+        //const hashedKey = createHash('sha256').update(accessKey).digest('hex');
 
-        const now = admin.firestore.Timestamp.now();
+        //const now = admin.firestore.Timestamp.now();
         const expiresAt = admin.firestore.Timestamp.fromDate(
             new Date(Date.now() + 1000 * 60 * 60 * 24 * 30) // 30일
         );
@@ -245,15 +245,11 @@ class UserService {
         const ref = db
             .collection('users')
             .doc(userId)
-            // .collection('integrations')
-            // .doc('secondbrain')
-            // .collection('clients')
-            // .doc(clientId);
 
         await ref.set({
-            accessKey: hashedKey,
-            createdAt: now,
+            accessKey: accessKey,
             expiresAt
+            //createdAt: now,
         }, {
             merge: true
         });
@@ -268,6 +264,73 @@ class UserService {
     //     return docSnap.exists ? docSnap.data() : null;
     // }
 }
+
+export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+            return;
+        }
+
+        const userId = req.body.userId;
+
+        // Authorization 헤더에서 Bearer 토큰 추출
+        const authHeader = req.headers['authorization'] as string | undefined;
+        const accessKey = authHeader?.split(' ')[1];
+
+        if (!userId || !accessKey) {
+            res.status(400).json({ error: 'Missing parameters' });
+            return;
+        }
+
+        const ref = db
+            .collection('users')
+            .doc(userId)
+            // .collection('integrations')
+            // .doc('secondbrain')
+            // .collection('clients')
+            // .doc(clientId);
+
+        const docSnap = await ref.get();
+        if (!docSnap.exists) {
+            res.status(404).json({ error: 'Client not found' });
+            return;
+        }
+
+        const data = docSnap.data();
+
+        // clientKey 검증
+        //const hashedKey = createHash('sha256').update(accessKey).digest('hex');
+        if (data?.accessKey !== accessKey) {
+            res.status(401).json({ error: 'INVALID_USER_ACCESS_KEY' });
+            return;
+        }
+
+        // if (data?.revoked) {
+        //     res.status(401).json({ error: 'CLIENT_REVOKED' });
+        //     return;
+        // }
+
+        if (data?.expiresAt.toDate() < new Date()) {
+            res.status(401).json({ error: 'USER_ACCESS_KEY_EXPIRED' });
+            return;
+        }
+
+        // clientKey는 내려주지 않고 metadata만 반환
+        res.json({
+            userId,
+            createdAt: data.createdAt.toDate().toISOString(),
+            // expiresAt: data.expiresAt.toDate().toISOString(),
+            // lastAccessAt: data.lastAccessAt,
+            // userAgent: data.userAgent,
+            //revoked: data.revoked,
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+}));
+
 
 // ----------------------
 // Integration 데이터 생성
@@ -347,7 +410,12 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             return res.status(200).json({ message: '인증번호를 먼저 요청해주세요.' });
         }
 
-        const data = docSnap.data();
+        const data = docSnap.data() as {
+                code: string;
+                expiresAt: admin.firestore.Timestamp;
+                attempts?: number;
+            };
+
         const hashedInput = crypto.createHash('sha256').update(nomalizedCode).digest('hex');
 
         // 만료 확인
@@ -374,23 +442,30 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         let userId: string;
         let accessKeyData: CreateUserAccessKeyResult;
         // 2️⃣ user가 이미 존재하면 재사용
-        if (userQuerySnap.empty) {
-            // 3️⃣ 없으면 새 user 생성
-            userId = nanoid(); //crypto.randomUUID();
+        if (userQuerySnap.empty || userQuerySnap.docs.length === 0) {
+            userId = nanoid();
             await db.collection('users').doc(userId).set({
-                nomalizedEMail,
+                email: nomalizedEMail,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            accessKeyData = await UserService.createAndSetUserAccessKey(userId);
         } else {
             const userDoc = userQuerySnap.docs[0];
-            userId = userDoc.id;   
-        } 
-        const userDoc = userQuerySnap.docs[0];
-        let userData: any = userDoc.data();
-        if (userData.accessKey && userData.expiresAt) {
-            accessKeyData = { accessKey: userDoc.data().accessKey, expiresAt: userDoc.data().expiresAt };
-        } else {
-            accessKeyData = await UserService.createUserAccessKey(userId);
+            if (!userDoc) {
+                throw new Error('User document unexpectedly missing');
+            }
+
+            userId = userDoc.id;
+            const userData = userDoc.data() as any;
+
+            if (userData?.accessKey && userData?.expiresAt) {
+                accessKeyData = {
+                    accessKey: userData.accessKey,
+                    expiresAt: userData.expiresAt,
+                };
+            } else {
+                accessKeyData = await UserService.createAndSetUserAccessKey(userId);
+            }
         }
 
         // 4️⃣ clientId는 항상 새로 생성
@@ -2676,71 +2751,6 @@ function generateKeywordGraphDataOnlyKeywordType(
     return { nodes, edges };
 }
 
-export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
-    try {
-        if (req.method !== 'POST') {
-            res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
-            return;
-        }
-
-        const userId = req.body.userId;
-
-        // Authorization 헤더에서 Bearer 토큰 추출
-        const authHeader = req.headers['authorization'] as string | undefined;
-        const accessKey = authHeader?.split(' ')[1];
-
-        if (!userId || !accessKey) {
-            res.status(400).json({ error: 'Missing parameters' });
-            return;
-        }
-
-        const ref = db
-            .collection('users')
-            .doc(userId)
-            // .collection('integrations')
-            // .doc('secondbrain')
-            // .collection('clients')
-            // .doc(clientId);
-
-        const docSnap = await ref.get();
-        if (!docSnap.exists) {
-            res.status(404).json({ error: 'Client not found' });
-            return;
-        }
-
-        const data = docSnap.data();
-
-        // clientKey 검증
-        //const hashedKey = createHash('sha256').update(accessKey).digest('hex');
-        if (data?.accessKey !== accessKey) {
-            res.status(401).json({ error: 'INVALID_USER_ACCESS_KEY' });
-            return;
-        }
-
-        // if (data?.revoked) {
-        //     res.status(401).json({ error: 'CLIENT_REVOKED' });
-        //     return;
-        // }
-
-        if (data?.expiresAt.toDate() < new Date()) {
-            res.status(401).json({ error: 'USER_ACCESS_KEY_EXPIRED' });
-            return;
-        }
-
-        // clientKey는 내려주지 않고 metadata만 반환
-        res.json({
-            userId,
-            createdAt: data.createdAt.toDate().toISOString(),
-            // expiresAt: data.expiresAt.toDate().toISOString(),
-            // lastAccessAt: data.lastAccessAt,
-            // userAgent: data.userAgent,
-            //revoked: data.revoked,
-        });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-}));
 
 
 // export const getSecondBrainClient = onRequest(withCors(async (req, res) => {
