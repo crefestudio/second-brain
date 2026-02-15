@@ -163,7 +163,7 @@ export const notionOAuthCallback = onRequest(
     withCors(async (req, res) => {
         const code = req.query.code as string | undefined;
         const userId = (req.query.state as string) || "default_user";
-
+        if (!userId) return res.status(400).send("Missing authorization code");
         if (!code) return res.status(400).send("Missing authorization code");
 
         const clientId = process.env.NOTION_CLIENT_ID!;
@@ -626,19 +626,49 @@ class NotionService {
     }
 
 
+    // 추가하는 방식으로 함수
 
-    static async applyKeywordsToNotionPages(accessToken: string, aiResultKeyword: Record<string, string[]>) {
+    // static async applyKeywordsToNotionPages(accessToken: string, aiResultKeyword: Record<string, string[]>) {
+
+    //     for (const [pageId, keywords] of Object.entries(aiResultKeyword)) {
+    //         if (!keywords || keywords.length === 0) continue;
+
+    //         const cleanedKeywords = aiResultKeyword[pageId].flatMap(k =>
+    //             k.split(',').map(s => s.trim()).filter(Boolean)
+    //         );
+
+    //         const notion = new Client({
+    //             auth: accessToken,
+    //         });
+
+    //         try {
+    //             await notion.pages.update({
+    //                 page_id: pageId,
+    //                 properties: {
+    //                     키워드: {
+    //                         multi_select: cleanedKeywords.map(name => ({ name }))
+    //                     },
+    //                 },
+    //             });
+    //             console.log(`✅ 키워드 반영 완료: ${pageId}`);
+    //         } catch (error) {
+    //             console.error(`❌ 키워드 반영 실패: ${pageId}`, error);
+    //         }
+    //     }
+    // }
+
+    // 삭제하고 다시 넣는 방식
+    static async applyKeywordsToNotionPages(
+        accessToken: string,
+        aiResultKeyword: Record<string, string[]>
+    ) {
+        const notion = new Client({ auth: accessToken });
 
         for (const [pageId, keywords] of Object.entries(aiResultKeyword)) {
-            if (!keywords || keywords.length === 0) continue;
-
-            const cleanedKeywords = aiResultKeyword[pageId].flatMap(k =>
-                k.split(',').map(s => s.trim()).filter(Boolean)
-            );
-
-            const notion = new Client({
-                auth: accessToken,
-            });
+            // 키워드 정리 (없으면 빈 배열)
+            const cleanedKeywords = (keywords ?? [])
+                .flatMap(k => k.split(",").map(s => s.trim()))
+                .filter(Boolean);
 
             try {
                 await notion.pages.update({
@@ -646,15 +676,22 @@ class NotionService {
                     properties: {
                         키워드: {
                             multi_select: cleanedKeywords.map(name => ({ name }))
+                            // 👆 빈 배열이면 기존 키워드 전부 제거됨
                         },
                     },
                 });
-                console.log(`✅ 키워드 반영 완료: ${pageId}`);
+
+                console.log(
+                    cleanedKeywords.length > 0
+                        ? `✅ 키워드 교체 완료: ${pageId}`
+                        : `🧹 키워드 전체 삭제 완료: ${pageId}`
+                );
             } catch (error) {
                 console.error(`❌ 키워드 반영 실패: ${pageId}`, error);
             }
         }
     }
+
 }
 
 
@@ -933,7 +970,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
 const DEBOUNCE_DELAY = 30 * 1000; // 3초: 마지막 이벤트 후 대기 시간
 
 // #webhook
-export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 300, memory: "512MiB" }, withCors(async (req, res) => {
+export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, memory: "512MiB" }, withCors(async (req, res) => {
     const event = req.body;
     console.log("[Notion Webhook Payload]", event);
 

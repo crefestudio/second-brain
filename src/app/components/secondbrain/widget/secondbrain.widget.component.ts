@@ -293,7 +293,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         // clientKey 체크
         const session: SecondBrainLocalSession | null = this.getLocalSession(this.userId);        
         if (!session || !session.accessKey) {
-            this.showToast('이 장치의 인증 정보가 확인되지 않습니다. 보안을 위해 다시 인증해 주세요.<br>(장치별 연결 유효기간은 1개월입니다.)');
+            this.showToast('이 장치의 인증 정보가 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.');
             this.state = 'connect-button'; // 세션이 없는 상태
             this.clearLocalSession(this.userId);
             return false;
@@ -317,7 +317,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         _log('sesstionStateProc user =>', user);
         if (!user || !user.userId) {
             this.state = 'connect-button';
-            this.errorMessage = '이 장치의 연결이 해지되었습니다.<br>보안을 위해 연결 유효기간은 한 장치당 1개월입니다.<br>다시 연결하려면 이메일 인증을 진행해 주세요.';
+            this.errorMessage = '인증 정보가 만료되었거나 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.<br>(연결 유효기간: 1개월)';
             this.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
             return false;
         }

@@ -4,7 +4,7 @@ import { Routes } from '@angular/router';
 
 import { SecondBrainWidgetComponent } from './components/secondbrain/widget/secondbrain.widget.component'; 
 import { SecondBrainSetupComponent } from './components/secondbrain/setup/secondbrain.setup.component'; 
-import { SecondBrainConnectComponent } from './components/secondbrain/connect/secondbrain.connectcomponent'; 
+import { SecondBrainConnectComponent } from './components/secondbrain/connect/secondbrain.connect.component'; 
 import { SecondBrainOauthSuccessComponent } from './components/secondbrain/oauth-success/secondbrain.oauth-success.component'; 
 
 export const routes: Routes = [
