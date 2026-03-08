@@ -745,6 +745,33 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
             // 🔥 hover 강조 적용
             this.applyHoverHighlight(network, this.graphData.nodes, this.graphData.edges);
+
+            // 
+            network.on("click", (params: any) => {
+                if (!params.nodes.length) return;
+
+                const nodeId = params.nodes[0];
+                const node: any = this.graphData.nodes.get(nodeId);
+
+                // page 노드이면서 notionPageId 있을 때만 실행
+                if (node?.group === "page" && node?.notionPageId) {
+                    const cleanPageId = node.notionPageId.replace(/-/g, "");
+                    const notionUrl = `https://www.notion.so/${cleanPageId}`;
+                    window.open(notionUrl, "_blank");
+                }
+            });
+
+            network.on("hoverNode", (params: any) => {
+                const node: any = this.graphData.nodes.get(params.node);
+
+                if (node?.group === "page") {
+                    this.graphContainer.nativeElement.style.cursor = "pointer";
+                }
+            });
+
+            network.on("blurNode", () => {
+                this.graphContainer.nativeElement.style.cursor = "default";
+            });
         } catch (err) {
             console.error("그래프 로드 중 오류 발생:", err);
         }

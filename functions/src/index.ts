@@ -197,6 +197,12 @@ export const notionOAuthCallback = onRequest(
             noteDatabaseId: noteDatabaseId
         });
 
+        await db.collection("notionDatabaseMap").doc(noteDatabaseId).set({
+            userId,
+            accessToken: notionToken.access_token,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
         // // 처음 한번 기존 노트에 키워드를 가져와서 저장한다. 
         // await NotionService.genetateNotionNoteKMData(notionToken.access_token, userId, noteDatabaseId);
 
@@ -265,7 +271,7 @@ class UserService {
     // }
 }
 
-export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
+export const checkUserAccessKey = onRequest( withCors(async (req, res) => {
     try {
         if (req.method !== 'POST') {
             res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
@@ -967,14 +973,14 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
 
 
 
-const DEBOUNCE_DELAY = 30 * 1000; // 3초: 마지막 이벤트 후 대기 시간
+const DEBOUNCE_DELAY = 60 * 1000; // 3초: 마지막 이벤트 후 대기 시간
 
 // #webhook
 export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, memory: "512MiB" }, withCors(async (req, res) => {
     const event = req.body;
-    console.log("[Notion Webhook Payload]", event);
+    //console.log("[Notion Webhook Payload]", event);
 
-    // 🔑 구독 인증 토큰 확인
+    // 🔑 노션에서 이 함수가 제대로 응답하는지 확인 하기 위함 용도 : 웹훅 구독 인증 토큰 확인
     if (event.type === "webhook_verification") {
         console.log("[Webhook Verification] token:", event.token);
         return res.status(200).send(event.token);
@@ -986,39 +992,75 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
     }
 
     const pageId = event.entity?.id;
-    const databaseId = event.data?.parent?.id;
+    const databaseId =
+        event.data?.parent?.database_id ??
+        event.data?.parent?.id;
 
     if (!pageId || !databaseId) {
-        return res.status(400).json({ message: "페이지 ID 또는 DB ID 누락" });
+        return res.status(200).json({ message: "missing ids" });
     }
+    res.status(200).send("ok");
 
     try {
         // ----------------------------
-        // 2️⃣ Firestore에서 userId / accessToken 찾기
+        // Firestore에서 userId / accessToken 찾기
         // ----------------------------
-        const usersSnapshot = await db.collection("users").get();
+
         let userId: string | null = null;
         let accessToken: string | null = null;
 
-        for (const userDoc of usersSnapshot.docs) {
-            const sbDoc = await userDoc.ref.collection("integrations").doc("secondbrain").get();
-            if (!sbDoc.exists) continue;
+        // 1️⃣ 빠른 lookup
+        const mapRef = db.collection("notionDatabaseMap").doc(databaseId);
+        const mapDoc = await mapRef.get();
 
-            const sbData = sbDoc.data();
+        if (mapDoc.exists) {
+            const data = mapDoc.data();
+            userId = data?.userId;
+            accessToken = data?.accessToken;
+        }
 
-            // 이걸로 유저를 찾는 것은 위험하다.
-            // 1:1관계이니까 상괸없다. 
-            if (sbData?.noteDatabaseId === databaseId) {
-                userId = userDoc.id;
-                accessToken = sbData?.accessToken;
-                break;
+        // 2️⃣ fallback (기존 구조)
+        if (!userId || !accessToken) {
+            console.log(`[Webhook] mapping 없음 → fallback search`);
+
+            const usersSnapshot = await db.collection("users").get();
+
+            for (const userDoc of usersSnapshot.docs) {
+                const sbDoc = await userDoc.ref
+                    .collection("integrations")
+                    .doc("secondbrain")
+                    .get();
+
+                if (!sbDoc.exists) continue;
+
+                const sbData = sbDoc.data();
+
+                if (sbData?.noteDatabaseId === databaseId) {
+                    userId = userDoc.id;
+                    accessToken = sbData?.accessToken;
+
+                    // 찾았으면 mapping 생성 (자동 마이그레이션)
+                    await mapRef.set(
+                        {
+                            userId,
+                            accessToken,
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                        },
+                        { merge: true }
+                    );
+
+                    console.log(`[Webhook] mapping 자동 생성: ${databaseId}`);
+                    break;
+                }
             }
         }
 
         if (!userId || !accessToken) {
-            return res.status(404).json({ message: "해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음" });
+            return res.status(404).json({
+                message: "해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음",
+            });
         }
-
+        
         // ----------------------------
         // 3️⃣ Firestore에 이벤트 큐 기록 (마지막 이벤트 덮어쓰기)
         // ----------------------------
@@ -1034,7 +1076,7 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         await queueRef.set(
             {
                 lastEventTimestamp: now,
-                lastEventPayload: event,
+                //lastEventPayload: event,
             },
             { merge: true }
         );
@@ -1042,32 +1084,31 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         // ----------------------------
         // 4️⃣ 마지막 이벤트만 처리: DEBOUNCE_DELAY 이후
         // ----------------------------
-        const queueDoc = await queueRef.get();
-        const lastEventTimestamp = queueDoc.data()?.lastEventTimestamp || 0;
-
-        // 현재 이벤트가 마지막 이벤트인지 확인
-        if (now - lastEventTimestamp < DEBOUNCE_DELAY) {
-            // 짧게 기다렸다가 처리
-            setTimeout(async () => {
+        setTimeout(async () => {
+            try {
                 const latestDoc = await queueRef.get();
-                if (latestDoc.data()?.lastEventTimestamp !== lastEventTimestamp) {
-                    console.log(`[${pageId}] 새로운 이벤트 들어와서 스킵`);
+                if (!latestDoc.exists) return;
+
+                const latestTimestamp = latestDoc.data()?.lastEventTimestamp;
+
+                // 내가 마지막 이벤트가 아니면 종료
+                if (latestTimestamp !== now) {
+                    console.log(`[${pageId}] 더 최신 이벤트 존재 → 타이머 연장됨`);
                     return;
                 }
 
+                console.log(`[${pageId}] 60초 동안 추가 이벤트 없음 → 처리 시작`);
                 await processWebhookEvent(userId!, accessToken!, pageId);
+
                 // 큐 정리
                 await queueRef.delete();
-            }, DEBOUNCE_DELAY);
-            return res.status(200).json({ message: "마지막 이벤트 대기 중" });
-        }
-
-        // 즉시 처리 (보통 서버리스 함수에서 setTimeout 보장이 약간 불안정, 
-        // 여러 요청이 겹칠 수 있으므로 Firestore 기준 확인)
-        await processWebhookEvent(userId, accessToken, pageId);
-        await queueRef.delete();
-
-        return res.status(200).json({ message: "이벤트 처리 완료" });
+            } catch (err) {
+                console.error(`[${pageId}] debounce worker error`, err);
+            }
+        }, DEBOUNCE_DELAY);
+        // return res.status(200).json({
+        //     message: "이벤트 수신 (debounce 대기중)",
+        // });
     } catch (error: any) {
         console.error("노션 웹훅 처리 실패:", error);
         return res.status(500).json({ message: error.message });
@@ -1083,7 +1124,7 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
 async function processWebhookEvent(userId: string, accessToken: string, pageId: string) {
     // notion API에서 페이지의 propery(title), block 가져오기
     const page = await NotionService.getNotionPage(accessToken, pageId);
-    console.log(`processWebhookEvent page property, blocks => [${page}]`);
+    console.log(`[${pageId}] page fetched`);
 
     const pageData = await getAndUpdatePageData(userId, page, accessToken);
     if (!pageData) {
@@ -1569,6 +1610,7 @@ async function upsertKeywords(userId: string, keywords?: string[]) {
 //     console.log(`[DEBUG] Firestore 업데이트 완료 - pageId: ${pageId}`);
 //     return { pageId, title, content, keywords };
 // }
+
 async function getAndUpdatePageData(
     userId: string,
     page: any,
@@ -1582,6 +1624,7 @@ async function getAndUpdatePageData(
     content: string;
     contentHash: string;
 } | null> {
+
     const pageId = page.id;
 
     const pageRef = db
@@ -1598,11 +1641,13 @@ async function getAndUpdatePageData(
 
     const oldTitle = oldData?.title ?? "";
     const oldContentHash = oldData?.contentHash ?? "";
+    const oldContentLength = oldData?.contentLength ?? 0;
+
     const oldKeywords: string[] = Array.isArray(oldData?.keywords)
         ? oldData!.keywords
         : [];
 
-    // 1-1️⃣ keyword 이미 존재하면 skip (옵션이 true일 때만)
+    // keyword 이미 존재하면 skip
     if (
         options?.skipIfKeywordsExist === true &&
         oldKeywords.length > 0
@@ -1620,18 +1665,35 @@ async function getAndUpdatePageData(
     );
 
     const contentHash = hashContent(content);
+    const contentLength = content.length;
 
-    // 3️⃣ 변경 없음 → 스킵
+    // ---------------------------
+    // 1️⃣ HASH CHECK
+    // ---------------------------
     if (title === oldTitle && contentHash === oldContentHash) {
-        console.log(`[${pageId}] 변경 없음 → 처리 패스`);
+        console.log(`[${pageId}] hash 동일 → 처리 패스`);
         return null;
     }
+
+    // ---------------------------
+    // 2️⃣ LENGTH CHECK
+    // ---------------------------
+    const lengthChangeRatio =
+        Math.abs(contentLength - oldContentLength) /
+        Math.max(oldContentLength, 1);
+
+    if (lengthChangeRatio < 0.05) {
+        console.log(`[${pageId}] length 변화 ${(lengthChangeRatio * 100).toFixed(2)}% → 업데이트`);
+        return null;    
+    }
+
 
     // 4️⃣ 변경 있음 → Firestore 저장
     await pageRef.set(
         {
             title,
             contentHash,
+            contentLength,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -2476,6 +2538,7 @@ interface Node {
     group?: string;
     size?: number; // 참조 수 기반 노드 크기
     color?: any;
+    notionPageId?: string;
 }
 
 interface Edge {
@@ -2637,6 +2700,7 @@ function generateKeywordGraphDataNoteKeywordType(
             id: noteNodeId,
             label: title.length > 50 ? title.slice(0, 50) + "…" : title,
             group: "page",
+            notionPageId: pageId
         });
 
         for (const keyword of keywords) {
