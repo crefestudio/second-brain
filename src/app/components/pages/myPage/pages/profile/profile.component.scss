@@ -1,0 +1,72 @@
+.editable-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-btn {
+  border: none;
+  background: transparent;
+
+  cursor: pointer;
+
+  font-size: 14px;
+
+  opacity: .7;
+
+  transition: .2s;
+}
+
+.icon-btn:hover {
+  opacity: 1;
+}
+
+.edit-input {
+  width: 140px;
+
+  background: #252525;
+  border: 1px solid #333;
+
+  border-radius: 8px;
+
+  color: white;
+
+  padding: 8px 12px;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: #7aa2f7;
+}
+
+.save-btn {
+  border: none;
+
+  background: #7aa2f7;
+  color: white;
+
+  padding: 8px 14px;
+
+  border-radius: 8px;
+
+  cursor: pointer;
+
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.edit-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.error-text {
+  margin-top: 4px;
+
+  color: #ef4444;
+  font-size: 12px;
+}
+
+.edit-input.ng-invalid.ng-touched {
+  border-color: #ef4444;
+}

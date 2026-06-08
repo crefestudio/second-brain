@@ -1,0 +1,48 @@
+<div class="routine-layout">
+
+  <div class="routine-header">
+
+    <!-- <div class="title-section">
+      <h1>루틴</h1>
+      <p>나에게 맞는 루틴을 찾고 관리하세요.</p>
+    </div> -->
+
+    <nav class="sub-menu">
+
+      <a
+        routerLink="/routine/find"
+        routerLinkActive="active"
+        class="sub-menu-item">
+
+        추천 루틴
+
+      </a>
+
+       <a
+        routerLink="/routine/myroutine"
+        routerLinkActive="active"
+        class="sub-menu-item">
+
+        내 루틴
+
+      </a>
+
+      <a
+        routerLink="/routine/create"
+        routerLinkActive="active"
+        class="sub-menu-item">
+
+        🞥 루틴 직접 추가
+
+      </a>
+
+
+    </nav>
+
+  </div>
+
+  <div class="routine-content">
+    <router-outlet></router-outlet>
+  </div>
+
+</div>

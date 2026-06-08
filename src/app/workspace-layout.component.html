@@ -1,0 +1,227 @@
+<div class="app-header">
+  <img
+    src="/favicon.ico"
+    alt="logo"
+    class="favicon">
+
+  <div class="address-bar">
+
+    <span class="path">
+      {{ currentPath }}
+    </span>
+
+    <button
+      class="copy-btn"
+      (click)="copyLink()"
+      title="링크 복사">
+
+      🔗
+
+    </button>
+    <!-- <div class="auth-status">
+      @if(isLoggedIn) {
+
+        <span class="logged-in">
+          🟢 로그인됨
+        </span>
+
+      } @else {
+
+        <span class="logged-out">
+          🔴 로그인 필요
+        </span>
+
+      }
+
+    </div> -->
+
+  </div>
+
+</div>
+
+<div class="app-body">
+
+  <aside class="sidebar">
+
+    <!-- 라이프업 -->
+
+    <div class="menu-group">
+
+      <div
+        class="menu-item collapsible"
+        (click)="lifeupOpen = !lifeupOpen">
+
+        <span>라이프업</span>
+
+        <span
+          class="arrow"
+          [class.open]="lifeupOpen">
+          ▾
+        </span>
+
+      </div>
+
+      @if (lifeupOpen) {
+
+        <div class="submenu">
+
+          <!-- <a
+            routerLink="/workspace/routine"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            루틴관리
+
+          </a> -->
+
+          <a
+            routerLink="/workspace/secondbrain"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            지식관리
+
+          </a>
+
+           <a
+            routerLink="/workspace/update"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            업데이트 관리
+
+          </a>
+
+        </div>
+
+      }
+
+    </div>
+
+
+    <!-- 내 서비스 관리 -->
+
+    <!-- <div class="menu-group">
+
+      <div
+        class="menu-item collapsible"
+        (click)="serviceOpen = !serviceOpen">
+
+        <span>내 서비스 관리</span>
+
+        <span
+          class="arrow"
+          [class.open]="serviceOpen">
+          ▾
+        </span>
+
+      </div>
+
+      @if (serviceOpen) {
+
+        <div class="submenu">
+
+          <a
+            routerLink="/workspace/service"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            서비스 연결 관리
+
+          </a>
+
+          <a
+            routerLink="/workspace/auto"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            자동화 등록 관리
+
+          </a>
+
+          <a
+            routerLink="/workspace/activity"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            활동 기록
+
+          </a>
+
+        </div>
+
+      }
+
+    </div> -->
+
+    <!-- 마이페이지 -->
+
+    <div class="menu-group">
+
+      <div
+        class="menu-item collapsible"
+        (click)="mypageOpen = !mypageOpen">
+
+        <span>마이페이지</span>
+
+        <span
+          class="arrow"
+          [class.open]="mypageOpen">
+          ▾
+        </span>
+
+      </div>
+
+      @if (mypageOpen) {
+
+        <div class="submenu">
+
+          <!-- <a
+            routerLink="/workspace/mypage/profile"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            프로필
+
+          </a> -->
+
+          <a
+            routerLink="/workspace/mypage/subscription"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            구매 정보
+
+          </a>
+
+          <!-- <a
+            routerLink="/workspace/mypage/notification"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            알림 설정
+
+          </a>
+
+          <a
+            routerLink="/workspace/mypage/security"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            보안 설정
+
+          </a> -->
+
+        </div>
+
+      }
+
+    </div>
+
+  </aside>
+
+  <div class="content">
+    <router-outlet></router-outlet>
+  </div>
+
+</div>

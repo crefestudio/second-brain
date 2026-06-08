@@ -1,0 +1,182 @@
+/* .page-container {
+  padding: 24px;
+} */
+
+.page-header {
+  margin-bottom: 28px;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  margin-bottom: 12px;
+
+  font-size: 13px;
+  color: #8b8b8b;
+}
+
+.breadcrumb a {
+  color: #8b8b8b;
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: #ffffff;
+}
+
+.page-header p {
+  margin-top: 8px;
+
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+/* ===== Table ===== */
+
+.table-card {
+  background: #1b1b1b;
+
+  border: 1px solid #2d2d2d;
+  border-radius: 16px;
+
+  overflow: visible;
+}
+
+.service-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.service-table thead {
+  background: #222;
+}
+
+.service-table th {
+  padding: 16px 20px;
+
+  text-align: left;
+
+  color: #d1d5db;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  border-bottom: 1px solid #333;
+}
+
+.service-table td {
+  padding: 18px 20px;
+
+  color: #f3f4f6;
+
+  font-size: 14px;
+
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.service-table tr:last-child td {
+  border-bottom: none;
+}
+
+.service-table tbody tr {
+  transition: background .2s ease;
+}
+
+.service-table tbody tr:hover {
+  background: rgba(255,255,255,.03);
+}
+
+
+/* ===== Buttons ===== */
+
+.connect-btn,
+.log-btn {
+
+  border: none;
+
+  padding: 6px 12px;
+
+  border-radius: 8px;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  transition: all .2s ease;
+}
+
+.connect-btn {
+  background: #007aff;
+  color: white;
+}
+
+.connect-btn:hover {
+  background: #0a84ff;
+}
+
+.connect-btn:active {
+  transform: scale(.97);
+}
+
+.log-btn {
+  background: rgba(94,158,255,.12);
+  color: #7AA2F7;
+}
+
+.log-btn:hover {
+  background: rgba(94,158,255,.2);
+}
+
+/* ===== Automation ===== */
+
+.automation-name {
+  font-weight: 500;
+}
+
+.automation-desc {
+
+  max-width: 320px;
+
+  font-size: 12px;
+  line-height: 1.6;
+
+  color: #9ca3af;
+
+  white-space: normal;
+}
+
+/* ===== Tooltip ===== */
+
+.th-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+
+
+.automation-tag {
+
+  display: inline-flex;
+  align-items: center;
+
+  padding: 3px 10px;
+
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 500;
+
+  white-space: nowrap;
+
+  color: #f59e0b; /* 주황 텍스트 */
+
+  background: rgba(245, 158, 11, 0.12); /* 연한 주황 배경 */
+
+  border: 1px solid rgba(245, 158, 11, 0.25);
+
+}

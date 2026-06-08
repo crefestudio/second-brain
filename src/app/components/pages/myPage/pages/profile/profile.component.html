@@ -1,0 +1,133 @@
+<div class="page-container">
+
+  <div class="page-header">
+
+    <div class="breadcrumb">
+      <a routerLink="/mypage">마이페이지</a>
+      <span>›</span>
+      <span>프로필</span>
+    </div>
+
+    <h1>프로필</h1>
+
+    <p>
+      계정의 기본 정보를 확인할 수 있습니다.
+    </p>
+
+  </div>
+
+  <div class="info-card">
+
+    <div class="info-row">
+
+      <span class="label">이름</span>
+
+      <div class="editable-value">
+
+        @if (!editingName) {
+
+          <span class="value">
+            {{ name }}
+          </span>
+
+          <button
+            class="icon-btn"
+            (click)="editingName = true">
+
+            ✏️
+
+          </button>
+
+        } @else {
+
+          <input
+            class="edit-input"
+            [(ngModel)]="name">
+
+          <button
+            class="save-btn"
+            (click)="saveName()">
+
+            저장
+
+          </button>
+
+        }
+
+      </div>
+
+    </div>
+
+   <div class="info-row">
+
+  <span class="label">이메일</span>
+
+    <div class="editable-value">
+
+      @if (!editingEmail) {
+
+        <span class="value">
+          {{ email }}
+        </span>
+
+        <button
+          class="icon-btn"
+          (click)="editingEmail = true">
+
+          ✏️
+
+        </button>
+
+      } @else {
+
+        <div class="edit-container">
+
+        <input
+          type="email"
+          class="edit-input"
+          [(ngModel)]="email"
+          #emailModel="ngModel"
+          email>
+
+          @if (emailError) {
+
+            <div class="error-text">
+              {{ emailError }}
+            </div>
+
+          }
+
+        </div>
+
+        <button
+          class="save-btn"
+          (click)="saveEmail()">
+
+          저장
+
+        </button>
+
+      }
+
+    </div>
+
+  </div>
+
+    <div class="info-row">
+      <span class="label">휴대폰</span>
+      <span class="value">010-1234-5678</span>
+    </div>
+
+    <!-- <div class="info-row">
+      <span class="label">가입일</span>
+      <span class="value">2026-05-01</span>
+    </div>
+
+    <div class="info-row">
+      <span class="label">최근 로그인</span>
+      <span class="value">2026-06-01 09:12</span>
+    </div> -->
+
+  </div>
+
+</div>

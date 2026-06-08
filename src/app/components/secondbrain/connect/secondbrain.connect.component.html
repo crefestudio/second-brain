@@ -8,49 +8,59 @@
     </p> 
   </div>  
   <div class="connect-container" *ngIf="state === 'notconnected'">
-      <h1>LifeUp 1.0<br>SecondBrain Notion API 연결</h1>
-
-      <p>LifeUp 템플릿의 노트를 AI가 분석해 키워드를 자동 생성하고, 이를 기반으로 세컨드브레인 그래프를 만듭니다.</p>
+      <h1>LifeUp • SecondBrain Notion API 연결</h1>
+      <br>
+      <ul><li>아래에 <span style="color: #e26b34;">세컨드브레인 API 연결하기</span>버튼을 누르고</li>
+          <li>다음에 뜨는 첫째 창에서 <span style="color: #e26b34;">다음 버튼</span>을, 둘쨰 창에서 <span style="color: #e26b34;">아래 버튼</span>을 눌러주세요.</li>
+      </ul>
+      <div class="image-placeholder">
+        <img
+            src="assets/images/api_connect_guide.png" 
+            alt="API 연결 가이드 이미지"
+            class="guide-image"
+          />
+      </div>
+      <!-- <p>LifeUp 템플릿의 노트를 AI가 분석해 키워드를 자동 생성하고, 이를 기반으로 세컨드브레인 그래프를 만듭니다.</p> -->
       <!-- <ul>
           <li>LifeUp템플릿의 내 노트를 분석하여 AI가 자동으로 키워드를 생성합니다.</li>
           <li>생성 된 키워드로 세컨드브레인 그래프를 생성합니다.</li>
       </ul>  -->
 
       <!-- 탭 버튼 -->
-      <div class="tabs">
+      <!-- <div class="tabs">
         <div class="tab" [class.active]="activeTab === 'installed'" (click)="selectTab('installed')">
           Life Up 템플릿을<br>이미 설치하신 분
         </div>
         <div class="tab" [class.active]="activeTab === 'not-installed'" (click)="selectTab('not-installed')">
           Life Up 템플릿을<br>아직 설치 안하신 분
         </div>
-      </div>
+      </div> -->
 
       <!-- 이미 설치한 경우 -->
       <div class="tab-content" *ngIf="activeTab === 'installed'">
-        <ul>
+        <!-- <ul>
           <li>1️⃣ 아래 API 연결하기 버튼을 누르면 템플릿 선택을 위한 2개의 버튼이 나옵니다.</li>
           <li>2️⃣ 2개의 버튼 중 아래 버튼을 눌러 이미 설치된 템플릿을 선택합니다.</li>
-        </ul>
+        </ul> -->
         <button class="api-btn" (click)="connectNotion()">세컨드브레인 API 연결하기</button>
       </div>
 
       <!-- 아직 설치 안한 경우 -->
-      <div class="tab-content" *ngIf="activeTab === 'not-installed'">
+      <!-- <div class="tab-content" *ngIf="activeTab === 'not-installed'">
         <ul>
           <li>1️⃣ 아래 버튼을 눌러 LifeUp Notion 템플릿을 설치합니다.</li>
           <li>2️⃣ 설치가 완료되면, 연결 버튼을 누르면 2개의 버튼이 나옵니다. 그중 아래 버튼을 눌러 설치한 템플릿을 선택하고, <strong>세컨드브레인 API 연결하기</strong> 버튼을 눌러 연결을 완료합니다.</li>
         </ul>
 
-        <!-- 설치 버튼 -->
+        // 설치 버튼
         <a href="https://ambitious-pentagon-a60.notion.site/L-I-F-E-U-P-1-0-2ed916d8a1ef807c8a55f9be2ceb5aec?source=copy_link"
           target="_blank"
           class="notion-btn">
           LifeUp Notion 템플릿 설치
         </a>
-        <!-- 연결 버튼 -->
+        // 연결 버튼 
         <button class="api-btn" (click)="connectNotion()">세컨드브레인 API 연결하기</button>
-      </div>  
+      </div>   -->
   </div> 
 
   <div *ngIf="state === 'connected'">

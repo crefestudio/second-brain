@@ -37,7 +37,7 @@ const db = admin.firestore();
 const NOTION_TOKEN = defineSecret("NOTION_TOKEN");
 const REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionOAuthCallback";
 
-const allowedOrigins = ["http://localhost:4200", "https://notionable.net"];
+const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net"];
 
 export type EventStatus = 'start' | 'running' | 'completed' | 'failed';
 
@@ -161,52 +161,63 @@ export const getUserSecondBrainConnectInfo = onRequest(
 export const notionOAuthCallback = onRequest(
     { secrets: [NOTION_TOKEN] },
     withCors(async (req, res) => {
-        const code = req.query.code as string | undefined;
-        const userId = (req.query.state as string) || "default_user";
-        if (!userId) return res.status(400).send("Missing authorization code");
-        if (!code) return res.status(400).send("Missing authorization code");
+        try {
+            const code = req.query.code as string | undefined;
+            const userId = (req.query.state as string) || "default_user";
+            if (!userId) return res.status(400).send("Missing authorization code");
+            if (!code) return res.status(400).send("Missing authorization code");
 
-        const clientId = process.env.NOTION_CLIENT_ID!;
-        const clientSecret = process.env.NOTION_CLIENT_SECRET!;
-        const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+            const clientId = process.env.NOTION_CLIENT_ID!;
+            const clientSecret = process.env.NOTION_CLIENT_SECRET!;
+            const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-        const tokenResponse = await fetch("https://api.notion.com/v1/oauth/token", {
-            method: "POST",
-            headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }),
-        });
+            const tokenResponse = await fetch("https://api.notion.com/v1/oauth/token", {
+                method: "POST",
+                headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }),
+            });
 
-        if (!tokenResponse.ok) {
-            const errorText = await tokenResponse.text();
-            console.error("Notion OAuth failed:", errorText);
-            return res.status(500).send("Notion OAuth failed");
+            if (!tokenResponse.ok) {
+                const errorText = await tokenResponse.text();
+                console.error("Notion OAuth failed:", errorText);
+                return res.status(500).send("Notion OAuth failed");
+            }
+
+            const notionToken = await tokenResponse.json();
+
+            // note Database ID 얻기
+            const noteDatabaseId = await NotionService.getDatabaseIdByDatabaseName(notionToken.access_token, 'note');
+
+            // secondbrain 연결정보 저장
+            await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
+                accessToken: notionToken.access_token,
+                workspaceId: notionToken.workspace_id,
+                botId: notionToken.bot_id,
+                duplicatedTemplateId: notionToken.duplicated_template_id,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                noteDatabaseId: noteDatabaseId
+            });
+
+            await db.collection("notionDatabaseMap").doc(noteDatabaseId).set({
+                userId,
+                accessToken: notionToken.access_token,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // 초기에 연결하면 키워드를 초기화 한다. 
+            await NotionService.resetKeywordOptions(notionToken.access_token, noteDatabaseId);
+
+            // // 처음 한번 기존 노트에 키워드를 가져와서 저장한다. 
+            // await NotionService.genetateNotionNoteKMData(notionToken.access_token, userId, noteDatabaseId);
+
+            return res.redirect(`http://app.notionable.net/secondbrain/oauth-success?userId=${encodeURIComponent(userId)}`);
+        } catch (error) {
+            console.error("OAuth process failed:", error);
+            const userId = (req.query.state as string) || "";
+            return res.redirect(
+                `http://app.notionable.net/secondbrain/oauth-fail?userId=${encodeURIComponent(userId)}`
+            );
         }
-
-        const notionToken = await tokenResponse.json();
-
-        // note Database ID 얻기
-        const noteDatabaseId = await NotionService.getDatabaseIdByDatabaseName(notionToken.access_token, 'note');
-
-        // secondbrain 연결정보 저장
-        await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
-            accessToken: notionToken.access_token,
-            workspaceId: notionToken.workspace_id,
-            botId: notionToken.bot_id,
-            duplicatedTemplateId: notionToken.duplicated_template_id,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            noteDatabaseId: noteDatabaseId
-        });
-
-        await db.collection("notionDatabaseMap").doc(noteDatabaseId).set({
-            userId,
-            accessToken: notionToken.access_token,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        // // 처음 한번 기존 노트에 키워드를 가져와서 저장한다. 
-        // await NotionService.genetateNotionNoteKMData(notionToken.access_token, userId, noteDatabaseId);
-
-        return res.redirect(`http://notionable.net/secondbrain/oauth-success?userId=${encodeURIComponent(userId)}`);
     })
 );
 
@@ -317,10 +328,11 @@ export const checkUserAccessKey = onRequest( withCors(async (req, res) => {
         //     return;
         // }
 
-        if (data?.expiresAt.toDate() < new Date()) {
-            res.status(401).json({ error: 'USER_ACCESS_KEY_EXPIRED' });
-            return;
-        }
+        // 인증 만료 갱신에 문제가 있어서 임시로 인증 만료 체크 안함
+        // if (data?.expiresAt.toDate() < new Date()) {
+        //     res.status(401).json({ error: 'USER_ACCESS_KEY_EXPIRED' });
+        //     return;
+        // }
 
         // clientKey는 내려주지 않고 metadata만 반환
         res.json({
@@ -502,36 +514,225 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 
 class NotionService {
     // Notion 클라이언트
-    notionApi = null;
-
+    //notionApi = null;
     static apiVersion = '2022-06-28';
-    static async getDatabaseIdByDatabaseName(accessToken: string, databaseName: string): Promise<string> {
+    // static async getDatabaseIdByDatabaseName(accessToken: string, databaseName: string): Promise<string> {
+    //     const url = 'https://api.notion.com/v1/search';
+    //     const body = { query: databaseName, filter: { property: 'object', value: 'database' } };
+
+    //     const response = await fetch(url, {
+    //         method: 'POST',
+    //         headers: {
+    //             Authorization: `Bearer ${accessToken}`,
+    //             'Notion-Version': this.apiVersion,
+    //             'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify(body),
+    //     });
+
+    //     const rawText = await response.text();
+    //     if (!response.ok) throw new Error(`Notion API 호출 실패: ${response.status} / ${rawText}`);
+
+    //     const data = JSON.parse(rawText);
+    //     console.log("[DEBUG] getDatabaseIdByDatabaseName data, databaseName =>", data, databaseName);
+    //     const matched = data.results.filter((item: any) => (item.title?.map((t: any) => t.plain_text).join('') ?? '') === databaseName);
+
+    //     if (!matched.length) throw new Error(`"${databaseName}" Database를 찾을 수 없습니다.`);
+    //     if (matched.length > 1) throw new Error(`"${databaseName}" Database가 여러 개 존재합니다.`);
+
+    //     return matched[0].id;
+    // }
+
+    
+    
+    static async getDatabaseIdByDatabaseName(
+        accessToken: string,
+        databaseName: string
+    ): Promise<string> {
+
         const url = 'https://api.notion.com/v1/search';
-        const body = { query: databaseName, filter: { property: 'object', value: 'database' } };
+
+        const body = {
+            query: databaseName,
+            filter: { property: 'object', value: 'database' },
+            page_size: 100
+        };
+
+        console.log('🚀 [START] getDatabaseIdByDatabaseName');
+        console.log('🔑 검색 대상 이름:', databaseName);
+
 
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Notion-Version': this.apiVersion,
-                'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            'Notion-Version': this.apiVersion,
+            'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
         });
 
         const rawText = await response.text();
-        if (!response.ok) throw new Error(`Notion API 호출 실패: ${response.status} / ${rawText}`);
 
+        console.log('📡 응답 상태:', response.status);
+        console.log('📦 RAW 응답:', rawText);
+
+        if (!response.ok) {
+            throw new Error(`Notion API 호출 실패: ${response.status} / ${rawText}`);
+        }
+
+        // ❗ 먼저 파싱
         const data = JSON.parse(rawText);
-        console.log("[DEBUG] getDatabaseIdByDatabaseName data, databaseName =>", data, databaseName);
-        const matched = data.results.filter((item: any) => (item.title?.map((t: any) => t.plain_text).join('') ?? '') === databaseName);
+        console.log('📊 전체 결과 개수:', data.results?.length);
+        console.log('📚 전체 results:', data.results);
+        
+        const getTitle = (db: any) =>
+            (db.title?.map((t: any) => t.plain_text).join('') || '')
+            .trim()
+            .toLowerCase();
 
-        if (!matched.length) throw new Error(`"${databaseName}" Database를 찾을 수 없습니다.`);
-        if (matched.length > 1) throw new Error(`"${databaseName}" Database가 여러 개 존재합니다.`);
+        const targetName = databaseName.trim().toLowerCase();
 
-        return matched[0].id;
+        console.log('🎯 targetName (정규화):', targetName);
+
+        // 👉 각 DB 제목 비교 로그
+        data.results?.forEach((db: any, index: number) => {
+            const rawTitle = db.title?.map((t: any) => t.plain_text).join('');
+            const normalizedTitle = getTitle(db);
+
+            console.log(`📁 [${index}]`);
+            console.log('   rawTitle:', rawTitle);
+            console.log('   normalizedTitle:', normalizedTitle);
+            console.log('   isExactMatch:', normalizedTitle === targetName);
+            console.log('   id:', db.id);
+        });
+
+        // ✅ 1차: 이름 완전 일치
+        let matched = data.results.filter(
+            (db: any) => getTitle(db) === targetName
+        );
+
+        console.log('✅ exact match 개수:', matched.length);
+       
+        if (!matched.length) {
+            console.error('❌ 최종 실패: DB 못 찾음');
+            throw new Error(`"${databaseName}" Database를 찾을 수 없습니다.`);
+        }
+
+        console.log('🎉 찾은 DB:', matched[0]);
+
+        // 🔥 특정 페이지 체크 함수
+        const hasTestPage = async (dbId: string) => {
+            let startCursor: string | undefined = undefined;
+
+            do {
+                const res: any = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "Notion-Version": this.apiVersion,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    page_size: 100,
+                    start_cursor: startCursor,
+                }),
+                });
+
+                const data = await res.json();
+
+                // 🔹 쿼리 전체 로그
+                console.log(`[DEBUG] DB ${dbId} query result:`, JSON.stringify(data, null, 2));
+
+                if (!data.results || !Array.isArray(data.results)) {
+                console.warn(`[WARN] DB ${dbId} query 결과 없음`);
+                return false;
+                }
+
+                for (const page of data.results) {
+                console.log(`[DEBUG] page.id: ${page.id}`);
+                console.log(`[DEBUG] page.properties:`, JSON.stringify(page.properties, null, 2));
+
+                // 타이틀 속성 자동 찾기
+                const titlePropKey = Object.entries(page.properties).find(
+                    ([key, prop]) => (prop as any).type === "title"
+                )?.[0];
+
+                if (!titlePropKey) {
+                    console.warn(`[WARN] page.id ${page.id} 타이틀 속성 없음`);
+                    continue;
+                }
+
+                const titleText = page.properties[titlePropKey].title
+                    .map((t: any) => t.plain_text)
+                    .join('');
+
+                console.log(`[DEBUG] page.id ${page.id} titleText:`, titleText);
+
+                if (titleText === "[TIP] #캔바 - 노션에서 캔바 연동형 글쓰기") {
+                    console.log(`[DEBUG] ⭐ 테스트 페이지 발견! page.id: ${page.id}`);
+                    return true;
+                }
+                }
+
+                startCursor = data.next_cursor;
+            } while (startCursor);
+
+            return false;
+        };
+
+        // 🔥 DB archive 함수
+        const archiveDatabase = async (dbId: string) => {
+            console.log("❌ 테스트 DB → archive:", dbId);
+
+            await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+            method: "PATCH",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Notion-Version": this.apiVersion,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                archived: true,
+            }),
+            });
+        };
+
+       let candidates: any[] = [];
+
+        for (const db of matched) {
+            const isTest = await hasTestPage(db.id);
+            console.log("[DEBUG] DB 검사:", db.id, "isTest:", isTest);
+
+            if (isTest) {
+                await archiveDatabase(db.id); // 테스트 DB 바로 삭제
+            } else {
+                candidates.push(db); // 진짜 DB 후보
+            }
+        }
+
+        // 후보 없음 → 에러
+        if (candidates.length === 0) {
+            throw new Error("유효한 DB를 찾지 못했습니다. (모두 테스트 DB)");
+        }
+
+        // 후보 2개 이상 → 에러
+        if (candidates.length > 1) {
+            console.error("[ERROR] 진짜 DB가 여러 개 존재:", candidates.map(db => db.id));
+            throw new Error("Database가 여러 개 존재합니다. 수동 확인 필요");
+        }
+
+        // ✅ 딱 하나만 살아남음
+        const finalDb = candidates[0];
+
+        console.log("[DEBUG] ✅ 최종 선택 DB:", {
+            id: finalDb.id,
+            title: getTitle(finalDb),
+        });
+
+        return finalDb.id;
     }
-
+    
     // queryDatabase 함수
     static async queryDatabase(accessToken: string, databaseId: string, startCursor?: string) {
         const cleanDbId = databaseId.trim();
@@ -698,6 +899,63 @@ class NotionService {
         }
     }
 
+    static async resetKeywordOptions(
+        accessToken: string,
+        databaseId: string
+    ) {
+        const notion = new Client({ auth: accessToken });
+
+        try {
+
+            // 1️⃣ database 조회
+            const db: any = await notion.databases.retrieve({
+                database_id: databaseId
+            });
+
+            if (!db.data_sources || db.data_sources.length === 0) {
+                console.log("❌ data source 없음");
+                return;
+            }
+
+            const dataSourceId = db.data_sources[0].id;
+
+            console.log("📦 dataSourceId:", dataSourceId);
+
+            // 2️⃣ data source 조회 (여기에 properties 있음)
+            const dataSource: any = await notion.dataSources.retrieve({
+                data_source_id: dataSourceId
+            });
+
+            const keywordProp = dataSource.properties["키워드"];
+
+            if (!keywordProp || keywordProp.type !== "multi_select") {
+                console.log("❌ '키워드' property 없음 또는 타입 다름");
+                return;
+            }
+
+            console.log(
+                "📊 현재 키워드 옵션 개수:",
+                keywordProp.multi_select.options.length
+            );
+
+            // 3️⃣ 옵션 초기화
+            await notion.dataSources.update({
+            data_source_id: dataSourceId,
+            properties: {
+                [keywordProp.id]: {
+                multi_select: {
+                    options: []
+                }
+                }
+            }
+            });
+
+            console.log("✅ Keyword 옵션 초기화 완료");
+
+        } catch (error) {
+            console.error("❌ Keyword 옵션 초기화 실패", error);
+        }
+    }
 }
 
 
@@ -1056,9 +1314,8 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         }
 
         if (!userId || !accessToken) {
-            return res.status(404).json({
-                message: "해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음",
-            });
+             console.error("해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음");
+             return;
         }
         
         // ----------------------------
@@ -1111,7 +1368,6 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         // });
     } catch (error: any) {
         console.error("노션 웹훅 처리 실패:", error);
-        return res.status(500).json({ message: error.message });
     }
 })
 );
@@ -1413,6 +1669,7 @@ async function upsertKeywords(userId: string, keywords?: string[]) {
     }
 }
 
+
 //////////////////////////////////////////////////////////
 // #groups
 
@@ -1647,7 +1904,7 @@ async function getAndUpdatePageData(
         ? oldData!.keywords
         : [];
 
-    // keyword 이미 존재하면 skip
+    // keyword 이미 존재하면 skip - skipIfKeywordsExist 일관 변환에서만 skip
     if (
         options?.skipIfKeywordsExist === true &&
         oldKeywords.length > 0
@@ -1657,16 +1914,24 @@ async function getAndUpdatePageData(
         );
         return null;
     }
-
-    // 2️⃣ 새 데이터 추출 (Notion)
+ 
+    // 새 데이터 추출 (Notion)
     const { title, content } = await extractPageTitleAndContent(
         page,
         accessToken
     );
 
-    const contentHash = hashContent(content);
+    // 0️⃣ 너무 짧은 컨텐츠 skip
     const contentLength = content.length;
+    const MIN_CONTENT_LENGTH = 100;
 
+    if (contentLength < MIN_CONTENT_LENGTH) {
+        console.log(`[${pageId}] content 너무 짧음 (${contentLength}) → 키워드 추출 skip`);
+        return null;
+    }
+
+    const contentHash = hashContent(content);
+    
     // ---------------------------
     // 1️⃣ HASH CHECK
     // ---------------------------
@@ -1757,22 +2022,23 @@ async function extractPageTitleAndContent(
         "▪기타",
         "▪AI 도구 - 문서, 기획",
         "▪AI 도구 - 회의록 작성",
-        "⚡ AI 도구 바로 가기"
+        "⚡ AI 도구 바로 가기",
+        "노션에서 함께 자주 사용되는 서비스의 연동 방법과 바로 가기를 제공합니다."
     ];
 
-    // 각 문구 + 앞뒤 공백/줄바꿈 제거
+    // 문자열 그대로 찾아 제거
     for (const phrase of TEMPLATE_PHRASES) {
-        const regex = new RegExp(`\\s*${phrase}\\s*`, "g");
-        content = content.replace(regex, "");
+        content = content.split(phrase).join("");
     }
 
-    // 마지막에 공백 정리
-    content = content.trim();
+    // 공백 및 빈 줄 정리
+    content = content
+        .replace(/\n{2,}/g, "\n")
+        .trim();
+
     console.log("extractPageTitleAndContent content =>", content);
     return { pageId, title, content };
 }
-
-
 
 
 // Firestore에 실제 저장 (내부 함수)

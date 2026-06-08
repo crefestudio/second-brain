@@ -114,6 +114,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     isEmailSending: boolean = false;
     isMenuOpen = false;
     isDisconnectConfirmOpen = false;
+    isLogoutConfirmOpen = false;
+
     errorMessage: string = '';
     warnMessage: string = '';
     isVerifying: boolean = false;
@@ -128,6 +130,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     //databaseData: any;
     //private config = inject<AppConfig>(APP_CONFIG);    
     //inputValue = '';
+    pinnedNodeId: string | null = null;
 
     constructor(
         private notionService: NotionService, 
@@ -157,7 +160,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     initEvent(userId: string) {
         // event
         this.unsubscribe = this.eventListenerService.listenUserEventsRealtime( userId, event => 
-            {
+            {                
                 this.onEvent(event);
             }
         );
@@ -170,6 +173,12 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     onEvent(event: UserEvent) {
+        if (!this.userId) { return; }
+        const session: SecondBrainLocalSession | null = this.getLocalSession(this.userId);        
+        if (!session || !session.accessKey) {
+            return;
+        }
+
         this.showEventToast(event);
         if(event.eventType == 'generate-note-keyword' && event.status == 'completed') {
             this.updateGraphData();
@@ -411,7 +420,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.errorMessage = '';
         
         if (!this.email) { return; }
-        const result: { userId: string, accessKey: string, message?: string } | null = await this.userService.verifyCode(this.email, this.getVerificationCode());
+        const result: { userId: string, accessKey: string, message?: string } | null = 
+            await this.userService.verifyCode(this.email, this.getVerificationCode());
 
         _log('submitCertificationNumber result =>', result);
         if (result && result.userId && result.accessKey) {
@@ -425,7 +435,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                 if (this.userId !== result.userId) {
                     this.userId = result.userId;
                     this.initStateData();
-                    this.clientUrl = 'https://notionable.net/secondbrain/widget/' + this.userId;
+                    this.clientUrl = 'https://app.notionable.net/secondbrain/widget/' + this.userId;
                     this.state = 'change-client-url';
                 } else {
                     await this.redoStateProc();
@@ -453,7 +463,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         if (isConnected) {
             this.errorMessage = '';
         } else {
-            this.errorMessage = '아직 연결이 완됴되지 않았습니다.<br>연결작업에 문제가 있을 경우 toto791@gmail.com으로 연락주시면 확인해드리겠습니다.';
+            //this.errorMessage = '아직 연결이 완됴되지 않았습니다.<br>연결작업에 문제가 있을 경우<a href="http://pf.kakao.com/_tGkqX/chat" target="_blank" style="color:#e26b34; text-decoration:none;">카카오 채널톡</a>으로 연락주시면 확인해드리겠습니다.';
         }
     }
 
@@ -560,221 +570,514 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     //     return { nodes, edges };
     // }
 
-
-    private applyHoverHighlight(
-        network: Network,
-        nodes: DataSet<Node>,
-        edges: DataSet<Edge>
-    ) {
-        network.on('hoverNode', (params) => {
-            const nodeId = params.node;
-            const connectedNodeIds = network.getConnectedNodes(nodeId) as string[];
-            const connectedEdgeIds = network.getConnectedEdges(nodeId);
-
-            const nodeUpdates: Node[] = [];
-            const edgeUpdates: Edge[] = [];
-
-            nodes.forEach((node) => {
-                if (!node || !node.id) return;
-                const nodeIdStr = node.id.toString(); // 항상 string
-                const isActive = nodeIdStr === nodeId.toString() || connectedNodeIds.includes(nodeIdStr);
-
-                nodeUpdates.push({
-                    id: node.id,
-                    hidden: !isActive, // 연결 안된 노드는 숨기기
-                    color: {
-                        ...(node.color as any || {}),
-                        opacity: 1 // hidden이면 완전히 안보이므로 opacity 유지
-                    }
-                });
-            });
-
-            edges.forEach((edge) => {
-                const isActive = connectedEdgeIds.includes(edge.id as any);
-
-                edgeUpdates.push({
-                    id: edge.id,
-                    hidden: !isActive, // 연결 안된 엣지도 숨기기
-                    color: {
-                        ...(edge.color as any || {}),
-                        opacity: 1
-                    }
-                });
-            });
-
-            nodes.update(nodeUpdates);
-            edges.update(edgeUpdates);
-        });
-
-        network.on('blurNode', () => {
-            const nodeReset: Node[] = [];
-            const edgeReset: Edge[] = [];
-
-            nodes.forEach((node) => {
-                nodeReset.push({
-                    id: node.id,
-                    hidden: false, // 모두 보이기
-                    color: {
-                        ...(node.color as any || {}),
-                        opacity: 1
-                    }
-                });
-            });
-
-            edges.forEach((edge) => {
-                edgeReset.push({
-                    id: edge.id,
-                    hidden: false, // 모두 보이기
-                    color: {
-                        ...(edge.color as any || {}),
-                        opacity: 1
-                    }
-                });
-            });
-
-            nodes.update(nodeReset);
-            edges.update(edgeReset);
-        });
-    }
+    
 
 
-
-    // #graph
-    //userId: string, graphType: "note-keyword" | "keyword-only"
+    
+    // // #graph
+    // //userId: string, graphType: "note-keyword" | "keyword-only"
     graphData = {
         nodes: new DataSet<Node>(),
         edges: new DataSet<Edge>(),
     };
     currGraphType: string = "note-keyword";
 
+    // async loadGraph(graphType: string = "note-keyword") {
+    //     try {
+    //         let graphTypeName: string = '';
+    //         if (graphType == 'note-keyword') graphTypeName = '노트-키워드';
+    //         else if (graphType == 'keyword-only') graphTypeName = '키워드';
+    //         this.showToast(`<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`, 2000);
+            
+    //         if (!this.userId) { return; }
+    //         let session = this.getLocalSession(this.userId)
+    //         if(!session || !session.userId) { return; }
+    //         let userId: string = session.userId;
+    //         // 1️⃣ API 호출
+    //         const response: any = await this.userService.getKeywordGraphData(userId, graphType);
+    //         _log('loadGraph response =>', response);
+    //         if (!response) { return; }
+    //         if (response.errorCode == 200) {
+    //             this.state = 'graph-nodata';                
+    //             return;
+    //         } else {
+    //             this.state = 'graph';
+    //         }
+    //         // if(response.message) {
+    //         //     this.warnMessage = response.message;
+    //         // }
+    //         const graphData: { nodes: Node[]; edges: Edge[] } = await response;
+
+    //         // // 2️⃣ vis-network용 DataSet 생성
+    //         // const nodesDS = new vis.DataSet(graphData.nodes);
+    //         // const edgesDS = new vis.DataSet(graphData.edges);
+
+    //         // const data = { nodes: nodesDS, edges: edgesDS };
+    //         //     nodes: new DataSet<Node>(graphData.nodes),
+    //         //     edges: new DataSet<Edge>(graphData.edges),
+    //         // };
+
+
+    //         // --- 옵션 설정 ---
+    //         const options = {
+    //             nodes: {
+    //                 shape: 'dot',
+    //                 size: 8,
+    //                 font: { size: 11, color: '#EEEEEE' },  // 다크모드 글자색
+    //                 color: {
+    //                     // background: '#00CFFF',   // 기본 노드 색상
+    //                     // border: '#00CFFF',
+    //                     highlight: '#007AFF',    // 클릭/선택 시 Apple 블루
+    //                     hover: '#393E46'         // 마우스 올렸을 때
+    //                 }
+    //             },
+    //             edges: {
+    //                 color: '#393E46',             // 다크톤 엣지
+    //                 smooth: {
+    //                     enabled: true,
+    //                     type: 'dynamic',
+    //                     roundness: 0.5
+    //                 }
+    //             },
+    //             groups: {
+    //                 // keyword: {
+    //                 //     color: {
+    //                 //         background: '#8B5DFF', // 배경색 유지
+    //                 //         border: '#8B5DFF'      // 배경보다 조금 밝은 정도
+    //                 //     }
+    //                 // },
+    //                 page: {
+    //                     shape: 'image',
+    //                     image: pageIcon,
+    //                     size: 8,
+    //                 }
+    //             }, 
+    //             physics: {
+    //                 enabled: true,
+    //                 stabilization: {
+    //                     iterations: 200
+    //                 },
+    //                 barnesHut: {
+    //                     gravitationalConstant: -2000,
+    //                     springLength: 120,
+    //                     springConstant: 0.04,
+    //                     damping: 0.9,
+    //                     centralGravity: 0.3
+    //                 }
+    //             },
+    //             // physics: {
+    //             //     enabled: true,  // physics 계속 켬
+    //             //     stabilization: true, // 초기 안정화는 끄거나 최소화
+    //             //     barnesHut: {
+    //             //         gravitationalConstant: -2000,
+    //             //         springLength: 150,
+    //             //         springConstant: 0.02, // 낮추면 느리고 부드럽게 움직임
+    //             //         damping: 0.8,          // 높으면 요동 감소, 낮으면 더 움직임
+    //             //         centralGravity: 0.5,   // 중심으로 모이는 힘
+    //             //     },
+    //             //     minVelocity: 0.1,          // 아주 작은 움직임도 유지
+    //             // },
+    //             interaction: {
+    //                 hover: true,
+    //                 tooltipDelay: 200
+    //             }
+    //         };
+
+    //         // --- 네트워크 생성 ---
+    //         const network = new Network(this.graphContainer.nativeElement, this.graphData, options);
+    //         //network.setData(graphData);
+    //         this.graphData.nodes.clear();
+    //         this.graphData.edges.clear();
+    //         this.graphData.nodes.add(graphData.nodes);
+    //         this.graphData.edges.add(graphData.edges);
+
+    //         // 🔥 hover 강조 적용
+    //         this.applyHoverHighlight(network, this.graphData.nodes, this.graphData.edges);
+
+            
+    //         network.on("click", (params: any) => {
+    //             if (!params.nodes.length) return;
+
+    //             const nodeId = params.nodes[0];
+    //             const node: any = this.graphData.nodes.get(nodeId);
+
+    //             // page 노드이면서 notionPageId 있을 때만 실행
+    //             if (node?.group === "page" && node?.notionPageId) {
+    //                 const cleanPageId = node.notionPageId.replace(/-/g, "");
+    //                 const notionUrl = `https://www.notion.so/${cleanPageId}`;
+    //                 window.open(notionUrl, "_blank");
+    //             }
+    //         });
+
+    //         network.on("hoverNode", (params: any) => {
+    //             const node: any = this.graphData.nodes.get(params.node);
+
+    //             if (node?.group === "page") {
+    //                 this.graphContainer.nativeElement.style.cursor = "pointer";
+    //             }
+    //         });
+
+    //         network.on("blurNode", () => {
+    //             this.graphContainer.nativeElement.style.cursor = "default";
+    //         });
+    //     } catch (err) {
+    //         console.error("그래프 로드 중 오류 발생:", err);
+    //     }
+    // }
+
+    // private applyHoverHighlight(
+    //     network: Network,
+    //     nodes: DataSet<Node>,
+    //     edges: DataSet<Edge>
+    // ) {
+
+    //     let pinnedNodeId: string | null = null;
+
+    //     const highlightNode = (nodeId: string) => {
+    //         const connectedNodeIds = network.getConnectedNodes(nodeId) as string[];
+    //         const connectedEdgeIds = network.getConnectedEdges(nodeId);
+
+    //         const nodeUpdates: Node[] = [];
+    //         const edgeUpdates: Edge[] = [];
+
+    //         nodes.forEach((node) => {
+    //             if (!node || !node.id) return;
+
+    //             const nodeIdStr = node.id.toString();
+
+    //             const isActive =
+    //                 nodeIdStr === nodeId ||
+    //                 connectedNodeIds.includes(nodeIdStr);
+
+    //             nodeUpdates.push({
+    //                 id: node.id,
+    //                 hidden: !isActive
+    //             });
+    //         });
+
+    //         edges.forEach((edge) => {
+    //             const isActive = connectedEdgeIds.includes(edge.id as any);
+
+    //             edgeUpdates.push({
+    //                 id: edge.id,
+    //                 hidden: !isActive
+    //             });
+    //         });
+
+    //         nodes.update(nodeUpdates);
+    //         edges.update(edgeUpdates);
+    //     };
+
+    //     const resetGraph = () => {
+    //         const nodeReset: Node[] = [];
+    //         const edgeReset: Edge[] = [];
+
+    //         nodes.forEach((node) => {
+    //             nodeReset.push({
+    //                 id: node.id,
+    //                 hidden: false
+    //             });
+    //         });
+
+    //         edges.forEach((edge) => {
+    //             edgeReset.push({
+    //                 id: edge.id,
+    //                 hidden: false
+    //             });
+    //         });
+
+    //         nodes.update(nodeReset);
+    //         edges.update(edgeReset);
+    //     };
+
+    //     // hover highlight
+    //     network.on('hoverNode', (params) => {
+
+    //         if (pinnedNodeId) return; // 고정 상태면 hover 무시
+
+    //         highlightNode(params.node.toString());
+    //     });
+
+    //     // hover 해제
+    //     network.on('blurNode', () => {
+
+    //         if (pinnedNodeId) return; // 고정 상태면 blur 무시
+
+    //         resetGraph();
+    //     });
+
+    //     // 클릭 로직
+    //     network.on('click', (params) => {
+
+    //         if (params.nodes.length) {
+    //             const nodeId = params.nodes[0].toString();
+
+    //             pinnedNodeId = nodeId;
+
+    //             highlightNode(nodeId);
+    //         } else {
+    //             // 빈 공간 클릭
+    //             pinnedNodeId = null;
+    //             resetGraph();
+    //         }
+
+    //     });
+
+    // }
+
     async loadGraph(graphType: string = "note-keyword") {
         try {
             let graphTypeName: string = '';
             if (graphType == 'note-keyword') graphTypeName = '노트-키워드';
             else if (graphType == 'keyword-only') graphTypeName = '키워드';
-            this.showToast(`<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`, 2000);
-            
-            if (!this.userId) { return; }
-            let session = this.getLocalSession(this.userId)
-            if(!session || !session.userId) { return; }
+
+            this.showToast(
+                `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`,
+                2000
+            );
+
+            if (!this.userId) return;
+
+            let session = this.getLocalSession(this.userId);
+            if (!session || !session.userId) return;
+
             let userId: string = session.userId;
-            // 1️⃣ API 호출
+
             const response: any = await this.userService.getKeywordGraphData(userId, graphType);
-            _log('loadGraph response =>', response);
-            if (!response) { return; }
+
+            if (!response) return;
+
             if (response.errorCode == 200) {
-                this.state = 'graph-nodata';                
+                this.state = 'graph-nodata';
                 return;
             } else {
                 this.state = 'graph';
             }
-            // if(response.message) {
-            //     this.warnMessage = response.message;
-            // }
+
             const graphData: { nodes: Node[]; edges: Edge[] } = await response;
 
-            // // 2️⃣ vis-network용 DataSet 생성
-            // const nodesDS = new vis.DataSet(graphData.nodes);
-            // const edgesDS = new vis.DataSet(graphData.edges);
-
-            // const data = { nodes: nodesDS, edges: edgesDS };
-            //     nodes: new DataSet<Node>(graphData.nodes),
-            //     edges: new DataSet<Edge>(graphData.edges),
-            // };
-
-
-            // --- 옵션 설정 ---
             const options = {
+
                 nodes: {
                     shape: 'dot',
                     size: 8,
-                    font: { size: 11, color: '#EEEEEE' },  // 다크모드 글자색
+                    font: { size: 11, color: '#EEEEEE' },
                     color: {
-                        // background: '#00CFFF',   // 기본 노드 색상
-                        // border: '#00CFFF',
-                        highlight: '#007AFF',    // 클릭/선택 시 Apple 블루
-                        hover: '#393E46'         // 마우스 올렸을 때
+                        highlight: '#007AFF',
+                        hover: '#393E46'
                     }
                 },
+
                 edges: {
-                    color: '#393E46',             // 다크톤 엣지
+                    color: '#393E46',
                     smooth: {
                         enabled: true,
                         type: 'dynamic',
                         roundness: 0.5
                     }
                 },
+
                 groups: {
-                    // keyword: {
-                    //     color: {
-                    //         background: '#8B5DFF', // 배경색 유지
-                    //         border: '#8B5DFF'      // 배경보다 조금 밝은 정도
-                    //     }
-                    // },
                     page: {
                         shape: 'image',
                         image: pageIcon,
                         size: 8,
                     }
-                }, 
+                },
+
                 physics: {
-                    enabled: true,  // physics 계속 켬
-                    stabilization: false, // 초기 안정화는 끄거나 최소화
+                    enabled: true,
+                    stabilization: {
+                        iterations: 200
+                    },
                     barnesHut: {
                         gravitationalConstant: -2000,
-                        springLength: 150,
-                        springConstant: 0.02, // 낮추면 느리고 부드럽게 움직임
-                        damping: 0.4,          // 높으면 요동 감소, 낮으면 더 움직임
-                        centralGravity: 0.1,   // 중심으로 모이는 힘
-                    },
-                    minVelocity: 0.1,          // 아주 작은 움직임도 유지
+                        springLength: 120,
+                        springConstant: 0.04,
+                        damping: 0.9,
+                        centralGravity: 0.3
+                    }
                 },
+
                 interaction: {
                     hover: true,
                     tooltipDelay: 200
                 }
             };
 
-            // --- 네트워크 생성 ---
-            const network = new Network(this.graphContainer.nativeElement, this.graphData, options);
+            const network = new Network(
+                this.graphContainer.nativeElement,
+                this.graphData,
+                options
+            );
 
             this.graphData.nodes.clear();
             this.graphData.edges.clear();
+
             this.graphData.nodes.add(graphData.nodes);
             this.graphData.edges.add(graphData.edges);
 
-            // 🔥 hover 강조 적용
+            // highlight 기능 적용
             this.applyHoverHighlight(network, this.graphData.nodes, this.graphData.edges);
 
-            // 
+            // 클릭 → notion 페이지 이동
             network.on("click", (params: any) => {
+
                 if (!params.nodes.length) return;
 
                 const nodeId = params.nodes[0];
                 const node: any = this.graphData.nodes.get(nodeId);
 
-                // page 노드이면서 notionPageId 있을 때만 실행
                 if (node?.group === "page" && node?.notionPageId) {
+
                     const cleanPageId = node.notionPageId.replace(/-/g, "");
                     const notionUrl = `https://www.notion.so/${cleanPageId}`;
+
                     window.open(notionUrl, "_blank");
                 }
             });
 
+            // page hover → pointer
             network.on("hoverNode", (params: any) => {
+
                 const node: any = this.graphData.nodes.get(params.node);
 
                 if (node?.group === "page") {
                     this.graphContainer.nativeElement.style.cursor = "pointer";
                 }
+
             });
 
             network.on("blurNode", () => {
                 this.graphContainer.nativeElement.style.cursor = "default";
             });
+
         } catch (err) {
+
             console.error("그래프 로드 중 오류 발생:", err);
+
         }
+    }
+
+    private applyHoverHighlight(
+    network: Network,
+    nodes: DataSet<Node>,
+    edges: DataSet<Edge>
+    ) {
+
+        let pinnedNodeId: string | null = null;
+
+        const highlightNode = (nodeId: string) => {
+
+            const connectedNodes = network.getConnectedNodes(nodeId) as string[];
+
+            const connectedSet = new Set([
+                nodeId,
+                ...connectedNodes
+            ]);
+
+            const connectedEdges = new Set(
+                network.getConnectedEdges(nodeId)
+            );
+
+            const nodeUpdates: Node[] = [];
+            const edgeUpdates: Edge[] = [];
+
+            nodes.forEach((node) => {
+
+                if (!node?.id) return;
+
+                const nodeIdStr = node.id.toString();
+
+                const isActive = connectedSet.has(nodeIdStr);
+
+                nodeUpdates.push({
+                    ...node,
+                    hidden: !isActive
+                });
+
+            });
+
+            edges.forEach((edge) => {
+
+                const isActive = connectedEdges.has(edge.id as any);
+
+                edgeUpdates.push({
+                    ...edge,
+                    hidden: !isActive
+                });
+
+            });
+
+            nodes.update(nodeUpdates);
+            edges.update(edgeUpdates);
+        };
+
+        const resetGraph = () => {
+
+            const nodeReset: Node[] = [];
+            const edgeReset: Edge[] = [];
+
+            nodes.forEach((node) => {
+
+                nodeReset.push({
+                    ...node,
+                    hidden: false
+                });
+
+            });
+
+            edges.forEach((edge) => {
+
+                edgeReset.push({
+                    ...edge,
+                    hidden: false
+                });
+
+            });
+
+            nodes.update(nodeReset);
+            edges.update(edgeReset);
+        };
+
+        // hover highlight
+        network.on('hoverNode', (params) => {
+
+            if (pinnedNodeId) return;
+
+            highlightNode(params.node.toString());
+
+        });
+
+        // hover 해제
+        network.on('blurNode', () => {
+
+            if (pinnedNodeId) return;
+
+            resetGraph();
+
+        });
+
+        // 클릭 pin
+        network.on('click', (params) => {
+
+            if (params.nodes.length) {
+
+                const nodeId = params.nodes[0].toString();
+
+                pinnedNodeId = nodeId;
+
+                highlightNode(nodeId);
+
+            } else {
+
+                pinnedNodeId = null;
+
+                resetGraph();
+            }
+
+        });
+
     }
  
     // async onSettings() {
@@ -853,6 +1156,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     closeAllOverlays() {
         this.isMenuOpen = false;
         this.isDisconnectConfirmOpen = false;
+        this.isLogoutConfirmOpen = false;
     }
 
     async onClickGenerateNotionNoteKMDataBatch() {
@@ -898,31 +1202,50 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         }, 1);
     }
     
-    // client연결 끊기
-    onClickDisconnect() {
+    // notion 과 연결 끊기 
+    onClickAPIDisconnect() {
         this.isMenuOpen = false;
         this.isDisconnectConfirmOpen = true; // 여기서 컨펌 오픈  
     }
 
     // 연결 끊기
     async confirmDisconnect() {
+        if (!this.userId) { return; }
         this.isDisconnectConfirmOpen = false;
         this.state = 'connect-button';
         if (this.userId) {
              this.email = '';
             this.initStateData();
-            // const session = this.getLocalSession(this.userId);
-            // if (session && session.userId && session.accessKey) {
-            //    await UserService.deleteUserAccessKey(session.userId);
+            const session = this.getLocalSession(this.userId);
+            if (session && session.userId && session.accessKey) {
+                await UserService.removeSecondBrainIntegration(session.userId);
                 this.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
-            //} 
+            } 
         }
     }
 
-    cancelDisconnect() {
-        this.isDisconnectConfirmOpen = false;
+    // 이 장치에서만 나가기 
+    onClickLogout() {
+        this.isMenuOpen = false;
+        this.isLogoutConfirmOpen = true; // 여기서 컨펌 오픈          
     }
 
+    confirmLogout() {
+        this.isLogoutConfirmOpen = false;
+        this.state = 'connect-button';
+        if (this.userId) {
+             this.email = '';
+            this.initStateData();
+            this.clearLocalSession(this.userId);
+        }
+    }
+
+    cancelConfirm() {
+        this.isDisconnectConfirmOpen = false;
+        this.isLogoutConfirmOpen = false;
+    }
+
+    ////////////////////////////////////////////////////////
 
     copyUrl() {
         if (!this.clientUrl) return;

@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "notionable-secondbrain"
-  }
+  },
+  "targets": {
+    "notionable-secondbrain": {
+      "hosting": {
+        "notionable-stage": [
+          "notionable-stage"
+        ],
+        "notionable-secondbrain": [
+          "notionable-secondbrain"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

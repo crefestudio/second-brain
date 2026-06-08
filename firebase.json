@@ -1,29 +1,58 @@
 {
-  "hosting": {
-    "public": "dist/second-brain-app/browser",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
-    "headers": [
+  "hosting": [
     {
-      "source": "**/*.@(js|css)",
+      "target": "notionable-secondbrain",
+      "public": "dist/second-brain-app/browser",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
       "headers": [
         {
-          "key": "Cache-Control",
-          "value": "max-age=0"
+          "source": "**/*.@(js|css)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "notionable-stage",
+      "public": "dist/second-brain-app/browser",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(js|css)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "max-age=0"
+            }
+          ]
         }
       ]
     }
-  ]
-  },
+  ],
   "functions": [
     {
       "source": "functions",

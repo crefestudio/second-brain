@@ -1,0 +1,115 @@
+<div class="page-header">
+    <h1>습관 카드 갤러리</h1>
+    <p>
+      아래 습관 카드에서 원하는 습관을 골라 추가해주세요.
+    </p>
+  </div>
+<div class="routine-page">  
+
+  <div class="category-row">
+
+    @for(category of categories; track category) {
+
+      <button
+        class="category-chip"
+        [class.active]="selectedCategory === category"
+        (click)="selectedCategory = category">
+
+        {{ category }}
+
+      </button>
+
+    }
+
+  </div>
+
+  <div class="routine-grid">
+
+    @for(routine of filteredRoutines; track routine.name) {
+
+
+      <div class="routine-card">
+
+        <div class="routine-header">
+          <span class="routine-icon">
+            {{ routine.icon }}
+          </span>
+
+          <div class="routine-title">
+            <span class="routine-name">
+              {{ routine.name }}
+            </span>
+
+            <!-- 키워드 여러개 -->
+            <div class="keyword-row">
+
+              @for (kw of routine.categories; track kw) {
+
+                <span class="routine-tag">
+                  #{{ kw }}
+                </span>
+
+              }
+
+            </div>
+          </div>
+        </div>
+
+        <div class="days-row">
+
+          @for(day of weekDays; track day) {
+
+            <button
+              class="day-btn"
+              [class.active]="isSelected(routine, day)"
+              (click)="toggleDay(routine, day)">
+
+              {{ day }}
+
+            </button>
+
+          }
+
+        </div>
+
+        <div class="input-row">
+
+          <div class="field">
+            <label>시간</label>
+
+            <input
+              type="time"
+              [(ngModel)]="routine.time">
+          </div>
+
+          <div class="field">
+            <label>소요시간</label>
+
+            <select [(ngModel)]="routine.duration">
+
+              <option [value]="5">5분</option>
+              <option [value]="10">10분</option>
+              <option [value]="15">15분</option>
+              <option [value]="30">30분</option>
+              <option [value]="60">1시간</option>
+
+            </select>
+          </div>
+
+        </div>
+
+        <button
+          class="add-btn"
+          (click)="addRoutine(routine)">
+
+          + 추가하기
+
+        </button>
+
+      </div>
+
+    }
+
+  </div>
+
+</div>

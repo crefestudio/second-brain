@@ -1,6 +1,6 @@
 .view-wrapper {
   background-color: #000;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
   display: flex;
   justify-content: center;
@@ -343,7 +343,7 @@
 .confirm-text {
   padding: 8px;
   color: #cfd0d3;
-  font-size: 14px;
+  font-size: 13px;
   text-align: center;
   border-bottom: 1px solid #565656;
 }

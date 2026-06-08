@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "dist": "ng build --configuration production && firebase deploy --only hosting"
+    "dist": "ng build --configuration production && firebase deploy --only hosting:notionable-secondbrain",
+    "dist:stage": "ng build --configuration production && firebase deploy --only hosting:notionable-stage"
   },
   "private": true,
   "dependencies": {

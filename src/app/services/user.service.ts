@@ -58,6 +58,18 @@ export class UserService {
         return docSnap.data(); // { botId, connectedAt, ... }
     }
 
+    // users/zNkqIoVU/integrations/secondbrain
+    static async removeSecondBrainIntegration(userId: string): Promise<boolean> {
+        if (!userId) return false;
+
+        const docRef = doc(firestore, 'users', userId, 'integrations', 'secondbrain');
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return false;
+
+        await deleteDoc(docRef);
+        return true;
+    }
+
     static async getUser(userId: string): Promise<any | null> {
         if (!userId) return null;
 
@@ -122,65 +134,7 @@ export class UserService {
             return null;
         }
     }
-
     
-
-    /*
-    verifyClientKey     아직 구현 안함 / getSecondBrainClient 이거 호출 하면 clientKey 유효성 체크됨
-
-
-
-    */
-    /////////////////////////////////////////////////////////////////////////////////////
-    // userId + clientId로 secondbrain > clients > {clientId} 삭제
-
-    // static async deleteSecondBrainClient( userId: string, clientId: string): Promise<boolean> {
-    //     if (!userId || !clientId) return false;
-
-    //     const docRef = doc(
-    //         firestore,
-    //         'users',
-    //         userId,
-    //         'integrations',
-    //         'secondbrain',
-    //         'clients',
-    //         clientId
-    //     );
-
-    //     const docSnap = await getDoc(docRef);
-    //     if (!docSnap.exists()) return false;
-    //     await deleteDoc(docRef);
-    //     return true;
-    // }
-   
-    // static async deleteUserAccessKey(
-    //     userId: string,
-    //     clientId: string
-    //     ): Promise<boolean> {
-    //     if (!userId /*|| !clientId*/) return false;
-
-    //     const docRef = doc(
-    //         firestore,
-    //         'users',
-    //         userId,
-    //         // 'integrations',
-    //         // 'secondbrain',
-    //         // 'clients',
-    //         // clientId
-    //     );
-
-    //     const docSnap = await getDoc(docRef);
-    //     if (!docSnap.exists()) return false;
-
-    //     // clientKey 필드만 삭제
-    //     await updateDoc(docRef, {
-    //         accessKey: deleteField(),
-    //         expiresAt: deleteField()
-    //     });
-
-    //     return true;
-    // }
-
 
     /////////////////////////////////////////////////////////////////////////////////////
     //  localstorage
@@ -192,7 +146,6 @@ export class UserService {
 
     /////////////////////////////////////////////////////////////////////////////////////
     //  firebase functions
-
 
     /*
         main verify
