@@ -1,17 +1,13 @@
-import { Component, AfterViewInit, ViewChild, ElementRef, HostListener, ViewChildren, QueryList, OnInit, OnDestroy } from '@angular/core';
+import { Component, AfterViewInit, ViewChild, ElementRef, HostListener, ViewChildren, QueryList } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { Observable, map } from 'rxjs';
 import { EventListenerService, UserEvent } from '../../../services/event-listener.service';
 
-//import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
 import { NotionService } from '../../../services/notion.service';
 import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 
-// import { NACommonService } from '../../../services/common.service';
-// import { StaticCommonHelper } from '../../../lib/static-common-helper';
 import { UserService } from '../../../services/user.service';
 import { _log } from '../../../lib/cf-common/cf-common';
 import { NACommonService } from '../../../services/common.service';
@@ -245,9 +241,12 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     /*
-          session:userId 체크 
-        - 있으면 : 이 장치에서 이메일 인증이 된 상태 => 3. 연결확인 
-        - 없으면 : => 2. 이메일 인증
+
+        1. userId, accessKey 체크
+        2. 
+
+
+
     */
     // noSessionStateProc() {
     //     const session = this.getLocalSession();
@@ -260,33 +259,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     //     //this.state = 'email-certification';
     //     _log('sessionProc state, session =>', this.state, this.session);
-    // }
-
-    /*
-        checkConnect - 연결확인
-        -  session에 userId로 연결유무 확인 (accessToken 유무)
-        - 있으면 5.그래프
-        - 없으면 
-            웹이면 4. 연결창 띄우기
-            모바일앱이면 => 웹에서 연결작업을 진행해달라고 안내함
-    */
-
-// <ui state>
-// -> loading
-// -> connect-button        
-// -> email-input          -> 메일 입력     // 비회원 일떄
-// -> email-certification  -> 메일 인증창   => userId (없으면 생성) / client 새로 생성                      
-// -> change-client-url
-// -> connect-client        
-// -> connect-notion      -> 연결 확인     => notionDbId// accessToken     // 비연결일때 
-// -> graph                                => clientId     
-
-
-// <연결 state>
-// -> no-member        
-// -> no-user               userId           
-// -> client-connected     clientId
-// -> notion-connected     연결여부체크
+    // }   
 
     // #main
     async stateProc(): Promise<boolean> {

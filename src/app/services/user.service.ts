@@ -118,11 +118,11 @@ export class UserService {
 
         try {
             const result = await firstValueFrom(
-                this.http.post<SecondBrainUser> (
+                this.http.post<SecondBrainUser>(
                     `${this.functionsBaseUrl}/checkUserAccessKey`,
                     { userId },
                     {
-                        headers: { 
+                        headers: {
                             'Authorization': `Bearer ${accessKey}`
                         }
                     }
@@ -134,7 +134,7 @@ export class UserService {
             return null;
         }
     }
-    
+
 
     /////////////////////////////////////////////////////////////////////////////////////
     //  localstorage
@@ -232,6 +232,53 @@ export class UserService {
         } catch (error) {
             console.error("getKeywordGraphData failed", error);
             return null; // 실패 시 null 반환
+        }
+    }
+
+    async verifyPurchaser(templateId: string, email?: string, phone?: string): Promise<boolean> {
+
+        if (!templateId || (!email && !phone)) {
+            return false;
+        }
+
+        try {
+
+            const result = await firstValueFrom(
+                this.http.post<any>(
+                    `${this.functionsBaseUrl}/verifyPurchaser`,
+                    { templateId, email, phone }
+                )
+            );
+
+            if (!result?.purchaser) {
+                return false;
+            }
+            
+            const STORAGE_KEY = 'notionable_verified_purchases';
+            const purchases = JSON.parse(
+                localStorage.getItem(STORAGE_KEY) || '{}'
+            );
+
+            purchases[templateId] = {
+                email: result.purchaser['이메일'] || email,
+                verifiedAt: Date.now()
+            };
+
+            localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(purchases)
+            );
+
+            return true;
+
+        } catch (error: any) {
+
+            console.error(
+                'verifyPurchaser failed',
+                error.error?.message || error.message
+            );
+
+            return false;
         }
     }
 

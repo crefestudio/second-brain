@@ -28,8 +28,8 @@
 
       <thead>
         <tr>
-          <th>구매한 템플릿</th>
-          <th>구매 일자</th>
+          <th>템플릿</th>
+          <!-- <th>구매 일자</th> -->
           <th>구매 확인&nbsp;<span class="help-icon">
 
               ⓘ
@@ -39,62 +39,53 @@
               </span>
             </span>
           </th>
-          <th>버전</th>
+          <th>상세정보</th>
           <th>다운로드</th>
+          <th>API 연결</th>
         </tr>
       </thead>
 
       <tbody>
         <tr>
           <td>라이프업</td>
-          <td>-</td>
           <td>
             @if (!requestMode) {
 
-              <div class="verify-wrap">
+            <div class="verify-wrap">
 
-                <span class="badge pending">
-                  미확인
-                </span>
+              <span class="badge pending">
+                미확인
+              </span>
 
-                &nbsp;
+              &nbsp;
 
-                <button
-                  class="verify-btn"
-                  (click)="requestMode = true">
+              <button class="verify-btn" (click)="requestMode = true">
 
-                  확인 신청
+                구매 확인
 
-                </button>
+              </button>
 
-              </div>
+            </div>
 
             } @else {
 
-              <div class="verify-form">
+            <div class="verify-form">
 
-                <input
-                  type="text"
-                  [(ngModel)]="verifyValue"
-                  placeholder="이메일 또는 휴대폰 번호">
+              <input type="text" [(ngModel)]="verifyValue" placeholder="구매 시 등록한 이메일 ">
 
-                <button
-                  class="verify-btn"
-                  (click)="submitVerification()">
+              <button class="verify-btn" (click)="submitVerification()">
 
-                  신청
+                확인
 
-                </button>
+              </button>
 
-                <button
-                  class="cancel-btn"
-                  (click)="cancelVerification()">
+              <button class="cancel-btn" (click)="cancelVerification()">
 
-                  취소
+                취소
 
-                </button>
+              </button>
 
-              </div>
+            </div>
 
             }
 
@@ -104,12 +95,20 @@
               미확인
             </span>
           </td>
-          <td> - 
+          <td> 
+            <span class="badge pending">
+              미확인
+            </span>
             <!-- <button class="download-btn">
               최신 버전 받기
             </button> -->
           </td>
-        </tr> 
+          <td>
+            <span class="badge pending">
+              미확인
+            </span>
+          </td>
+        </tr>
       </tbody>
 
     </table>

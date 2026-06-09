@@ -57,7 +57,7 @@ body {
 
 
 .page-container {
-  padding: 26px;
+  padding: 22px;
 }
 
 .page-header {
@@ -226,6 +226,10 @@ body {
   color: #fbbf24;
 }
 
+.active {
+  background: rgba(122, 162, 247, .15);
+  color: #7aa2f7;
+}
 
 .tooltip {
 

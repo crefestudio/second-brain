@@ -32,6 +32,7 @@ import { UpdateComponent } from './components/pages/life-up/pages/update/update.
 import { UnauthorizedComponent } from './components/login/app-unauthorized.component';
 
 import { authGuard } from './services/auth.guard';
+import { AgentConnectComponentComponent } from './components/pages/myPage/agent-connect-component/agent-connect-component.component';
 
 export const routes: Routes = [
 	// 루트 진입 시
@@ -108,6 +109,10 @@ export const routes: Routes = [
 					{
 						path: 'security',
 						component: SecurityComponent
+					}, 
+					{
+						path: 'agent-connect',
+						component: AgentConnectComponentComponent
 					}
 				]
 			},

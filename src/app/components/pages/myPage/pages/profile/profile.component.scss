@@ -1,72 +1,95 @@
 .editable-value {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.icon-btn {
-  border: none;
-  background: transparent;
-
-  cursor: pointer;
-
-  font-size: 14px;
-
-  opacity: .7;
-
-  transition: .2s;
-}
-
-.icon-btn:hover {
-  opacity: 1;
-}
-
-.edit-input {
-  width: 140px;
-
-  background: #252525;
-  border: 1px solid #333;
-
-  border-radius: 8px;
-
-  color: white;
-
-  padding: 8px 12px;
-}
-
-.edit-input:focus {
-  outline: none;
-  border-color: #7aa2f7;
-}
-
-.save-btn {
-  border: none;
-
-  background: #7aa2f7;
-  color: white;
-
-  padding: 8px 14px;
-
-  border-radius: 8px;
-
-  cursor: pointer;
-
-  font-size: 13px;
-  font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .edit-container {
-  display: flex;
-  flex-direction: column;
+    display: flex;
+    flex-direction: column;
 }
 
-.error-text {
-  margin-top: 4px;
+.icon-btn,
+.save-btn,
+.connect-btn {
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: .2s;
+}
 
-  color: #ef4444;
-  font-size: 12px;
+.icon-btn {
+    background: transparent;
+    font-size: 14px;
+    opacity: .7;
+}
+
+.icon-btn:hover {
+    opacity: 1;
+}
+
+.save-btn,
+.connect-btn {
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.save-btn {
+    padding: 8px 14px;
+    background: #7aa2f7;
+}
+
+.connect-btn {
+    padding: 10px 18px;
+    background: #007aff;
+}
+
+.edit-input {
+    width: 140px;
+    padding: 8px 12px;
+
+    background: #252525;
+    color: white;
+
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.edit-input:focus {
+    outline: none;
+    border-color: #7aa2f7;
 }
 
 .edit-input.ng-invalid.ng-touched {
-  border-color: #ef4444;
+    border-color: #ef4444;
+}
+
+.error-text {
+    margin-top: 4px;
+    color: #ef4444;
+    font-size: 12px;
+}
+
+.empty-state {
+    padding: 32px 16px;
+    text-align: center;
+}
+
+.empty-icon {
+    margin-bottom: 12px;
+    font-size: 32px;
+}
+
+.empty-title {
+    margin-bottom: 8px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.empty-desc {
+    margin-bottom: 20px;
+    color: #888;
+    font-size: 13px;
+    line-height: 1.6;
 }

@@ -1,0 +1,261 @@
+.section-title {
+
+  margin: 0 0 12px 5px;
+
+  font-size: 18px;
+  font-weight: 700;
+
+  color: #ffffff;
+
+}
+
+.mt-32 {
+  margin-top: 32px;
+}
+
+/* 카드 */
+
+.table-card {
+
+  background: #1b1b1b;
+
+  border: 1px solid #2d2d2d;
+
+  border-radius: 16px;
+
+  overflow: hidden;
+
+}
+
+/* 공통 테이블 */
+
+.agent-table {
+
+  width: 100%;
+
+  border-collapse: collapse;
+
+}
+
+/* THEAD */
+
+.agent-table thead {
+
+  background: #222222;
+
+}
+
+.agent-table th {
+
+  padding: 16px 20px;
+
+  text-align: left;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  color: #d1d5db;
+
+  border-bottom: 1px solid #333333;
+
+}
+
+/* TD */
+
+.agent-table td {
+
+  padding: 16px 0px 16px 10px;
+
+  font-size: 14px;
+
+  color: #f3f4f6;
+
+  border-bottom: 1px solid #2a2a2a;
+
+  vertical-align: middle;
+
+}
+
+/* 마지막 줄 */
+
+.agent-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* hover */
+
+.agent-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* header title */
+
+.table-header-title {
+
+  margin-left: 10px;
+
+  color: #ffffff;
+
+  font-size: 15px;
+  font-weight: 600;
+
+}
+
+/* 컬럼 */
+
+.status-cell {
+
+  width: 70px;
+
+  white-space: nowrap;
+
+  text-align: center;
+
+  color: #8b949e;
+
+  font-size: 18px;
+  font-weight: 600;
+
+}
+
+.task-cell {
+  width: auto;
+}
+
+.action-cell {
+
+  width: 420px;
+  padding: 16px 16px 16px 10px !important;
+
+  white-space: nowrap;
+
+}
+
+/* 배지 */
+
+.badge {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  padding: 4px 10px;
+
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 600;
+
+}
+
+.pending {
+
+  background: rgba(245, 158, 11, .15);
+
+  color: #fbbf24;
+
+}
+
+.active {
+
+  background: rgba(122, 162, 247, .12);
+
+  color: #7aa2f7;
+
+}
+
+/* verify */
+
+.verify-wrap {
+
+  display: flex;
+
+  justify-content: flex-end;
+  align-items: center;
+
+  width: 100%;
+
+}
+
+.verify-form {
+
+  display: flex;
+
+  justify-content: flex-end;
+  align-items: center;
+
+  gap: 8px;
+
+  width: 100%;
+
+}
+
+.verify-form input {
+
+  width: 220px;
+
+  padding: 8px 12px;
+
+  background: #252525;
+
+  border: 1px solid #333;
+
+  border-radius: 8px;
+
+  color: white;
+
+}
+
+.verify-form input:focus {
+  outline: none;
+  border-color: #7aa2f7;
+}
+
+.verify-btn {
+
+  border: none;
+
+  padding: 8px 12px;
+
+  border-radius: 8px;
+
+  background: rgba(122,162,247,.12);
+
+  color: #7aa2f7;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+}
+
+.verify-btn:hover {
+  background: rgba(122,162,247,.2);
+}
+
+.cancel-btn {
+
+  border: none;
+
+  padding: 8px 12px;
+
+  border-radius: 8px;
+
+  background: #2a2a2a;
+
+  color: #b3b3b3;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  transition: all .2s ease;
+
+}
+
+.cancel-btn:hover {
+  background: #343434;
+  color: #ffffff;
+}

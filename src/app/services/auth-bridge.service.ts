@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 
 @Injectable({
@@ -6,28 +5,55 @@ import { Injectable } from '@angular/core';
 })
 export class AuthBridgeService {
 
-    private readonly PARENT_ORIGIN = 'https://notionable.net';
+    private readonly PARENT_ORIGIN =
+        'https://notionable.net';
 
     async init(): Promise<void> {
 
         return new Promise((resolve) => {
 
             const timeout = setTimeout(() => {
+
+                window.removeEventListener(
+                    'message',
+                    handler
+                );
+
                 resolve();
+
             }, 3000);
 
             const handler = (event: MessageEvent) => {
 
-                if (event.origin !== this.PARENT_ORIGIN) {
+                if (
+                    event.origin !==
+                    this.PARENT_ORIGIN
+                ) {
                     return;
                 }
 
-                if (event.data?.type === 'AUTH') {
+                if (
+                    event.data?.type ===
+                    'AUTH'
+                ) {
 
-                    localStorage.setItem(
-                        'auth_token',
-                        event.data.token
-                    );
+                    const memberUid =
+                        event.data.memberUid;
+
+                    if (memberUid) {
+
+                        localStorage.setItem(
+                            'member_uid',
+                            memberUid
+                        );
+
+                    } else {
+
+                        localStorage.removeItem(
+                            'member_uid'
+                        );
+
+                    }
 
                     window.removeEventListener(
                         'message',

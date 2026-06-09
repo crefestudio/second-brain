@@ -1,0 +1,218 @@
+<div class="page-container">
+
+  <div class="page-header">
+
+    <div class="breadcrumb">
+      <a routerLink="/mypage">마이페이지</a>
+      <span>›</span>
+      <span>템플릿 연결</span>
+    </div>
+
+    <h1>
+      Notionable Agent ↔ LIFE UP 템플릿 연결
+    </h1>
+
+    <p>
+      라이프업 템플릿과 Notionable Agent를 연결하기 위한 과정입니다.
+    </p>
+
+  </div>
+
+  <!-- STEP 1 -->
+
+  <div class="table-card">
+
+    <table class="agent-table">
+
+      <colgroup>
+        <col style="width:70px">
+        <col>
+        <col style="width:420px">
+      </colgroup>
+
+      <thead>
+
+        <tr>
+
+          <th colspan="3">
+
+            <span class="badge active">
+              STEP 1
+            </span>
+
+            <span class="table-header-title">
+              LIFE UP 연동 서비스 ID 발급
+            </span>
+
+          </th>
+
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        <tr>
+
+          <td class="status-cell">
+
+            <span class="badge pending">
+              미완료
+            </span>
+
+          </td>
+
+          <td class="task-cell">
+
+            구매 정보 확인
+
+          </td>
+
+          <td class="action-cell">
+
+            @if (!requestMode) {
+
+            <div class="verify-wrap">
+
+              <button class="verify-btn" (click)="requestMode = true">
+
+                구매 확인
+
+              </button>
+
+            </div>
+
+            } @else {
+
+            <div class="verify-form">
+
+              <input type="text" [(ngModel)]="verifyValue" placeholder="구매시 등록한 이메일">
+
+              <button class="verify-btn" (click)="submitVerification()">
+
+                확인
+
+              </button>
+
+              <button class="cancel-btn" (click)="cancelVerification()">
+
+                취소
+
+              </button>
+
+            </div>
+
+            }
+
+          </td>
+
+        </tr>
+
+        <tr>
+
+          <td class="status-cell">
+
+            <span class="badge pending">
+              미완료
+            </span>
+
+          </td>
+
+          <td class="task-cell">
+
+            구매 이메일 인증
+
+          </td>
+
+          <td class="action-cell"></td>
+
+        </tr>
+
+        <tr>
+
+          <td class="status-cell">
+
+            <span class="badge pending">
+              미완료
+            </span>
+
+          </td>
+
+          <td class="task-cell">
+
+            LIFE UP 연동 서비스 ID 발급
+
+          </td>
+
+          <td class="action-cell"></td>
+
+        </tr>
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+  <!-- STEP 2 -->
+
+  <div class="table-card mt-32">
+
+    <table class="agent-table">
+
+      <colgroup>
+        <col style="width:70px">
+        <col>
+        <col style="width:420px">
+      </colgroup>
+
+      <thead>
+
+        <tr>
+
+          <th colspan="3">
+
+            <span class="badge active">
+              STEP 2
+            </span>
+
+            <span class="table-header-title">
+              Notionable Agent API 연결
+            </span>
+
+          </th>
+
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        <tr>
+
+          <td class="status-cell">
+
+            <span class="badge pending">
+              미완료
+            </span>
+
+          </td>
+
+          <td class="task-cell">
+
+            템플릿과 Agent 연결하기
+
+          </td>
+          <td class="action-cell">
+
+          </td>
+
+        </tr>
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+</div>

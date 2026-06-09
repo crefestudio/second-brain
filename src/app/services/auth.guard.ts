@@ -5,9 +5,19 @@ export const authGuard: CanActivateFn = () => {
 
     const router = inject(Router);
 
-    const token = localStorage.getItem('auth_token');
+    if (
+        window.location.hostname !==
+        'app.notionable.net'
+    ) {
+        return true;
+    }
 
-    if (token) {
+    const memberUid =
+        localStorage.getItem(
+            'member_uid'
+        )?.trim();
+
+    if (memberUid) {
         return true;
     }
 

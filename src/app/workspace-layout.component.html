@@ -1,4 +1,4 @@
-<div class="app-header">
+<!-- <div class="app-header">
   <img
     src="/favicon.ico"
     alt="logo"
@@ -18,26 +18,8 @@
       🔗
 
     </button>
-    <!-- <div class="auth-status">
-      @if(isLoggedIn) {
-
-        <span class="logged-in">
-          🟢 로그인됨
-        </span>
-
-      } @else {
-
-        <span class="logged-out">
-          🔴 로그인 필요
-        </span>
-
-      }
-
-    </div> -->
-
   </div>
-
-</div>
+</div> -->
 
 <div class="app-body">
 
@@ -56,7 +38,7 @@
         <span
           class="arrow"
           [class.open]="lifeupOpen">
-          ▾
+          ⌵
         </span>
 
       </div>
@@ -91,6 +73,16 @@
             업데이트 관리
 
           </a>
+
+          <!-- <a
+            routerLink="/workspace/update"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            위젯 관리
+
+          </a> -->
+
 
         </div>
 
@@ -167,7 +159,7 @@
         <span
           class="arrow"
           [class.open]="mypageOpen">
-          ▾
+          ⌵
         </span>
 
       </div>
@@ -176,14 +168,14 @@
 
         <div class="submenu">
 
-          <!-- <a
+          <a
             routerLink="/workspace/mypage/profile"
             routerLinkActive="active"
             class="submenu-item">
 
             프로필
 
-          </a> -->
+          </a>
 
           <a
             routerLink="/workspace/mypage/subscription"
@@ -191,6 +183,15 @@
             class="submenu-item">
 
             구매 정보
+
+          </a>
+
+          <a
+            routerLink="/workspace/mypage/agent-connect"
+            routerLinkActive="active"
+            class="submenu-item">
+
+            API 연결설정
 
           </a>
 

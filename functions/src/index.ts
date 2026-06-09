@@ -49,6 +49,35 @@ export interface EventPayload {
     eventDescription?: string;
 }
 
+// import * as functions from "firebase-functions";
+// import * as admin from "firebase-admin";
+
+//admin.initializeApp();
+
+import * as functions from "firebase-functions";
+
+export const importPurchasers = functions.https.onRequest(
+  async (req, res) => {
+
+    const buyers = require("../data/lifeup_purchaser.json");
+
+    const db = admin.firestore();
+
+    const batch = db.batch();
+
+    buyers.forEach((buyer: any) => {
+
+      const ref = db.collection("purchasers").doc();
+
+      batch.set(ref, buyer);
+
+    });
+
+    await batch.commit();
+
+    res.send(`${buyers.length}건 업로드 완료`);
+  }
+);
 /**
  * 사용자 이벤트 로그를 Firestore에 저장한다.
  *
@@ -508,6 +537,49 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
     }
 }));
+
+export const sendTemplateConnectRequest = onRequest(
+    withCors(async (req, res) => {
+
+        const contact: string = req.body.contact;
+        const memberUid: string = req.body.memberUid;
+
+        if (!contact) {
+            return res.status(400).json({
+                error: '연락처가 필요합니다.'
+            });
+        }
+
+        await resend.emails.send({
+            from: 'Notionable <noreply@notionable.net>',
+            to: 'crefestudio@gmail.com',
+            subject: '[라이프업] 템플릿 연결 신청',
+            html: `
+                <h3>템플릿 연결 신청</h3>
+
+                <p>
+                    <strong>UID</strong><br>
+                    ${memberUid || '-'}
+                </p>
+
+                <p>
+                    <strong>연락처</strong><br>
+                    ${contact}
+                </p>
+
+                <p>
+                    <strong>신청일시</strong><br>
+                    ${new Date().toLocaleString('ko-KR')}
+                </p>
+            `
+        });
+
+        return res.status(200).json({
+            success: true
+        });
+
+    })
+);
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // NotionService #notion
@@ -3275,3 +3347,81 @@ function generateKeywordGraphDataOnlyKeywordType(
 
 
 */
+
+export const verifyPurchaser = onRequest(withCors(async (req, res) => {
+    try {
+        const { templateId, email, phone } = req.body;
+
+        if (!templateId) {
+            return res.status(200).json({
+                message: 'templateId가 필요합니다.',
+            });
+        }
+
+        if (!email && !phone) {
+            return res.status(200).json({
+                message: 'email 또는 phone 중 하나는 필요합니다.',
+            });
+        }
+
+        const normalizedEmail = email?.trim().toLowerCase();
+        const normalizedPhone = phone?.trim();
+
+        let purchaserData: any = null;
+        let purchaserId: string | null = null;
+
+        // 이메일 조회
+        if (normalizedEmail) {
+            const emailQuerySnap = await db.collection('purchasers')
+                .where('templateId', '==', templateId)
+                .where('이메일', '==', normalizedEmail)
+                .limit(1)
+                .get();
+
+            if (!emailQuerySnap.empty) {
+                const purchaserDoc = emailQuerySnap.docs[0];
+
+                if (purchaserDoc) {
+                    purchaserId = purchaserDoc.id;
+                    purchaserData = purchaserDoc.data();
+                }
+            }
+        }
+
+        // 전화번호 조회 (이메일로 못 찾았을 경우)
+        if (!purchaserData && normalizedPhone) {
+            const phoneQuerySnap = await db.collection('purchasers')
+                .where('templateId', '==', templateId)
+                .where('전화번호', '==', normalizedPhone)
+                .limit(1)
+                .get();
+
+            if (!phoneQuerySnap.empty) {
+                const purchaserDoc = phoneQuerySnap.docs[0];
+
+                if (purchaserDoc) {
+                    purchaserId = purchaserDoc.id;
+                    purchaserData = purchaserDoc.data();
+                }
+            }
+        }
+
+        if (!purchaserData) {
+            return res.status(200).json({
+                message: '구매 내역을 찾을 수 없습니다.',
+            });
+        }
+
+        return res.status(200).json({
+            purchaserId,
+            purchaser: purchaserData,
+        });
+
+    } catch (error) {
+        console.error('verifyPurchaser error:', error);
+
+        return res.status(500).json({
+            message: '서버 오류가 발생했습니다.',
+        });
+    }
+}));

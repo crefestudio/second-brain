@@ -33,7 +33,7 @@ export class ServiceManagerComponent {
 
     if (!this.verifyValue.trim()) {
 
-        alert('이메일 또는 휴대폰 번호를 입력해주세요.');
+        alert('구매 시 등록한 이메일을 입력해주세요.');
         return;
 
     }
