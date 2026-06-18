@@ -34,15 +34,8 @@ export class ProfileComponent implements OnInit {
 
     async ngOnInit(): Promise<void> {
 
-        this.memberUid =
-            localStorage.getItem(
-                'member_uid'
-            ) ?? '';
-
-        const userId =
-            localStorage.getItem(
-                'userId'
-            );
+        this.memberUid = localStorage.getItem( 'member_uid') ?? '';
+        const userId = localStorage.getItem('userId');
 
         if (!userId) {
             this.hasConnectedTemplate = false;

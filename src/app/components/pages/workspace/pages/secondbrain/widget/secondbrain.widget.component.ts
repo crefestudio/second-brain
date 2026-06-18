@@ -3,14 +3,14 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { EventListenerService, UserEvent } from '../../../services/event-listener.service';
+import { EventListenerService, UserEvent } from '../../../../../../services/event-listener.service';
 
-import { NotionService } from '../../../services/notion.service';
+import { NotionService } from '../../../../../../services/notion.service';
 import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 
-import { UserService } from '../../../services/user.service';
-import { _log } from '../../../lib/cf-common/cf-common';
-import { NACommonService } from '../../../services/common.service';
+import { UserService, SecondBrainLocalSession } from '../../../../../../services/user.service';
+import { _log } from '../../../../../../lib/cf-common/cf-common';
+import { NACommonService } from '../../../../../../services/common.service';
 
 
 /*
@@ -72,10 +72,6 @@ const pageIcon = `data:image/svg+xml;utf8,
   <rect x='0' y='0' width='10' height='10' fill='%23ffff00'/>
 </svg>`;
 
-export interface SecondBrainLocalSession {
-    userId: string;
-    accessKey: string;
-}
 
 @Component({
     selector: 'app-secondbrain-widget',
@@ -170,7 +166,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     onEvent(event: UserEvent) {
         if (!this.userId) { return; }
-        const session: SecondBrainLocalSession | null = this.getLocalSession(this.userId);        
+        const session: SecondBrainLocalSession | null = UserService.getLocalSession(this.userId);        
         if (!session || !session.accessKey) {
             return;
         }
@@ -273,11 +269,11 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         }
 
         // clientKey 체크
-        const session: SecondBrainLocalSession | null = this.getLocalSession(this.userId);        
+        const session: SecondBrainLocalSession | null = UserService.getLocalSession(this.userId);        
         if (!session || !session.accessKey) {
             this.showToast('이 장치의 인증 정보가 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.');
             this.state = 'connect-button'; // 세션이 없는 상태
-            this.clearLocalSession(this.userId);
+            UserService.clearLocalSession(this.userId);
             return false;
         }
         
@@ -300,7 +296,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         if (!user || !user.userId) {
             this.state = 'connect-button';
             this.errorMessage = '인증 정보가 만료되었거나 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.<br>(연결 유효기간: 1개월)';
-            this.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
+            UserService.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
             return false;
         }
 
@@ -387,7 +383,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         }
     }
 
-        // 이메일 인증번호 확인
+    // 이메일 인증번호 확인
     async submitCertificationNumber() {
         this.isVerifying = true;
         this.errorMessage = '';
@@ -403,7 +399,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             // 만약에 accessKey를 못받으면.
             if (result.userId && result.accessKey) {
                 // 로컬 스토리지나 상태 관리에 저장
-                this.saveLocalSession(result.userId, { userId: result.userId, accessKey: result.accessKey });
+                UserService.saveLocalSession(result.userId, { userId: result.userId, accessKey: result.accessKey });
                 // 세션 단계로 넘어감   
                 if (this.userId !== result.userId) {
                     this.userId = result.userId;
@@ -452,48 +448,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     // }
 
     
-    getLocalSession(userId: string): SecondBrainLocalSession | null {
-        // const clientKey = localStorage.getItem(clientId);
-        // _log('getLocalSession clientKey =>', clientKey);
-        // if (!clientKey) return null;
+    
 
-        let raw = localStorage.getItem(userId);
-        _log('getLocalSession raw =>', raw);
-        if (!raw) return null;
-
-        try {
-            const parsed = JSON.parse(raw);
-            _log('getLocalSession parsed =>', parsed);
-
-            // 구조 체크
-            if (
-                typeof parsed !== 'object' ||
-                !parsed.userId || !parsed.accessKey 
-            ) {
-                return null;
-            }
-
-            _log('getLocalSession parsed2 =>', parsed);
-
-            return {
-                userId: parsed.userId ? String(parsed.userId) : '', 
-                accessKey: parsed.accessKey ? String(parsed.accessKey) : ''
-            };
-        } catch {
-            return null;
-        }
-    }
-
-    saveLocalSession(userId: string, session: SecondBrainLocalSession): void {
-        localStorage.setItem(
-            userId,
-            JSON.stringify(session)
-        );
-    }
-
-    clearLocalSession(userId: string): void {
-        localStorage.removeItem(userId);
-    }
 
     goBackState() {
         if (this.state == 'email-input') {
@@ -811,7 +767,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
             if (!this.userId) return;
 
-            let session = this.getLocalSession(this.userId);
+            let session = UserService.getLocalSession(this.userId);
             if (!session || !session.userId) return;
 
             let userId: string = session.userId;
@@ -1145,7 +1101,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         }, 4000);
 
         if (!this.userId) { return; }
-        let session = this.getLocalSession(this.userId)
+        let session = UserService.getLocalSession(this.userId)
         if(!session || !session.userId) { return; }
         await this.userService.generateNotionNoteKMDataBatch(session.userId);
     }
@@ -1189,10 +1145,10 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         if (this.userId) {
              this.email = '';
             this.initStateData();
-            const session = this.getLocalSession(this.userId);
+            const session = UserService.getLocalSession(this.userId);
             if (session && session.userId && session.accessKey) {
                 await UserService.removeSecondBrainIntegration(session.userId);
-                this.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
+                UserService.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
             } 
         }
     }
@@ -1209,7 +1165,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         if (this.userId) {
              this.email = '';
             this.initStateData();
-            this.clearLocalSession(this.userId);
+            UserService.clearLocalSession(this.userId);
         }
     }
 

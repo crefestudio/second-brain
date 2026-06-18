@@ -30,85 +30,167 @@
         <tr>
           <th>템플릿</th>
           <!-- <th>구매 일자</th> -->
-          <th>구매 확인&nbsp;<span class="help-icon">
-
-              ⓘ
-
-              <span class="tooltip">
-                --
-              </span>
+          <th>구매 확인
+            &nbsp;
+            <span class="help-icon">ⓘ
+              <span class="tooltip">--</span>
             </span>
           </th>
           <th>상세정보</th>
           <th>다운로드</th>
-          <th>API 연결</th>
+          <th>에이전트 연결</th>
         </tr>
       </thead>
 
       <tbody>
         <tr>
           <td>라이프업</td>
+
           <td>
-            @if (!requestMode) {
+            @if (userId) {
+
+            <span class="badge success">
+              확인됨
+            </span>
+
+            } @else {
 
             <div class="verify-wrap">
-
               <span class="badge pending">
                 미확인
               </span>
 
               &nbsp;
 
-              <button class="verify-btn" (click)="requestMode = true">
+              <button class="verify-btn" (click)="router.navigate(['/workspace/mypage/agent-connect'])">
 
                 구매 확인
 
               </button>
-
-            </div>
-
-            } @else {
-
-            <div class="verify-form">
-
-              <input type="text" [(ngModel)]="verifyValue" placeholder="구매 시 등록한 이메일 ">
-
-              <button class="verify-btn" (click)="submitVerification()">
-
-                확인
-
-              </button>
-
-              <button class="cancel-btn" (click)="cancelVerification()">
-
-                취소
-
-              </button>
-
             </div>
 
             }
+          </td>
 
-          </td>
           <td>
+            @if (userId) {
+
+            <button class="verify-btn" [class.close-btn]="showPurchaseDetail"
+              (click)="showPurchaseDetail = !showPurchaseDetail">
+
+              {{ showPurchaseDetail ? '접기' : '상세 정보' }}
+
+            </button>
+
+            } @else {
+
             <span class="badge pending">
               미확인
             </span>
+
+            }
           </td>
-          <td> 
-            <span class="badge pending">
-              미확인
-            </span>
-            <!-- <button class="download-btn">
-              최신 버전 받기
-            </button> -->
-          </td>
+
           <td>
+            @if (userId) {
+
+            <button class="verify-btn" [class.close-btn]="showDownload" (click)="showDownload = !showDownload">
+
+              {{ showDownload ? '접기' : '다운로드' }}
+
+            </button>
+
+            } @else {
+
             <span class="badge pending">
               미확인
             </span>
+
+            }
+          </td>
+
+          <td>
+            @if (userId) {
+
+            <button class="verify-btn" (click)="router.navigate(['/workspace/mypage/agent-connect'])">
+
+              연결 하기
+
+            </button>
+
+            } @else {
+
+            <span class="badge pending">
+              미확인
+            </span>
+
+            }
           </td>
         </tr>
+        @if(showPurchaseDetail) {
+        <tr class="purchase-detail-row">
+
+          <td colspan="5">
+            <table class="purchase-detail-table">
+              <tbody>
+                <tr>
+
+                  <th>이름</th>
+                  <td>{{ purchaseInfo?.name }}</td>
+
+                  <th>전화번호</th>
+                  <td>{{ purchaseInfo?.phone }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>이메일</th>
+                  <td>{{ purchaseInfo?.email }}</td>
+
+                  <th>결제 상태</th>
+                  <td>{{ purchaseInfo?.status }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>결제 금액</th>
+                  <td>{{ purchaseInfo?.amount }}</td>
+
+                  <th>결제 수단</th>
+                  <td>{{ purchaseInfo?.paymentMethod }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>구매 일시</th>
+                  <td>{{ purchaseInfo?.purchasedAt }}</td>
+
+                  <th>알림 수신</th>
+                  <td>{{ purchaseInfo?.notify }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>구매 옵션</th>
+
+                  <td colspan="3">
+                    {{ purchaseInfo?.purchaseOption }}
+                  </td>
+
+                </tr>
+
+              </tbody>
+
+            </table>
+
+          </td>
+
+        </tr>
+        }
       </tbody>
 
     </table>

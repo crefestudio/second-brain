@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, AfterViewInit, ViewChild, ElementRef, OnInit, inject } from '@angular/core';
-import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
-import { NotionService } from '../../../services/notion.service';
+import { APP_CONFIG, AppConfig } from '../../../../../../config/app-config.token';
+import { NotionService } from '../../../../../../services/notion.service';
 
 @Component({
     selector: 'app-dashboard',

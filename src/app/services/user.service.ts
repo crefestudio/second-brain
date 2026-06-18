@@ -1,7 +1,7 @@
 // src/app/services/user.service.ts
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { collection, query, where, getDocs, getDoc, deleteDoc, Timestamp, updateDoc, deleteField } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, deleteDoc, Timestamp, updateDoc, limit } from 'firebase/firestore';
 import { firestore } from '../firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
@@ -33,13 +33,17 @@ export interface Edge {
     weight?: number;
 }
 
+export interface SecondBrainLocalSession {
+    userId: string;
+    accessKey: string;
+}
 
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 @Injectable({
     providedIn: 'root',
 })
 export class UserService {
-    private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
+    private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';    
     constructor(private http: HttpClient) { }
 
     /////////////////////////////////////////////////////////////////////////////////////
@@ -235,7 +239,11 @@ export class UserService {
         }
     }
 
-    async verifyPurchaser(templateId: string, email?: string, phone?: string): Promise<boolean> {
+    async verifyPurchaser(
+        templateId: string,
+        email?: string,
+        phone?: string
+    ): Promise<boolean> {
 
         if (!templateId || (!email && !phone)) {
             return false;
@@ -253,14 +261,15 @@ export class UserService {
             if (!result?.purchaser) {
                 return false;
             }
-            
+
             const STORAGE_KEY = 'notionable_verified_purchases';
+
             const purchases = JSON.parse(
                 localStorage.getItem(STORAGE_KEY) || '{}'
             );
 
             purchases[templateId] = {
-                email: result.purchaser['이메일'] || email,
+                ...result.purchaser,
                 verifiedAt: Date.now()
             };
 
@@ -280,6 +289,105 @@ export class UserService {
 
             return false;
         }
+    }
+
+    static isPurchased(templateId: string): boolean {
+        try {
+
+            const purchases = JSON.parse(
+                localStorage.getItem('notionable_verified_purchases') || '{}'
+            );
+
+            return !!purchases[templateId];
+
+        } catch {
+
+            return false;
+
+        }
+    }
+
+    static getPurchaseInfo(templateId: string): any | null {
+        try {
+
+            const purchases = JSON.parse(
+                localStorage.getItem('notionable_verified_purchases') || '{}'
+            );
+
+            return purchases[templateId] || null;
+
+        } catch {
+
+            return null;
+
+        }
+    }
+
+    static saveLocalSession(userId: string, session: SecondBrainLocalSession): void {
+        localStorage.setItem(
+            userId,
+            JSON.stringify(session)
+        );
+    }
+
+    static getLocalSession(userId: string): SecondBrainLocalSession | null {
+        // const clientKey = localStorage.getItem(clientId);
+        // _log('getLocalSession clientKey =>', clientKey);
+        // if (!clientKey) return null;
+
+        let raw = localStorage.getItem(userId);
+        _log('getLocalSession raw =>', raw);
+        if (!raw) return null;
+
+        try {
+            const parsed = JSON.parse(raw);
+            _log('getLocalSession parsed =>', parsed);
+
+            // 구조 체크
+            if (
+                typeof parsed !== 'object' ||
+                !parsed.userId || !parsed.accessKey 
+            ) {
+                return null;
+            }
+
+            _log('getLocalSession parsed2 =>', parsed);
+
+            return {
+                userId: parsed.userId ? String(parsed.userId) : '', 
+                accessKey: parsed.accessKey ? String(parsed.accessKey) : ''
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    static clearLocalSession(userId: string): void {
+        localStorage.removeItem(userId);
+    }
+
+    static async saveImwebMemberId( userId: string, imwebMemberId: string): Promise<void> {
+        const userRef = doc(firestore, 'users', userId);
+        await updateDoc(userRef, {
+            imwebMemberId,
+            updatedAt: serverTimestamp()
+        });
+    }
+
+    static async getUserIdByImwebMemberId( imwebMemberId: string): Promise<string | null> {
+        const q = query(
+            collection(firestore, 'users'),
+            where('imwebMemberId', '==', imwebMemberId),
+            limit(1)
+        );
+
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            return null;
+        }
+
+        return snapshot.docs[0].id;
     }
 
 }

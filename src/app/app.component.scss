@@ -1,0 +1,46 @@
+
+/*
+toast
+*/
+.toast {
+  position: fixed;
+  z-index: 100;
+  bottom: 24px;
+  left: 50%;
+  transform: translate(-50%, 10px);
+
+  background: rgba(28, 28, 30, 0.6); /* 🔥 여기 */
+  backdrop-filter: blur(6px);        /* 지원 브라우저에서만 */
+  -webkit-backdrop-filter: blur(6px);
+
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 40px;
+
+  font-size: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+
+  opacity: 0;
+  pointer-events: none;
+
+  box-sizing: border-box;  /* 패딩 포함 폭 계산 */
+  word-break: break-word;  /* 긴 텍스트 줄바꿈 */
+  
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (max-width: 480px) {
+  .toast {
+    left: 50%; /* 중앙 유지 */
+    transform: translateX(-50%) translateY(10px);
+    width: 90vw;      /* 화면 폭의 90%로 제한 */
+    max-width: none;   /* max-width 제거 */
+  }
+}

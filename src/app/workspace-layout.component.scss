@@ -160,10 +160,10 @@
 /* ===== 2 Depth ===== */
 
 .submenu {
-  margin-left: 16px;
+  margin-left: 12px;
   margin-top: 6px;
 
-  padding-left: 12px;
+  // padding-left: 12px;
 
   border-left: 1px solid #2a2a2a;
 }
@@ -215,3 +215,30 @@
   transform: rotate(180deg);
 }
 
+.submenu-divider {
+  height: 1px;
+  margin: 10px 12px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.submenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-icon {
+  font-size: 18px;
+  color: #7AA2F7; /* 주황색 */
+}
+
+.menu-icon-svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #9ca3af;
+}
+
+.submenu-item.active .menu-icon-svg {
+  color: #7AA2F7;
+}

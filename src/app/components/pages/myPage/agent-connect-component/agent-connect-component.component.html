@@ -41,7 +41,11 @@
             </span>
 
             <span class="table-header-title">
-              LIFE UP 연동 서비스 ID 발급
+              구매 확인 및 에이전트 인증서 발급&nbsp;
+              <span class="help-icon">ⓘ
+                <span class="tooltip">템플릿과 에이전트 연결하기 전에 보안을 위해 연결 권한을 획득합니다.</span>
+              </span>
+
             </span>
 
           </th>
@@ -56,79 +60,280 @@
 
           <td class="status-cell">
 
+            @if(hasLifeupPurchase) {
+            <span class="badge success">
+              완료
+            </span>
+            } @else {
             <span class="badge pending">
               미완료
             </span>
-
+            }
           </td>
 
           <td class="task-cell">
 
-            구매 정보 확인
+            구매 확인
 
           </td>
 
           <td class="action-cell">
 
-            @if (!requestMode) {
+            @if (hasLifeupPurchase && purchaseInfo.email) {
 
-            <div class="verify-wrap">
-
-              <button class="verify-btn" (click)="requestMode = true">
-
-                구매 확인
-
+            <div class="verified-email">
+              ✓ {{ purchaseInfo.email }}
+              <button class="remove-btn" (click)="removeLifeupPurchase()">
+                삭제
               </button>
-
             </div>
+
 
             } @else {
 
-            <div class="verify-form">
-
-              <input type="text" [(ngModel)]="verifyValue" placeholder="구매시 등록한 이메일">
-
-              <button class="verify-btn" (click)="submitVerification()">
-
-                확인
-
+            @if (!requestPurchaserCheck) {
+            <div class="verify-wrap">
+              <button class="verify-btn" (click)="requestPurchaserCheck = true">
+                구매 확인
               </button>
-
-              <button class="cancel-btn" (click)="cancelVerification()">
-
-                취소
-
-              </button>
-
             </div>
-
+            } @else {
+            <div class="verify-form">
+              <input type="text" [(ngModel)]="verifyValue" placeholder="구매 시 등록한 이메일">
+              <button class="verify-btn" (click)="submitVerification()">
+                확인
+              </button>
+              <button class="cancel-btn" (click)="cancelVerification()">
+                취소
+              </button>
+            </div>
             }
-
+            }
           </td>
 
         </tr>
-
         <tr>
 
           <td class="status-cell">
-
+            @if(userId) {
+            <span class="badge success">
+              완료
+            </span>
+            } @else {
             <span class="badge pending">
               미완료
             </span>
-
+            }
           </td>
 
           <td class="task-cell">
-
             구매 이메일 인증
+          </td>
+
+          <td class="action-cell">
+            <div class="verify-wrap">
+              @if (!purchaseInfo?.email) {
+              <span class="text-muted">
+                구매 정보 확인이 필요합니다.
+              </span>
+              } @else if (userId) {
+              <div class="verified-email">
+                ✓ 서비스 워크스페이스 ID&nbsp;&nbsp;:&nbsp;&nbsp;{{userId}}
+              </div>&nbsp;&nbsp;
+              <button class="detail-btn" (click)="showPurchaseDetail = !showPurchaseDetail">
+                {{ showPurchaseDetail ? '접기' : '구매정보 보기' }}
+              </button>
+              <!-- &nbsp;&nbsp;
+              <button class="detail-btn" (click)="showWorkspaceDetail = !showWorkspaceDetail">
+                {{ showWorkspaceDetail ? '접기' : '보안 인증서 보기' }}
+              </button> -->
+              } @else if (!isRequestMailCheck) {
+              <button class="verify-btn" (click)="onRequestMailCheck()">
+                메일 인증
+              </button>
+              } @else {
+
+              }
+            </div>
+          </td>
+        </tr>
+
+        @if (isRequestMailCheck) {
+        <tr class="mail-cert-row">
+          <td colspan="3">
+            <div class="mail-cert-container">
+              <div class="mail-cert-header">
+                <div class="mail-cert-header-top">
+                  <strong>인증번호 확인</strong>
+                  <button type="button" class="close-btn" (click)="cancelMailCheck()">
+                    ✕
+                  </button>
+                </div>
+                <p>
+                  {{ purchaseInfo?.email }} 로 인증번호를 발송했습니다.
+                  <br>
+                  메일을 확인하신 후 인증번호 6자리를 입력해주세요.
+                </p>
+              </div>
+              <div class="mail-cert-input-wrap">
+                <input #codeInput0 class="code-input" type="text" inputmode="numeric" maxlength="1"
+                  [value]="codeArray[0]" [disabled]="isVerifying" (input)="onInputNumber($event, 0)"
+                  (keydown.backspace)="onBackspace($event, 0)" />
+
+                <input class="code-input" type="text" inputmode="numeric" maxlength="1" [value]="codeArray[1]"
+                  [disabled]="isVerifying" (input)="onInputNumber($event, 1)"
+                  (keydown.backspace)="onBackspace($event, 1)" />
+
+                <input class="code-input" type="text" inputmode="numeric" maxlength="1" [value]="codeArray[2]"
+                  [disabled]="isVerifying" (input)="onInputNumber($event, 2)"
+                  (keydown.backspace)="onBackspace($event, 2)" />
+
+                <input class="code-input" type="text" inputmode="numeric" maxlength="1" [value]="codeArray[3]"
+                  [disabled]="isVerifying" (input)="onInputNumber($event, 3)"
+                  (keydown.backspace)="onBackspace($event, 3)" />
+
+                <input class="code-input" type="text" inputmode="numeric" maxlength="1" [value]="codeArray[4]"
+                  [disabled]="isVerifying" (input)="onInputNumber($event, 4)"
+                  (keydown.backspace)="onBackspace($event, 4)" />
+
+                <input class="code-input" type="text" inputmode="numeric" maxlength="1" [value]="codeArray[5]"
+                  [disabled]="isVerifying" (input)="onInputNumber($event, 5)"
+                  (keydown.backspace)="onBackspace($event, 5)" />
+              </div>
+
+              <div class="mail-cert-actions">
+                <button class="cancel-btn" (click)="onRequestMailCheck()">
+                  재전송
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+
+        }
+
+        @if(showPurchaseDetail) {
+        <tr class="purchase-detail-row">
+
+          <td colspan="3">
+
+            <table class="purchase-detail-table">
+
+              <tbody>
+
+                <tr>
+
+                  <th>이름</th>
+                  <td>{{ purchaseInfo?.name }}</td>
+
+                  <th>전화번호</th>
+                  <td>{{ purchaseInfo?.phone }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>이메일</th>
+                  <td>{{ purchaseInfo?.email }}</td>
+
+                  <th>결제 상태</th>
+                  <td>{{ purchaseInfo?.status }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>결제 금액</th>
+                  <td>{{ purchaseInfo?.amount }}</td>
+
+                  <th>결제 수단</th>
+                  <td>{{ purchaseInfo?.paymentMethod }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>구매 일시</th>
+                  <td>{{ purchaseInfo?.purchasedAt }}</td>
+
+                  <th>알림 수신</th>
+                  <td>{{ purchaseInfo?.notify }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>구매 옵션</th>
+
+                  <td colspan="3">
+                    {{ purchaseInfo?.purchaseOption }}
+                  </td>
+
+                </tr>
+
+              </tbody>
+
+            </table>
 
           </td>
 
-          <td class="action-cell"></td>
+        </tr>
+        }
+
+        <!-- @if(showWorkspaceDetail) {
+        <tr class="purchase-detail-row">
+
+          <td colspan="3">
+
+            <table class="purchase-detail-table">
+
+              <tbody>
+
+                <tr>
+
+                  <th>보안 인증키</th>
+
+                  <td>
+                    <span class="badge success">
+                      발급 확인됨
+                    </span>
+                  </td>
+
+                  <th>생성일</th>
+                  <td>{{ purchaseInfo?.createdAt }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>인증 이메일</th>
+                  <td>{{ purchaseInfo?.email }}</td>
+
+                  <th>만료일</th>
+                  <td>{{ purchaseInfo?.expiredAt }}</td>
+
+                </tr>
+
+                <tr>
+
+                  <th>홈페이지 멤버 ID</th>
+
+                  <td colspan="3">
+                    {{ purchaseInfo?.memberId }}
+                  </td>
+
+                </tr>
+
+              </tbody>
+
+            </table>
+
+          </td>
 
         </tr>
+        } -->
 
-        <tr>
+        <!-- <tr>
 
           <td class="status-cell">
 
@@ -140,13 +345,13 @@
 
           <td class="task-cell">
 
-            LIFE UP 연동 서비스 ID 발급
+            사용자 ID 발급
 
           </td>
 
           <td class="action-cell"></td>
 
-        </tr>
+        </tr> -->
 
       </tbody>
 
@@ -155,64 +360,49 @@
   </div>
 
   <!-- STEP 2 -->
-
   <div class="table-card mt-32">
-
     <table class="agent-table">
-
       <colgroup>
         <col style="width:70px">
         <col>
         <col style="width:420px">
       </colgroup>
-
       <thead>
-
         <tr>
-
           <th colspan="3">
-
             <span class="badge active">
               STEP 2
             </span>
-
             <span class="table-header-title">
-              Notionable Agent API 연결
+              Notionable 에이전트 연결&nbsp;
+              <span class="help-icon">ⓘ
+                <span class="tooltip">라이프업 템플릿과 노셔너블 에이전트를 연결합니다.</span>
+              </span>
             </span>
-
           </th>
-
         </tr>
-
       </thead>
-
       <tbody>
-
         <tr>
-
           <td class="status-cell">
-
             <span class="badge pending">
               미완료
             </span>
-
           </td>
-
           <td class="task-cell">
-
-            템플릿과 Agent 연결하기
-
+            LIFE UP 템플릿과 에이전트 연결하기
           </td>
           <td class="action-cell">
-
           </td>
-
         </tr>
-
       </tbody>
-
     </table>
-
   </div>
+  
+</div>
 
+<!-- 에러메세지 -->
+<div class="error-message" [innerHTML]="errorMessage">
+</div>
+<div class="warn-message" [innerHTML]="warnMessage">
 </div>

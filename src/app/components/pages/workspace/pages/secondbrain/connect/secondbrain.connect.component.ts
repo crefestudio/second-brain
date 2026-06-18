@@ -2,11 +2,11 @@ import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 
-import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
-import { NotionService } from '../../../services/notion.service';
-import { UserService } from '../../../services/user.service';
-import { NACommonService } from '../../../services/common.service';
-import { _log } from '../../../lib/cf-common/cf-common';
+import { APP_CONFIG, AppConfig } from '../../../../../../config/app-config.token';
+import { NotionService } from '../../../../../../services/notion.service';
+import { UserService } from '../../../../../../services/user.service';
+import { NACommonService } from '../../../../../../services/common.service';
+import { _log } from '../../../../../../lib/cf-common/cf-common';
 
 @Component({
     selector: 'app-connect',

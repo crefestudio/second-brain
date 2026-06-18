@@ -1,9 +1,9 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { UserService } from '../../../services/user.service';
-import { _log } from '../../../lib/cf-common/cf-common';
-import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
+import { UserService } from '../../../../../../services/user.service';
+import { _log } from '../../../../../../lib/cf-common/cf-common';
+import { APP_CONFIG, AppConfig } from '../../../../../../config/app-config.token';
 
 
 @Component({

@@ -1,6 +1,9 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { AuthService } from '../../../../../services/auth.service';
+import { UserService } from '../../../../../services/user.service';
 
 @Component({
     selector: 'app-subscription',
@@ -9,9 +12,24 @@ import { FormsModule } from '@angular/forms';
     templateUrl: './subscription.component.html',
     styleUrls: ['./subscription.component.scss']
 })
-export class SubscriptionComponent {
+export class SubscriptionComponent implements OnInit {
     requestMode = false;
     verifyValue = '';
+
+    memberUid: string = '';
+    userId: string = '';
+
+    showPurchaseDetail = false;
+    showDownload = false;
+
+    hasLifeupPurchase: boolean = false;
+    purchaseInfo: any = null;
+
+    constructor(
+        public router: Router,
+        private authService: AuthService,
+        private userService: UserService
+    ) { }
 
     services = [
         {
@@ -27,6 +45,36 @@ export class SubscriptionComponent {
             templateInfo: '블로그 자동 발행'
         }
     ];
+
+
+    ngOnInit() {
+        this.loadSession();
+        this.updatePurchaseInfo();
+
+    }
+
+    updatePurchaseInfo() {
+        this.hasLifeupPurchase = UserService.isPurchased('lifeUp');
+
+        if (this.hasLifeupPurchase) {
+            this.purchaseInfo = UserService.getPurchaseInfo('lifeUp');
+        } else {
+            this.purchaseInfo = null;
+        }
+    }
+
+
+    async loadSession() {
+        await this.authService.loadSession();
+        this.memberUid = this.authService.getMemberUid();
+        this.userId = this.authService.getUserId();
+
+        if (!this.userId) {
+            console.error('사용자를 찾을 수 없습니다.');
+            // this.errorMessage = '사용자를 찾을 수 없습니다.';
+            return;
+        }
+    }
 
     submitVerification() {
 

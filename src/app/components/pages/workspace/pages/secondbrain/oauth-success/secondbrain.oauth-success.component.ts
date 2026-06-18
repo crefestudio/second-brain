@@ -1,8 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { UserService } from '../../../services/user.service';
-import { _log } from '../../../lib/cf-common/cf-common';
+import { UserService } from '../../../../../../services/user.service';
+import { _log } from '../../../../../../lib/cf-common/cf-common';
 
 @Component({
     selector: 'app-oauth-success',
