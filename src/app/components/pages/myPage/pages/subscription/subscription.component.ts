@@ -48,7 +48,7 @@ export class SubscriptionComponent implements OnInit {
 
 
     ngOnInit() {
-        this.loadSession();
+        this.updateSession();
         this.updatePurchaseInfo();
 
     }
@@ -64,8 +64,8 @@ export class SubscriptionComponent implements OnInit {
     }
 
 
-    async loadSession() {
-        await this.authService.loadSession();
+    async updateSession() {
+        await this.authService.updateSession();
         this.memberUid = this.authService.getMemberUid();
         this.userId = this.authService.getUserId();
 

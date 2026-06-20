@@ -538,6 +538,36 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
     }
 }));
 
+export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
+    const userId: string = req.body.userId;
+
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+
+    const expiresAt =
+        admin.firestore.Timestamp.fromMillis(
+            Date.now() + 10 * 60 * 1000
+        );
+
+    await db
+        .collection('verifications')
+        .doc(userId)
+        .set({
+            code: hashedCode,
+            verified: false,
+            kakaoUserId: null,
+            expiresAt,
+            attempts: 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+    return res.status(200).json({
+        code,
+        expiresAt
+    });
+})
+);
+
 export const sendTemplateConnectRequest = onRequest(
     withCors(async (req, res) => {
 
@@ -3428,64 +3458,235 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
 
 export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
     const payload = req.body;
+    const utterance = payload?.userRequest?.utterance?.trim() ?? '';
 
-    const utterance = payload?.userRequest?.utterance;
-//    const kakaoUserId = payload?.userRequest?.user?.id;
-
-
-    // ✅ 카카오는 즉시 응답
-    res.status(200).json({
-        version: "2.0",
-        template: {
-            outputs: [
-                {
-                    simpleText: {
-                        text: "메시지를 접수했습니다."
-                    }
-                }
-            ]
-        }
-    });
+    const user = payload?.userRequest?.user;
+    const kakaoUserId = user?.properties?.plusfriendUserKey || user?.id;
 
     try {
+        console.log("[KAKAO RAW]", JSON.stringify(payload, null, 2));
+        console.log("[KAKAO USER]", {
+            kakaoUserId,
+            type: user?.type,
+            plusfriendUserKey: user?.properties?.plusfriendUserKey,
+            botUserKey: user?.id
+        });
 
-        console.log(
-            "[KAKAO]",
-            JSON.stringify(payload, null, 2)
-        );
+        ///////////////////////////////////////////////////
+        // 1. 연결된 사용자 조회
+        const userSnap = await db
+            .collection('users')
+            .where('kakaoUserId', '==', kakaoUserId)
+            .limit(1)
+            .get();
 
-        // TODO
-        // kakaoUserId -> notionable uid 조회
+        ///////////////////////////////////////////////////
+        // 2. 이미 연결된 사용자 → 메시지 수집
+        if (!userSnap.empty) {
+            const uid = userSnap.docs[0].id;
 
-        const uid = "9LEvqxMo";
+            await db
+                .collection("users")
+                .doc(uid)
+                .collection("integrations")
+                .doc("kakaoAgent")
+                .collection("captures")
+                .add({
+                    kakaoUserId,
+                    plusfriendUserKey: user?.properties?.plusfriendUserKey || null,
+                    botUserKey: user?.id || null,
+                    content: utterance,
+                    source: "kakao",
+                    status: "received",
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
 
-        await db
-            .collection("users")
-            .doc(uid)
-            .collection("integrations")
-            .doc("kakaoCapture")
-            .collection("captures")
-            .add({
-                content: utterance,
-                source: "kakao",
-                status: "received",
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            await writeUserEvent(uid, {
+                eventType: "kakao-agent",
+                status: "completed",
+                eventTitle: "카카오 메시지를 수집했습니다."
             });
 
-        await writeUserEvent(uid, {
-            eventType: "kakao-capture",
-            status: "completed",
-            eventTitle: `카카오 메시지를 수집했습니다.`
+            return res.status(200).json({
+                version: "2.0",
+                template: {
+                    outputs: [{
+                        simpleText: {
+                            text: "메시지를 접수했습니다."
+                        }
+                    }]
+                }
+            });
+        }
+
+        ///////////////////////////////////////////////////
+        // 3. 인증번호 처리
+        if (/^\d{4}$/.test(utterance)) {
+
+            const hashedInput = crypto
+                .createHash('sha256')
+                .update(utterance)
+                .digest('hex');
+
+            ///////////////////////////////////////////////////
+            // ✅ 개선: full scan 제거 (핵심)
+            const verificationSnap = await db
+                .collection('verifications')
+                .where('verified', '==', false)
+                .where('code', '==', hashedInput)
+                .limit(1)
+                .get();
+
+            if (!verificationSnap.empty) {
+
+                const matchedDoc = verificationSnap.docs[0];
+                const verificationData = matchedDoc.data();
+
+                ///////////////////////////////////////////////////
+                // 만료 체크
+                if (
+                    verificationData.expiresAt &&
+                    verificationData.expiresAt.toMillis() < Date.now()
+                ) {
+                    await matchedDoc.ref.delete();
+
+                    return res.status(200).json({
+                        version: "2.0",
+                        template: {
+                            outputs: [{
+                                simpleText: {
+                                    text: "인증번호가 만료되었습니다."
+                                }
+                            }]
+                        }
+                    });
+                }
+
+                const userId = matchedDoc.id;
+
+                ///////////////////////////////////////////////////
+                // ⚠️ user 존재 체크 (안전)
+                const targetUserRef = db.collection('users').doc(userId);
+                const targetUserSnap = await targetUserRef.get();
+
+                if (targetUserSnap.exists) {
+                    await targetUserRef.update({
+                        kakaoUserId
+                    });
+                }
+
+                ///////////////////////////////////////////////////
+                // verification 업데이트
+                await matchedDoc.ref.update({
+                    verified: true,
+                    verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    kakaoUserId
+                });
+
+                return res.status(200).json({
+                    version: "2.0",
+                    template: {
+                        outputs: [{
+                            simpleText: {
+                                text:
+                                    "카카오 연결이 완료되었습니다.\n\n" +
+                                    "반갑습니다 👋\n" +
+                                    "라이프업 비서입니다.\n\n" +
+                                    "이제부터 당신의 일상을 업그레이드해 줄\n" +
+                                    "든든한 러닝메이트가 되겠습니다.\n\n" +
+                                    "사용법이 궁금하시면 '사용법'이라고 입력해보세요."
+                            }
+                        }]
+                    }
+                });
+            }
+
+            ///////////////////////////////////////////////////
+            // 인증 실패
+            return res.status(200).json({
+                version: "2.0",
+                template: {
+                    outputs: [{
+                        simpleText: {
+                            text: "인증번호가 다릅니다. 인증번호를 확인 후 다시 보내주세요."
+                        }
+                    }]
+                }
+            });
+        }
+
+        ///////////////////////////////////////////////////
+        // 4. 미연결 사용자 안내
+        return res.status(200).json({
+            version: "2.0",
+            template: {
+                outputs: [{
+                    simpleText: {
+                        text:
+                            "노셔너블 비서입니다.\n\n" +
+                            "아직 카카오 연결이 완료되지 않았습니다.\n" +
+                            "notionable.net 에 접속하여 카카오 연결을 먼저 진행해주세요."
+                    }
+                }]
+            }
         });
 
     } catch (error) {
 
-        console.error(
-            "[KAKAO WEBHOOK ERROR]",
-            error
-        );
+        console.error("[KAKAO WEBHOOK ERROR]", error);
 
+        return res.status(200).json({
+            version: "2.0",
+            template: {
+                outputs: [{
+                    simpleText: {
+                        text: "처리 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
+                    }
+                }]
+            }
+        });
     }
-
 })
 );
+
+export const disconnectKakao = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
+    const userId = req.body?.userId;
+
+    try {
+        console.log("[DISCONNECT KAKAO]", { userId });
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "userId required"
+            });
+        }
+
+        const userRef = db.collection('users').doc(userId);
+        const userSnap = await userRef.get();
+
+        if (!userSnap.exists) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        await userRef.update({
+            kakaoUserId: admin.firestore.FieldValue.delete(),
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "카카오 연결이 해제되었습니다."
+        });
+
+    } catch (error) {
+        console.error("[DISCONNECT KAKAO ERROR]", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "처리 중 오류가 발생했습니다."
+        });
+    }
+}));

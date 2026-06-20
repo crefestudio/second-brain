@@ -31,11 +31,6 @@ toast
     transform 0.25s ease;
 }
 
-.toast.show {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
 @media (max-width: 480px) {
   .toast {
     left: 50%; /* 중앙 유지 */
@@ -44,3 +39,24 @@ toast
     max-width: none;   /* max-width 제거 */
   }
 }
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast.success {
+  background: rgba(28, 28, 30, 0.85);
+  color: #ffffff;
+}
+
+.toast.warning {
+  background: rgba(255, 214, 10, 0.92);
+  color: #1c1c1e;
+}
+
+.toast.error {
+  background: rgba(255, 59, 48, 0.95);
+  color: #ffffff;
+}
+

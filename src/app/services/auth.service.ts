@@ -6,20 +6,30 @@ import { UserService } from './user.service';
 })
 export class AuthService {
 
-    memberUid = '';
     userId = '';
+    memberUid = '';
+    kakaoUserId = '';
 
-    async loadSession(): Promise<void> {
-
-        this.memberUid =
-            localStorage.getItem('member_uid')?.trim() ?? '';
+    async updateSession(): Promise<void> {
+        this.memberUid = localStorage.getItem('member_uid')?.trim() ?? '';
 
         // localhost 테스트용
         if (window.location.hostname !== 'app.notionable.net') {
             this.memberUid = 'toto791@gmail.com';
         }
 
-        this.userId = await UserService.getUserIdByImwebMemberId( this.memberUid) ?? '';
+        // 서버에서 다시 가져옴
+        const user = await UserService.getUserByImwebMemberId(this.memberUid);
+        this.userId = user?.userId ?? '';
+        this.kakaoUserId = user?.kakaoUserId ?? '';
+    }
+
+    getUserIds() {
+        return {
+            userId: this.userId,
+            memberUid: this.memberUid,
+            kakaoUserId: this.kakaoUserId
+        };
     }
 
     getMemberUid(): string {
@@ -28,5 +38,9 @@ export class AuthService {
 
     getUserId(): string {
         return this.userId;
+    }
+
+    getKakaoUserId(): string {
+        return this.kakaoUserId;
     }
 }

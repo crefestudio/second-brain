@@ -1,0 +1,57 @@
+<div class="view-wrapper">
+
+  <div class="connect-container" *ngIf="state === 'notjoin'">
+    <p>
+      죄송합니다.<br>
+      이메일 인증정보를 확인 할 수 없습니다.<br>
+      아래 메일로 관리자에게 문의해주세요.<br>
+      toto791&#64;gmail.com
+    </p>
+  </div>
+
+  <div class="connect-container" *ngIf="state === 'notconnected' || state === 'connected'">
+
+    <!-- 연결된 상태 안내 카드 -->
+    <div class="info-card" *ngIf="state === 'connected'">
+      <div class="info-card-title">
+        ✅ 이미 템플릿이 연결되어 있습니다
+      </div>
+      <div class="info-card-text">
+        연결을 변경하시려면 아래 버튼을 눌러 다시 진행해주세요.
+      </div>
+    </div>
+
+    <h1>
+      LifeUp <br>
+      Notion API 연결
+    </h1>
+
+    <div class="guide-box">
+      <div class="guide-step">
+        <span class="step-number">1</span>
+        <span>아래 <strong>라이프업 템플릿 연결하기</strong> 버튼을 눌러주세요.</span>
+      </div>
+
+      <div class="guide-step">
+        <span class="step-number">2</span>
+        <span>
+          연결 화면이 열리면<br>
+          첫 번째 창에서 <strong>다음</strong> 버튼을,<br>
+          두 번째 창에서 <strong>아래</strong> 버튼을 눌러주세요.
+        </span>
+      </div>
+    </div>
+
+    <div class="image-placeholder">
+      <img src="assets/images/api_connect_guide.png" alt="API 연결 가이드 이미지" class="guide-image" />
+    </div>
+
+    <div class="tab-content">
+      <button class="api-btn" (click)="connectNotion()">
+        라이프업 템플릿 연결하기
+      </button>
+    </div>
+
+  </div>
+
+</div>

@@ -654,3 +654,165 @@
   transform: scale(0.95);
 
 }
+
+.kakao-connect-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kakao-message {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d1d1d6;
+}
+
+.kakao-message.loading {
+  color: #8e8e93;
+}
+
+.kakao-message.error {
+  color: #ff9f0a;
+}
+
+.code {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 0 4px;
+
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+
+  padding: 0;
+  margin: 0;
+
+  color: #ff9f0a;
+  font-size: 14px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  opacity: 0.85;
+}
+
+/* .cancel-btn {
+  align-self: flex-start;
+
+  padding: 8px 14px;
+
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+
+  background: rgba(255,255,255,0.04);
+  color: #8e8e93;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: #d1d1d6;
+} */
+
+.kakao-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.kakao-message {
+  flex: 1;
+}
+
+.kakao-highlight {
+  color: #ffcd4a;
+  font-weight: 600;
+}
+
+
+.confirm-box {
+  width: 320px;
+  padding: 18px;
+
+  background: #1c1c1e;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+
+/* .confirm-box::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+
+  background: rgba(0,0,0,0.5);
+  z-index: -1;
+} */
+
+.confirm-text strong {
+  display: block;
+  font-size: 14px;
+  color: #fff;
+}
+
+.sub-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.confirm-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.confirm-btn.yes {
+  background: #ff3b30;
+  color: #fff;
+}
+
+.confirm-btn.no {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  z-index: 9999;
+}
+

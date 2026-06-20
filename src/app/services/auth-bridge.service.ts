@@ -9,12 +9,16 @@ export class AuthBridgeService {
 
     async init(): Promise<void> {
 
+        if (window.location.hostname === 'localhost') {
+            return;
+        }
+
         return new Promise((resolve) => {
 
             const timeout = setTimeout(() => {
                 window.removeEventListener('message', handler);
                 resolve();
-            }, 3000);
+            }, 300);
 
             const handler = (event: MessageEvent) => {
 

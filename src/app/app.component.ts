@@ -35,6 +35,7 @@ export class AppComponent implements OnInit {
     // toast
     isShowToast = false;
     toastMessage!: SafeHtml;
+    toastType: 'success' | 'warning' | 'error'  = 'success';
 
     errorMessage = '';
     warnMessage = '';
@@ -51,9 +52,10 @@ export class AppComponent implements OnInit {
     }
 
     ngOnInit(): void {
-        this.toastService.toast$.subscribe(message => {
+        this.toastService.toast$.subscribe((toast) => {
+            this.toastMessage = toast.message;
+            this.toastType = toast.type;
 
-            this.toastMessage = message;
             this.isShowToast = true;
 
             setTimeout(() => {

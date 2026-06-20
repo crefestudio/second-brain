@@ -3,10 +3,10 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { collection, query, where, getDocs, getDoc, deleteDoc, Timestamp, updateDoc, limit } from 'firebase/firestore';
 import { firestore } from '../firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { v4 as uuidv4 } from 'uuid';
-import { firstValueFrom } from 'rxjs';
+import { doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { firstValueFrom, Subject, Subscription } from 'rxjs';
 const SB_USER_ID_KEY = 'sb_user_id';
+
 
 import { _log } from '../lib/cf-common/cf-common';
 
@@ -38,14 +38,19 @@ export interface SecondBrainLocalSession {
     accessKey: string;
 }
 
+
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 @Injectable({
     providedIn: 'root',
 })
 export class UserService {
-    private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';    
-    constructor(private http: HttpClient) { }
+    private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 
+    public kakaoVerified$ = new Subject<void>();
+    private verificationUnsubscribe?: () => void;
+
+
+    constructor(private http: HttpClient) { }
     /////////////////////////////////////////////////////////////////////////////////////
     //  firebase 직접 호출
 
@@ -346,7 +351,7 @@ export class UserService {
             // 구조 체크
             if (
                 typeof parsed !== 'object' ||
-                !parsed.userId || !parsed.accessKey 
+                !parsed.userId || !parsed.accessKey
             ) {
                 return null;
             }
@@ -354,7 +359,7 @@ export class UserService {
             _log('getLocalSession parsed2 =>', parsed);
 
             return {
-                userId: parsed.userId ? String(parsed.userId) : '', 
+                userId: parsed.userId ? String(parsed.userId) : '',
                 accessKey: parsed.accessKey ? String(parsed.accessKey) : ''
             };
         } catch {
@@ -366,7 +371,7 @@ export class UserService {
         localStorage.removeItem(userId);
     }
 
-    static async saveImwebMemberId( userId: string, imwebMemberId: string): Promise<void> {
+    static async saveImwebMemberId(userId: string, imwebMemberId: string): Promise<void> {
         const userRef = doc(firestore, 'users', userId);
         await updateDoc(userRef, {
             imwebMemberId,
@@ -374,7 +379,10 @@ export class UserService {
         });
     }
 
-    static async getUserIdByImwebMemberId( imwebMemberId: string): Promise<string | null> {
+    static async getUserByImwebMemberId(
+        imwebMemberId: string
+    ): Promise<{ userId: string; kakaoUserId: string | null } | null> {
+
         const q = query(
             collection(firestore, 'users'),
             where('imwebMemberId', '==', imwebMemberId),
@@ -387,11 +395,108 @@ export class UserService {
             return null;
         }
 
-        return snapshot.docs[0].id;
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+
+        return {
+            userId: doc.id,
+            kakaoUserId: data['kakaoUserId'] ?? null
+        };
     }
 
-}
+    // static async getUserIdByImwebMemberId(imwebMemberId: string): Promise<string | null> {
+    //     const q = query(
+    //         collection(firestore, 'users'),
+    //         where('imwebMemberId', '==', imwebMemberId),
+    //         limit(1)
+    //     );
 
+    //     const snapshot = await getDocs(q);
+
+    //     if (snapshot.empty) {
+    //         return null;
+    //     }
+
+    //     return snapshot.docs[0].id;
+    // }
+
+    async requestKakaoVerification(userId: string): Promise<{ code: string; expiresAt: any } | null> {
+        if (!userId) return null;
+
+        try {
+            const result = await firstValueFrom(
+                this.http.post<{ code: string; expiresAt: any }>(
+                    `${this.functionsBaseUrl}/requestKakaoVerification`,
+                    { userId }
+                )
+            );
+
+            return result;
+        } catch (error) {
+            console.error('requestKakaoVerification failed', error);
+            return null;
+        }
+    }
+
+    startVerificationWatcher(userId: string) {
+
+        if (!userId) {
+            return;
+        }
+
+        this.stopVerificationWatcher();
+
+        const docRef = doc(
+            firestore,
+            'verifications',
+            userId
+        );
+
+        this.verificationUnsubscribe = onSnapshot(
+            docRef,
+            (snapshot) => {
+
+                if (!snapshot.exists()) {
+                    return;
+                }
+
+                const data = snapshot.data();
+
+                if (data['verified']) {
+
+                    this.kakaoVerified$.next();
+
+                    this.stopVerificationWatcher();
+                }
+            }
+        );
+    }
+
+    stopVerificationWatcher() {
+        this.verificationUnsubscribe?.();
+        this.verificationUnsubscribe = undefined;
+    }
+
+    async disconnectKakao(userId: string): Promise<boolean> {
+        alert('s')
+        if (!userId) return false;
+
+        try {
+            await firstValueFrom(
+                this.http.post(
+                    `${this.functionsBaseUrl}/disconnectKakao`,
+                    { userId }
+                )
+            );
+
+            return true;
+
+        } catch (error) {
+            console.error('disconnectKakao failed', error);
+            return false;
+        }
+    }
+}
 
 /**
      * 전화번호 기반으로 연결 정보 가져오기

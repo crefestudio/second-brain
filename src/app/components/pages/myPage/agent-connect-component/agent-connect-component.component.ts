@@ -1,10 +1,14 @@
 import { _log } from '../../../../lib/cf-common/cf-common';
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { UserService } from '../../../../services/user.service';
 import { ToastService } from '../../../../services/toast.service';
 import { AuthService } from '../../../../services/auth.service';
+
+import { APP_CONFIG, AppConfig } from '../../../../config/app-config.token';
+import { NACommonService } from '../../../../services/common.service';
+
 
 const templateKey = 'lifeUp';
 
@@ -15,10 +19,24 @@ const templateKey = 'lifeUp';
     styleUrl: './agent-connect-component.component.css'
 })
 export class AgentConnectComponentComponent implements OnInit {
+    memberUid: string = '';
+    userId: string = '';
+    kakaoUserId: string = '';
 
     requestPurchaserCheck = false;
     isRequestMailCheck = false;
     verifyValue = '';
+
+    // kakao
+    isRequestingKakaoCode = false;
+    kakaoVerificationCode = '';
+
+    public isRequestKakaoConnect = false;
+    public isWaitingKakaoVerification = false;
+    public isKakaoVerificationSuccess = false;
+    isConfirmRemoveDisconnectKakao: boolean = false;
+
+    ///////////////////////////////////
 
     hasLifeupPurchase: boolean = false;
 
@@ -35,8 +53,9 @@ export class AgentConnectComponentComponent implements OnInit {
     errorMessage = '';
     warnMessage = '';
 
-    memberUid: string = '';
-    userId: string = '';
+    // 템플릿 연결
+    private config = inject<AppConfig>(APP_CONFIG);
+    public isNotionIntegrated: boolean = false;
 
     constructor(private userService: UserService, private authService: AuthService) {
 
@@ -44,15 +63,35 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     ngOnInit() {
-        this.loadSession();
-        this.updatePurchaseInfo();
-        this.updateWorkspaceInfo();
+        this.initData();
+
+        this.userService.kakaoVerified$.subscribe(() => {
+            this.onComplateKakaoConnect();
+        });
     }
 
-    async loadSession() {
-        await this.authService.loadSession();
+    async initData() {
+        await this.updateSession();
+        await this.updatePurchaseInfo();
+        await this.updateNotionIntegrationData();
+    }
+
+    // 화면 아무 곳이나 클릭 시 닫힘
+    @HostListener('document:click')
+    closeAllOverlays() {
+        this.cancelConfirm();
+    }
+
+    cancelConfirm() {
+        this.isConfirmRemoveDisconnectKakao = false;
+    }
+
+
+    async updateSession() {
+        await this.authService.updateSession();
         this.memberUid = this.authService.getMemberUid();
         this.userId = this.authService.getUserId();
+        this.kakaoUserId = this.authService.getKakaoUserId();
 
         if (!this.userId) {
             console.error('사용자를 찾을 수 없습니다.');
@@ -107,7 +146,6 @@ export class AgentConnectComponentComponent implements OnInit {
             }
 
             this.updatePurchaseInfo();
-            this.updateWorkspaceInfo();
             ToastService.show('구매 정보가 확인되었습니다.');
 
             this.requestPurchaserCheck = false;
@@ -147,10 +185,6 @@ export class AgentConnectComponentComponent implements OnInit {
         } else {
             this.purchaseInfo = null;
         }
-    }
-
-    updateWorkspaceInfo() {
-        
     }
 
     onRequestMailCheck() {
@@ -335,11 +369,134 @@ export class AgentConnectComponentComponent implements OnInit {
         this.isVerifying = false;
     }
 
-    onResendCertificationCode() {
+    /////////////////////////////////////////////////
+    // kakao
+
+    onRequestConnetKakao() {
+        this.isRequestKakaoConnect = true;
+        this.requestConnetKakao();
+    }
+
+    async requestConnetKakao() {
+        if (!this.userId) {
+            ToastService.error('사용자 정보를 찾을 수 없습니다.');
+            return;
+        }
+
+        this.isRequestingKakaoCode = true;
+        try {
+            const result = await this.userService.requestKakaoVerification(this.userId);
+            this.isRequestingKakaoCode = false;
+            if (!result) {
+                ToastService.error('인증번호 생성에 실패했습니다.');
+                return;
+            }
+            this.kakaoVerificationCode = result.code;
+            this.isRequestKakaoConnect = true;
+
+            ToastService.show('인증번호가 생성되었습니다.');
+        } catch (e) {
+            console.error(e);
+            ToastService.error('카카오 연결 준비 중 오류가 발생했습니다.');
+        }
+    }
+
+    cancelKakaoVerification() {
+        this.isRequestKakaoConnect = false;
+        this.isWaitingKakaoVerification = false;
+        this.isKakaoVerificationSuccess = false;
+        this.kakaoVerificationCode = '';
+        this.userService.stopVerificationWatcher();
+    }
+
+    async copyKakaoVerificationCode() {
+        if (!this.kakaoVerificationCode) return;
+        await navigator.clipboard.writeText(this.kakaoVerificationCode);
+        ToastService.show('인증번호가 복사되었습니다.');
+    }
+
+    openKakaoChat() {
+        if (!this.userId) {
+            ToastService.error('사용자 정보를 찾을 수 없습니다.');
+            return;
+        }
+
+        this.isWaitingKakaoVerification = true;
+        window.open(
+            'http://pf.kakao.com/_xktkXX/chat',
+            '_blank'
+        );
+        this.userService.startVerificationWatcher(this.userId);
+    }
+
+    onComplateKakaoConnect() {
+        this.isWaitingKakaoVerification = false;
+        this.isKakaoVerificationSuccess = true;
+        this.isRequestKakaoConnect = false;
+
+        ToastService.show(
+            '카카오 연결이 완료되었습니다.'
+        );
+        this.updateSession();
+    }
+
+    onClickDisconnectKakaoBtn() {
+        setTimeout(() => {
+            this.isConfirmRemoveDisconnectKakao = true;
+        }, 10)
+    }
+
+    async disconectKakao() {
+        this.isConfirmRemoveDisconnectKakao = false;
+        const result = await this.userService.disconnectKakao(this.userId);
+
+        if (result) {
+            ToastService.show('카카오톡 연결을 해제 하였습니다.');
+        } else {
+            ToastService.error('카카오톡 연결 해제에 실패하였습니다.');
+        }
+        this.updateSession();
+    }
+
+    ///////////////////////////////////////////////////////////////
+    //
+    // tempate 연결
+
+    onClickConnectTemplate() {
+        this.connectTemplate();
+    }
+
+    async connectTemplate() {
+        _log('connectTemplate userId =>', this.userId);
+        if (!this.userId) { return; }
+        const data = await UserService.getSecondBrainIntegration(this.userId);
+        _log('connectTemplate userId, data =>', this.userId, data);
+
+        //if (!(data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length > 0)) {
+            // 연결창 띄우기
+            //this.state = 'connect-notion';
+            // 노션 연결
+            const encryptedUserId = await NACommonService.encrypt(this.userId); // 암호화해서 userId를 넘긴다.
+            const baseUrl = window.location.origin;
+            const serviceName = 'notion';
+            const setupPath = 'connect';
+            //const url = `${this.config.functionsBaseUrl}/notionAuth?userId=${this.userId}`;//`${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
+            const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;     
+            window.open(url, '_blank');
+            return;
+        //}       
 
     }
 
-    onSubmitCertificationNumber() {
+    async updateNotionIntegrationData() {
+        let userId = '';
+        if (!this.userId) { return; }
+        const data = await UserService.getSecondBrainIntegration(this.userId);
+        _log('connectTemplate userId, data =>', userId, data);
 
+        this.isNotionIntegrated = data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length;
     }
+
+
+
 }
