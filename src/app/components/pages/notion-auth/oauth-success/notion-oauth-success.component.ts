@@ -34,7 +34,7 @@ export class NotionOauthSuccessComponent implements OnInit {
     }
 
     async loadSecondBrainIntegrationInfo(userId: string) {
-        const data = await UserService.getSecondBrainIntegration(userId);
+        const data = await UserService.getUserIntegrationInfo(userId, '');
         _log('loadSecondBrainIntegrationInfo data =>', data);
 
         if (!data) {

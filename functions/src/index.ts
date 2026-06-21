@@ -146,6 +146,80 @@ export const notionAuth = onRequest(withCors((req, res) => {
 }));
 
 // ----------------------
+// Notion OAuth Callback
+// ----------------------
+export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCors(async (req, res) => {
+    try {
+        const code = req.query.code as string | undefined;
+        const userId = (req.query.state as string) || "default_user";
+        if (!userId) return res.status(400).send("Missing authorization code");
+        if (!code) return res.status(400).send("Missing authorization code");
+
+        const clientId = process.env.NOTION_CLIENT_ID!;
+        const clientSecret = process.env.NOTION_CLIENT_SECRET!;
+        const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+        const tokenResponse = await fetch("https://api.notion.com/v1/oauth/token", {
+            method: "POST",
+            headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }),
+        });
+
+        if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            console.error("Notion OAuth failed:", errorText);
+            return res.status(500).send("Notion OAuth failed");
+        }
+
+        const notionToken = await tokenResponse.json();
+
+        // note Database ID 얻기
+        const noteDatabaseId = await NotionService.getDatabaseIdByDatabaseName(notionToken.access_token, 'note_lifeup_1_3');
+
+        // users/{userId} 에 저장
+        await db.collection("users").doc(userId).set(
+            {
+                notionAccessToken: notionToken.access_token,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+        );
+
+        // secondbrain 연결정보 저장
+        await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
+            accessToken: notionToken.access_token,
+            workspaceId: notionToken.workspace_id,
+            botId: notionToken.bot_id,
+            duplicatedTemplateId: notionToken.duplicated_template_id,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            noteDatabaseId: noteDatabaseId
+        });
+
+        await db.collection("notionDatabaseMap").doc(noteDatabaseId).set({
+            userId,
+            accessToken: notionToken.access_token,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // 초기에 연결하면 키워드를 초기화 한다. 
+        await NotionService.resetKeywordOptions(notionToken.access_token, noteDatabaseId);
+
+        // // 처음 한번 기존 노트에 키워드를 가져와서 저장한다. 
+        // await NotionService.genetateNotionNoteKMData(notionToken.access_token, userId, noteDatabaseId);
+        return res.redirect(`http://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(userId)}`);
+    } catch (error) {
+        console.error("OAuth process failed:", error);
+        const userId = (req.query.state as string) || "";
+        return res.redirect(
+            `http://app.notionable.net/notion-auth/fail?userId=${encodeURIComponent(userId)}`
+        );
+    }
+})
+);
+
+
+
+// ----------------------
 // Notion Database 조회
 // ----------------------
 // export const getNotionDatabase = onRequest(
@@ -170,86 +244,42 @@ export const notionAuth = onRequest(withCors((req, res) => {
 // ----------------------
 // 사용자 SecondBrain 연결 정보 조회
 // ----------------------
-export const getUserSecondBrainConnectInfo = onRequest(
+// export const getUserSecondBrainConnectInfo = onRequest(
+//     withCors(async (req, res) => {
+//         const userId = req.query.userId as string;
+//         const userRef = db.collection("users").doc(userId);
+//         const userSnap = await userRef.get();
+//         const notionSnap = await userRef.collection("integrations").doc("secondbrain").get();
+
+//         res.json({
+//             user: userSnap.data(),
+//             notion: notionSnap.exists ? notionSnap.data() : null,
+//         });
+//     })
+// );
+
+// ----------------------
+// Integration 연결 정보 조회
+// ----------------------
+export const getUserIntegrationInfo = onRequest(
     withCors(async (req, res) => {
         const userId = req.query.userId as string;
+        const integrationId = req.query.integrationId as string;
+
         const userRef = db.collection("users").doc(userId);
+
         const userSnap = await userRef.get();
-        const notionSnap = await userRef.collection("integrations").doc("secondbrain").get();
+        const integrationSnap = await userRef
+            .collection("integrations")
+            .doc(integrationId)
+            .get();
 
         res.json({
-            user: userSnap.data(),
-            notion: notionSnap.exists ? notionSnap.data() : null,
+            user: userSnap.exists ? userSnap.data() : null,
+            integration: integrationSnap.exists ? integrationSnap.data() : null,
         });
     })
 );
-
-// ----------------------
-// Notion OAuth Callback
-// ----------------------
-export const notionOAuthCallback = onRequest(
-    { secrets: [NOTION_TOKEN] },
-    withCors(async (req, res) => {
-        try {
-            const code = req.query.code as string | undefined;
-            const userId = (req.query.state as string) || "default_user";
-            if (!userId) return res.status(400).send("Missing authorization code");
-            if (!code) return res.status(400).send("Missing authorization code");
-
-            const clientId = process.env.NOTION_CLIENT_ID!;
-            const clientSecret = process.env.NOTION_CLIENT_SECRET!;
-            const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-            const tokenResponse = await fetch("https://api.notion.com/v1/oauth/token", {
-                method: "POST",
-                headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: REDIRECT_URI }),
-            });
-
-            if (!tokenResponse.ok) {
-                const errorText = await tokenResponse.text();
-                console.error("Notion OAuth failed:", errorText);
-                return res.status(500).send("Notion OAuth failed");
-            }
-
-            const notionToken = await tokenResponse.json();
-
-            // note Database ID 얻기
-            const noteDatabaseId = await NotionService.getDatabaseIdByDatabaseName(notionToken.access_token, 'note_lifeup_1_3');
-
-            // secondbrain 연결정보 저장
-            await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
-                accessToken: notionToken.access_token,
-                workspaceId: notionToken.workspace_id,
-                botId: notionToken.bot_id,
-                duplicatedTemplateId: notionToken.duplicated_template_id,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                noteDatabaseId: noteDatabaseId
-            });
-
-            await db.collection("notionDatabaseMap").doc(noteDatabaseId).set({
-                userId,
-                accessToken: notionToken.access_token,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            // 초기에 연결하면 키워드를 초기화 한다. 
-            await NotionService.resetKeywordOptions(notionToken.access_token, noteDatabaseId);
-
-            // // 처음 한번 기존 노트에 키워드를 가져와서 저장한다. 
-            // await NotionService.genetateNotionNoteKMData(notionToken.access_token, userId, noteDatabaseId);
-
-            return res.redirect(`http://app.notionable.net/secondbrain/oauth-success?userId=${encodeURIComponent(userId)}`);
-        } catch (error) {
-            console.error("OAuth process failed:", error);
-            const userId = (req.query.state as string) || "";
-            return res.redirect(
-                `http://app.notionable.net/secondbrain/oauth-fail?userId=${encodeURIComponent(userId)}`
-            );
-        }
-    })
-);
-
 
 
 // ----------------------
@@ -647,10 +677,7 @@ class NotionService {
 
 
 
-    static async getDatabaseIdByDatabaseName(
-        accessToken: string,
-        databaseName: string
-    ): Promise<string> {
+    static async getDatabaseIdByDatabaseName(accessToken: string, databaseName: string): Promise<string> {
 
         const url = 'https://api.notion.com/v1/search';
 

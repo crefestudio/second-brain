@@ -53,11 +53,13 @@ export class SubscriptionComponent implements OnInit {
 
     }
 
-    updatePurchaseInfo() {
-        this.hasLifeupPurchase = UserService.isPurchased('lifeUp');
+    async updatePurchaseInfo() {
+        this.userId = this.authService.getUserId();
+        if (!this.userId) { return; }
+        this.hasLifeupPurchase = await UserService.isPurchased(this.userId, 'lifeUp');
 
         if (this.hasLifeupPurchase) {
-            this.purchaseInfo = UserService.getPurchaseInfo('lifeUp');
+            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
         } else {
             this.purchaseInfo = null;
         }

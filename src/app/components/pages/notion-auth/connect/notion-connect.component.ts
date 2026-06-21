@@ -35,33 +35,32 @@ export class NotionConnectComponent implements OnInit {
     }
 
     async connectProc() {
-        // URL에서 token 혹은 query param으로 전화번호 가져오기
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
-        if (!token) return;
-        let userId = await NACommonService.decrypt(token);
+        if (!token) { return; }
+
+        const userId = await NACommonService.decrypt(token);
         if (!userId) {
             _log('connectProc userId =>', userId);
             this.state = 'notjoin';
             return;
         }
+
         this.userId = userId;
+        const user: any = await UserService.getUser(userId);
 
-        const data: any = await UserService.getSecondBrainIntegration(userId);
-        _log('connectProc secondbrain userId, data =>', userId, data);
-
-        if (!data) {
-            this.state = 'notconnected';
+        _log('connectProc user =>', user);
+        if (!user) {
+            this.state = 'notjoin';
             return;
         }
 
-        if (data.accessToken && data.noteDatabaseId) {
+        if (user.notionAccessToken) {
             this.state = 'connected';
         } else {
             this.state = 'notconnected';
         }
-
-        _log('loginProc state =>', this.state);
+        _log('connectProc state =>', this.state);
     }
 
     async connectNotion() {

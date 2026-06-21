@@ -1,7 +1,7 @@
 // src/app/services/user.service.ts
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { collection, query, where, getDocs, getDoc, deleteDoc, Timestamp, updateDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, setDoc, getDoc, deleteDoc, Timestamp, updateDoc, limit } from 'firebase/firestore';
 import { firestore } from '../firebase';
 import { doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firstValueFrom, Subject, Subscription } from 'rxjs';
@@ -49,6 +49,8 @@ export class UserService {
     public kakaoVerified$ = new Subject<void>();
     private verificationUnsubscribe?: () => void;
 
+    public notionConnected$ = new Subject<void>();
+    private notionConnectUnsubscribe?: () => void;
 
     constructor(private http: HttpClient) { }
     /////////////////////////////////////////////////////////////////////////////////////
@@ -65,6 +67,22 @@ export class UserService {
         const docSnap = await getDoc(docRef);
         if (!docSnap.exists()) return null;
         return docSnap.data(); // { botId, connectedAt, ... }
+    }
+
+    static async getUserIntegrationInfo(userId: string, integrationId: string): Promise<any | null> {
+        if (!userId || !integrationId) return null;
+
+        const docRef = doc(
+            firestore,
+            'users',
+            userId,
+            'integrations',
+            integrationId
+        );
+
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return null;
+        return docSnap.data();
     }
 
     // users/zNkqIoVU/integrations/secondbrain
@@ -245,12 +263,13 @@ export class UserService {
     }
 
     async verifyPurchaser(
+        userId: string,
         templateId: string,
         email?: string,
         phone?: string
     ): Promise<boolean> {
 
-        if (!templateId || (!email && !phone)) {
+        if (!userId || !templateId || (!email && !phone)) {
             return false;
         }
 
@@ -267,6 +286,7 @@ export class UserService {
                 return false;
             }
 
+            // localStorage 저장
             const STORAGE_KEY = 'notionable_verified_purchases';
 
             const purchases = JSON.parse(
@@ -283,6 +303,22 @@ export class UserService {
                 JSON.stringify(purchases)
             );
 
+            // firestore 저장
+            await setDoc(
+                doc(
+                    firestore,
+                    'users',
+                    userId,
+                    'purchases',
+                    templateId
+                ),
+                {
+                    verified: true,
+                    purchaser: result.purchaser,
+                    verifiedAt: serverTimestamp()
+                },
+                { merge: true }
+            );
             return true;
 
         } catch (error: any) {
@@ -296,36 +332,55 @@ export class UserService {
         }
     }
 
-    static isPurchased(templateId: string): boolean {
-        try {
+    static async isPurchased(
+        userId: string,
+        templateId: string
+    ): Promise<boolean> {
 
-            const purchases = JSON.parse(
-                localStorage.getItem('notionable_verified_purchases') || '{}'
-            );
-
-            return !!purchases[templateId];
-
-        } catch {
-
+        if (!userId || !templateId) {
             return false;
-
         }
+
+        const purchaseRef = doc(
+            firestore,
+            'users',
+            userId,
+            'purchases',
+            templateId
+        );
+
+        const purchaseSnap = await getDoc(purchaseRef);
+
+        return purchaseSnap.exists();
     }
 
-    static getPurchaseInfo(templateId: string): any | null {
-        try {
+    static async getPurchaseInfo(
+        userId: string,
+        templateId: string
+    ): Promise<any | null> {
 
-            const purchases = JSON.parse(
-                localStorage.getItem('notionable_verified_purchases') || '{}'
-            );
-
-            return purchases[templateId] || null;
-
-        } catch {
-
+        if (!userId || !templateId) {
             return null;
-
         }
+
+        const purchaseRef = doc(
+            firestore,
+            'users',
+            userId,
+            'purchases',
+            templateId
+        );
+
+        const purchaseSnap = await getDoc(purchaseRef);
+
+        if (!purchaseSnap.exists()) {
+            return null;
+        }
+
+        return {
+            id: purchaseSnap.id,
+            ...purchaseSnap.data()
+        };
     }
 
     static saveLocalSession(userId: string, session: SecondBrainLocalSession): void {
@@ -381,7 +436,7 @@ export class UserService {
 
     static async getUserByImwebMemberId(
         imwebMemberId: string
-    ): Promise<{ userId: string; kakaoUserId: string | null } | null> {
+    ): Promise<{ userId: string; kakaoUserId: string; notionAccessToken: string | null } | null> {
 
         const q = query(
             collection(firestore, 'users'),
@@ -400,7 +455,8 @@ export class UserService {
 
         return {
             userId: doc.id,
-            kakaoUserId: data['kakaoUserId'] ?? null
+            kakaoUserId: data['kakaoUserId'] ?? null,
+            notionAccessToken: data['notionAccessToken'] ?? null
         };
     }
 
@@ -439,13 +495,8 @@ export class UserService {
     }
 
     startVerificationWatcher(userId: string) {
-
-        if (!userId) {
-            return;
-        }
-
+        if (!userId) { return; }
         this.stopVerificationWatcher();
-
         const docRef = doc(
             firestore,
             'verifications',
@@ -455,17 +506,11 @@ export class UserService {
         this.verificationUnsubscribe = onSnapshot(
             docRef,
             (snapshot) => {
-
-                if (!snapshot.exists()) {
-                    return;
-                }
+                if (!snapshot.exists()) { return; }
 
                 const data = snapshot.data();
-
                 if (data['verified']) {
-
                     this.kakaoVerified$.next();
-
                     this.stopVerificationWatcher();
                 }
             }
@@ -495,6 +540,40 @@ export class UserService {
             console.error('disconnectKakao failed', error);
             return false;
         }
+    }
+
+    /////////////////////////////////////////////////////////////////
+    //
+    // notion
+
+    startNotionConnectWatcher(userId: string) {
+        if (!userId) { return; }
+
+        this.stopNotionConnectWatcher();
+
+        const docRef = doc(
+            firestore,
+            'users',
+            userId
+        );
+
+        this.notionConnectUnsubscribe = onSnapshot(
+            docRef,
+            (snapshot) => {
+                if (!snapshot.exists()) { return; }
+
+                const data = snapshot.data();
+                if (data['notionAccessToken']) {
+                    this.notionConnected$.next();
+                    this.stopNotionConnectWatcher();
+                }
+            }
+        );
+    }
+
+    stopNotionConnectWatcher() {
+        this.notionConnectUnsubscribe?.();
+        this.notionConnectUnsubscribe = undefined;
     }
 }
 

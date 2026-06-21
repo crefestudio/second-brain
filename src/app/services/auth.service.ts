@@ -6,9 +6,10 @@ import { UserService } from './user.service';
 })
 export class AuthService {
 
-    userId = '';
-    memberUid = '';
-    kakaoUserId = '';
+    userId = '';            // 워크스페이스 id : user - template - notion - kakao
+    memberUid = '';         // 홈페이지 id
+    kakaoUserId = '';       // 카카오 연결 여부
+    notionAccessToken = ''; // 노션 연결 여부
 
     async updateSession(): Promise<void> {
         this.memberUid = localStorage.getItem('member_uid')?.trim() ?? '';
@@ -22,13 +23,15 @@ export class AuthService {
         const user = await UserService.getUserByImwebMemberId(this.memberUid);
         this.userId = user?.userId ?? '';
         this.kakaoUserId = user?.kakaoUserId ?? '';
+        this.notionAccessToken = user?.notionAccessToken ?? '';
     }
 
     getUserIds() {
         return {
             userId: this.userId,
             memberUid: this.memberUid,
-            kakaoUserId: this.kakaoUserId
+            kakaoUserId: this.kakaoUserId,
+            notionAccessToken: this.notionAccessToken
         };
     }
 
@@ -42,5 +45,9 @@ export class AuthService {
 
     getKakaoUserId(): string {
         return this.kakaoUserId;
+    }
+
+    getNotionAccessToken(): string {
+        return this.notionAccessToken;
     }
 }

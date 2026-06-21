@@ -219,28 +219,18 @@
 }
 
 .verify-btn {
-
   border: none;
-
   padding: 8px 12px;
-
   border-radius: 8px;
-
   background: rgba(122, 162, 247, .12);
-
   color: #7aa2f7;
-
   font-size: 13px;
   font-weight: 500;
-
   cursor: pointer;
-
 }
 
 .verify-btn:hover {
-
   background: rgba(122, 162, 247, .2);
-
 }
 
 .cancel-btn {
@@ -316,19 +306,13 @@
 }
 
 .detail-btn {
-
   background: #2563eb;
-
   color: #ffffff;
-
 }
 
 .remove-btn {
-
   background: #ef4444;
-
   color: #ffffff;
-
 }
 
 .detail-btn:hover,

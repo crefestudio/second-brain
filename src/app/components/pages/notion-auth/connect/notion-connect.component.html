@@ -9,23 +9,21 @@
     </p>
   </div>
 
-  <div class="connect-container" *ngIf="state === 'notconnected' || state === 'connected'">
-
-    <!-- 연결된 상태 안내 카드 -->
-    <div class="info-card" *ngIf="state === 'connected'">
-      <div class="info-card-title">
-        ✅ 이미 템플릿이 연결되어 있습니다
-      </div>
-      <div class="info-card-text">
-        연결을 변경하시려면 아래 버튼을 눌러 다시 진행해주세요.
-      </div>
+  <!-- 연결된 상태 안내 카드 -->
+  <div class="info-card" *ngIf="state === 'connected'">
+    <div class="info-card-title">
+      ✅ 이미 템플릿이 연결되어 있습니다
     </div>
+    <div class="info-card-text">
+      연결을 변경하시려면 아래 버튼을 눌러 다시 진행해주세요.
+    </div>
+  </div>
 
+  <div class="connect-container" *ngIf="state !== 'notjoin'">
     <h1>
       LifeUp <br>
       Notion API 연결
     </h1>
-
     <div class="guide-box">
       <div class="guide-step">
         <span class="step-number">1</span>

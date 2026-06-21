@@ -10,9 +10,9 @@ import { NotionOauthFailComponent } from './components/pages/notion-auth/oauth-f
 import { SecondBrainWidgetComponent } from './components/pages/workspace/pages/secondbrain/widget/secondbrain.widget.component';
 import { SecondBrainSetupComponent } from './components/pages/workspace/pages/secondbrain/setup/secondbrain.setup.component';
 
-// import { SecondBrainConnectComponent } from './components/pages/workspace/pages/secondbrain/connect/secondbrain.connect.component';
-// import { SecondBrainOauthSuccessComponent } from './components/pages/workspace/pages/secondbrain/oauth-success/secondbrain.oauth-success.component';
-// import { SecondBrainOauthFailComponent } from './components/pages/workspace/pages/secondbrain/oauth-fail/secondbrain.oauth-fail.component';
+import { SecondBrainConnectComponent } from './components/pages/workspace/pages/secondbrain/connect/secondbrain.connect.component';
+import { SecondBrainOauthSuccessComponent } from './components/pages/workspace/pages/secondbrain/oauth-success/secondbrain.oauth-success.component';
+import { SecondBrainOauthFailComponent } from './components/pages/workspace/pages/secondbrain/oauth-fail/secondbrain.oauth-fail.component';
 
 import { ServiceManagerComponent } from './components/pages/workspace/pages/serviceManager/service-manager.component';
 
@@ -171,18 +171,18 @@ export const routes: Routes = [
         path: 'setup',
         component: SecondBrainSetupComponent
       },
-      // {
-      //   path: 'connect',
-      //   component: SecondBrainConnectComponent
-      // },
-      // {
-      //   path: 'oauth-success',
-      //   component: SecondBrainOauthSuccessComponent
-      // },
-      // {
-      //   path: 'oauth-fail',
-      //   component: SecondBrainOauthFailComponent
-      // }
+      {
+        path: 'connect',
+        component: SecondBrainConnectComponent
+      },
+      {
+        path: 'oauth-success',
+        component: SecondBrainOauthSuccessComponent
+      },
+      {
+        path: 'oauth-fail',
+        component: SecondBrainOauthFailComponent
+      }
     ]
   },
 
@@ -190,7 +190,7 @@ export const routes: Routes = [
   // Notion Auth
   // =========================
   {
-    path: 'notion',
+    path: 'notion-auth',
     component: WidgetLayoutComponent,
     children: [
       {
@@ -198,11 +198,11 @@ export const routes: Routes = [
         component: NotionConnectComponent
       },
       {
-        path: 'oauth-success',
+        path: 'success',
         component: NotionOauthSuccessComponent
       },
       {
-        path: 'oauth-fail',
+        path: 'fail',
         component: NotionOauthFailComponent
       }
     ]

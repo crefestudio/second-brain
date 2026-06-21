@@ -22,6 +22,7 @@ export class AgentConnectComponentComponent implements OnInit {
     memberUid: string = '';
     userId: string = '';
     kakaoUserId: string = '';
+    notionAccessToken: string = '';
 
     requestPurchaserCheck = false;
     isRequestMailCheck = false;
@@ -35,6 +36,9 @@ export class AgentConnectComponentComponent implements OnInit {
     public isWaitingKakaoVerification = false;
     public isKakaoVerificationSuccess = false;
     isConfirmRemoveDisconnectKakao: boolean = false;
+
+    // notion tempalte
+    isOpenNotionConnectWindow: boolean = false; // 연결창 띄움 여부
 
     ///////////////////////////////////
 
@@ -54,8 +58,8 @@ export class AgentConnectComponentComponent implements OnInit {
     warnMessage = '';
 
     // 템플릿 연결
-    private config = inject<AppConfig>(APP_CONFIG);
-    public isNotionIntegrated: boolean = false;
+    // private config = inject<AppConfig>(APP_CONFIG);
+    // public isNotionIntegrated: boolean = false;
 
     constructor(private userService: UserService, private authService: AuthService) {
 
@@ -68,12 +72,16 @@ export class AgentConnectComponentComponent implements OnInit {
         this.userService.kakaoVerified$.subscribe(() => {
             this.onComplateKakaoConnect();
         });
+
+        this.userService.kakaoVerified$.subscribe(() => {
+            this.onComplateNotionTemplateConnect();
+        });
     }
 
     async initData() {
         await this.updateSession();
         await this.updatePurchaseInfo();
-        await this.updateNotionIntegrationData();
+        //await this.updateNotionIntegrationData();
     }
 
     // 화면 아무 곳이나 클릭 시 닫힘
@@ -86,12 +94,12 @@ export class AgentConnectComponentComponent implements OnInit {
         this.isConfirmRemoveDisconnectKakao = false;
     }
 
-
     async updateSession() {
         await this.authService.updateSession();
         this.memberUid = this.authService.getMemberUid();
         this.userId = this.authService.getUserId();
         this.kakaoUserId = this.authService.getKakaoUserId();
+        this.notionAccessToken = this.authService.getNotionAccessToken();
 
         if (!this.userId) {
             console.error('사용자를 찾을 수 없습니다.');
@@ -106,6 +114,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
 
     async submitVerification() {
+        if (!this.userId) { return; }
         const value = this.verifyValue.trim();
 
         if (!value) {
@@ -139,7 +148,7 @@ export class AgentConnectComponentComponent implements OnInit {
         }
 
         try {
-            const success = await this.userService.verifyPurchaser('lifeUp', email, phone);
+            const success = await this.userService.verifyPurchaser(this.userId, 'lifeUp', email, phone);
             if (!success) {
                 this.errorMessage = '구매정보를 찾을 수 없습니다.';
                 return;
@@ -161,27 +170,28 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     removeLifeupPurchase(): void {
-        const purchases = JSON.parse(
-            localStorage.getItem('notionable_verified_purchases') || '{}'
-        );
+        // const purchases = JSON.parse(
+        //     localStorage.getItem('notionable_verified_purchases') || '{}'
+        // );
 
-        delete purchases['lifeUp'];
+        // delete purchases['lifeUp'];
 
-        localStorage.setItem(
-            'notionable_verified_purchases',
-            JSON.stringify(purchases)
-        );
+        // localStorage.setItem(
+        //     'notionable_verified_purchases',
+        //     JSON.stringify(purchases)
+        // );
 
-        this.hasLifeupPurchase = false;
-        this.purchaseInfo = '';
-        this.workspaceInfo = '';
+        // this.hasLifeupPurchase = false;
+        // this.purchaseInfo = '';
+        // this.workspaceInfo = '';
     }
 
-    updatePurchaseInfo() {
-        this.hasLifeupPurchase = UserService.isPurchased('lifeUp');
+    async updatePurchaseInfo() {
+        if (!this.userId) { return; }
+        this.hasLifeupPurchase = await UserService.isPurchased(this.userId, 'lifeUp');
 
         if (this.hasLifeupPurchase) {
-            this.purchaseInfo = UserService.getPurchaseInfo('lifeUp');
+            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
         } else {
             this.purchaseInfo = null;
         }
@@ -460,42 +470,50 @@ export class AgentConnectComponentComponent implements OnInit {
 
     ///////////////////////////////////////////////////////////////
     //
-    // tempate 연결
+    // notion tempate 연결
 
     onClickConnectTemplate() {
-        this.connectTemplate();
+        this.isOpenNotionConnectWindow = true;
+        this.userService.startNotionConnectWatcher(this.userId);
+        this.openNotionConnectWindow();
     }
 
-    async connectTemplate() {
+    onClickCancelConnectTemplateBtn() {
+        this.isOpenNotionConnectWindow = false;
+        this.userService.stopNotionConnectWatcher();
+    }
+
+    async openNotionConnectWindow() {
         _log('connectTemplate userId =>', this.userId);
         if (!this.userId) { return; }
-        const data = await UserService.getSecondBrainIntegration(this.userId);
-        _log('connectTemplate userId, data =>', this.userId, data);
 
-        //if (!(data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length > 0)) {
-            // 연결창 띄우기
-            //this.state = 'connect-notion';
-            // 노션 연결
-            const encryptedUserId = await NACommonService.encrypt(this.userId); // 암호화해서 userId를 넘긴다.
-            const baseUrl = window.location.origin;
-            const serviceName = 'notion';
-            const setupPath = 'connect';
-            //const url = `${this.config.functionsBaseUrl}/notionAuth?userId=${this.userId}`;//`${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
-            const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;     
-            window.open(url, '_blank');
-            return;
-        //}       
-
+        const encryptedUserId = await NACommonService.encrypt(this.userId); // 암호화해서 userId를 넘긴다.
+        const baseUrl = window.location.origin;
+        const serviceName = 'notion-auth';
+        const setupPath = 'connect';
+        //const url = `${this.config.functionsBaseUrl}/notionAuth?userId=${this.userId}`;//`${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
+        const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
+        window.open(url, '_blank');
+        return;
     }
 
-    async updateNotionIntegrationData() {
-        let userId = '';
-        if (!this.userId) { return; }
-        const data = await UserService.getSecondBrainIntegration(this.userId);
-        _log('connectTemplate userId, data =>', userId, data);
-
-        this.isNotionIntegrated = data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length;
+    onComplateNotionTemplateConnect() {
+        this.isOpenNotionConnectWindow = false;
+        ToastService.show(
+            '노션 템플릿 연결이 완료되었습니다.'
+        );
+        this.updateSession();
     }
+
+
+    // async updateNotionIntegrationData() {
+    //     let userId = '';
+    //     if (!this.userId) { return; }
+    //     const data = await UserService.getSecondBrainIntegration(this.userId);
+    //     _log('connectTemplate userId, data =>', userId, data);
+
+    //     this.isNotionIntegrated = data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length;
+    // }
 
 
 
