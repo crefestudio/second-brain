@@ -10,7 +10,7 @@ import { APP_CONFIG, AppConfig } from '../../../../config/app-config.token';
     selector: 'app-oauth-fail',
     standalone: true,
     imports: [
-        CommonModule 
+        CommonModule
     ],
     templateUrl: './notion-oauth-fail.component.html',
     styleUrls: ['./notion-oauth-fail.component.css'],
@@ -22,9 +22,11 @@ export class NotionOauthFailComponent implements OnInit {
     private config = inject<AppConfig>(APP_CONFIG);
     userId: string | null = null;
 
-    constructor( private route: ActivatedRoute, private userService: UserService) { 
+    constructor(private route: ActivatedRoute, private userService: UserService) {
 
     }
+
+    errorMessage = '';
 
     ngOnInit(): void {
         this.route.queryParamMap.subscribe(params => {
@@ -32,8 +34,13 @@ export class NotionOauthFailComponent implements OnInit {
             _log('OAuth callback userId =>', userId);
 
             if (!userId) return;
+
             this.userId = userId;
-            //this.loadSecondBrainIntegrationInfo(userId);
+        });
+
+        this.route.queryParams.subscribe(params => {
+            this.errorMessage = params['error'] || '';
+            console.log('OAuth Error =>', this.errorMessage);
         });
     }
 
@@ -43,7 +50,7 @@ export class NotionOauthFailComponent implements OnInit {
         if (this.userId) {
             userId = this.userId;
         } else if (this.state == 'notjoin') {
-            alert('오류 - 아직 계정이 만들어지지 않았습니다.');            
+            alert('오류 - 아직 계정이 만들어지지 않았습니다.');
         } else {
             alert('오류 - userId없음');
         }
@@ -51,5 +58,5 @@ export class NotionOauthFailComponent implements OnInit {
         // 3. state를 query로 넘김
         window.location.href = `${this.config.functionsBaseUrl}/notionAuth?userId=${userId}`;
     }
-   
+
 }

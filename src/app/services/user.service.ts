@@ -332,27 +332,27 @@ export class UserService {
         }
     }
 
-    static async isPurchased(
-        userId: string,
-        templateId: string
-    ): Promise<boolean> {
+    // static async isPurchased(
+    //     userId: string,
+    //     templateId: string
+    // ): Promise<boolean> {
 
-        if (!userId || !templateId) {
-            return false;
-        }
+    //     if (!userId || !templateId) {
+    //         return false;
+    //     }
 
-        const purchaseRef = doc(
-            firestore,
-            'users',
-            userId,
-            'purchases',
-            templateId
-        );
+    //     const purchaseRef = doc(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         'purchases',
+    //         templateId
+    //     );
 
-        const purchaseSnap = await getDoc(purchaseRef);
+    //     const purchaseSnap = await getDoc(purchaseRef);
 
-        return purchaseSnap.exists();
-    }
+    //     return purchaseSnap.exists();
+    // }
 
     static async getPurchaseInfo(
         userId: string,
@@ -377,10 +377,25 @@ export class UserService {
             return null;
         }
 
+        const data: any = purchaseSnap.data();
         return {
-            id: purchaseSnap.id,
-            ...purchaseSnap.data()
+            templateId: purchaseSnap.id,
+            ...data?.purchaser ?? null,
+            verified: data.verified
         };
+    }
+
+    //import { deleteDoc, doc } from 'firebase/firestore';
+
+    static async deletePurchase(userId: string, templateId: string): Promise<void> {
+        const purchaseRef = doc(
+            firestore,
+            'users',
+            userId,
+            'purchases',
+            templateId
+        );
+        await deleteDoc(purchaseRef);
     }
 
     static saveLocalSession(userId: string, session: SecondBrainLocalSession): void {
@@ -523,7 +538,6 @@ export class UserService {
     }
 
     async disconnectKakao(userId: string): Promise<boolean> {
-        alert('s')
         if (!userId) return false;
 
         try {

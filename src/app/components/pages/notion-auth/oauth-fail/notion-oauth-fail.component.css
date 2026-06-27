@@ -103,3 +103,27 @@ button.api-btn {
 .home-btn:hover {
   background: #2a2a2e;
 }
+
+.error-box {
+  margin-top: 20px;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.25);
+  text-align: left;
+}
+
+.error-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ff6b6b;
+  margin-bottom: 6px;
+}
+
+.error-message {
+  font-size: 13px;
+  color: #d0d0d0;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}

@@ -1,5 +1,18 @@
-<div class="page-container">
+@if(isLoading) {
 
+<div class="page-loading">
+
+    <div class="loading-spinner"></div>
+
+    <div class="loading-text">
+        연결 정보를 불러오는 중입니다...
+    </div>
+
+</div>
+
+} @else {
+
+<div class="page-container">
   <div class="page-header">
 
     <div class="breadcrumb">
@@ -13,7 +26,7 @@
     </h1>
 
     <p>
-      노셔너블 에이전트와 노션템플릿, 카카오톡 비서 채널 등 전체적인 연결을 설정 합니다.
+      노셔너블 에이전트 서비스 사용을 위한 연결 설정을 단계별로 진행해주세요.
     </p>
 
   </div>
@@ -92,11 +105,16 @@
             </div>
             } @else {
             <div class="verify-form">
-              <input type="text" [(ngModel)]="verifyValue" placeholder="구매 시 등록한 이메일">
-              <button class="verify-btn" (click)="submitVerification()">
+              <input type="text" [(ngModel)]="verifyValue" placeholder="구매 시 등록한 이메일" [disabled]="isVerifying">
+              <button class="verify-btn" (click)="submitVerification()" [disabled]="isVerifying">
+                @if (isVerifying) {
+                <span class="spinner"></span>
+                확인 중...
+                } @else {
                 확인
+                }
               </button>
-              <button class="cancel-btn" (click)="cancelVerification()">
+              <button class="cancel-btn" (click)="cancelVerification()" [disabled]="isVerifying">
                 취소
               </button>
             </div>
@@ -378,9 +396,15 @@
       <tbody>
         <tr>
           <td class="status-cell">
+            @if(userId && hasLifeupPurchase && notionAccessToken) {
+            <span class="badge success">
+              완료
+            </span>
+            } @else {
             <span class="badge pending">
               미완료
             </span>
+            }
           </td>
           <td class="task-cell">
             노션 템플릿 연결
@@ -392,9 +416,12 @@
                 먼저 Step 1단게를 진행해주세요.
               </span>
               } @else if (notionAccessToken) {
-              <button class="verify-btn" (click)="onClickConnectTemplate()">
-                -----
-              </button>
+              <div class="verified-email">
+                연결됨
+                <button class="remove-btn" (click)="onClickDisconnectNotionTemplate()">
+                  연결 끊기
+                </button>
+              </div>
               } @else if (isOpenNotionConnectWindow) {
               <span>열린 새 창에서 연결 작업을 진행해주세요.</span>
               <div class="kakao-actions">
@@ -405,7 +432,7 @@
               } @else {
 
               <button class="verify-btn" (click)="onClickConnectTemplate()">
-                연결 확인
+                연결 하기
               </button>
               }
 
@@ -414,7 +441,7 @@
         </tr>
         <tr>
           <td class="status-cell">
-            @if(kakaoUserId) {
+            @if(kakaoUserId && userId && hasLifeupPurchase && notionAccessToken) {
             <span class="badge success">
               완료
             </span>
@@ -431,9 +458,14 @@
             <div class="verify-wrap">
               @if (!userId || !hasLifeupPurchase) {
               <span class="text-muted">
-               먼저 Step 1단게를 진행해주세요.
+                먼저 Step 1단게를 진행해주세요.
               </span>
-              } @else if (kakaoUserId && userId && hasLifeupPurchase) {
+              } @if (!notionAccessToken) {
+              <span class="text-muted">
+                먼저 <span class="link-text">노션 템플릿 연결</span>을 진행해주세요.
+              </span>
+              }
+              @else if (kakaoUserId && userId && hasLifeupPurchase) {
               <div class="verified-email">
                 연결됨
                 <button class="remove-btn" (click)="onClickDisconnectKakaoBtn()">
@@ -485,8 +517,38 @@
       </tbody>
     </table>
   </div>
+  @if (
+  userId &&
+  hasLifeupPurchase &&
+  kakaoUserId &&
+  notionAccessToken
+  ) {
 
+  <div class="setup-complete-card">
+
+    <div class="complete-icon">
+      ✓
+    </div>
+
+    <div class="complete-title">
+      모든 자동화 에이전트 설정이 완료되었습니다.
+    </div>
+
+    <div class="complete-description">
+      자동화 관리에서 각 에이전트의 세부 기능을 설정하고 관리할 수 있습니다.
+    </div>
+
+    <button class="go-manage-btn" routerLink="/workspace/auto">
+      자동화 관리로 이동
+    </button>
+
+  </div>
+
+  }
 </div>
+}
+
+
 
 <!-- 에러메세지 -->
 <div class="error-message" [innerHTML]="errorMessage">

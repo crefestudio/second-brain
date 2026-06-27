@@ -1,3 +1,4 @@
+import { _log } from '../lib/cf-common/cf-common';
 import { Injectable } from '@angular/core';
 import { UserService } from './user.service';
 
@@ -15,9 +16,10 @@ export class AuthService {
         this.memberUid = localStorage.getItem('member_uid')?.trim() ?? '';
 
         // localhost 테스트용
-        if (window.location.hostname !== 'app.notionable.net') {
+        if (window.location.hostname == 'localhost') {
+            _log('로컬 호스트 - 테스트 모드 - toto791@gmail.com으로 로그인')
             this.memberUid = 'toto791@gmail.com';
-        }
+        }        
 
         // 서버에서 다시 가져옴
         const user = await UserService.getUserByImwebMemberId(this.memberUid);

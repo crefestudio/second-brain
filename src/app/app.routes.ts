@@ -208,6 +208,44 @@ export const routes: Routes = [
     ]
   },
 
+  /////////////////////////////////////////////////////////////////////////////////////
+  // 기존 주소 유지 
+
+  {
+    path: 'secondbrain',
+    component: WidgetLayoutComponent,
+    children: [
+      {
+        path: '',
+        component: SecondBrainWidgetComponent
+      },
+      {
+        path: 'widget',
+        component: SecondBrainWidgetComponent
+      },
+      {
+        path: 'widget/:userId',
+        component: SecondBrainWidgetComponent
+      },
+      {
+        path: 'setup',
+        component: SecondBrainSetupComponent
+      },
+      {
+        path: 'connect',
+        component: SecondBrainConnectComponent
+      },
+      {
+        path: 'oauth-success',
+        component: SecondBrainOauthSuccessComponent
+      },
+      {
+        path: 'oauth-fail',
+        component: SecondBrainOauthFailComponent
+      }
+    ]
+  },
+
   {
     path: 'unauthorized',
     component: UnauthorizedComponent
@@ -219,3 +257,5 @@ export const routes: Routes = [
   }
 ];
 
+
+//https://app.notionable.net/secondbrain/widget

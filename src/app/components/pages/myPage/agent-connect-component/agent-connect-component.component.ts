@@ -1,7 +1,8 @@
 import { _log } from '../../../../lib/cf-common/cf-common';
-import { Component, HostListener, inject, OnInit } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Component, HostListener, inject, OnInit } from '@angular/core';
 import { UserService } from '../../../../services/user.service';
 import { ToastService } from '../../../../services/toast.service';
 import { AuthService } from '../../../../services/auth.service';
@@ -14,17 +15,22 @@ const templateKey = 'lifeUp';
 
 @Component({
     selector: 'app-agent-connect-component',
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, RouterLink],
     templateUrl: './agent-connect-component.component.html',
     styleUrl: './agent-connect-component.component.css'
 })
 export class AgentConnectComponentComponent implements OnInit {
+
+    isLoading = true;
+
     memberUid: string = '';
     userId: string = '';
     kakaoUserId: string = '';
     notionAccessToken: string = '';
 
+    // Purchaser check
     requestPurchaserCheck = false;
+    isPurchaserVerifying = false;
     isRequestMailCheck = false;
     verifyValue = '';
 
@@ -66,16 +72,20 @@ export class AgentConnectComponentComponent implements OnInit {
         // userId
     }
 
-    ngOnInit() {
-        this.initData();
+    async ngOnInit() {
+        try {
+            await this.initData();
 
-        this.userService.kakaoVerified$.subscribe(() => {
-            this.onComplateKakaoConnect();
-        });
+            this.userService.kakaoVerified$.subscribe(() => {
+                this.onComplateKakaoConnect();
+            });
 
-        this.userService.kakaoVerified$.subscribe(() => {
-            this.onComplateNotionTemplateConnect();
-        });
+            this.userService.kakaoVerified$.subscribe(() => {
+                this.onComplateNotionTemplateConnect();
+            });
+        } finally {
+            this.isLoading = false;
+        }
     }
 
     async initData() {
@@ -101,9 +111,11 @@ export class AgentConnectComponentComponent implements OnInit {
         this.kakaoUserId = this.authService.getKakaoUserId();
         this.notionAccessToken = this.authService.getNotionAccessToken();
 
+        _log('updateSession memberUid, userId, notionAccessToken =>', this.memberUid, this.userId, this.kakaoUserId, this.notionAccessToken);
+
         if (!this.userId) {
-            console.error('사용자를 찾을 수 없습니다.');
-            this.errorMessage = '사용자를 찾을 수 없습니다.';
+            console.error('워크스페이스 로그인에 실패하였습니다.');
+            this.errorMessage = '워크스페이스 로그인에 실패하였습니다.';
             return;
         }
     }
@@ -115,6 +127,9 @@ export class AgentConnectComponentComponent implements OnInit {
 
     async submitVerification() {
         if (!this.userId) { return; }
+        if (!this.verifyValue) return;
+
+        this.isVerifying = true;
         const value = this.verifyValue.trim();
 
         if (!value) {
@@ -161,6 +176,8 @@ export class AgentConnectComponentComponent implements OnInit {
         } catch (e) {
             console.error(e);
             this.errorMessage = '구매 확인 중 오류가 발생했습니다.';
+        } finally {
+            this.isVerifying = false;
         }
     }
 
@@ -169,27 +186,25 @@ export class AgentConnectComponentComponent implements OnInit {
         this.requestPurchaserCheck = false;
     }
 
-    removeLifeupPurchase(): void {
-        // const purchases = JSON.parse(
-        //     localStorage.getItem('notionable_verified_purchases') || '{}'
-        // );
+    async removeLifeupPurchase(): Promise<void> {
+        if (!this.userId || !this.purchaseInfo?.templateId) {
+            return;
+        }
 
-        // delete purchases['lifeUp'];
+        await UserService.deletePurchase(
+            this.userId,
+            this.purchaseInfo.templateId
+        );
 
-        // localStorage.setItem(
-        //     'notionable_verified_purchases',
-        //     JSON.stringify(purchases)
-        // );
-
-        // this.hasLifeupPurchase = false;
-        // this.purchaseInfo = '';
-        // this.workspaceInfo = '';
+        this.purchaseInfo = null;
+        this.hasLifeupPurchase = false;
     }
 
     async updatePurchaseInfo() {
         if (!this.userId) { return; }
-        this.hasLifeupPurchase = await UserService.isPurchased(this.userId, 'lifeUp');
-
+        this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
+        _log('updatePurchaseInfo purchaseInfo =>', this.purchaseInfo);
+        this.hasLifeupPurchase = this.purchaseInfo != null;
         if (this.hasLifeupPurchase) {
             this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
         } else {
@@ -451,15 +466,18 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     onClickDisconnectKakaoBtn() {
+        // 컨펌창 띄우기
         setTimeout(() => {
             this.isConfirmRemoveDisconnectKakao = true;
         }, 10)
     }
 
     async disconectKakao() {
-        this.isConfirmRemoveDisconnectKakao = false;
-        const result = await this.userService.disconnectKakao(this.userId);
 
+        // 컨펌창 닫기
+        this.isConfirmRemoveDisconnectKakao = false;
+
+        const result = await this.userService.disconnectKakao(this.userId);
         if (result) {
             ToastService.show('카카오톡 연결을 해제 하였습니다.');
         } else {
@@ -491,7 +509,6 @@ export class AgentConnectComponentComponent implements OnInit {
         const baseUrl = window.location.origin;
         const serviceName = 'notion-auth';
         const setupPath = 'connect';
-        //const url = `${this.config.functionsBaseUrl}/notionAuth?userId=${this.userId}`;//`${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
         const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
         window.open(url, '_blank');
         return;
@@ -514,6 +531,10 @@ export class AgentConnectComponentComponent implements OnInit {
 
     //     this.isNotionIntegrated = data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length;
     // }
+
+    onClickDisconnectNotionTemplate() {
+
+    }
 
 
 
