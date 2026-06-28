@@ -14,9 +14,9 @@ import { ActivatedRoute } from '@angular/router';
     styleUrls: ['./notion-oauth-success.component.css'],
 })
 export class NotionOauthSuccessComponent implements OnInit {
-    state = 'ready';
-    workspaceName: string | null = null;
-    botId: string | null = null;
+    // state = 'ready';
+    // workspaceName: string | null = null;
+    // botId: string | null = null;
 
     constructor( private route: ActivatedRoute, private userService: UserService) { 
 
@@ -29,22 +29,22 @@ export class NotionOauthSuccessComponent implements OnInit {
 
             if (!userId) return;
 
-            this.loadSecondBrainIntegrationInfo(userId);
+            //this.loadSecondBrainIntegrationInfo(userId);
         });
     }
 
-    async loadSecondBrainIntegrationInfo(userId: string) {
-        const data = await UserService.getUserIntegrationInfo(userId, ''); //
-        _log('loadSecondBrainIntegrationInfo data =>', data);
+    // async loadSecondBrainIntegrationInfo(userId: string) {
+    //     const data = await UserService.getUserIntegrationInfo(userId, ''); //
+    //     _log('loadSecondBrainIntegrationInfo data =>', data);
 
-        if (!data) {
-            this.state = 'fail';
-            return;
-        }
+    //     if (!data) {
+    //         this.state = 'fail';
+    //         return;
+    //     }
 
-        this.state = 'success';
-        this.botId = data.botId ?? null;    // 보안상 botId를 connectKey로 저장한다. 
-        this.workspaceName = data.workspaceName ?? null;
-    }   
+    //     this.state = 'success';
+    //     this.botId = data.botId ?? null;    // 보안상 botId를 connectKey로 저장한다. 
+    //     this.workspaceName = data.workspaceName ?? null;
+    // }   
 
 }

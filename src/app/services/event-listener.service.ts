@@ -22,7 +22,7 @@ export class EventListenerService {
         onEvent: (event: UserEvent) => void
     ): () => void {
 
-        const ref = collection(firestore, `users/${userId}/event`);
+        const ref = collection(firestore, `users/${userId}/events`);
 
         // 🔑 리스너 등록 시점 (클라이언트 기준)
         const clientNow = Timestamp.now();

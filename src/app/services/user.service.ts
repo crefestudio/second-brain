@@ -1,9 +1,12 @@
 // src/app/services/user.service.ts
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { collection, query, where, getDocs, setDoc, getDoc, deleteDoc, Timestamp, updateDoc, limit } from 'firebase/firestore';
 import { firestore } from '../firebase';
-import { doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import {
+    doc, updateDoc, deleteField, collection, query, where, getDocs, setDoc, getDoc, deleteDoc, Timestamp, limit, onSnapshot, serverTimestamp, orderBy,
+    startAfter, QueryDocumentSnapshot, DocumentData
+} from 'firebase/firestore';
+
 import { firstValueFrom, Subject, Subscription } from 'rxjs';
 const SB_USER_ID_KEY = 'sb_user_id';
 
@@ -85,6 +88,26 @@ export class UserService {
         return docSnap.data();
     }
 
+    static async getUserIntegrations(userId: string): Promise<Record<string, any>> {
+        if (!userId) return {};
+
+        const colRef = collection(
+            firestore,
+            'users',
+            userId,
+            'integrations'
+        );
+
+        const snapshot = await getDocs(colRef);
+        const integrations: Record<string, any> = {};
+
+        snapshot.forEach(doc => {
+            integrations[doc.id] = doc.data();
+        });
+
+        return integrations;
+    }
+
     // users/zNkqIoVU/integrations/secondbrain
     static async removeSecondBrainIntegration(userId: string): Promise<boolean> {
         if (!userId) return false;
@@ -95,6 +118,29 @@ export class UserService {
 
         await deleteDoc(docRef);
         return true;
+    }
+
+    async disconnectNotionTemplate(userId: string): Promise<boolean> {
+        try {
+            if (!userId) return false;
+
+            const docRef = doc(
+                firestore,
+                'users',
+                userId
+            );
+
+            await updateDoc(docRef, {
+                notionAccessToken: deleteField(),
+                notionConnection: deleteField(),
+                updatedAt: serverTimestamp()
+            });
+
+            return true;
+        } catch (error) {
+            console.error('disconnectNotionTemplate error:', error);
+            return false;
+        }
     }
 
     static async getUser(userId: string): Promise<any | null> {
@@ -588,6 +634,107 @@ export class UserService {
     stopNotionConnectWatcher() {
         this.notionConnectUnsubscribe?.();
         this.notionConnectUnsubscribe = undefined;
+    }
+
+    static async getUserEvents(userId: string, agentId?: string, lastDoc?: QueryDocumentSnapshot<DocumentData> | null, pageSize: number = 20): Promise<{
+        events: any[];
+        lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+        hasMore: boolean;
+    }> {
+
+        if (!userId) {
+            return {
+                events: [],
+                lastDoc: null,
+                hasMore: false
+            };
+        }
+
+        const colRef = collection(
+            firestore,
+            'users',
+            userId,
+            'events'
+        );
+
+        const constraints: any[] = [];
+
+        if (agentId) {
+            constraints.push(
+                where('agentId', '==', agentId)
+            );
+        }
+
+        constraints.push(
+            orderBy('updatedAt', 'desc')
+        );
+
+        if (lastDoc) {
+            constraints.push(
+                startAfter(lastDoc)
+            );
+        }
+
+        constraints.push(
+            limit(pageSize)
+        );
+
+        const q = query(
+            colRef,
+            ...constraints
+        );
+
+        const snapshot = await getDocs(q);
+
+        return {
+            events: snapshot.docs.map(doc => {
+                const data: any = doc.data();
+
+                return {
+                    id: doc.id,
+                    ...data,
+                    updatedAt: data.updatedAt?.toDate?.()
+                };
+            }),
+            lastDoc: snapshot.docs.length > 0
+                ? snapshot.docs[snapshot.docs.length - 1]
+                : null,
+            hasMore: snapshot.docs.length === pageSize
+        };
+    }
+
+    static async updateUserAutomation(userId: string, agentId: string, data: { enabled: boolean; }): Promise<boolean> {
+        try {
+            if (!userId || !agentId) {
+                return false;
+            }
+
+            const docRef = doc(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                agentId
+            );
+
+            await setDoc(
+                docRef,
+                {
+                    enabled: data.enabled,
+                    updatedAt: serverTimestamp()
+                },
+                {
+                    merge: true
+                }
+            );
+            return true;
+        } catch (error) {
+            console.error(
+                'updateUserAutomation error:',
+                error
+            );
+            return false;
+        }
     }
 }
 

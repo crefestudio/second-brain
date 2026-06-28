@@ -20,7 +20,7 @@ import { RoutineComponent } from './components/pages/workspace/pages/routine/rou
 import { RoutineFindComponent } from './components/pages/workspace/pages/routine/pages/rountine-find/routine-find.component';
 import { MyRoutineComponent } from './components/pages/workspace/pages/routine/pages/my-rountine/my-routine.component';
 import { RoutineCreateComponent } from './components/pages/workspace/pages/routine/pages/rountine-create/rountine-create.component';
-import { AutoManagerComponent } from './components/pages/workspace/pages/autoManager/auto-manager.component';
+import { AutoManagerComponent } from './components/pages/workspace/pages/auto-manager/auto-manager.component';
 
 import { MyPageComponent } from './components/pages/myPage/myPage.component';
 import { ProfileComponent } from './components/pages/myPage/pages/profile/profile.component';
@@ -30,6 +30,7 @@ import { NotificationComponent } from './components/pages/myPage/pages/notificat
 
 import { WorkspaceLayoutComponent } from './workspace-layout.component';
 import { WidgetLayoutComponent } from './widget-layout.component';
+import { EventLogComponent } from './components/pages/workspace/pages/event-log/event-log.component';
 
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
@@ -38,7 +39,7 @@ import { WorkspaceComponent } from './components/pages/workspace/workspace.compo
 import { UnauthorizedComponent } from './components/login/app-unauthorized.component';
 
 import { authGuard } from './services/auth.guard';
-import { AgentConnectComponentComponent } from './components/pages/myPage/agent-connect-component/agent-connect-component.component';
+import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect-component/agent-connect-component.component';
 
 export const routes: Routes = [
   {
@@ -56,20 +57,20 @@ export const routes: Routes = [
     canActivate: [authGuard],
     children: [
       {
-        path: 'secondbrain',
-        component: SecondBrainWidgetComponent
-      },
-      {
-        path: 'secondbrain/:userId',
-        component: SecondBrainWidgetComponent
-      },
-      {
         path: 'home',
         component: WorkspaceComponent
       },
       {
         path: 'connect',
         component: AgentConnectComponentComponent
+      },
+      {
+        path: 'secondbrain',
+        component: SecondBrainWidgetComponent
+      },
+      {
+        path: 'secondbrain/:userId',
+        component: SecondBrainWidgetComponent
       },
       // {
       //   path: 'service',
@@ -102,6 +103,14 @@ export const routes: Routes = [
         path: 'auto',
         component: AutoManagerComponent
       },
+      {
+        path: 'event-log',
+        component: EventLogComponent
+      },
+      {
+        path: 'event-log/:agentId',
+        component: EventLogComponent
+      }
       //   {
       //     path: 'update',
       //     component: UpdateComponent

@@ -1,14 +1,14 @@
-import { _log } from '../../../../lib/cf-common/cf-common';
+import { _log } from '../../../../../lib/cf-common/cf-common';
 import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Component, HostListener, inject, OnInit } from '@angular/core';
-import { UserService } from '../../../../services/user.service';
-import { ToastService } from '../../../../services/toast.service';
-import { AuthService } from '../../../../services/auth.service';
+import { UserService } from '../../../../../services/user.service';
+import { ToastService } from '../../../../../services/toast.service';
+import { AuthService } from '../../../../../services/auth.service';
 
-import { APP_CONFIG, AppConfig } from '../../../../config/app-config.token';
-import { NACommonService } from '../../../../services/common.service';
+//import { APP_CONFIG, AppConfig } from '../../../../../config/app-config.token';
+import { NACommonService } from '../../../../../services/common.service';
 
 
 const templateKey = 'lifeUp';
@@ -69,7 +69,6 @@ export class AgentConnectComponentComponent implements OnInit {
 
     constructor(private userService: UserService, private authService: AuthService) {
 
-        // userId
     }
 
     async ngOnInit() {
@@ -80,7 +79,7 @@ export class AgentConnectComponentComponent implements OnInit {
                 this.onComplateKakaoConnect();
             });
 
-            this.userService.kakaoVerified$.subscribe(() => {
+            this.userService.notionConnected$.subscribe(() => {
                 this.onComplateNotionTemplateConnect();
             });
         } finally {
@@ -91,7 +90,6 @@ export class AgentConnectComponentComponent implements OnInit {
     async initData() {
         await this.updateSession();
         await this.updatePurchaseInfo();
-        //await this.updateNotionIntegrationData();
     }
 
     // 화면 아무 곳이나 클릭 시 닫힘
@@ -522,20 +520,21 @@ export class AgentConnectComponentComponent implements OnInit {
         this.updateSession();
     }
 
+    async onClickDisconnectNotionTemplate() {
+        const result = await this.userService.disconnectNotionTemplate( this.userId);
+        this.updateSession();
 
-    // async updateNotionIntegrationData() {
-    //     let userId = '';
-    //     if (!this.userId) { return; }
-    //     const data = await UserService.getSecondBrainIntegration(this.userId);
-    //     _log('connectTemplate userId, data =>', userId, data);
+        if (result) {
+            ToastService.show(
+                '노션 템플릿 연결을 해제하였습니다.'
+            );
 
-    //     this.isNotionIntegrated = data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length;
-    // }
-
-    onClickDisconnectNotionTemplate() {
-
+            this.notionAccessToken = '';
+        } else {
+            ToastService.error(
+                '노션 템플릿 연결 해제에 실패하였습니다.'
+            );
+        }
     }
-
-
 
 }

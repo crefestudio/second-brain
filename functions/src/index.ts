@@ -39,10 +39,19 @@ const NOTION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cl
 
 const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net"];
 
-export type EventStatus = 'start' | 'running' | 'completed' | 'failed';
+export enum AgentId {
+    SECOND_BRAIN = 'secondbrain',
+    KAKAO_CAPTURE = 'kakao-capture'
+}
+
+export type EventStatus =
+    | 'start'
+    | 'running'
+    | 'completed'
+    | 'failed';
 
 export interface EventPayload {
-    eventType: string;
+    agentId: AgentId;
     status: EventStatus;
     targetData?: Record<string, unknown>;
     eventTitle?: string;
@@ -78,6 +87,7 @@ export const importPurchasers = functions.https.onRequest(
         res.send(`${buyers.length}건 업로드 완료`);
     }
 );
+
 /**
  * 사용자 이벤트 로그를 Firestore에 저장한다.
  *
@@ -91,7 +101,7 @@ export async function writeUserEvent(
     await db
         .collection('users')
         .doc(userId)
-        .collection('event')
+        .collection('events')
         .add({
             ...payload,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -325,14 +335,19 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
             { merge: true }
         );
 
-        // secondbrain 연결정보 저장
+        // secondbrain 연결정보 저장 : 이전 버전을 위해 / 임시 코드
         await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
             accessToken: notionToken.access_token,
             workspaceId: notionToken.workspace_id,
             botId: notionToken.bot_id,
             duplicatedTemplateId: notionToken.duplicated_template_id,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            noteDatabaseId: noteDatabaseId
+            noteDatabaseId: noteDatabaseId,
+            enabled: false
+        });
+
+        await db.collection("users").doc(userId).collection("integrations").doc("kakao-capture").set({
+            enabled: false
         });
 
         // notionDatabaseMap
@@ -429,25 +444,25 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
 // ----------------------
 // Integration 연결 정보 조회
 // ----------------------
-export const getUserIntegrationInfo = onRequest(
-    withCors(async (req, res) => {
-        const userId = req.query.userId as string;
-        const integrationId = req.query.integrationId as string;
+// export const getUserIntegrationInfo = onRequest(
+//     withCors(async (req, res) => {
+//         const userId = req.query.userId as string;
+//         const integrationId = req.query.integrationId as string;
 
-        const userRef = db.collection("users").doc(userId);
+//         const userRef = db.collection("users").doc(userId);
 
-        const userSnap = await userRef.get();
-        const integrationSnap = await userRef
-            .collection("integrations")
-            .doc(integrationId)
-            .get();
+//         const userSnap = await userRef.get();
+//         const integrationSnap = await userRef
+//             .collection("integrations")
+//             .doc(integrationId)
+//             .get();
 
-        res.json({
-            user: userSnap.exists ? userSnap.data() : null,
-            integration: integrationSnap.exists ? integrationSnap.data() : null,
-        });
-    })
-);
+//         res.json({
+//             user: userSnap.exists ? userSnap.data() : null,
+//             integration: integrationSnap.exists ? integrationSnap.data() : null,
+//         });
+//     })
+// );
 
 
 // ----------------------
@@ -503,10 +518,6 @@ class UserService {
             expiresAt: expiresAt.toDate().toISOString(),
         };
     }
-    // static async getSecondBrainIntegrations(userId: string) {
-    //     const docSnap = await db.collection('users').doc(userId).collection('integrations').doc('secondbrain').get();
-    //     return docSnap.exists ? docSnap.data() : null;
-    // }
 }
 
 export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
@@ -843,7 +854,7 @@ class NotionService {
     //     return matched[0].id;
     // }
 
-    static async getDatabaseIdByDatabaseName( accessToken: string, databaseType: string): Promise<string> {
+    static async getDatabaseIdByDatabaseName(accessToken: string, databaseType: string): Promise<string> {
         const response = await fetch(
             'https://api.notion.com/v1/search',
             {
@@ -1474,7 +1485,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                     // ✅ 이벤트  
                     if (pageData) {
                         await writeUserEvent(userId, {
-                            eventType: "generate-note-keyword",
+                            agentId: AgentId.SECOND_BRAIN,
                             status: "running",
                             eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트의 키워드 추출 작업을 진행중입니다.`
                         });
@@ -1575,7 +1586,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
 
             // ❌ 페이지 변환 실패 이벤트 (1회)
             await writeUserEvent(userId, {
-                eventType: "generate-note-keyword",
+                agentId: AgentId.SECOND_BRAIN,
                 status: "completed",
                 eventTitle: `요청한 ${successCount}개의 노트의 키워드 추출 작업을 완료하였습니다.`
             });
@@ -1592,7 +1603,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
 
             // ❌ 페이지 변환 실패 이벤트 (1회)
             await writeUserEvent(userId, {
-                eventType: "generate-note-keyword",
+                agentId: AgentId.SECOND_BRAIN,
                 status: "failed",
                 eventTitle: `키워드 추출 작업 중 오류가 발생했습니다.`
             });
@@ -1760,7 +1771,7 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
 
     // 진행 이벤트 기록
     await writeUserEvent(userId, {
-        eventType: "generate-note-keyword-webhook",
+        agentId: AgentId.SECOND_BRAIN,
         status: "running",
         eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트 키워드 추출 진행`,
     });
@@ -1802,7 +1813,7 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
 
     // 완료 이벤트
     await writeUserEvent(userId, {
-        eventType: "generate-note-keyword-webhook",
+        agentId: AgentId.SECOND_BRAIN,
         status: "completed",
         eventTitle: `${pageData.title} 노트 키워드 추출 완료`,
     });
@@ -3724,6 +3735,7 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
     }
 }));
 
+
 export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
@@ -3750,9 +3762,44 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, 
 
         ///////////////////////////////////////////////////
         // 2. 이미 연결된 사용자 → 메시지 수집
+        ///////////////////////////////////////////////////
+        // 2. 이미 연결된 사용자 → 메시지 수집
         if (!userSnap.empty) {
             const uid = userSnap.docs[0].id;
 
+            ///////////////////////////////////////////////////
+            // 자동화 활성화 여부 확인
+            const automationSnap = await db
+                .collection('users')
+                .doc(uid)
+                .collection('integrations')
+                .doc('kakao-capture')
+                .get();
+
+            const enabled = automationSnap.exists ? automationSnap.data()?.enabled === true : false;
+
+            ///////////////////////////////////////////////////
+            // 비활성화 상태면 종료
+            if (!enabled) {
+                console.log('[KAKAO CAPTURE DISABLED]', uid, kakaoUserId);
+                return res.status(200).json({
+                    version: "2.0",
+                    template: {
+                        outputs: [{
+                            simpleText: {
+                                text:
+                                    `현재 카카오톡 수집 자동화가 꺼져 있습니다.\n노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 수집 자동화'를 활성화해주세요.`
+                            }
+                        }]
+                    }
+                });
+
+                // 사용자에게 메시지를 안 보내고 싶으면
+                // return res.status(200).end();
+            }
+
+            ///////////////////////////////////////////////////
+            // 메시지 수집
             await db
                 .collection("users")
                 .doc(uid)
@@ -3770,9 +3817,17 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, 
                 });
 
             await writeUserEvent(uid, {
-                eventType: "kakao-agent",
+                agentId: AgentId.KAKAO_CAPTURE,
                 status: "completed",
-                eventTitle: "카카오 메시지를 수집했습니다."
+                eventTitle: "카카오 메시지를 수집했습니다.",
+                eventDescription:
+                    [
+                        `수집 내용: ${utterance}`,
+                        `카카오 사용자 ID: ${kakaoUserId}`,
+                        `플러스친구 사용자 키: ${user?.properties?.plusfriendUserKey ?? '-'}`,
+                        `봇 사용자 키: ${user?.id ?? '-'}`,
+                        `사용자 타입: ${user?.type ?? '-'}`, 
+                    ].join('\n')
             });
 
             return res.status(200).json({

@@ -33,7 +33,6 @@ export class SecondBrainOauthFailComponent implements OnInit {
 
             if (!userId) return;
             this.userId = userId;
-            //this.loadSecondBrainIntegrationInfo(userId);
         });
     }
 
