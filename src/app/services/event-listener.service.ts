@@ -10,7 +10,7 @@ export interface UserEvent {
     status: 'start' | 'running' | 'completed' | 'failed';
     targetData?: any;
     eventTitle?: string;
-    eventDescription?: string;
+    description?: string;
     updatedAt: any;
 }
 

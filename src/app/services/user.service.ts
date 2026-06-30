@@ -636,7 +636,14 @@ export class UserService {
         this.notionConnectUnsubscribe = undefined;
     }
 
-    static async getUserEvents(userId: string, agentId?: string, lastDoc?: QueryDocumentSnapshot<DocumentData> | null, pageSize: number = 20): Promise<{
+    static async getUserEvents(
+        userId: string,
+        agentId: string,
+        lastDoc: QueryDocumentSnapshot<DocumentData> | null,
+        limitCount: number,
+        startDate?: Date | null,
+        endDate?: Date | null
+    ): Promise<{
         events: any[];
         lastDoc: QueryDocumentSnapshot<DocumentData> | null;
         hasMore: boolean;
@@ -659,16 +666,33 @@ export class UserService {
 
         const constraints: any[] = [];
 
+        // agent
         if (agentId) {
             constraints.push(
                 where('agentId', '==', agentId)
             );
         }
 
+        // start date
+        if (startDate) {
+            constraints.push(
+                where('updatedAt', '>=', startDate)
+            );
+        }
+
+        // end date
+        if (endDate) {
+            constraints.push(
+                where('updatedAt', '<=', endDate)
+            );
+        }
+
+        // 정렬
         constraints.push(
             orderBy('updatedAt', 'desc')
         );
 
+        // 페이지네이션
         if (lastDoc) {
             constraints.push(
                 startAfter(lastDoc)
@@ -676,7 +700,7 @@ export class UserService {
         }
 
         constraints.push(
-            limit(pageSize)
+            limit(limitCount)
         );
 
         const q = query(
@@ -696,19 +720,28 @@ export class UserService {
                     updatedAt: data.updatedAt?.toDate?.()
                 };
             }),
-            lastDoc: snapshot.docs.length > 0
-                ? snapshot.docs[snapshot.docs.length - 1]
-                : null,
-            hasMore: snapshot.docs.length === pageSize
+            lastDoc:
+                snapshot.docs.length > 0
+                    ? snapshot.docs[snapshot.docs.length - 1]
+                    : null,
+            hasMore:
+                snapshot.docs.length === limitCount
         };
     }
 
-    static async updateUserAutomation(userId: string, agentId: string, data: { enabled: boolean; }): Promise<boolean> {
+    static async updateUserAutomation(
+        userId: string,
+        agentId: string,
+        data: { enabled: boolean; }
+    ): Promise<boolean> {
+
         try {
             if (!userId || !agentId) {
                 return false;
             }
 
+            ///////////////////////////////////////////////////
+            // integrations 업데이트
             const docRef = doc(
                 firestore,
                 'users',
@@ -727,7 +760,37 @@ export class UserService {
                     merge: true
                 }
             );
+
+            ///////////////////////////////////////////////////
+            // 카카오 비서라면 캐시 동기화
+            if (agentId === 'kakaoAssistant') {
+
+                const userSnap = await getDoc(
+                    doc(firestore, 'users', userId)
+                );
+
+                const userData = userSnap.data();
+                const kakaoUserId = userData?.['kakaoUserId'];
+                
+                if (kakaoUserId) {
+                    await setDoc(
+                        doc(
+                            firestore,
+                            'kakaoConnections',
+                            kakaoUserId
+                        ),
+                        {
+                            enabled: data.enabled
+                        },
+                        {
+                            merge: true
+                        }
+                    );
+                }
+            }
+
             return true;
+
         } catch (error) {
             console.error(
                 'updateUserAutomation error:',

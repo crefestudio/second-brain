@@ -41,42 +41,74 @@
           <th>에이전트</th>
           <th>이벤트</th>
           <th>상태</th>
-          <th>상세</th>
+          <th>상세 보기</th>
         </tr>
       </thead>
 
       <tbody>
-        <tr *ngFor="let log of logs">
-          <td>
-            {{ log.updatedAt | date:'yyyy.MM.dd HH:mm:ss' }}
-          </td>
-          <td>
-            <span class="agent-badge" [ngClass]="getAgentClass(log.agentId)">
-              {{ getAgentName(log.agentId) }}
-            </span>
-          </td>
-          <td>
-            <span [innerHTML]="log.eventTitle"></span>
-          </td>
-          <td>
-            <span class="badge success" *ngIf="log.status=='running' || log.status=='completed'">
-              {{ log.status=='running' ? '동작중' : '완료' }}
-            </span>
+        <ng-container *ngFor="let log of logs">
 
-            <span class="badge pending" *ngIf="log.status=='start' || log.status=='waiting'">
-              대기중
-            </span>
+          <!-- 기본 행 -->
+          <tr>
+            <td>
+              {{ log.updatedAt | date:'yyyy.MM.dd HH:mm:ss' }}
+            </td>
 
-            <span class="badge error" *ngIf="log.status=='failed' || log.status=='error'">
-              오류
-            </span>
-          </td>
-          <td>
-            <button class="log-btn">
-              보기
-            </button>
-          </td>
-        </tr>
+            <td>
+              <span class="agent-badge" [ngClass]="getAgentClass(log.agentId)">
+                {{ getAgentName(log.agentId) }}
+              </span>
+            </td>
+
+            <td>
+              <span [innerHTML]="log.eventTitle"></span>
+            </td>
+
+            <td>
+              <span class="badge success" *ngIf="log.status=='running' || log.status=='completed'">
+                {{ log.status=='running' ? '동작중' : '완료' }}
+              </span>
+
+              <span class="badge pending" *ngIf="log.status=='start' || log.status=='waiting'">
+                대기중
+              </span>
+
+              <span class="badge error" *ngIf="log.status=='failed' || log.status=='error'">
+                오류
+              </span>
+            </td>
+
+            <td>
+              <button class="log-btn" (click)="toggleLog(log)">
+                {{ selectedLog === log ? '닫기' : '상세 보기' }}
+              </button>
+            </td>
+          </tr>
+
+          <!-- 상세 보기 -->
+          <tr *ngIf="selectedLog === log" class="detail-row">
+            <td colspan="5">
+              <div class="detail-card">
+
+                <div class="detail-header">
+                  로그 상세
+                </div>
+
+                <div class="detail-content">
+                  <div class="detail-line" *ngFor="let line of getDescriptionLines(log.description)">
+                    <span class="detail-key">
+                      {{ line.key }}
+                    </span>
+                    <span class="detail-value">
+                      {{ line.value }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+        </ng-container>
       </tbody>
     </table>
   </div>

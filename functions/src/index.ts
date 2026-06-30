@@ -10,6 +10,8 @@ import { randomBytes } from 'crypto';
 import OpenAI from "openai";
 import { customAlphabet } from 'nanoid';
 
+//import { kakaoAssistantPrompt } from "./prompts/kakaoAssistant.prompt";
+
 // notion
 import { Client } from "@notionhq/client";
 
@@ -55,7 +57,7 @@ export interface EventPayload {
     status: EventStatus;
     targetData?: Record<string, unknown>;
     eventTitle?: string;
-    eventDescription?: string;
+    description?: string;
 }
 
 // import * as functions from "firebase-functions";
@@ -2731,347 +2733,165 @@ function similarity(a: string, b: string): number {
     return 1 - dist / Math.max(a.length, b.length);
 }
 
-// function findMostSimilar(
-//     raw: string,
-//     existing: string[],
-//     threshold: number
-// ): string | null {
-//     let best: { value: string; score: number } | null = null;
+export const kakaoAssistantPrompt = `
+당신은 "노셔너블 라이프업 비서 AI"입니다.
+사용자 메시지를 "실행 가능한 JSON"으로 변환합니다.
 
-//     for (const c of existing) {
-//         const score = similarity(raw, c);
-//         if (score >= threshold && (!best || score > best.score)) {
-//         best = { value: c, score };
-//         }
-//     }
+## 최우선 규칙
+- 반드시 하나의 action만 선택
+- JSON 외 출력 금지
+- 설명, 코드블럭 금지
+- confidence 필수
+- response는 사용자 표시 문장
 
-//     return best?.value ?? null;
-// }
+## ACTION 분류
 
-// async function requestPageKeywordsFromAI(noteData: Record<string, { keywords: string[]; title?: string; content?: string }>): Promise<Record<string, string[]>> {
+우선순위는 task, memo, reference순
+task는 해야 할 일 즉 행동이 필요한 일
+memo: 내가 생성한 정보 / 생각 / 기록 / 개인 데이터 (비외부) / 아이디어, 계정정보, 연락처, 좋은글
+reference: 외부에서 온 정보 / 링크 / 기사 / 콘텐츠 / 발췌
 
-//   let prompt = `
-// Extract keywords from the note content.
+1. task
+할것 / 살것 / 읽을것 / 볼것 / 갈곳
 
-// Input Usage:
-// - Prefer extracting keywords that appear in Content.
-// - Use Title and Existing Keywords only to reinforce or disambiguate terms.
-// - Do not invent terms that do not appear in Title or Content.
+type:
+- 기본 "할것"
+- 구매 = 살것
+- 책/문서 = 읽을것
+- 영상/영화 = 볼것
+- 장소 = 갈곳
 
-// Rules:
-// - Extract words or short noun phrases (1–3 words).
-// - Prefer terms that actually appear in the text.
-// - Include proper nouns, technical terms, and domain terms.
-// - Do not summarize or interpret meaning.
-// - Do not normalize, merge, or replace terms.
-// - Extract up to 15 keywords.
+* 문장중에 중요, 긴급 관련 언급  
+0 = 없음, 1 : 중요, 2:  매우 중요
 
-// Notes:
-// - Use the title first if it is meaningful.
-// - Ignore titles like "새 문서" or other non-informative titles.
-// - Refer to existing keywords as hints only.
+허용값:
+- importance: 0 | 1 | 2
+- urgency: 0 | 1 | 2
+그 외 값 절대 금지
 
-// Output:
-// - JSON object
-// - Keys: noteId
-// - Values: string[] (keywords only)
-// - No explanations.
-// `;
+date: 진행할 날짜, ISO 8601
 
-//     for (const [noteId, { keywords, title, content }] of Object.entries(noteData)) {
-//         prompt += `
-// [NoteId: ${noteId}]
-// `;
-//     if (title) prompt += `Title: ${title}\n`;
-//     if (content) prompt += `Content: ${content}\n`;
-//     if (keywords && keywords.length > 0) {
-//         prompt += `Existing Keywords: ${keywords.join(", ")}\n`;
-//     }
-// }
-// //////////////////////////////////////////////////
-
-//     const response = await clientAI.chat.completions.create({
-//         model: "gpt-4.1-mini",
-//         messages: [{ role: "user", content: prompt }],
-//         temperature: 0.4,
-//     });
-
-//     const text = response.choices[0].message?.content || "{}";
-//     console.log("[DEBUG] AI 응답 텍스트:", text);
-//     try {
-//         return JSON.parse(text);
-//     } catch (err) {
-//         console.error("AI 응답 JSON 파싱 실패:", text);
-//         throw new Error("AI 응답 JSON 파싱 실패");
-//     }
-// }
-
-// async function requestPageKeywordsFromAI(
-//   noteData: Record<string, { keywords: string[]; title?: string; content?: string }>
-// ): Promise<Record<string, string[]>> {
-
-//   let prompt = `
-// Extract keywords from the note content.
-
-// Input Usage:
-// - Prefer extracting keywords that appear in the Content.
-// - Use Title and Existing Keywords only to reinforce or disambiguate terms.
-// - Do not invent terms that do not appear in Title or Content.
-// - Do NOT translate, localize, paraphrase, or rewrite the Content. Use it verbatim as extracted from the source.
-
-// Critical Constraints:
-// - Keywords MUST be copied verbatim from the original Title or Content.
-// - Do NOT translate, localize, paraphrase, or rewrite keywords.
-// - Preserve the original language, spelling, spacing, and casing exactly as they appear.
-// - If a term appears in English, keep it in English.
-// - If a term appears in Korean, keep it in Korean.
-
-// Rules:
-// - Extract words or short noun phrases (1–3 words).
-// - Prefer terms that actually appear in the text.
-// - Include proper nouns, technical terms, and domain terms.
-// - Do not summarize or interpret meaning.
-// - Do not normalize, merge, or replace terms.
-// - Extract up to 10 keywords only.
-
-// Notes:
-// - Use the title first if it is meaningful.
-// - Ignore titles like "새 문서" or other non-informative titles.
-// - Refer to existing keywords as hints only.
-// - Always show the actual text from Content (including paragraphs, lists, headings) as-is without translating.
-
-// Output Format Contract:
-// - Return a single JSON object
-// - Each key MUST be a pageId from the input
-// - Each value MUST be an array of strings (maximum 10 items)
-// - Do NOT include null, comments, or trailing commas
-
-// Critical Constraints:
-// - Do NOT modify pageId in any way.
-// - Return pageId exactly as provided in the input, including all hyphens and lowercase letters.
-
-// `;
-
-//   for (const [pageId, { keywords, title, content }] of Object.entries(noteData)) {
-//     prompt += `\n[pageId: "${pageId}"]\n`; // 따옴표로 감싸서 AI가 문자 그대로 처리하도록 강제
-//     if (title) prompt += `Title: ${title}\n`;
-//     if (content) prompt += `Content: ${content}\n`;
-//     if (keywords?.length) {
-//       prompt += `Existing Keywords: ${keywords.join(", ")}\n`;
-//     }
-//   }
-
-//     const response = await clientAI.chat.completions.create({
-//         model: "gpt-4.1-mini",
-//         messages: [
-//             {
-//             role: "system",
-//             content: `
-// You are a strict JSON generator.
-// Return valid raw JSON only.
-// Do not include markdown, code blocks, or explanations.
-//         `
-//             },
-//             {
-//             role: "user",
-//             content: prompt
-//             }
-//         ],
-//         temperature: 0.4, // 👈 키워드는 컨셉보다 살짝 높게
-//     });
-
-//   const text = response.choices[0].message?.content || "";
-//   console.log("[DEBUG] AI 응답 텍스트:", text);
-
-//   try {
-//     return safeParseAIJson(text);
-//   } catch (err) {
-//     console.error("AI 응답 JSON 파싱 실패:", {
-//       error: err,
-//       rawResponse: text,
-//     });
-//     throw err;
-//   }
-// }
-
-async function requestPageKeywordsFromAI(
-    noteData: Record<string, { title?: string; content?: string; /*keywords: string[]*/ }>,
-    existingKeywords: string[]): Promise<Record<string, string[]>> {
-
-    console.log('requestPageKeywordsFromAI existingKeywords =>', existingKeywords);
-    // Extract representative keywords from the note.
-
-    // Input Usage:
-    // - Use the Note Content as the primary source of meaning.
-    // - Use Keywords only as supporting hints.
-    // - Refer to Existing Keywords to avoid semantic duplication.
-    // - Apply the Concept Normalization Preference strictly.
-
-    // Goals:
-    // - Extract 3–6 core keywords that best represent this note.
-    // - Keywords must be reusable semantic units in a knowledge graph.
-
-    // Rules:
-    // - Do NOT decide keywords from keywords alone; always consider the full content.
-    // - Prefer higher-level, abstract keywords that represent the overall topic.
-    // - Absorb tools, implementations, examples, and features into broader keywords.
-    // - Do NOT invent obscure or overly specific keywords.
-    // - Each concept must be a noun or short noun phrase (1–3 words).
-    // - Use singular form only.
-    // - Prefer abstract and general terms over specific products or libraries.
-
-    // Existing Concept Priority (Anti-fragmentation):
-    // - Before creating a new concept, always check the Existing Keywords list.
-    // - If a semantically equivalent concept already exists, reuse it.
-    // - Do NOT create a new concept if an existing one matches semantically.
-
-    // New Concept Creation:
-    // - Create a new concept only if no existing concept matches semantically.
-    // - A new concept must be suitable to grow into an independent knowledge document.
-
-    // Concept Normalization Policy:
-    // - Primary Language: ${normalizationPreference.primaryLanguage}
-    // - Case Style: ${normalizationPreference.caseStyle}
-    // - Acronym Preference: ${normalizationPreference.acronymPreference}
-
-    // Normalization Rules:
-    // - Use standard, widely accepted terminology.
-    // - Prefer the most commonly used expression.
-    // - Maintain consistency with existing keywords whenever possible.
-
-    // Output Format Contract:
-    // - Return a single JSON object
-    // - Each key MUST be a pageId from the input
-    // - Each value MUST be an array of strings (normalized concept names only)
-    // - Do NOT include explanations, markdown, comments, or trailing commas
-    // - Output MUST be valid raw JSON and directly parseable
-
-
-    let prompt = `
-당신은 개인 지식 관리 시스템의 키워드 정제 AI입니다.
-다음 노트 데이터를 바탕으로 노트의 핵심 키워드을 추출하십시오.
-
-입력:
-1. 노트 본문 (Note Content)
-2. 기존 전체 키워드 목록 (Existing Keywords)
-
-목표:
-- 이 노트를 대표하는 핵심 키워드을 1~5개 정도 추출합니다.
-  - 개수가 정확히 1~5개일 필요는 없으며, 조건을 만족하는 핵심 키워드만 보수적으로 추출해야 합니다.
-- 키워드은 지식 그래프에서 재사용 가능한 단일 의미 단위이어야 합니다.
-  - 즉, 파편화되지 않고, 노트의 주제를 대표할 수 있는 고유 명칭이어야 합니다.
-
-키워드 추출 규칙:
-
-1. 의미 판단
-- Prioritize terms that can represent the overall topic of the document.
-- Prefer words with high Frequency/Occurrence in the model’s training corpus.
-- Prefer words with high Domain relevance (e.g., technology, productivity, knowledge management).
-- Prefer terms with high Recognizability/Popularity, meaning widely known by general users or experts.
-- Consider Contextual importance, i.e., words that appear repeatedly in the document and indicate the main theme.
-- Absorb fine-grained features, specific implementations, examples, or tool names into higher-level keywords.
-- Ensure that a human reader can intuitively recognize the term as representing the document’s core subject.
-
-2. 기존 키워드 우선 원칙
-- 새로운 키워드을 생성하기 전에 기존 키워드 목록과 의미적으로 동일한 키워드이 있는지 반드시 확인합니다.
-- 의미가 동일하면 기존 키워드을 재사용하여 키워드의 파편화를 줄입니다.
-  - 예: "AI" ↔ "Artificial Intelligence", "세컨드 브레인" ↔ "Second Brain"
-
-3. 키워드 번역 원칙 
-- 추가할 키워드가 영어이면 한글로 번역 후 기존 키워드에 동의어가 있으면 동의어로 등록한다.
-   - 추가 할 키워드가 'notion'이면 한글로 번역하면 '노션'이고 기존 키워드 목록에 '노션'이 있으면 '노션'으로 등록합니다.
-
-3. 단어 조합 규칙
-- 단어를 조합한 경우에도 반드시 위 1.의미 판단 규칙에 맞아야 합니다.**
-  - 의미 규칙: 상위 개념으로 주제를 대표할 수 있어야 하고, 고유 명칭으로서 독립성이 있어야 함
-- 의미 없는 조합이나 설명형 단어는 키워드이 될 수 없습니다.
-- 예: '골프장 정보'는 안됨, '노션 데이터베이스'는 됨 
-
-
-4. 새 키워드 생성 조건
-- 기존 키워드과 의미적으로 대응되는 항목이 없을 때만 새 키워드을 생성합니다.
-- 새 키워드은 독립적인 지식 문서로 확장 가능해야 하며, 모호해서는 안 됩니다.
-
-5.  키워드 정규화 정책 (중요):
-- 키워드은 하나의 대표 표기(canonical form)를 가져야 합니다.
-- 동일한 개념의 언어/표기 차이는 하나의 키워드으로 통합합니다.
-- 예:
-  - "노션", "notion", "NOTION" → "Notion"
-- 기존 키워드 목록에 대응되는 항목이 있다면,
-  문서에 등장한 표현과 관계없이 반드시 기존 키워드을 사용합니다.
-
-6. 제외 대상 
-- 단어가 너무 하위 개념이면 제외합니다.(예: 콜아웃 블록)
-- 단어가 너무 보편적이나 지식, 정보, 취향, 관심사를 반영하지 못함 (예:페이지, 소규모팀, 개인)
-
-7. 출력 규칙
-- JSON 객체 형태로 출력
-- 키: 페이지 ID
-- 값: 해당 페이지의 핵심 키워드 배열
-- 불필요한 설명, 주석, null 값, 쉼표는 제거
-
-Critical Constraints:
-- Do NOT modify pageId in any way.
-- Return pageId exactly as provided in the input, including all hyphens and lowercase letters.
-- Do not merge or mix keywords across notes
----
-
-예시 출력 (형식 참고):
-
+출력 예시:
 {
-  "pageId_1": ["인공지능", "노션", "데이터베이스"],
-  "pageId_2": ["Firebase", "SaaS", "Make"]
+  "db": "task",
+  "action": "create",
+  "title": "치과 예약",
+  "type": "할것",
+  "importance": 0,
+  "urgency": 0,
+  "confidence": 0.95,
+  "response": "'치과 예약'을 할일(살것)로 등록했습니다.",
+  "date": "2026-03-04T18:22:00"
 }
+
+2. memo/create
+type:
+- 아이디어
+- 계정정보
+- 연락처
+- 좋은글
+- 사진메모
+
+tags: 메모를 설명하는 부가 키워드 1-2개
+
+출력 예시:
+{
+  "db": "memo",
+  "action": "create",
+  "title": "카카오톡 비서",
+  "type": "아이디어",
+  "tags": ["카카오톡","AI","자동화"],
+  "content": "카카오톡 비서",
+  "confidence": 0.92,
+  "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
+}
+
+
+3. reference/create
+tags: reference를 설명하는 부가 키워드 1-2개
+
+출력 예시:
+{
+  "db": "reference",
+  "action": "create",
+  "title": "카카오톡 비서",
+  "tags": ["카카오톡","AI","자동화"],
+  "content": "카카오톡 비서",
+  "confidence": 0.92,
+  "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
+}
+
+6. chat 
+- 답변 가능한 일반 질문
+- 사용자가 일반 질문이면: 노셔너블 비서 역할로 답변
+{
+  "action": "chat",
+  "confidence": 0.8,
+  "response": "사용자 질문에 대한 자연스러운 답변"
+}
+
+9. confidence 규칙:
+- 0.7 이상: 정상 처리
+- 0.5~0.7: chat 처리
+- 0.50 미만: 분류가 어렵다고 판단 / 가능하면 chat를 선택
+
+## 고유명사 처리
+책=read / 영화·드라마=watch / 장소=go / 상품=buy
+
+11. 중요 규칙:
+- JSON만 출력
+- response는 필수
+- codeblock 금지
+- confidence 필수
+- chat도 반드시 response 포함
+
+- 하나만 선택한다.
+- 애매하면 chat
 `;
 
-    // 🔹 Existing keywords (global context)
-    if (existingKeywords.length) {
-        prompt += `\n[Existing Keywords]\n${existingKeywords.join(", ")}\n`;
-    }
 
-    // 🔹 Pages
-    for (const [pageId, { title, content }] of Object.entries(noteData)) {
-        prompt += `\n[pageId: ${pageId}]\n`;
-        if (title) prompt += `Title: ${title}\n`;
-        if (content) prompt += `Note Content: ${content}\n`;
-        prompt += `\n# Please extract keywords for this pageId independently, do not mix with other pages\n`;
-    }
+export async function requestKakaoAssistantActionFromAI(
+    userMessage: string,
+    previousResult?: any
+): Promise<any> {
 
-    console.log('requestPageKeywordsFromAI prompt =>', prompt);
+    const systemPrompt = kakaoAssistantPrompt;
+
+    const userPrompt = `
+${previousResult ? `[이전 결과]\n${JSON.stringify(previousResult, null, 2)}\n` : ""}
+[사용자 메시지]
+${userMessage}
+`;
 
     const response = await clientAI.chat.completions.create({
         model: "gpt-4.1-mini",
         messages: [
             {
                 role: "system",
-                content: `
-You are a strict JSON generator.
-Return valid raw JSON only.
-Do not include markdown, code blocks, or explanations.
-`
+                content: systemPrompt
             },
             {
                 role: "user",
-                content: prompt
+                content: userPrompt
             }
         ],
-        temperature: 0.3,
+        temperature: 0.2
     });
 
-    const text = response.choices[0].message?.content || "";
-    console.log("[DEBUG] AI Keywords 응답 텍스트:", text);
+    const text = response.choices[0].message?.content ?? "";
+
+    console.log("[DEBUG] Kakao Assistant AI =>", text);
 
     try {
-        return safeParseAIJson(text);
+        return safeParseAssistantJson(text);
     } catch (err) {
-        console.error("AI Keywords JSON 파싱 실패:", {
+        console.error("AI JSON parse failed", {
             error: err,
-            rawResponse: text,
+            rawResponse: text
         });
         throw err;
     }
 }
-
 
 
 function safeParseAIJson(raw: string): Record<string, string[]> {
@@ -3104,6 +2924,86 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
 
     return parsed as Record<string, string[]>;
 }
+
+export function safeParseAssistantJson( raw: string): any {
+    const parsed = safeParseJson(raw);
+    if (!parsed.action) {
+        throw new Error(
+            'Missing action'
+        );
+    }
+    return parsed;
+}
+
+export function safeParseEntityJson(
+    raw: string
+): any {
+
+    const parsed =
+        safeParseJson(raw);
+
+    if (!parsed.category) {
+        throw new Error(
+            'Missing category'
+        );
+    }
+
+    if (!parsed.title) {
+        throw new Error(
+            'Missing title'
+        );
+    }
+
+    return parsed;
+}
+
+export function safeParseJson(
+    raw: string
+): any {
+
+    if (!raw) {
+        throw new Error(
+            'Empty AI response'
+        );
+    }
+
+    let cleaned =
+        raw.trim();
+
+    cleaned =
+        cleaned.replace(
+            /^```json\s*/i,
+            ''
+        );
+
+    cleaned =
+        cleaned.replace(
+            /^```\s*/i,
+            ''
+        );
+
+    cleaned =
+        cleaned.replace(
+            /\s*```$/,
+            ''
+        );
+
+    const match =
+        cleaned.match(
+            /\{[\s\S]*\}/
+        );
+
+    if (!match) {
+        throw new Error(
+            'JSON block not found'
+        );
+    }
+
+    return JSON.parse(
+        match[0]
+    );
+}
+
 
 // 노트의 keywords를 AI로 분석해 keywords에 저장하는 HTTPS 함수
 // export const generateNoteKMProperties = onRequest(withCors(async (req, res) => {
@@ -3735,281 +3635,987 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
     }
 }));
 
-
 export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
-
     const user = payload?.userRequest?.user;
     const kakaoUserId = user?.properties?.plusfriendUserKey || user?.id;
 
     try {
-        console.log("[KAKAO RAW]", JSON.stringify(payload, null, 2));
-        console.log("[KAKAO USER]", {
-            kakaoUserId,
-            type: user?.type,
-            plusfriendUserKey: user?.properties?.plusfriendUserKey,
-            botUserKey: user?.id
-        });
+        logKakaoRequest(payload, user, kakaoUserId);
 
         ///////////////////////////////////////////////////
-        // 1. 연결된 사용자 조회
-        const userSnap = await db
-            .collection('users')
-            .where('kakaoUserId', '==', kakaoUserId)
-            .limit(1)
-            .get();
-
-        ///////////////////////////////////////////////////
-        // 2. 이미 연결된 사용자 → 메시지 수집
-        ///////////////////////////////////////////////////
-        // 2. 이미 연결된 사용자 → 메시지 수집
-        if (!userSnap.empty) {
-            const uid = userSnap.docs[0].id;
-
-            ///////////////////////////////////////////////////
-            // 자동화 활성화 여부 확인
-            const automationSnap = await db
-                .collection('users')
-                .doc(uid)
-                .collection('integrations')
-                .doc('kakao-capture')
-                .get();
-
-            const enabled = automationSnap.exists ? automationSnap.data()?.enabled === true : false;
-
-            ///////////////////////////////////////////////////
-            // 비활성화 상태면 종료
-            if (!enabled) {
-                console.log('[KAKAO CAPTURE DISABLED]', uid, kakaoUserId);
-                return res.status(200).json({
-                    version: "2.0",
-                    template: {
-                        outputs: [{
-                            simpleText: {
-                                text:
-                                    `현재 카카오톡 수집 자동화가 꺼져 있습니다.\n노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 수집 자동화'를 활성화해주세요.`
-                            }
-                        }]
-                    }
-                });
-
-                // 사용자에게 메시지를 안 보내고 싶으면
-                // return res.status(200).end();
+        // 연결된 사용자 조회
+        const connection = await findEnabledConnectedUser(kakaoUserId);
+        if (connection) {
+            if (!connection.enabled) {
+                return sendDisabledMessage(res);
             }
-
-            ///////////////////////////////////////////////////
-            // 메시지 수집
-            await db
-                .collection("users")
-                .doc(uid)
-                .collection("integrations")
-                .doc("kakaoAgent")
-                .collection("captures")
-                .add({
-                    kakaoUserId,
-                    plusfriendUserKey: user?.properties?.plusfriendUserKey || null,
-                    botUserKey: user?.id || null,
-                    content: utterance,
-                    source: "kakao",
-                    status: "received",
-                    createdAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-
-            await writeUserEvent(uid, {
-                agentId: AgentId.KAKAO_CAPTURE,
-                status: "completed",
-                eventTitle: "카카오 메시지를 수집했습니다.",
-                eventDescription:
-                    [
-                        `수집 내용: ${utterance}`,
-                        `카카오 사용자 ID: ${kakaoUserId}`,
-                        `플러스친구 사용자 키: ${user?.properties?.plusfriendUserKey ?? '-'}`,
-                        `봇 사용자 키: ${user?.id ?? '-'}`,
-                        `사용자 타입: ${user?.type ?? '-'}`, 
-                    ].join('\n')
-            });
-
-            return res.status(200).json({
-                version: "2.0",
-                template: {
-                    outputs: [{
-                        simpleText: {
-                            text: "메시지를 접수했습니다."
-                        }
-                    }]
-                }
-            });
+            return await processConnectedUser(
+                res,
+                connection.uid,
+                utterance,
+                user,
+                kakaoUserId
+            );
         }
 
-        ///////////////////////////////////////////////////
-        // 3. 인증번호 처리
+        // 여기부터는 미연결 사용자
         if (/^\d{4}$/.test(utterance)) {
-
-            const hashedInput = crypto
-                .createHash('sha256')
-                .update(utterance)
-                .digest('hex');
-
-            ///////////////////////////////////////////////////
-            // ✅ 개선: full scan 제거 (핵심)
-            const verificationSnap = await db
-                .collection('verifications')
-                .where('verified', '==', false)
-                .where('code', '==', hashedInput)
-                .limit(1)
-                .get();
-
-            if (!verificationSnap.empty) {
-
-                const matchedDoc = verificationSnap.docs[0];
-                const verificationData = matchedDoc.data();
-
-                ///////////////////////////////////////////////////
-                // 만료 체크
-                if (
-                    verificationData.expiresAt &&
-                    verificationData.expiresAt.toMillis() < Date.now()
-                ) {
-                    await matchedDoc.ref.delete();
-
-                    return res.status(200).json({
-                        version: "2.0",
-                        template: {
-                            outputs: [{
-                                simpleText: {
-                                    text: "인증번호가 만료되었습니다."
-                                }
-                            }]
-                        }
-                    });
-                }
-
-                const userId = matchedDoc.id;
-
-                ///////////////////////////////////////////////////
-                // ⚠️ user 존재 체크 (안전)
-                const targetUserRef = db.collection('users').doc(userId);
-                const targetUserSnap = await targetUserRef.get();
-
-                if (targetUserSnap.exists) {
-                    await targetUserRef.update({
-                        kakaoUserId
-                    });
-                }
-
-                ///////////////////////////////////////////////////
-                // verification 업데이트
-                await matchedDoc.ref.update({
-                    verified: true,
-                    verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    kakaoUserId
-                });
-
-                return res.status(200).json({
-                    version: "2.0",
-                    template: {
-                        outputs: [{
-                            simpleText: {
-                                text:
-                                    "라이프업 비서와 연결이 되었습니다.\n\n" +
-                                    "반갑습니다 👋\n" +
-                                    "라이프업 비서입니다.\n\n" +
-                                    "이제부터 당신의 일상을 업그레이드해 줄\n" +
-                                    "든든한 러닝메이트가 되겠습니다.\n\n" +
-                                    "사용법이 궁금하시면 '사용법'이라고 입력해보세요."
-                            }
-                        }]
-                    }
-                });
-            }
-
-            ///////////////////////////////////////////////////
-            // 인증 실패
-            return res.status(200).json({
-                version: "2.0",
-                template: {
-                    outputs: [{
-                        simpleText: {
-                            text: "인증번호가 다릅니다. 인증번호를 확인 후 다시 보내주세요."
-                        }
-                    }]
-                }
-            });
+            return await processVerificationCode(
+                res,
+                utterance,
+                kakaoUserId
+            );
         }
-
-        ///////////////////////////////////////////////////
-        // 4. 미연결 사용자 안내
-        return res.status(200).json({
-            version: "2.0",
-            template: {
-                outputs: [{
-                    simpleText: {
-                        text:
-                            "노셔너블 비서입니다.\n\n" +
-                            "아직 카카오 연결이 완료되지 않았습니다.\n" +
-                            "notionable.net 에 접속하여 카카오 연결을 먼저 진행해주세요."
-                    }
-                }]
-            }
-        });
-
+        return sendNotConnectedMessage(res);
     } catch (error) {
-
         console.error("[KAKAO WEBHOOK ERROR]", error);
-
-        return res.status(200).json({
-            version: "2.0",
-            template: {
-                outputs: [{
-                    simpleText: {
-                        text: "처리 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요."
-                    }
-                }]
-            }
-        });
+        return sendError(res);
     }
 })
 );
 
-export const disconnectKakao = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
-    const userId = req.body?.userId;
+function logKakaoRequest(
+    payload: any,
+    user: any,
+    kakaoUserId: string
+) {
+    console.log(
+        "[KAKAO RAW]",
+        JSON.stringify(payload, null, 2)
+    );
 
+    console.log("[KAKAO USER]", {
+        kakaoUserId,
+        type: user?.type,
+        plusfriendUserKey:
+            user?.properties?.plusfriendUserKey,
+        botUserKey: user?.id
+    });
+}
+
+async function processConnectedUser(
+    res: any,
+    uid: string,
+    userMessage: string,
+    user: any,
+    kakaoUserId: string
+) {
+
+    ///////////////////////////////////////////////////
+    // 이미지 처리 + 엔티티 보강
+    const {
+        aiInput,
+        entity
+    } = await prepareAssistantInput(userMessage);
+
+    ///////////////////////////////////////////////////
+    // 수정용 이전 컨텍스트
+    console.time('getLastAssistantContext');
+    const previousResult = await getLastAssistantContext(uid);
+    console.timeEnd('getLastAssistantContext');
+
+    ///////////////////////////////////////////////////
+    // AI 호출
+    console.time('requestKakaoAssistantActionFromAI');
+    const aiResult = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
+    console.timeEnd('requestKakaoAssistantActionFromAI');
+    console.log(
+        '[KAKAO ASSISTANT RESULT]',
+        JSON.stringify(
+            aiResult,
+            null,
+            2
+        )
+    );
+
+    ///////////////////////////////////////////////////
+    // 가장 먼저 사용자에게 응답
+    sendSimpleText(res, aiResult.response ?? '처리했습니다.');
+
+    ///////////////////////////////////////////////////
+    // 이후 작업 (응답 후)
     try {
-        console.log("[DISCONNECT KAKAO]", { userId });
+        await Promise.allSettled([
+            ///////////////////////////////////////////////////
+            // 원본 메시지 저장
+            saveCapture(uid, userMessage, user, kakaoUserId),
 
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: "userId required"
-            });
-        }
+            ///////////////////////////////////////////////////
+            // AI 컨텍스트 저장
+            saveAssistantContext(
+                uid,
+                {
+                    userMessage,
+                    aiInput,
+                    entity,
+                    result: aiResult,
+                    createdAt:
+                        admin.firestore
+                            .FieldValue
+                            .serverTimestamp()
+                }
+            ),
 
-        const userRef = db.collection('users').doc(userId);
-        const userSnap = await userRef.get();
+            ///////////////////////////////////////////////////
+            // 이벤트 로그
+            writeUserEvent(
+                uid,
+                {
+                    agentId:
+                        AgentId.KAKAO_CAPTURE,
 
-        if (!userSnap.exists) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
+                    status:
+                        'completed',
 
-        await userRef.update({
-            kakaoUserId: admin.firestore.FieldValue.delete(),
-        });
+                    eventTitle:
+                        aiResult.response ??
+                        '카카오 비서 요청 처리',
 
-        return res.status(200).json({
-            success: true,
-            message: "카카오 연결이 해제되었습니다."
-        });
+                    description: [
+                        `사용자 입력: ${userMessage}`,
+
+                        `AI 입력:\n${typeof aiInput === 'string'
+                            ? aiInput
+                            : JSON.stringify(
+                                aiInput,
+                                null,
+                                2
+                            )
+                        }`,
+
+                        `AI 결과:\n${JSON.stringify(
+                            aiResult,
+                            null,
+                            2
+                        )}`
+                    ].join('\n')
+                }
+            ),
+
+            ///////////////////////////////////////////////////
+            // 실제 처리
+            // processAssistantAction(
+            //     uid,
+            //     aiResult
+            // )
+
+        ]);
 
     } catch (error) {
+        console.error(
+            '[KAKAO BACKGROUND ERROR]',
+            error
+        );
+    }
+}
+
+// export interface AssistantInput {
+//     aiInput: string;
+//     entity?: ResolvedEntity | null;
+// }
+
+export async function prepareAssistantInput(
+    userMessage: string
+) {
+    return {
+        aiInput: userMessage,
+        entity: null
+    };
+}
+// export interface AssistantAIInput {
+//     aiInput: string;
+//     entity?: ResolvedEntity | null;
+// }
+
+// export async function buildAssistantAIInput(
+//     userMessage: string
+// ): Promise<AssistantAIInput> {
+
+//     const entity =
+//         await resolveEntity(
+//             userMessage
+//         );
+
+//     if (
+//         !entity ||
+//         entity.category === 'unknown' ||
+//         entity.confidence < 0.7
+//     ) {
+//         return {
+//             aiInput: userMessage
+//         };
+//     }
+
+//     console.log(
+//         '[ENTITY FOUND]',
+//         entity
+//     );
+
+//     return {
+//         entity,
+//         aiInput: `
+// [Entity Resolution]
+
+// category:
+// ${entity.category}
+
+// title:
+// ${entity.title}
+
+// description:
+// ${entity.description ?? ''}
+
+// [Original User Message]
+// ${userMessage}
+// `
+//     };
+// }
+
+// function isKakaoImageUrl(
+//     text: string
+// ): boolean {
+
+//     if (!text) {
+//         return false;
+//     }
+
+//     try {
+//         const url = new URL(text);
+
+//         return (
+//             url.hostname.includes('talk.kakaocdn.net') ||
+//             url.hostname.includes('kakaocdn.net')
+//         );
+//     }
+//     catch {
+//         return false;
+//     }
+// }
+
+// async function preprocessKakaoMessage(
+//     userMessage: string
+// ): Promise<string> {
+
+//     ///////////////////////////////////////////////////
+//     // 일반 텍스트
+//     if (!isKakaoImageUrl(userMessage)) {
+//         return userMessage;
+//     }
+
+//     console.log(
+//         '[KAKAO IMAGE DETECTED]',
+//         userMessage
+//     );
+
+//     ///////////////////////////////////////////////////
+//     // TODO:
+//     // 향후 Vision AI 분석
+//     //
+//     // const imageAnalysis =
+//     //     await analyzeImage(userMessage);
+//     //
+//     // return `
+//     // [IMAGE]
+//     // URL: ${userMessage}
+//     // Analysis:
+//     // ${imageAnalysis}
+//     // `;
+
+//     ///////////////////////////////////////////////////
+//     // 현재는 이미지라는 사실만 AI에게 전달
+//     return [
+//         '[IMAGE_MESSAGE]',
+//         `imageUrl: ${userMessage}`,
+//         '',
+//         '사용자가 이미지를 보냈습니다.',
+//         '이미지 내용을 분석하여',
+//         '메모, 스크랩, 할일, 기록 중',
+//         '가장 적절한 형태로 분류하십시오.'
+//     ].join('\n');
+// }
+
+async function getLastAssistantContext(
+    uid: string
+) {
+
+    const snap = await db
+        .collection('users')
+        .doc(uid)
+        .collection('assistantContext')
+        .orderBy(
+            'createdAt',
+            'desc'
+        )
+        .limit(1)
+        .get();
+
+    return snap.empty
+        ? null
+        : snap.docs[0].data().result;
+}
+
+async function saveAssistantContext(
+    uid: string,
+    context: any
+) {
+
+    await db
+        .collection('users')
+        .doc(uid)
+        .collection('assistantContext')
+        .add(context);
+}
+
+
+// async function isKakaoCaptureEnabled(
+//     uid: string
+// ): Promise<boolean> {
+
+//     const snap = await db
+//         .collection('users')
+//         .doc(uid)
+//         .collection('integrations')
+//         .doc('kakao-capture')
+//         .get();
+
+//     return snap.exists
+//         ? snap.data()?.enabled === true
+//         : false;
+// }
+
+async function saveCapture(
+    uid: string,
+    utterance: string,
+    user: any,
+    kakaoUserId: string
+) {
+
+    await db
+        .collection("users")
+        .doc(uid)
+        .collection("integrations")
+        .doc("kakaoAgent")
+        .collection("captures")
+        .add({
+            kakaoUserId,
+            plusfriendUserKey:
+                user?.properties?.plusfriendUserKey,
+            botUserKey: user?.id,
+            content: utterance,
+            source: "kakao",
+            status: "received",
+            createdAt:
+                admin.firestore.FieldValue.serverTimestamp()
+        });
+
+    saveCaptureEvent(uid, utterance, user, kakaoUserId);
+}
+
+async function saveCaptureEvent(
+    uid: string,
+    utterance: string,
+    user: any,
+    kakaoUserId: string
+) {
+
+    const preview =
+        utterance.length > 30
+            ? `${utterance.substring(0, 30)}...`
+            : utterance;
+
+    await writeUserEvent(uid, {
+        agentId: AgentId.KAKAO_CAPTURE,
+        status: "completed",
+        eventTitle:
+            `'${preview}'으로 시작하는 메시지를 수집했습니다.`,
+        description: [
+            `수집 내용: ${utterance}`,
+            `카카오 사용자 ID: ${kakaoUserId}`,
+            `플러스친구 사용자 키: ${user?.properties?.plusfriendUserKey ?? '-'}`,
+            `봇 사용자 키: ${user?.id ?? '-'}`,
+            `사용자 타입: ${user?.type ?? '-'}`
+        ].join('\n')
+    });
+}
+
+async function processVerificationCode(
+    res: any,
+    utterance: string,
+    kakaoUserId: string
+) {
+
+    const hashedInput = crypto
+        .createHash('sha256')
+        .update(utterance)
+        .digest('hex');
+
+    ///////////////////////////////////////////////////
+    const verificationSnap = await db
+        .collection('verifications')
+        .where('verified', '==', false)
+        .where('code', '==', hashedInput)
+        .limit(1)
+        .get();
+
+    if (!verificationSnap.empty) {
+
+        const matchedDoc = verificationSnap.docs[0];
+        const verificationData = matchedDoc.data();
+
+        ///////////////////////////////////////////////////
+        // 만료 체크
+        if (
+            verificationData.expiresAt &&
+            verificationData.expiresAt.toMillis() < Date.now()
+        ) {
+            await matchedDoc.ref.delete();
+            return sendExpiredVerificationCode(res);
+        }
+
+        const userId = matchedDoc.id;
+
+        ///////////////////////////////////////////////////
+        // user 존재 체크
+        const targetUserSnap = await db
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        if (!targetUserSnap.exists) {
+            return sendInvalidVerificationCode(res);
+        }
+
+        ///////////////////////////////////////////////////
+        // 카카오 연결
+        await connectKakaoUser(userId, kakaoUserId);
+
+        ///////////////////////////////////////////////////
+        // verification 완료 처리
+        await matchedDoc.ref.update({
+            verified: true,
+            verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            kakaoUserId
+        });
+
+        return sendConnectedMessage(res);
+    }
+
+    ///////////////////////////////////////////////////
+    // 인증 실패
+    return sendInvalidVerificationCode(res);
+}
+
+
+///////////////////////////////////////////////////////
+// kakao connect user
+
+export async function connectKakaoUser(uid: string, kakaoUserId: string): Promise<void> {
+    try {
+        console.log("[connectKakaoUser]", { uid, kakaoUserId });
+
+        const userRef = db.collection('users').doc(uid);
+        const connRef = db.collection('kakaoConnections').doc(kakaoUserId);
+        const integrationRef = db.collection('users').doc(uid).collection('integrations').doc('kakao-capture');
+
+        const batch = db.batch();
+
+        batch.update(userRef, { kakaoUserId });
+
+        batch.set(connRef, {
+            uid,
+            enabled: true,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        batch.set(integrationRef, {
+            enabled: true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        await batch.commit();
+
+        console.log("[connectKakaoUser] committed");
+    } catch (error) {
+        console.error("[connectKakaoUser FAILED]", error);
+        throw error;
+    }
+}
+
+export async function disconnectKakaoUser(uid: string, kakaoUserId: string) {
+    try {
+        const batch = db.batch();
+
+        batch.update(db.collection('users').doc(uid), {
+            kakaoUserId: admin.firestore.FieldValue.delete()
+        });
+
+        batch.delete(db.collection('kakaoConnections').doc(kakaoUserId));
+
+        batch.set(
+            db.collection('users').doc(uid).collection('integrations').doc('kakao-capture'),
+            {
+                enabled: false,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            },
+            { merge: true }
+        );
+
+        await batch.commit();
+    } catch (error) {
+        console.error("[disconnectKakaoUser FAILED]", error);
+        throw error;
+    }
+}
+
+export const disconnectKakao = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
+    const userId = req.body?.userId;
+    try {
+        console.log("[DISCONNECT KAKAO]", { userId });
+        if (!userId) {
+            return res.status(400).json({ success: false, message: "userId required" });
+        }
+        const userSnap = await db.collection('users').doc(userId).get();
+
+        if (!userSnap.exists) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const kakaoUserId = userSnap.data()?.kakaoUserId;
+
+        if (!kakaoUserId) {
+            return res.status(200).json({ success: true, message: "이미 연결이 해제되었습니다." });
+        }
+
+        await disconnectKakaoUser(userId, kakaoUserId);
+
+        return res.status(200).json({ success: true, message: "카카오 연결이 해제되었습니다." });
+
+    } catch (error) {
+
         console.error("[DISCONNECT KAKAO ERROR]", error);
 
-        return res.status(500).json({
-            success: false,
-            message: "처리 중 오류가 발생했습니다."
-        });
+        return res.status(500).json({ success: false, message: "처리 중 오류가 발생했습니다." });
     }
-}));
+})
+);
+
+export async function findEnabledConnectedUser(
+    kakaoUserId: string
+): Promise<{
+    uid: string;
+    enabled: boolean;
+} | null> {
+
+    const doc = await db
+        .collection('kakaoConnections')
+        .doc(kakaoUserId)
+        .get();
+
+    if (!doc.exists) {
+        return null;
+    }
+
+    const data = doc.data();
+
+    return {
+        uid: data!.uid,
+        enabled: data!.enabled === true
+    };
+}
+
+/////////////////////////////////////////////////////////////
+
+function sendSimpleText(
+    res: any,
+    text: string
+) {
+    return res.status(200).json({
+        version: "2.0",
+        template: {
+            outputs: [
+                {
+                    simpleText: {
+                        text
+                    }
+                }
+            ]
+        }
+    });
+}
+
+// function sendReceivedMessage(
+//     res: any
+// ) {
+//     return sendSimpleText(
+//         res,
+//         "메시지를 접수했습니다."
+//     );
+// }
+
+function sendDisabledMessage(
+    res: any
+) {
+    return sendSimpleText(
+        res,
+        [
+            "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
+            "",
+            "노셔너블 비서를 이용하려면",
+            "자동화 에이전트 관리에서",
+            "'카카오톡 수집 자동화'를",
+            "활성화해주세요."
+        ].join('\n')
+    );
+}
+
+function sendNotConnectedMessage(
+    res: any
+) {
+    return sendSimpleText(
+        res,
+        [
+            "노셔너블 비서입니다.",
+            "",
+            "아직 카카오 연결이",
+            "완료되지 않았습니다.",
+            "",
+            "notionable.net 에 접속하여",
+            "카카오 연결을 먼저 진행해주세요."
+        ].join('\n')
+    );
+}
+
+function sendError(res: any) {
+    return sendSimpleText(
+        res,
+        [
+            "처리 중 오류가 발생했습니다.",
+            "잠시 후 다시 시도해주세요."
+        ].join('\n')
+    );
+}
+
+function sendInvalidVerificationCode(
+    res: any
+) {
+    return sendSimpleText(
+        res,
+        "인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요."
+    );
+}
+
+function sendExpiredVerificationCode(
+    res: any
+) {
+    return sendSimpleText(
+        res,
+        "인증번호가 만료되었습니다."
+    );
+}
+
+function sendConnectedMessage(
+    res: any
+) {
+    return sendSimpleText(
+        res,
+        [
+            "라이프업 비서와 연결이 되었습니다.",
+            "",
+            "반갑습니다 👋",
+            "라이프업 비서입니다.",
+            "",
+            "이제부터 당신의 일상을",
+            "업그레이드해 줄",
+            "든든한 러닝메이트가 되겠습니다.",
+            "",
+            "사용법이 궁금하시면",
+            "'사용법'이라고 입력해보세요."
+        ].join('\n')
+    );
+}
+
+
+// export async function resolveEntity(
+//     userMessage: string
+// ): Promise<ResolvedEntity | null> {
+
+//     if (!shouldResolveEntity(userMessage)) {
+//         return null;
+//     }
+
+//     const prompt = `
+// 사용자 입력이 무엇을 의미하는지 추론하십시오.
+
+// 가능한 category:
+
+// - book
+// - movie
+// - product
+// - place
+// - person
+// - article
+// - concept
+// - unknown
+
+// 규칙:
+
+// 1. 가장 유명하고 일반적인 의미를 선택합니다.
+// 2. 책 제목이면 book.
+// 3. 영화/드라마면 movie.
+// 4. 상품이면 product.
+// 5. 장소면 place.
+// 6. 사람 이름이면 person.
+// 7. 개념이면 concept.
+// 8. 판단 불가능하면 unknown.
+// 9. confidence를 반드시 포함합니다.
+// 10. JSON만 출력합니다.
+
+// 출력 예시:
+
+// {
+//   "category":"book",
+//   "title":"스틱!",
+//   "description":"칩 히스의 베스트셀러 도서",
+//   "confidence":0.93
+// }
+
+// 사용자 입력:
+// ${userMessage}
+// `;
+
+//     const response =
+//         await clientAI.chat.completions.create({
+//             model: 'gpt-4.1-mini',
+//             messages: [
+//                 {
+//                     role: 'system',
+//                     content: `
+// You are an entity resolver.
+
+// Return valid JSON only.
+// Do not output markdown.
+// Do not output explanations.
+// `
+//                 },
+//                 {
+//                     role: 'user',
+//                     content: prompt
+//                 }
+//             ],
+//             temperature: 0
+//         });
+
+//     const text =
+//         response.choices[0]
+//             .message?.content ?? '';
+
+//     console.log(
+//         '[ENTITY RESOLVER]',
+//         text
+//     );
+
+//     try {
+
+//         const parsed =
+//             safeParseEntityJson(text);
+
+//         return {
+//             category:
+//                 parsed.category ??
+//                 'unknown',
+
+//             title:
+//                 parsed.title ??
+//                 userMessage,
+
+//             description:
+//                 parsed.description,
+
+//             confidence:
+//                 parsed.confidence ??
+//                 0
+//         };
+//     }
+//     catch (e) {
+
+//         console.error(
+//             '[ENTITY RESOLVER ERROR]',
+//             e
+//         );
+
+//         return null;
+//     }
+// }
+
+// export interface ResolvedEntity {
+//     category:
+//     | 'book'
+//     | 'movie'
+//     | 'product'
+//     | 'place'
+//     | 'person'
+//     | 'article'
+//     | 'concept'
+//     | 'unknown';
+
+//     title: string;
+//     description?: string;
+//     confidence: number;
+// }
+
+// export function shouldResolveEntity(
+//     userMessage: string
+// ): boolean {
+
+//     const text = userMessage.trim();
+
+//     ///////////////////////////////////////////////////
+//     // URL
+//     if (/https?:\/\//i.test(text)) {
+//         return false;
+//     }
+
+//     ///////////////////////////////////////////////////
+//     // 너무 길면 그냥 본 AI로
+//     if (text.length > 30) {
+//         return false;
+//     }
+
+//     ///////////////////////////////////////////////////
+//     // 짧은 명사 위주
+//     return true;
+// }
+
+
+async function requestPageKeywordsFromAI(
+    noteData: Record<string, { title?: string; content?: string; /*keywords: string[]*/ }>,
+    existingKeywords: string[]): Promise<Record<string, string[]>> {
+
+    console.log('requestPageKeywordsFromAI existingKeywords =>', existingKeywords);
+
+    let prompt = `
+당신은 개인 지식 관리 시스템의 키워드 정제 AI입니다.
+다음 노트 데이터를 바탕으로 노트의 핵심 키워드을 추출하십시오.
+
+입력:
+1. 노트 본문 (Note Content)
+2. 기존 전체 키워드 목록 (Existing Keywords)
+
+목표:
+- 이 노트를 대표하는 핵심 키워드을 1~5개 정도 추출합니다.
+  - 개수가 정확히 1~5개일 필요는 없으며, 조건을 만족하는 핵심 키워드만 보수적으로 추출해야 합니다.
+- 키워드은 지식 그래프에서 재사용 가능한 단일 의미 단위이어야 합니다.
+  - 즉, 파편화되지 않고, 노트의 주제를 대표할 수 있는 고유 명칭이어야 합니다.
+
+키워드 추출 규칙:
+
+1. 의미 판단
+- Prioritize terms that can represent the overall topic of the document.
+- Prefer words with high Frequency/Occurrence in the model’s training corpus.
+- Prefer words with high Domain relevance (e.g., technology, productivity, knowledge management).
+- Prefer terms with high Recognizability/Popularity, meaning widely known by general users or experts.
+- Consider Contextual importance, i.e., words that appear repeatedly in the document and indicate the main theme.
+- Absorb fine-grained features, specific implementations, examples, or tool names into higher-level keywords.
+- Ensure that a human reader can intuitively recognize the term as representing the document’s core subject.
+
+2. 기존 키워드 우선 원칙
+- 새로운 키워드을 생성하기 전에 기존 키워드 목록과 의미적으로 동일한 키워드이 있는지 반드시 확인합니다.
+- 의미가 동일하면 기존 키워드을 재사용하여 키워드의 파편화를 줄입니다.
+  - 예: "AI" ↔ "Artificial Intelligence", "세컨드 브레인" ↔ "Second Brain"
+
+3. 키워드 번역 원칙 
+- 추가할 키워드가 영어이면 한글로 번역 후 기존 키워드에 동의어가 있으면 동의어로 등록한다.
+   - 추가 할 키워드가 'notion'이면 한글로 번역하면 '노션'이고 기존 키워드 목록에 '노션'이 있으면 '노션'으로 등록합니다.
+
+3. 단어 조합 규칙
+- 단어를 조합한 경우에도 반드시 위 1.의미 판단 규칙에 맞아야 합니다.**
+  - 의미 규칙: 상위 개념으로 주제를 대표할 수 있어야 하고, 고유 명칭으로서 독립성이 있어야 함
+- 의미 없는 조합이나 설명형 단어는 키워드이 될 수 없습니다.
+- 예: '골프장 정보'는 안됨, '노션 데이터베이스'는 됨 
+
+
+4. 새 키워드 생성 조건
+- 기존 키워드과 의미적으로 대응되는 항목이 없을 때만 새 키워드을 생성합니다.
+- 새 키워드은 독립적인 지식 문서로 확장 가능해야 하며, 모호해서는 안 됩니다.
+
+5.  키워드 정규화 정책 (중요):
+- 키워드은 하나의 대표 표기(canonical form)를 가져야 합니다.
+- 동일한 개념의 언어/표기 차이는 하나의 키워드으로 통합합니다.
+- 예:
+  - "노션", "notion", "NOTION" → "Notion"
+- 기존 키워드 목록에 대응되는 항목이 있다면,
+  문서에 등장한 표현과 관계없이 반드시 기존 키워드을 사용합니다.
+
+6. 제외 대상 
+- 단어가 너무 하위 개념이면 제외합니다.(예: 콜아웃 블록)
+- 단어가 너무 보편적이나 지식, 정보, 취향, 관심사를 반영하지 못함 (예:페이지, 소규모팀, 개인)
+
+7. 출력 규칙
+- JSON 객체 형태로 출력
+- 키: 페이지 ID
+- 값: 해당 페이지의 핵심 키워드 배열
+- 불필요한 설명, 주석, null 값, 쉼표는 제거
+
+Critical Constraints:
+- Do NOT modify pageId in any way.
+- Return pageId exactly as provided in the input, including all hyphens and lowercase letters.
+- Do not merge or mix keywords across notes
+---
+
+예시 출력 (형식 참고):
+
+{
+  "pageId_1": ["인공지능", "노션", "데이터베이스"],
+  "pageId_2": ["Firebase", "SaaS", "Make"]
+}
+`;
+
+    // 🔹 Existing keywords (global context)
+    if (existingKeywords.length) {
+        prompt += `\n[Existing Keywords]\n${existingKeywords.join(", ")}\n`;
+    }
+
+    // 🔹 Pages
+    for (const [pageId, { title, content }] of Object.entries(noteData)) {
+        prompt += `\n[pageId: ${pageId}]\n`;
+        if (title) prompt += `Title: ${title}\n`;
+        if (content) prompt += `Note Content: ${content}\n`;
+        prompt += `\n# Please extract keywords for this pageId independently, do not mix with other pages\n`;
+    }
+
+    console.log('requestPageKeywordsFromAI prompt =>', prompt);
+
+    const response = await clientAI.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [
+            {
+                role: "system",
+                content: `
+You are a strict JSON generator.
+Return valid raw JSON only.
+Do not include markdown, code blocks, or explanations.
+`
+            },
+            {
+                role: "user",
+                content: prompt
+            }
+        ],
+        temperature: 0.3,
+    });
+
+    const text = response.choices[0].message?.content || "";
+    console.log("[DEBUG] AI Keywords 응답 텍스트:", text);
+
+    try {
+        return safeParseAIJson(text);
+    } catch (err) {
+        console.error("AI Keywords JSON 파싱 실패:", {
+            error: err,
+            rawResponse: text,
+        });
+        throw err;
+    }
+}

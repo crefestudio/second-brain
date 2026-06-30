@@ -197,16 +197,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.graphData.nodes.update(data.nodes);
     }
 
-// export interface UserEvent {
-//     id: string;
-//     eventType: string;
-//     status: 'start' | 'running' | 'completed' | 'failed';
-//     targetData?: any;
-//     eventTitle?: string;
-//     eventDescription?: string;
-//     updatedAt: any;
-// }
-
     showEventToast(event: UserEvent) {
         if(event.eventTitle) {
             this.showToast(event.eventTitle);

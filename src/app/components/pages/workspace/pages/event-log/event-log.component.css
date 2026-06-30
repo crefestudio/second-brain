@@ -525,3 +525,52 @@ input:checked + .slider::before {
 
     line-height: 1;
 }
+
+.detail-row td {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.detail-card {
+  margin: 8px 16px 16px;
+  padding: 16px;
+
+  background: #1b1b1b;
+  border: 1px solid #2d2d2d;
+  border-radius: 12px;
+}
+
+.detail-header {
+  margin-bottom: 12px;
+
+  font-size: 16px;
+  font-weight: 800;
+  color: #999;
+}
+
+.detail-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  font-size: 14px;
+  line-height: 1.6;
+  color: #ddd;
+}
+
+.detail-line {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.detail-key {
+  min-width: 130px;
+  color: #999;
+  font-weight: 600;
+}
+
+.detail-value {
+  color: #fff;
+  word-break: break-all;
+}

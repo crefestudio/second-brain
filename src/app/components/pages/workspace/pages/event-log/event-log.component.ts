@@ -48,6 +48,8 @@ export class EventLogComponent {
 
     selectedAgentId = '';
 
+    selectedLog: any = null;
+
     constructor(
         private authService: AuthService,
         private route: ActivatedRoute
@@ -78,24 +80,37 @@ export class EventLogComponent {
         this.isLoading = true;
 
         try {
+
+            const start =
+                this.startDate
+                    ? new Date(`${this.startDate}T00:00:00`)
+                    : null;
+
+            const end =
+                this.endDate
+                    ? new Date(`${this.endDate}T23:59:59.999`)
+                    : null;
+
             const result = await UserService.getUserEvents(
                 this.userId,
                 this.selectedAgentId,
                 this.lastDoc,
-                20
+                20,
+                start,
+                end
             );
 
-            _log('loadLogs restul =>',result);
+            _log('loadLogs result =>', result);
 
             this.logs.push(...result.events);
 
             this.lastDoc = result.lastDoc;
             this.hasMore = result.hasMore;
-        } finally {
+        }
+        finally {
             this.isLoading = false;
         }
     }
-
     // async loadLogs() {
 
     //     this.logs = [
@@ -215,5 +230,24 @@ export class EventLogComponent {
         this.hasMore = true;
 
         await this.loadLogs();
+    }
+
+    toggleLog(log: any) {
+        this.selectedLog =
+            this.selectedLog === log ? null : log;
+    }
+
+    getDescriptionLines(description: string) {
+        return description
+            .split('\n')
+            .filter(v => v.trim())
+            .map(v => {
+                const idx = v.indexOf(':');
+
+                return {
+                    key: idx >= 0 ? v.substring(0, idx + 1) : '',
+                    value: idx >= 0 ? v.substring(idx + 1).trim() : v
+                };
+            });
     }
 }
