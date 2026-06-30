@@ -2733,6 +2733,30 @@ function similarity(a: string, b: string): number {
     return 1 - dist / Math.max(a.length, b.length);
 }
 
+const HELP_RESPONSE = `
+어떻게 활용하면 되는지 쉽게 알려드릴게요. 😊
+
+1. 할 일 모아두기
+머릿속에 떠오르는 할 일들을 그냥 편하게 말해보세요. 알아서 척척 분류해 드립니다.
+종류별 분류: 할 것, 살 것, 읽을 것, 볼 것, 갈 곳으로 딱딱 나눠서 정리해 줘요.
+유형 : 오늘, 내일, 일정, 다음, 나중에, 대기중
+
+디테일한 설정: "이건 진짜 중요해!", "오늘까지 해야 돼!" 하고 말씀하시면 중요도, 긴급도, 날짜까지 꼼꼼하게 지정할 수 있어요.
+사진 첨부 가능: 책 표지, 영수증, 기억하고 싶은 사진을 툭 던져주셔도 다 기록해 드립니다.
+
+2. 메모 보관하기
+잊어버리기 쉬운 정보들을 안전하게 저장해 보세요.
+떠오르는 아이디어, 깜빡하기 쉬운 계정 정보, 연락처는 물론이고 책에서 본 좋은 글귀까지 싹 다 기억해 드릴게요.
+
+3. 링크 및 스크랩 저장하기
+나중에 다시 보고 싶은 콘텐츠가 있다면 링크만 슥 보내주세요.
+유용한 웹사이트 링크, 인터넷 뉴스 기사, 유튜브 같은 영상까지 깔끔하게 수집해 둡니다.
+
+💡 한 줄 요약!
+그냥 친구한테 카톡 하듯이 "나 내일 마트에서 우유 사야 돼", "이 링크 나중에 읽게 저장해 줘"라고 편하게 말씀하시면 됩니다!
+혹시 지금 바로 등록하고 싶은 할 일이나 메모가 있으신가요?
+`;
+
 export const kakaoAssistantPrompt = `
 당신은 "노셔너블 라이프업 비서 AI"입니다.
 사용자 메시지를 "실행 가능한 JSON"으로 변환합니다.
@@ -2752,24 +2776,48 @@ memo: 내가 생성한 정보 / 생각 / 기록 / 개인 데이터 (비외부) /
 reference: 외부에서 온 정보 / 링크 / 기사 / 콘텐츠 / 발췌
 
 1. task
+a.type:
 할것 / 살것 / 읽을것 / 볼것 / 갈곳
-
-type:
 - 기본 "할것"
 - 구매 = 살것
 - 책/문서 = 읽을것
 - 영상/영화 = 볼것
 - 장소 = 갈곳
 
-* 문장중에 중요, 긴급 관련 언급  
-0 = 없음, 1 : 중요, 2:  매우 중요
+b.importance: 0 | 1 | 2
 
-허용값:
-- importance: 0 | 1 | 2
-- urgency: 0 | 1 | 2
+c.urgency: 0 | 1 | 2
 그 외 값 절대 금지
+문장중에 중요, 긴급 관련 언급  
+0 = 없음, 1 : 중요, 긴급, 2:  매우 중요, 매우 긴급
 
-date: 진행할 날짜, ISO 8601
+d.date: 진행할 날짜, ISO 8601
+
+e.kinds: 수집함, 다음, 일정, 대기중, 나중에 
+수집함 = 기본값
+일정 = 날짜가 있는 경우
+다음 = 다믕을 언급한 경우
+대기중 = 바로 진행하지 못하는 경우
+나중에 = 나중에 할일, 언젠가, 천천히 할일
+
+f.dateExpr 규칙:
+사용자의 상대 시간 표현을 현재 시간을 기준으로 계산 가능한
+상대 시간 표현으로 변환한다.
+절대로 실제 날짜를 계산하지 않는다.
+
+허용 예:
+오늘 → "dateExpr": "today"
+내일 → "dateExpr": "tomorrow"
+모레 → "dateExpr": "dayafter"
+15분 후 → "dateExpr": "now+15m"
+3시간 후 → "dateExpr": "now+3h"
+7일 후 → "dateExpr": "now+7d"
+다음주 월요일 → "dateExpr": "next:monday"
+이번주 금요일 → "dateExpr": "this:friday"
+
+명시적 날짜인 경우만 실제 날짜를 사용한다.
+예: 2026년 7월 3일 → "dateExpr": "date:2026-07-03"
+dateExpr가 없으면 null을 반환한다.
 
 출력 예시:
 {
@@ -2777,11 +2825,12 @@ date: 진행할 날짜, ISO 8601
   "action": "create",
   "title": "치과 예약",
   "type": "할것",
+  "kinds": "수집함",
   "importance": 0,
   "urgency": 0,
   "confidence": 0.95,
   "response": "'치과 예약'을 할일(살것)로 등록했습니다.",
-  "date": "2026-03-04T18:22:00"
+  "dateExpr": "today"
 }
 
 2. memo/create
@@ -2821,7 +2870,7 @@ tags: reference를 설명하는 부가 키워드 1-2개
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
-6. chat 
+4. chat 
 - 답변 가능한 일반 질문
 - 사용자가 일반 질문이면: 노셔너블 비서 역할로 답변
 {
@@ -2830,15 +2879,47 @@ tags: reference를 설명하는 부가 키워드 1-2개
   "response": "사용자 질문에 대한 자연스러운 답변"
 }
 
+5. help
+- 사용자가 사용법 / 도움말 / 뭐 할 수 있어 / 어떻게 쓰는거야 / 기능 알려줘 를 물어보면 선택
+
+출력:
+{
+  "action": "help",
+  "confidence": 1.0,
+  "response": ""
+}
+
+중요:
+- help일 경우 response는 반드시 빈 문자열 또는 null
+- 실제 도움말 문구는 서버에서 처리한다
+
 9. confidence 규칙:
 - 0.7 이상: 정상 처리
 - 0.5~0.7: chat 처리
 - 0.50 미만: 분류가 어렵다고 판단 / 가능하면 chat를 선택
 
-## 고유명사 처리
+10. 고유명사 처리
 책=read / 영화·드라마=watch / 장소=go / 상품=buy
 
-11. 중요 규칙:
+11. 단일 명사 처리 규칙
+사용자가 한 단어 또는 짧은 명사만 입력한 경우:
+1순위: 구매 가능한 실물 물건이면 task(type="살것")
+예:
+딸기
+바나나
+우유
+휴지
+샴푸
+에어팟
+노트북
+마우스
+
+2순위: 책이면 읽을것
+3순위: 영화/드라마/영상이면 볼것
+4순위: 장소이면 갈곳
+위 어느 것도 아니면 chat
+
+12. 중요 규칙:
 - JSON만 출력
 - response는 필수
 - codeblock 금지
@@ -2856,7 +2937,6 @@ export async function requestKakaoAssistantActionFromAI(
 ): Promise<any> {
 
     const systemPrompt = kakaoAssistantPrompt;
-
     const userPrompt = `
 ${previousResult ? `[이전 결과]\n${JSON.stringify(previousResult, null, 2)}\n` : ""}
 [사용자 메시지]
@@ -2879,7 +2959,6 @@ ${userMessage}
     });
 
     const text = response.choices[0].message?.content ?? "";
-
     console.log("[DEBUG] Kakao Assistant AI =>", text);
 
     try {
@@ -2925,7 +3004,7 @@ function safeParseAIJson(raw: string): Record<string, string[]> {
     return parsed as Record<string, string[]>;
 }
 
-export function safeParseAssistantJson( raw: string): any {
+export function safeParseAssistantJson(raw: string): any {
     const parsed = safeParseJson(raw);
     if (!parsed.action) {
         throw new Error(
@@ -3635,7 +3714,10 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
     }
 }));
 
+
 export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
+    console.time('kakaoWebhook');
+
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
     const user = payload?.userRequest?.user;
@@ -3702,114 +3784,112 @@ async function processConnectedUser(
     user: any,
     kakaoUserId: string
 ) {
+    const { aiInput, entity } = await prepareAssistantInput(userMessage);
+    //const previousResult = await getLastAssistantContext(uid);
 
-    ///////////////////////////////////////////////////
-    // 이미지 처리 + 엔티티 보강
-    const {
-        aiInput,
-        entity
-    } = await prepareAssistantInput(userMessage);
+    let responded = false;
 
-    ///////////////////////////////////////////////////
-    // 수정용 이전 컨텍스트
-    console.time('getLastAssistantContext');
-    const previousResult = await getLastAssistantContext(uid);
-    console.timeEnd('getLastAssistantContext');
+    const fallbackResponse = {
+        action: "timeout",
+        response: "말씀하신 내용을 처리하고 있습니다. 잠시 후 반영됩니다.",
+        confidence: 0.6
+    };
 
-    ///////////////////////////////////////////////////
-    // AI 호출
-    console.time('requestKakaoAssistantActionFromAI');
-    const aiResult = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
-    console.timeEnd('requestKakaoAssistantActionFromAI');
-    console.log(
-        '[KAKAO ASSISTANT RESULT]',
-        JSON.stringify(
-            aiResult,
-            null,
-            2
-        )
-    );
+    const sendOnce = (text: string) => {
+        if (responded) return;
+        responded = true;
+        sendSimpleText(res, text);
+    };
 
-    ///////////////////////////////////////////////////
-    // 가장 먼저 사용자에게 응답
-    sendSimpleText(res, aiResult.response ?? '처리했습니다.');
+    // 1. timeout fallback (4.5s hard limit)
+    const timeout = setTimeout(() => {
+        sendOnce(fallbackResponse.response);
+    }, 2900);
 
-    ///////////////////////////////////////////////////
-    // 이후 작업 (응답 후)
+    // 2. AI execution (async background)
+    (async () => {
+        let result: any = null;
+
+        try {
+            console.time("requestKakaoAssistantActionFromAI");
+            result = await requestKakaoAssistantActionFromAI(aiInput);
+            console.timeEnd("requestKakaoAssistantActionFromAI");
+
+            console.log("[KAKAO ASSISTANT RESULT]", JSON.stringify(result, null, 2));
+            clearTimeout(timeout);
+
+            if (result?.action === "help") {
+                result.response = HELP_RESPONSE;
+            }
+
+            // 3. response (only if not already responded)
+            sendOnce(result?.response ?? fallbackResponse.response);
+
+            console.timeEnd('kakaoWebhook');
+
+            // 4. background persistence (always run)
+            runBackgroundTasks( uid, userMessage, user, kakaoUserId, aiInput, entity, result);
+        } catch (error) {
+            console.error("[AI ERROR]", error);
+
+            clearTimeout(timeout);
+
+            const errorResult = {
+                action: "feedback",
+                response: "처리 중 오류가 발생했습니다.",
+                confidence: 0.8
+            };
+            sendOnce(errorResult.response);
+            runBackgroundTasks( uid, userMessage, user, kakaoUserId, aiInput, entity, errorResult);
+        }
+    })();
+}
+
+
+async function runBackgroundTasks(
+    uid: string,
+    userMessage: string,
+    user: any,
+    kakaoUserId: string,
+    aiInput: any,
+    entity: any,
+    aiResult: any
+) {
     try {
         await Promise.allSettled([
-            ///////////////////////////////////////////////////
-            // 원본 메시지 저장
             saveCapture(uid, userMessage, user, kakaoUserId),
 
-            ///////////////////////////////////////////////////
-            // AI 컨텍스트 저장
-            saveAssistantContext(
-                uid,
-                {
-                    userMessage,
-                    aiInput,
-                    entity,
-                    result: aiResult,
-                    createdAt:
-                        admin.firestore
-                            .FieldValue
-                            .serverTimestamp()
-                }
-            ),
+            saveAssistantContext(uid, {
+                userMessage,
+                aiInput,
+                entity,
+                result: aiResult,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }),
 
-            ///////////////////////////////////////////////////
-            // 이벤트 로그
-            writeUserEvent(
-                uid,
-                {
-                    agentId:
-                        AgentId.KAKAO_CAPTURE,
-
-                    status:
-                        'completed',
-
-                    eventTitle:
-                        aiResult.response ??
-                        '카카오 비서 요청 처리',
-
-                    description: [
-                        `사용자 입력: ${userMessage}`,
-
-                        `AI 입력:\n${typeof aiInput === 'string'
-                            ? aiInput
-                            : JSON.stringify(
-                                aiInput,
-                                null,
-                                2
-                            )
-                        }`,
-
-                        `AI 결과:\n${JSON.stringify(
-                            aiResult,
-                            null,
-                            2
-                        )}`
-                    ].join('\n')
-                }
-            ),
-
-            ///////////////////////////////////////////////////
-            // 실제 처리
-            // processAssistantAction(
-            //     uid,
-            //     aiResult
-            // )
-
+            writeUserEvent(uid, {
+                agentId: AgentId.KAKAO_CAPTURE,
+                status: 'completed',
+                eventTitle: trimKorean(aiResult.response) ?? '카카오 비서 요청 처리', ///////////////////////////
+                description: [
+                    `사용자 입력: ${userMessage}`,
+                    `AI 입력:\n${typeof aiInput === 'string'
+                        ? aiInput
+                        : JSON.stringify(aiInput, null, 2)
+                    }`,
+                    `AI 결과:\n${JSON.stringify(aiResult, null, 2)}`
+                ].join('\n')
+            })
         ]);
-
     } catch (error) {
-        console.error(
-            '[KAKAO BACKGROUND ERROR]',
-            error
-        );
+        console.error('[KAKAO BACKGROUND ERROR]', error);
     }
 }
+
+export const trimKorean = (text = '', max = 50) =>
+    [...text].length > max
+        ? [...text].slice(0, max).join('') + '...'
+        : text;
 
 // export interface AssistantInput {
 //     aiInput: string;
@@ -3936,25 +4016,25 @@ export async function prepareAssistantInput(
 //     ].join('\n');
 // }
 
-async function getLastAssistantContext(
-    uid: string
-) {
+// async function getLastAssistantContext(
+//     uid: string
+// ) {
 
-    const snap = await db
-        .collection('users')
-        .doc(uid)
-        .collection('assistantContext')
-        .orderBy(
-            'createdAt',
-            'desc'
-        )
-        .limit(1)
-        .get();
+//     const snap = await db
+//         .collection('users')
+//         .doc(uid)
+//         .collection('assistantContext')
+//         .orderBy(
+//             'createdAt',
+//             'desc'
+//         )
+//         .limit(1)
+//         .get();
 
-    return snap.empty
-        ? null
-        : snap.docs[0].data().result;
-}
+//     return snap.empty
+//         ? null
+//         : snap.docs[0].data().result;
+// }
 
 async function saveAssistantContext(
     uid: string,
