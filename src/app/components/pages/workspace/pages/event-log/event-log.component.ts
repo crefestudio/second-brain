@@ -75,6 +75,11 @@ export class EventLogComponent {
         }
     }
 
+    onClickRefreahBtn() {
+        this.logs = [];
+        this.loadLogs();
+    }
+
     async loadLogs() {
         if (this.isLoading || !this.hasMore) return;
         this.isLoading = true;

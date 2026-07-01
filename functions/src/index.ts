@@ -66,6 +66,7 @@ export interface EventPayload {
 //admin.initializeApp();
 
 import * as functions from "firebase-functions";
+import { resolveDateExpr } from './services/date-service';
 
 export const importPurchasers = functions.https.onRequest(
     async (req, res) => {
@@ -2734,14 +2735,16 @@ function similarity(a: string, b: string): number {
 }
 
 const HELP_RESPONSE = `
-어떻게 활용하면 되는지 쉽게 알려드릴게요. 😊
+당신의 노셔너블 비서를 
+어떻게 활용하면 되는지 알려드릴게요. 😊
 
-1. 할 일 모아두기
-머릿속에 떠오르는 할 일들을 그냥 편하게 말해보세요. 알아서 척척 분류해 드립니다.
-종류별 분류: 할 것, 살 것, 읽을 것, 볼 것, 갈 곳으로 딱딱 나눠서 정리해 줘요.
-유형 : 오늘, 내일, 일정, 다음, 나중에, 대기중
+1. 할 일 등록하기
+할일이 떠오르면 바로 알려주세요. 알아서 척척 분류해 드립니다.
+분류: 할 것, 살 것, 읽을 것, 볼 것, 갈 곳으로 딱딱 나눠서 정리해 줘요.
+유형: 오늘, 내일, 일정, 다음, 나중에, 대기중
 
-디테일한 설정: "이건 진짜 중요해!", "오늘까지 해야 돼!" 하고 말씀하시면 중요도, 긴급도, 날짜까지 꼼꼼하게 지정할 수 있어요.
+중요도/긴급도 설정: "이건 진짜 중요해!", "오늘까지 해야 돼!" 하고 말씀하시면 중요도, 긴급도 지정이 됩니다.
+날짜 : 오늘, 내일, 아니면 구체적인 날짜를 말씀해주세요. 해당날짜에 일정을 등록해 드릴께요.
 사진 첨부 가능: 책 표지, 영수증, 기억하고 싶은 사진을 툭 던져주셔도 다 기록해 드립니다.
 
 2. 메모 보관하기
@@ -2751,10 +2754,6 @@ const HELP_RESPONSE = `
 3. 링크 및 스크랩 저장하기
 나중에 다시 보고 싶은 콘텐츠가 있다면 링크만 슥 보내주세요.
 유용한 웹사이트 링크, 인터넷 뉴스 기사, 유튜브 같은 영상까지 깔끔하게 수집해 둡니다.
-
-💡 한 줄 요약!
-그냥 친구한테 카톡 하듯이 "나 내일 마트에서 우유 사야 돼", "이 링크 나중에 읽게 저장해 줘"라고 편하게 말씀하시면 됩니다!
-혹시 지금 바로 등록하고 싶은 할 일이나 메모가 있으신가요?
 `;
 
 export const kakaoAssistantPrompt = `
@@ -2814,6 +2813,11 @@ f.dateExpr 규칙:
 7일 후 → "dateExpr": "now+7d"
 다음주 월요일 → "dateExpr": "next:monday"
 이번주 금요일 → "dateExpr": "this:friday"
+
+오늘 오후 3시 → "dateExpr": "today+15:00"
+내일 오전 9시 → "dateExpr": "tomorrow+09:00"
+모레 오후 6시 → "dateExpr": "dayafter+18:00"
+다음주 월요일 오후 2시 → "dateExpr": "next:monday+14:00"
 
 명시적 날짜인 경우만 실제 날짜를 사용한다.
 예: 2026년 7월 3일 → "dateExpr": "date:2026-07-03"
@@ -2888,10 +2892,53 @@ tags: reference를 설명하는 부가 키워드 1-2개
   "confidence": 1.0,
   "response": ""
 }
-
 중요:
 - help일 경우 response는 반드시 빈 문자열 또는 null
 - 실제 도움말 문구는 서버에서 처리한다
+
+6. correct
+
+사용자가 직전 입력 또는 직전 분류 결과를 수정하려는 의도가 있으면,
+새로운 create를 생성하지 말고 반드시 action="correct"를 선택한다.
+
+correct는 기존 항목을 수정하기 위한 action이다.
+
+중요:
+- 기존 결과를 기반으로 수정된 전체 결과를 반환한다.
+
+correct 판단 기준:
+- "아니", "수정", "변경", "옮겨", "다시", "사실은", "~가 아니라" 등의 표현
+- 직전 항목의 종류, 날짜, 중요도, 긴급도, 제목, 내용을 변경하려는 경우
+- 사용자가 직전 항목을 재분류하거나 정정하려는 경우
+
+예:
+
+직전:
+{
+  "db": "task",
+  "title": "나트랑",
+  "type": "갈곳",
+  "kinds": "수집함",
+  "importance": 0,
+  "urgency": 0
+}
+
+사용자:
+"아니 할것으로 분류해줘"
+
+출력:
+{
+  "action": "correct",
+  "db": "task",
+  "title": "나트랑",
+  "type": "할것",
+  "kinds": "수집함",
+  "importance": 0,
+  "urgency": 0,
+  "confidence": 0.95,
+  "response": "'나트랑'을 할것으로 수정했습니다.",
+  "dateExpr": null
+}
 
 9. confidence 규칙:
 - 0.7 이상: 정상 처리
@@ -2914,10 +2961,35 @@ tags: reference를 설명하는 부가 키워드 1-2개
 노트북
 마우스
 
-2순위: 책이면 읽을것
-3순위: 영화/드라마/영상이면 볼것
-4순위: 장소이면 갈곳
-위 어느 것도 아니면 chat
+2순위: 책이나 문서 제목이면 task(type="읽을것")
+
+3순위: 영화, 드라마, 유튜브, 영상 콘텐츠이면 task(type="볼것")
+
+4순위: 장소 관련 명사이면 task(type="갈곳")
+포함:
+- 국가명
+- 도시명
+- 지역명
+- 관광지
+- 랜드마크
+- 식당명
+- 카페명
+- 호텔명
+- 공원명
+- 역 이름
+- 공항명
+
+예:
+베트남
+나트랑
+제주도
+에펠탑
+스타벅스
+인천공항
+롯데월드
+성심당
+
+5순위: 위 어느 것도 아니면 task(type="할것")
 
 12. 중요 규칙:
 - JSON만 출력
@@ -2936,10 +3008,19 @@ export async function requestKakaoAssistantActionFromAI(
     previousResult?: any
 ): Promise<any> {
 
-    const systemPrompt = kakaoAssistantPrompt;
+    const instructionPrompt  = kakaoAssistantPrompt;
     const userPrompt = `
-${previousResult ? `[이전 결과]\n${JSON.stringify(previousResult, null, 2)}\n` : ""}
-[사용자 메시지]
+${previousResult
+            ? `
+[직전 사용자 입력]
+${previousResult.userMessage}
+
+[직전 분류 결과]
+${JSON.stringify(previousResult.result, null, 2)}
+`
+            : ''}
+
+[현재 사용자 입력]
 ${userMessage}
 `;
 
@@ -2948,7 +3029,7 @@ ${userMessage}
         messages: [
             {
                 role: "system",
-                content: systemPrompt
+                content: instructionPrompt 
             },
             {
                 role: "user",
@@ -3714,8 +3795,8 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
     }
 }));
 
-
-export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB" }, withCors(async (req, res) => {
+// minInstances:1 => 콜드 스타트 방지, 사용비용 발생
+export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", minInstances: 1 }, withCors(async (req, res) => {
     console.time('kakaoWebhook');
 
     const payload = req.body;
@@ -3785,13 +3866,13 @@ async function processConnectedUser(
     kakaoUserId: string
 ) {
     const { aiInput, entity } = await prepareAssistantInput(userMessage);
-    //const previousResult = await getLastAssistantContext(uid);
+    const previousResult = await getLastAssistantContext(uid);
 
     let responded = false;
 
     const fallbackResponse = {
         action: "timeout",
-        response: "말씀하신 내용을 처리하고 있습니다. 잠시 후 반영됩니다.",
+        response: `${aiInput}을 노션 템플릿에 저장하였습니다.`,
         confidence: 0.6
     };
 
@@ -3804,7 +3885,7 @@ async function processConnectedUser(
     // 1. timeout fallback (4.5s hard limit)
     const timeout = setTimeout(() => {
         sendOnce(fallbackResponse.response);
-    }, 2900);
+    }, 2800);
 
     // 2. AI execution (async background)
     (async () => {
@@ -3812,7 +3893,7 @@ async function processConnectedUser(
 
         try {
             console.time("requestKakaoAssistantActionFromAI");
-            result = await requestKakaoAssistantActionFromAI(aiInput);
+            result = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
             console.timeEnd("requestKakaoAssistantActionFromAI");
 
             console.log("[KAKAO ASSISTANT RESULT]", JSON.stringify(result, null, 2));
@@ -3828,7 +3909,7 @@ async function processConnectedUser(
             console.timeEnd('kakaoWebhook');
 
             // 4. background persistence (always run)
-            runBackgroundTasks( uid, userMessage, user, kakaoUserId, aiInput, entity, result);
+            runBackgroundTasks(uid, userMessage, user, kakaoUserId, aiInput, entity, result);
         } catch (error) {
             console.error("[AI ERROR]", error);
 
@@ -3840,7 +3921,7 @@ async function processConnectedUser(
                 confidence: 0.8
             };
             sendOnce(errorResult.response);
-            runBackgroundTasks( uid, userMessage, user, kakaoUserId, aiInput, entity, errorResult);
+            runBackgroundTasks(uid, userMessage, user, kakaoUserId, aiInput, entity, errorResult);
         }
     })();
 }
@@ -3899,142 +3980,88 @@ export const trimKorean = (text = '', max = 50) =>
 export async function prepareAssistantInput(
     userMessage: string
 ) {
+
+    // 카카오 이미지 URL
+    if (isImageUrl(userMessage)) {
+
+        const aiInput = await describeImage(userMessage);
+
+        return {
+            aiInput,
+            entity: {
+                type: 'image',
+                url: userMessage
+            }
+        };
+    }
+
     return {
         aiInput: userMessage,
         entity: null
     };
 }
-// export interface AssistantAIInput {
-//     aiInput: string;
-//     entity?: ResolvedEntity | null;
-// }
 
-// export async function buildAssistantAIInput(
-//     userMessage: string
-// ): Promise<AssistantAIInput> {
+function isImageUrl(url: string) {
+    return /^https?:\/\/.*\.(jpg|jpeg|png|webp)/i.test(url)
+        || url.includes('talk.kakaocdn.net');
+}
 
-//     const entity =
-//         await resolveEntity(
-//             userMessage
-//         );
+async function describeImage(imageUrl: string) {
 
-//     if (
-//         !entity ||
-//         entity.category === 'unknown' ||
-//         entity.confidence < 0.7
-//     ) {
-//         return {
-//             aiInput: userMessage
-//         };
-//     }
+    const response = await clientAI.chat.completions.create({
+        model: 'gpt-4.1-mini',
+        messages: [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'text',
+                        text: `
+사진의 핵심 내용을 짧은 텍스트로 변환해라.
 
-//     console.log(
-//         '[ENTITY FOUND]',
-//         entity
-//     );
+예:
+- 책 -> 책 제목
+- 영수증 -> 구매 목록
+- 장소 -> 장소명
+- 명함 -> 연락처 정보
+- 일반 사진 -> 핵심 설명
 
-//     return {
-//         entity,
-//         aiInput: `
-// [Entity Resolution]
+설명 없이 텍스트만 출력.
+`
+                    },
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: imageUrl
+                        }
+                    }
+                ]
+            }
+        ],
+        temperature: 0
+    });
 
-// category:
-// ${entity.category}
+    return response.choices[0].message.content ?? '';
+}
 
-// title:
-// ${entity.title}
+async function getLastAssistantContext(uid: string) {
+    const snap = await db
+        .collection('users')
+        .doc(uid)
+        .collection('assistantContext')
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get();
 
-// description:
-// ${entity.description ?? ''}
+    if (snap.empty) return null;
 
-// [Original User Message]
-// ${userMessage}
-// `
-//     };
-// }
+    const doc = snap.docs[0];
 
-// function isKakaoImageUrl(
-//     text: string
-// ): boolean {
-
-//     if (!text) {
-//         return false;
-//     }
-
-//     try {
-//         const url = new URL(text);
-
-//         return (
-//             url.hostname.includes('talk.kakaocdn.net') ||
-//             url.hostname.includes('kakaocdn.net')
-//         );
-//     }
-//     catch {
-//         return false;
-//     }
-// }
-
-// async function preprocessKakaoMessage(
-//     userMessage: string
-// ): Promise<string> {
-
-//     ///////////////////////////////////////////////////
-//     // 일반 텍스트
-//     if (!isKakaoImageUrl(userMessage)) {
-//         return userMessage;
-//     }
-
-//     console.log(
-//         '[KAKAO IMAGE DETECTED]',
-//         userMessage
-//     );
-
-//     ///////////////////////////////////////////////////
-//     // TODO:
-//     // 향후 Vision AI 분석
-//     //
-//     // const imageAnalysis =
-//     //     await analyzeImage(userMessage);
-//     //
-//     // return `
-//     // [IMAGE]
-//     // URL: ${userMessage}
-//     // Analysis:
-//     // ${imageAnalysis}
-//     // `;
-
-//     ///////////////////////////////////////////////////
-//     // 현재는 이미지라는 사실만 AI에게 전달
-//     return [
-//         '[IMAGE_MESSAGE]',
-//         `imageUrl: ${userMessage}`,
-//         '',
-//         '사용자가 이미지를 보냈습니다.',
-//         '이미지 내용을 분석하여',
-//         '메모, 스크랩, 할일, 기록 중',
-//         '가장 적절한 형태로 분류하십시오.'
-//     ].join('\n');
-// }
-
-// async function getLastAssistantContext(
-//     uid: string
-// ) {
-
-//     const snap = await db
-//         .collection('users')
-//         .doc(uid)
-//         .collection('assistantContext')
-//         .orderBy(
-//             'createdAt',
-//             'desc'
-//         )
-//         .limit(1)
-//         .get();
-
-//     return snap.empty
-//         ? null
-//         : snap.docs[0].data().result;
-// }
+    return {
+        id: doc.id,
+        ...doc.data()
+    };
+}
 
 async function saveAssistantContext(
     uid: string,
@@ -4047,23 +4074,6 @@ async function saveAssistantContext(
         .collection('assistantContext')
         .add(context);
 }
-
-
-// async function isKakaoCaptureEnabled(
-//     uid: string
-// ): Promise<boolean> {
-
-//     const snap = await db
-//         .collection('users')
-//         .doc(uid)
-//         .collection('integrations')
-//         .doc('kakao-capture')
-//         .get();
-
-//     return snap.exists
-//         ? snap.data()?.enabled === true
-//         : false;
-// }
 
 async function saveCapture(
     uid: string,
@@ -4325,15 +4335,6 @@ function sendSimpleText(
     });
 }
 
-// function sendReceivedMessage(
-//     res: any
-// ) {
-//     return sendSimpleText(
-//         res,
-//         "메시지를 접수했습니다."
-//     );
-// }
-
 function sendDisabledMessage(
     res: any
 ) {
@@ -4415,159 +4416,6 @@ function sendConnectedMessage(
         ].join('\n')
     );
 }
-
-
-// export async function resolveEntity(
-//     userMessage: string
-// ): Promise<ResolvedEntity | null> {
-
-//     if (!shouldResolveEntity(userMessage)) {
-//         return null;
-//     }
-
-//     const prompt = `
-// 사용자 입력이 무엇을 의미하는지 추론하십시오.
-
-// 가능한 category:
-
-// - book
-// - movie
-// - product
-// - place
-// - person
-// - article
-// - concept
-// - unknown
-
-// 규칙:
-
-// 1. 가장 유명하고 일반적인 의미를 선택합니다.
-// 2. 책 제목이면 book.
-// 3. 영화/드라마면 movie.
-// 4. 상품이면 product.
-// 5. 장소면 place.
-// 6. 사람 이름이면 person.
-// 7. 개념이면 concept.
-// 8. 판단 불가능하면 unknown.
-// 9. confidence를 반드시 포함합니다.
-// 10. JSON만 출력합니다.
-
-// 출력 예시:
-
-// {
-//   "category":"book",
-//   "title":"스틱!",
-//   "description":"칩 히스의 베스트셀러 도서",
-//   "confidence":0.93
-// }
-
-// 사용자 입력:
-// ${userMessage}
-// `;
-
-//     const response =
-//         await clientAI.chat.completions.create({
-//             model: 'gpt-4.1-mini',
-//             messages: [
-//                 {
-//                     role: 'system',
-//                     content: `
-// You are an entity resolver.
-
-// Return valid JSON only.
-// Do not output markdown.
-// Do not output explanations.
-// `
-//                 },
-//                 {
-//                     role: 'user',
-//                     content: prompt
-//                 }
-//             ],
-//             temperature: 0
-//         });
-
-//     const text =
-//         response.choices[0]
-//             .message?.content ?? '';
-
-//     console.log(
-//         '[ENTITY RESOLVER]',
-//         text
-//     );
-
-//     try {
-
-//         const parsed =
-//             safeParseEntityJson(text);
-
-//         return {
-//             category:
-//                 parsed.category ??
-//                 'unknown',
-
-//             title:
-//                 parsed.title ??
-//                 userMessage,
-
-//             description:
-//                 parsed.description,
-
-//             confidence:
-//                 parsed.confidence ??
-//                 0
-//         };
-//     }
-//     catch (e) {
-
-//         console.error(
-//             '[ENTITY RESOLVER ERROR]',
-//             e
-//         );
-
-//         return null;
-//     }
-// }
-
-// export interface ResolvedEntity {
-//     category:
-//     | 'book'
-//     | 'movie'
-//     | 'product'
-//     | 'place'
-//     | 'person'
-//     | 'article'
-//     | 'concept'
-//     | 'unknown';
-
-//     title: string;
-//     description?: string;
-//     confidence: number;
-// }
-
-// export function shouldResolveEntity(
-//     userMessage: string
-// ): boolean {
-
-//     const text = userMessage.trim();
-
-//     ///////////////////////////////////////////////////
-//     // URL
-//     if (/https?:\/\//i.test(text)) {
-//         return false;
-//     }
-
-//     ///////////////////////////////////////////////////
-//     // 너무 길면 그냥 본 AI로
-//     if (text.length > 30) {
-//         return false;
-//     }
-
-//     ///////////////////////////////////////////////////
-//     // 짧은 명사 위주
-//     return true;
-// }
-
 
 async function requestPageKeywordsFromAI(
     noteData: Record<string, { title?: string; content?: string; /*keywords: string[]*/ }>,
@@ -4699,3 +4547,14 @@ Do not include markdown, code blocks, or explanations.
         throw err;
     }
 }
+
+// const parsed = resolveDateExpr(result.dateExpr);
+// if (parsed) {
+//     properties.Date = {
+//         date: {
+//             start: parsed.hasTime
+//                 ? parsed.date.toISOString()
+//                 : parsed.date.toISOString().substring(0, 10)
+//         }
+//     };
+// }

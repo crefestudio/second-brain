@@ -12,15 +12,68 @@
   </div>
 
   <!-- 에이전트 필터 -->
-  <div class="agent-filter-card">
-    <button class="agent-chip" [class.active]="selectedAgentId === ''" (click)="selectAgent('')">
+<div class="agent-filter-card">
+
+  <div class="agent-filter-list">
+    <button
+      class="agent-chip"
+      [class.active]="selectedAgentId === ''"
+      (click)="selectAgent('')">
       전체
-    </button>
-    <button *ngFor="let agent of agents" class="agent-chip" [ngClass]="getAgentClass(agent.id)"
-      [class.active]="selectedAgentId === agent.id" (click)="selectAgent(agent.id)">
+    </button>    
+    <button
+      *ngFor="let agent of agents"
+      class="agent-chip"
+      [ngClass]="getAgentClass(agent.id)"
+      [class.active]="selectedAgentId === agent.id"
+      (click)="selectAgent(agent.id)">
       {{ agent.name }}
     </button>
   </div>
+  <div class="right-tools">
+    <button
+      class="refresh-button"
+      (click)="onClickRefreahBtn()"
+      title="새로고침">
+  
+      <svg class="refresh-icon" fill="none" viewBox="0 0 24 24">
+        <path
+          d="M5.07,8A8,8,0,0,1,20,12"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round">
+        </path>
+  
+        <path
+          d="M18.93,16A8,8,0,0,1,4,12"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round">
+        </path>
+  
+        <polyline
+          points="5 3 5 8 10 8"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round">
+        </polyline>
+  
+        <polyline
+          points="19 21 19 16 14 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round">
+        </polyline>
+      </svg>
+    </button>
+  </div>
+</div>
 
   <!-- 검색 -->
   <div class="filter-card">
@@ -40,8 +93,8 @@
           <th>발생 시간</th>
           <th>에이전트</th>
           <th>이벤트</th>
-          <th>상태</th>
-          <th>상세 보기</th>
+          <th [width]="45">상태</th>
+          <th [width]="77">상세 보기</th>
         </tr>
       </thead>
 
