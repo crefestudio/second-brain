@@ -10,6 +10,8 @@ import { randomBytes } from 'crypto';
 import OpenAI from "openai";
 import { customAlphabet } from 'nanoid';
 
+import { getStorage } from "firebase-admin/storage";
+
 //import { kakaoAssistantPrompt } from "./prompts/kakaoAssistant.prompt";
 
 // notion
@@ -66,7 +68,7 @@ export interface EventPayload {
 //admin.initializeApp();
 
 import * as functions from "firebase-functions";
-import { resolveDateExpr } from './services/date-service';
+//import { resolveDateExpr } from './services/date-service';
 
 export const importPurchasers = functions.https.onRequest(
     async (req, res) => {
@@ -3008,7 +3010,7 @@ export async function requestKakaoAssistantActionFromAI(
     previousResult?: any
 ): Promise<any> {
 
-    const instructionPrompt  = kakaoAssistantPrompt;
+    const instructionPrompt = kakaoAssistantPrompt;
     const userPrompt = `
 ${previousResult
             ? `
@@ -3029,7 +3031,7 @@ ${userMessage}
         messages: [
             {
                 role: "system",
-                content: instructionPrompt 
+                content: instructionPrompt
             },
             {
                 role: "user",
@@ -3796,13 +3798,24 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
 }));
 
 // minInstances:1 => 콜드 스타트 방지, 사용비용 발생
+// #kakao
 export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", minInstances: 1 }, withCors(async (req, res) => {
     console.time('kakaoWebhook');
+
+    // 1. 카카오에 즉시 응답
+    res.json({
+        version: "2.0",
+        useCallback: true,
+        data: {
+            text: "내용을 분석 중입니다. 곧 안내해 드리겠습니다."
+        }
+    });
 
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
     const user = payload?.userRequest?.user;
     const kakaoUserId = user?.properties?.plusfriendUserKey || user?.id;
+    const callbackUrl = payload?.userRequest?.callbackUrl;
 
     try {
         logKakaoRequest(payload, user, kakaoUserId);
@@ -3812,14 +3825,14 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", mi
         const connection = await findEnabledConnectedUser(kakaoUserId);
         if (connection) {
             if (!connection.enabled) {
-                return sendDisabledMessage(res);
+                return sendDisabledMessage(callbackUrl);
             }
             return await processConnectedUser(
-                res,
                 connection.uid,
                 utterance,
                 user,
-                kakaoUserId
+                kakaoUserId,
+                callbackUrl
             );
         }
 
@@ -3831,10 +3844,10 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", mi
                 kakaoUserId
             );
         }
-        return sendNotConnectedMessage(res);
+        return sendNotConnectedMessage(callbackUrl);
     } catch (error) {
         console.error("[KAKAO WEBHOOK ERROR]", error);
-        return sendError(res);
+        return sendError(callbackUrl);
     }
 })
 );
@@ -3858,76 +3871,76 @@ function logKakaoRequest(
     });
 }
 
+// #kakao
 async function processConnectedUser(
-    res: any,
     uid: string,
     userMessage: string,
     user: any,
-    kakaoUserId: string
+    kakaoUserId: string,
+    callbackUrl: string
 ) {
-    const { aiInput, entity } = await prepareAssistantInput(userMessage);
-    const previousResult = await getLastAssistantContext(uid);
 
-    let responded = false;
+    try {
+        // 2. 입력 준비
+        const { aiInput, entity } = await prepareAssistantInput(userMessage, uid);
+        const previousResult = await getLastAssistantContext(uid);
 
-    const fallbackResponse = {
-        action: "timeout",
-        response: `${aiInput}을 노션 템플릿에 저장하였습니다.`,
-        confidence: 0.6
-    };
+        // 3. AI 판단
+        const result =
+            await requestKakaoAssistantActionFromAI(
+                aiInput,
+                previousResult
+            );
 
-    const sendOnce = (text: string) => {
-        if (responded) return;
-        responded = true;
-        sendSimpleText(res, text);
-    };
-
-    // 1. timeout fallback (4.5s hard limit)
-    const timeout = setTimeout(() => {
-        sendOnce(fallbackResponse.response);
-    }, 2800);
-
-    // 2. AI execution (async background)
-    (async () => {
-        let result: any = null;
-
-        try {
-            console.time("requestKakaoAssistantActionFromAI");
-            result = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
-            console.timeEnd("requestKakaoAssistantActionFromAI");
-
-            console.log("[KAKAO ASSISTANT RESULT]", JSON.stringify(result, null, 2));
-            clearTimeout(timeout);
-
-            if (result?.action === "help") {
-                result.response = HELP_RESPONSE;
-            }
-
-            // 3. response (only if not already responded)
-            sendOnce(result?.response ?? fallbackResponse.response);
-
-            console.timeEnd('kakaoWebhook');
-
-            // 4. background persistence (always run)
-            runBackgroundTasks(uid, userMessage, user, kakaoUserId, aiInput, entity, result);
-        } catch (error) {
-            console.error("[AI ERROR]", error);
-
-            clearTimeout(timeout);
-
-            const errorResult = {
-                action: "feedback",
-                response: "처리 중 오류가 발생했습니다.",
-                confidence: 0.8
-            };
-            sendOnce(errorResult.response);
-            runBackgroundTasks(uid, userMessage, user, kakaoUserId, aiInput, entity, errorResult);
+        if (result?.action === "help") {
+            result.response = HELP_RESPONSE;
         }
-    })();
+
+        // 4. 사용자에게 결과 전달
+        await sendKakaoCallback(callbackUrl, result.response);
+
+        // 5. 기록 및 후처리
+        await processAfterResponse(
+            uid,
+            userMessage,
+            user,
+            kakaoUserId,
+            aiInput,
+            entity,
+            result
+        );
+
+    } catch (e) {
+        await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
+    }
+}
+
+async function sendKakaoCallback(
+    callbackUrl: string,
+    text: string
+) {
+    await fetch(callbackUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            version: "2.0",
+            template: {
+                outputs: [
+                    {
+                        simpleText: {
+                            text
+                        }
+                    }
+                ]
+            }
+        })
+    });
 }
 
 
-async function runBackgroundTasks(
+async function processAfterResponse(
     uid: string,
     userMessage: string,
     user: any,
@@ -3977,27 +3990,41 @@ export const trimKorean = (text = '', max = 50) =>
 //     entity?: ResolvedEntity | null;
 // }
 
-export async function prepareAssistantInput(
-    userMessage: string
-) {
-
-    // 카카오 이미지 URL
+export async function prepareAssistantInput( userMessage: string, uid: string) {
     if (isImageUrl(userMessage)) {
+        let fileName: string | undefined;
 
-        const aiInput = await describeImage(userMessage);
+        try {
+            // 1. storage 처리
+            const result = await processKakaoImage( userMessage, uid);
 
-        return {
-            aiInput,
-            entity: {
-                type: 'image',
-                url: userMessage
+            fileName = result.fileName;
+
+            // 2. AI 분석 (OCR + 분류)
+            const { ocrText, type } = await analyzeImageFromAI( result.imageUrl);
+
+            return {
+                aiInput: ocrText || "이미지",
+                entity: {
+                    type: "image",
+                    url: result.imageUrl,
+                    ocrText,
+                    imageType: type
+                }
+            };
+
+        } finally {
+            if (fileName) {
+                await deleteTemp(fileName);
             }
-        };
+        }
     }
 
     return {
         aiInput: userMessage,
-        entity: null
+        entity: {
+            type: "text"
+        }
     };
 }
 
@@ -4006,31 +4033,69 @@ function isImageUrl(url: string) {
         || url.includes('talk.kakaocdn.net');
 }
 
-async function describeImage(imageUrl: string) {
-
-    const response = await clientAI.chat.completions.create({
-        model: 'gpt-4.1-mini',
+export async function analyzeImageFromAI(imageUrl: string) {
+    const res = await clientAI.chat.completions.create({
+        model: "gpt-4.1-mini",
         messages: [
             {
-                role: 'user',
+                role: "user",
                 content: [
                     {
-                        type: 'text',
+                        type: "text",
                         text: `
-사진의 핵심 내용을 짧은 텍스트로 변환해라.
+다음 이미지를 분석하여 아래 2가지를 반환해라.
 
-예:
-- 책 -> 책 제목
-- 영수증 -> 구매 목록
-- 장소 -> 장소명
-- 명함 -> 연락처 정보
-- 일반 사진 -> 핵심 설명
+1. OCR
+- 이미지에 포함된 모든 텍스트를 가능한 정확하게 추출해라.
+- 텍스트가 없다면 빈 문자열을 반환해라.
 
-설명 없이 텍스트만 출력.
+2. TYPE
+- 이미지를 아래 분류 체계에 따라 가장 적절한 하나의 유형으로 분류해라.
+- 여러 유형이 가능하더라도 가장 주된 목적을 기준으로 하나만 선택해라.
+- 가능한 유형이 없다면 그냥 이미지가 뭔지 알려줘라.
+
+분류 체계:
+
+1. 할일
+- 할것 : 해야 할 일, 체크리스트, 업무
+- 읽을것 : 책, 기사, 블로그, 문서
+- 볼것 : 영화, 영상, 공연, 콘텐츠
+- 살것 : 상품, 쇼핑, 구매 예정 물품
+- 갈곳 : 장소, 여행지, 식당, 약속 장소
+
+2. 메모
+- 좋은글 : 명언, 좋은 문장, 인용구
+- 메모 : 일반 메모, 기록
+- 아이디어 : 아이디어, 기획, 브레인스토밍
+- 명함 : 명함 이미지
+- 연락처 : 연락 정보
+- 영수증 : 구매 내역, 영수증
+- 문서 : 일반 문서
+- 계약서 : 계약 관련 문서
+- 송장 : 인보이스, 청구서, 배송장
+
+3. 참고자료
+- 내가 직접 만든 자료가 아니라 참고하거나 학습하기 위한 자료
+- 웹 캡처, 기사, 논문, 책 페이지, 프레젠테이션, 통계, 차트 등
+
+분류 규칙:
+- 가장 적합한 하나의 유형만 선택한다.
+- 내가 작성한 노트나 문서는 '메모'를 우선한다.
+- 다른 사람이 만든 자료나 인터넷 자료는 '참고자료'를 우선한다.
+- 책 표지 이미지는 '읽을것'을 우선한다.
+- 영화 포스터나 콘텐츠 이미지는 '볼것'을 우선한다.
+- 상품 이미지는 '살것'을 우선한다.
+- 장소 사진은 '갈곳'을 우선한다.
+- 적절한 분류를 찾지 못하면 그 이미지가 뭔지 알려줘라
+
+출력 형식 (설명 없이 정확히 출력):
+
+OCR: ...
+TYPE: ...
 `
                     },
                     {
-                        type: 'image_url',
+                        type: "image_url",
                         image_url: {
                             url: imageUrl
                         }
@@ -4041,8 +4106,58 @@ async function describeImage(imageUrl: string) {
         temperature: 0
     });
 
-    return response.choices[0].message.content ?? '';
+    const text = res.choices[0].message.content ?? "";
+
+    const ocrText =
+        text.match(/OCR:\s*(.*)/)?.[1]?.trim() ?? "";
+
+    const type =
+        text.match(/TYPE:\s*(.*)/)?.[1]?.trim() ?? "unknown";
+
+    return {
+        ocrText,
+        type
+    };
 }
+
+// async function describeImage(imageUrl: string) {
+
+//     const response = await clientAI.chat.completions.create({
+//         model: 'gpt-4.1-mini',
+//         messages: [
+//             {
+//                 role: 'user',
+//                 content: [
+//                     {
+//                         type: 'text',
+//                         text: `
+// 사진의 핵심 내용을 짧은 텍스트로 변환해라.
+
+// 예:
+// - 책 -> 책 제목
+// - 영수증 -> 구매 목록
+// - 장소 -> 장소명
+// - 명함 -> 연락처 정보
+// - 일반 사진 -> 핵심 설명
+
+// 설명 없이 텍스트만 출력.
+// `
+//                     },
+//                     {
+//                         type: 'image_url',
+//                         image_url: {
+//                             url: imageUrl
+//                         }
+//                     }
+//                 ]
+//             }
+//         ],
+//         temperature: 0
+//     });
+
+//     return response.choices[0].message.content ?? '';
+// }
+
 
 async function getLastAssistantContext(uid: string) {
     const snap = await db
@@ -4317,29 +4432,12 @@ export async function findEnabledConnectedUser(
 
 /////////////////////////////////////////////////////////////
 
-function sendSimpleText(
-    res: any,
-    text: string
-) {
-    return res.status(200).json({
-        version: "2.0",
-        template: {
-            outputs: [
-                {
-                    simpleText: {
-                        text
-                    }
-                }
-            ]
-        }
-    });
-}
 
 function sendDisabledMessage(
-    res: any
+    callbackUrl: string
 ) {
-    return sendSimpleText(
-        res,
+    return sendKakaoCallback(
+        callbackUrl,
         [
             "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
             "",
@@ -4352,10 +4450,10 @@ function sendDisabledMessage(
 }
 
 function sendNotConnectedMessage(
-    res: any
+    callbackUrl: string
 ) {
-    return sendSimpleText(
-        res,
+    return sendKakaoCallback(
+        callbackUrl,
         [
             "노셔너블 비서입니다.",
             "",
@@ -4368,9 +4466,9 @@ function sendNotConnectedMessage(
     );
 }
 
-function sendError(res: any) {
-    return sendSimpleText(
-        res,
+function sendError(callbackUrl: any) {
+    return sendKakaoCallback(
+        callbackUrl,
         [
             "처리 중 오류가 발생했습니다.",
             "잠시 후 다시 시도해주세요."
@@ -4379,28 +4477,28 @@ function sendError(res: any) {
 }
 
 function sendInvalidVerificationCode(
-    res: any
+    callbackUrl: any
 ) {
-    return sendSimpleText(
-        res,
+    return sendKakaoCallback(
+        callbackUrl,
         "인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요."
     );
 }
 
 function sendExpiredVerificationCode(
-    res: any
+    callbackUrl: any
 ) {
-    return sendSimpleText(
-        res,
+    return sendKakaoCallback(
+        callbackUrl,
         "인증번호가 만료되었습니다."
     );
 }
 
 function sendConnectedMessage(
-    res: any
+    callbackUrl: any
 ) {
-    return sendSimpleText(
-        res,
+    return sendKakaoCallback(
+        callbackUrl,
         [
             "라이프업 비서와 연결이 되었습니다.",
             "",
@@ -4548,13 +4646,98 @@ Do not include markdown, code blocks, or explanations.
     }
 }
 
-// const parsed = resolveDateExpr(result.dateExpr);
-// if (parsed) {
-//     properties.Date = {
-//         date: {
-//             start: parsed.hasTime
-//                 ? parsed.date.toISOString()
-//                 : parsed.date.toISOString().substring(0, 10)
-//         }
-//     };
-// }
+
+/////////////////////////////////////////////////////////////////////
+// image 처리
+
+export async function processKakaoImage(url: string, uid: string) {
+    const { buffer, contentType } = await downloadImage(url);
+
+    const fileName =
+        await uploadTempImage(
+            buffer,
+            uid,
+            contentType
+        );
+
+    const imageUrl =
+        await getSignedUrl(fileName);
+
+    return {
+        imageUrl,
+        fileName
+    };
+}
+
+export async function downloadImage(url: string) {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw new Error(`download failed: ${response.status}`);
+    }
+
+    const contentType =
+        response.headers.get("content-type") ?? "image/jpeg";
+
+    const arrayBuffer = await response.arrayBuffer();
+
+    return {
+        buffer: Buffer.from(arrayBuffer),
+        contentType
+    };
+}
+
+export async function uploadTempImage(
+    buffer: Buffer,
+    uid: string,
+    contentType: string = "image/jpeg"
+) {
+    const bucket = getStorage().bucket();
+
+    const ext =
+        contentType.includes("png") ? "png" :
+            contentType.includes("webp") ? "webp" :
+                contentType.includes("gif") ? "gif" : "jpg";
+
+    const fileName = `tmp/${uid}/${Date.now()}.${ext}`;
+
+    const file = bucket.file(fileName);
+
+    await file.save(buffer, {
+        resumable: false,
+        metadata: {
+            contentType,
+            cacheControl: "private, max-age=0, no-cache"
+        }
+    });
+
+    return fileName;
+}
+
+export async function getSignedUrl(fileName: string) {
+    const bucket = getStorage().bucket();
+    const file = bucket.file(fileName);
+
+    const expires = Date.now() + 10 * 60 * 1000; // 10 min
+
+    const [url] = await file.getSignedUrl({
+        action: "read",
+        expires,
+        version: "v4"
+    });
+
+    return url;
+}
+
+export async function deleteTemp(fileName: string) {
+    const bucket = getStorage().bucket();
+
+    try {
+        await bucket.file(fileName).delete();
+    } catch (err: any) {
+        // 404 or already deleted는 정상 처리
+        if (err?.code !== 404) {
+            console.error("[DELETE_TEMP_ERROR]", err);
+        }
+    }
+}
