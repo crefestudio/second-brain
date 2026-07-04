@@ -6,11 +6,12 @@ import "dotenv/config";
 import { defineSecret } from "firebase-functions/params";
 //import * as functions from 'firebase-functions';
 import * as crypto from 'crypto';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import OpenAI from "openai";
 import { customAlphabet } from 'nanoid';
 
 import { getStorage } from "firebase-admin/storage";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 
 //import { kakaoAssistantPrompt } from "./prompts/kakaoAssistant.prompt";
 
@@ -68,7 +69,7 @@ export interface EventPayload {
 //admin.initializeApp();
 
 import * as functions from "firebase-functions";
-//import { resolveDateExpr } from './services/date-service';
+import { resolveDateExpr } from './services/date-service';
 
 export const importPurchasers = functions.https.onRequest(
     async (req, res) => {
@@ -302,22 +303,18 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
                 notionToken.duplicated_template_id
         });
 
-        const noteDatabaseId =
-            await NotionService.getDatabaseIdByDatabaseName(
-                notionToken.access_token,
-                "note"
-            );
+        const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag"];
+        const dbMap = await NotionService.updateTemplateDbs(
+            notionToken.access_token,
+            dbNames
+        )
 
-        if (!noteDatabaseId) {
-            throw new Error(
-                "note database not found"
-            );
+        // ❗ 누락된 DB 체크
+        const missing = dbNames.filter(name => !dbMap?.[name])
+
+        if (missing.length > 0) {
+            throw new Error(`데이터베이스를 찾지 못했습니다. : ${missing.join(", ")}`)
         }
-
-        console.log("[Notion OAuth] Database found", {
-            userId,
-            noteDatabaseId
-        });
 
         // users
         await db.collection("users").doc(userId).set({
@@ -325,29 +322,21 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
             notionConnection: {
                 workspaceId: notionToken.workspace_id,
                 botId: notionToken.bot_id,
-                duplicatedTemplateId:
-                    notionToken.duplicated_template_id,
-
-                databases: {
-                    note: noteDatabaseId
-                },
-
-                connectedAt:
-                    admin.firestore.FieldValue.serverTimestamp()
+                duplicatedTemplateId: notionToken.duplicated_template_id,
+                databases: dbMap,
+                connectedAt: admin.firestore.FieldValue.serverTimestamp()
             },
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        },
-            { merge: true }
-        );
+        }, { merge: true })
 
         // secondbrain 연결정보 저장 : 이전 버전을 위해 / 임시 코드
         await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
-            accessToken: notionToken.access_token,
-            workspaceId: notionToken.workspace_id,
-            botId: notionToken.bot_id,
-            duplicatedTemplateId: notionToken.duplicated_template_id,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            noteDatabaseId: noteDatabaseId,
+            // accessToken: notionToken.access_token,
+            // workspaceId: notionToken.workspace_id,
+            // botId: notionToken.bot_id,
+            // duplicatedTemplateId: notionToken.duplicated_template_id,
+            // updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            //noteDatabaseId: noteDatabaseId,
             enabled: false
         });
 
@@ -355,28 +344,25 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
             enabled: false
         });
 
-        // notionDatabaseMap
-        await db
-            .collection("notionDatabaseMap")
-            .doc(noteDatabaseId)
-            .set({
-                userId,
-                accessToken: notionToken.access_token,
-                createdAt:
-                    admin.firestore.FieldValue.serverTimestamp()
-            });
+        await Promise.all(
+            Object.entries(dbMap as Record<string, string>).map(
+                ([name, dbId]) =>
+                    db.collection("notionDatabaseMap").doc(dbId).set({
+                        userId,
+                        dbName: name,
+                        accessToken: notionToken.access_token,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    })
+            )
+        );
 
-        console.log("[Notion OAuth] Reset keyword options start", {
-            userId,
-            noteDatabaseId
-        });
-
-        await NotionService.resetKeywordOptions(notionToken.access_token, noteDatabaseId);
-
-        console.log("[Notion OAuth] Success", {
-            userId,
-            noteDatabaseId
-        });
+        if (dbMap["note"]) {
+            await NotionService.resetKeywordOptions(
+                notionToken.access_token,
+                dbMap["note"]
+            )
+        }
+        console.log("[Notion OAuth] Success", { userId, dbMap });
 
         return res.redirect(
             `http://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(
@@ -406,6 +392,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
     }
 })
 );
+
 
 // ----------------------
 // Notion Database 조회
@@ -826,7 +813,7 @@ export const sendTemplateConnectRequest = onRequest(
 );
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// NotionService #notion
+// NotionService #notion service
 
 class NotionService {
     // Notion 클라이언트
@@ -858,6 +845,40 @@ class NotionService {
 
     //     return matched[0].id;
     // }
+
+    static async updateTemplateDbs(accessToken: string, dbNames: string[]) {
+        const entries = await Promise.all(
+            dbNames.map(async (t) => [
+                t,
+                await this.getDatabaseIdByDatabaseName(accessToken, t)
+            ])
+        )
+        return Object.fromEntries(entries)
+    }
+
+    static async resolveDatabaseId(accessToken: string, userId: string, dbName: string) {
+        const userRef = db.collection("users").doc(userId)
+        const snap = await userRef.get()
+
+        const dbMap = snap.data()?.notionConnection?.databases || {}
+
+        // 1️⃣ cache hit
+        if (dbMap[dbName]) return dbMap[dbName]
+
+        // 2️⃣ fallback search
+        const dbId = await this.getDatabaseIdByDatabaseName(accessToken, dbName)
+
+        // 3️⃣ auto-heal update
+        await userRef.set({
+            notionConnection: {
+                databases: {
+                    [dbName]: dbId
+                }
+            }
+        }, { merge: true })
+
+        return dbId
+    }
 
     static async getDatabaseIdByDatabaseName(accessToken: string, databaseType: string): Promise<string> {
         const response = await fetch(
@@ -1341,6 +1362,292 @@ class NotionService {
         } catch (error) {
             console.error("❌ Keyword 옵션 초기화 실패", error);
         }
+    }
+
+    //
+
+    static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any) {
+        if (!aiResult?.db || aiResult.action !== "create") return;
+
+        const userDoc = await db.collection("users").doc(userId).get();
+        const accessToken = userDoc.data()?.notionAccessToken;
+        if (!accessToken) return;
+
+        const notion = new Client({ auth: accessToken });
+        const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
+
+        // create image
+        const children: any[] = [
+            ...this.buildEntityBlocks(entity)
+        ];
+
+        // content
+        // if (aiResult.content) {
+        //     children.push({
+        //         object: "block",
+        //         type: "paragraph",
+        //         paragraph: {
+        //             rich_text: [{
+        //                 type: "text",
+        //                 text: { content: aiResult.content }
+        //             }]
+        //         }
+        //     });
+        // }
+
+        switch (aiResult.db) {
+            ////////////////////////////////////////////////////////////
+            case "task": {
+                const importanceMap: Record<number, string> = {
+                    1: "중요",
+                    2: "매우 중요"
+                };
+
+                const urgencyMap: Record<number, string> = {
+                    1: "긴급",
+                    2: "매우 긴급"
+                };
+
+                const parsed = resolveDateExpr(aiResult.dateExpr);
+
+                const properties: any = {
+                    할일: {
+                        title: [{
+                            text: { content: aiResult.title ?? "" }
+                        }]
+                    },
+                    유형: {
+                        select: {
+                            name: aiResult.type ?? "할것"
+                        }
+                    },
+                    분류: {
+                        select: {
+                            name: aiResult.kinds ?? "수집함"
+                        }
+                    }
+                };
+
+                if (importanceMap[aiResult.importance]) {
+                    properties.중요도 = {
+                        select: {
+                            name: importanceMap[aiResult.importance]
+                        }
+                    };
+                }
+
+                if (urgencyMap[aiResult.urgency]) {
+                    properties.긴급도 = {
+                        select: {
+                            name: urgencyMap[aiResult.urgency]
+                        }
+                    };
+                }
+
+                if (parsed) {
+                    properties.날짜 = {
+                        date: {
+                            start: parsed.hasTime
+                                ? parsed.date.toISOString()
+                                : parsed.date.toISOString().slice(0, 10)
+                        }
+                    };
+                }
+
+                await notion.pages.create({
+                    parent: { database_id: databaseId },
+                    properties
+                });
+
+                break;
+            }
+
+            ////////////////////////////////////////////////////////////
+            case "memo":
+            case "reference": {
+                const tagDbName = aiResult.db === "memo"
+                    ? "memo tag"
+                    : "reference tag";
+
+                const tagDbId = await this.resolveDatabaseId(
+                    accessToken,
+                    userId,
+                    tagDbName
+                );
+
+                const tagIds = await this.resolveTagIds(
+                    accessToken,
+                    tagDbId,
+                    aiResult.tags ?? []
+                );
+
+                const properties: any = {
+                    이름: {
+                        title: [{
+                            text: { content: aiResult.title ?? "" }
+                        }]
+                    },
+                    태그: {
+                        relation: tagIds.map(id => ({ id }))
+                    }
+                };
+
+                if (aiResult.db === "memo") {
+                    properties.유형 = {
+                        select: {
+                            name: aiResult.type ?? "아이디어"
+                        }
+                    };
+                }
+
+                await notion.pages.create({
+                    parent: { database_id: databaseId },
+                    properties,
+                    children: children.length ? children : undefined
+                });
+
+                break;
+            }
+
+            default:
+                throw new Error(`Unsupported db type: ${aiResult.db}`);
+        }
+    }
+
+    static async resolveTagIds(
+        accessToken: string,
+        tagDbId: string,
+        tags: string[]
+    ): Promise<string[]> {
+        const notion = new Client({ auth: accessToken });
+
+        const db: any = await notion.databases.retrieve({
+            database_id: tagDbId
+        });
+
+        const dataSourceId = db.data_sources?.[0]?.id;
+
+        if (!dataSourceId) {
+            throw new Error(`data source not found: ${tagDbId}`);
+        }
+
+        const result: string[] = [];
+
+        for (const tag of [...new Set(tags.map(t => t.trim()).filter(Boolean))]) {
+            const existing: any = await notion.dataSources.query({
+                data_source_id: dataSourceId,
+                filter: {
+                    property: "이름",
+                    title: {
+                        equals: tag
+                    }
+                }
+            });
+
+            if (existing.results.length > 0) {
+                result.push(existing.results[0].id);
+                continue;
+            }
+
+            const created: any = await notion.pages.create({
+                parent: {
+                    data_source_id: dataSourceId
+                },
+                properties: {
+                    이름: {
+                        title: [
+                            {
+                                text: {
+                                    content: tag
+                                }
+                            }
+                        ]
+                    }
+                }
+            });
+            result.push(created.id);
+        }
+
+        return result;
+    }
+
+    static buildEntityBlocks(entity: any): any[] {
+        if (!entity || entity.type !== "image") return [];
+
+        const children: any[] = [];
+
+        // 이미지
+        if (entity.url) {
+            children.push({
+                object: "block",
+                type: "image",
+                image: {
+                    type: "external",
+                    external: {
+                        url: entity.url
+                    }
+                }
+            });
+        }
+
+        // 이미지 분석 정보
+        const analysis: string[] = [];
+
+        if (entity.objects?.length) {
+            analysis.push(`태그: ${entity.objects.join(", ")}, ${entity.context}`);
+        }
+
+        if (analysis.length > 0) {
+            children.push({
+                object: "block",
+                type: "callout",
+                callout: {
+                    rich_text: [
+                        {
+                            type: "text",
+                            text: {
+                                content: analysis.join("\n")
+                            }
+                        }
+                    ]
+                }
+            });
+        }
+
+        // OCR
+        if (entity.ocrText) {
+            children.push({
+                object: "block",
+                type: "heading_3",
+                heading_3: {
+                    rich_text: [
+                        {
+                            type: "text",
+                            text: {
+                                content: "OCR"
+                            }
+                        }
+                    ]
+                }
+            });
+
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [
+                        {
+                            type: "text",
+                            text: {
+                                content: entity.ocrText
+                            }
+                        }
+                    ]
+                }
+            });
+        }
+
+        return children;
     }
 }
 
@@ -2744,8 +3051,7 @@ const HELP_RESPONSE = `
 할일이 떠오르면 바로 알려주세요. 알아서 척척 분류해 드립니다.
 분류: 할 것, 살 것, 읽을 것, 볼 것, 갈 곳으로 딱딱 나눠서 정리해 줘요.
 유형: 오늘, 내일, 일정, 다음, 나중에, 대기중
-
-중요도/긴급도 설정: "이건 진짜 중요해!", "오늘까지 해야 돼!" 하고 말씀하시면 중요도, 긴급도 지정이 됩니다.
+중요도/긴급도: "이건 진짜 중요해!", "오늘까지 해야 돼!" 하고 말씀하시면 중요도, 긴급도 지정이 됩니다.
 날짜 : 오늘, 내일, 아니면 구체적인 날짜를 말씀해주세요. 해당날짜에 일정을 등록해 드릴께요.
 사진 첨부 가능: 책 표지, 영수증, 기억하고 싶은 사진을 툭 던져주셔도 다 기록해 드립니다.
 
@@ -2756,6 +3062,8 @@ const HELP_RESPONSE = `
 3. 링크 및 스크랩 저장하기
 나중에 다시 보고 싶은 콘텐츠가 있다면 링크만 슥 보내주세요.
 유용한 웹사이트 링크, 인터넷 뉴스 기사, 유튜브 같은 영상까지 깔끔하게 수집해 둡니다.
+
+4. 분류가 잘못되었다면 다시 요청해주시면 수정 가능합니다.
 `;
 
 export const kakaoAssistantPrompt = `
@@ -3800,17 +4108,6 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
 // minInstances:1 => 콜드 스타트 방지, 사용비용 발생
 // #kakao
 export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", minInstances: 1 }, withCors(async (req, res) => {
-    console.time('kakaoWebhook');
-
-    // 1. 카카오에 즉시 응답
-    res.json({
-        version: "2.0",
-        useCallback: true,
-        data: {
-            text: "내용을 분석 중입니다. 곧 안내해 드리겠습니다."
-        }
-    });
-
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
     const user = payload?.userRequest?.user;
@@ -3825,15 +4122,44 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", mi
         const connection = await findEnabledConnectedUser(kakaoUserId);
         if (connection) {
             if (!connection.enabled) {
-                return sendDisabledMessage(callbackUrl);
+                return res.status(500).json({
+                    message: [
+                        "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
+                        "",
+                        "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 수집 자동화'를 활성화해주세요."
+                    ].join('\n')
+                });
             }
-            return await processConnectedUser(
-                connection.uid,
-                utterance,
-                user,
-                kakaoUserId,
-                callbackUrl
+
+            // 1. 카카오에 즉시 응답
+            res.json({
+                version: "2.0",
+                useCallback: true,
+                data: {
+                    text: "내용을 분석 중입니다. 곧 안내해 드리겠습니다."
+                }
+            });
+
+            const userDoc = db.collection("users").doc(connection.uid);
+            await userDoc
+                .collection("integrations")
+                .doc("kakao-capture")
+                .collection("webhook_queue")
+                .add({
+                    type: "capture",
+                    utterance,
+                    user,
+                    kakaoUserId,
+                    callbackUrl,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    status: "pending"
+                });
+
+            console.log(
+                "[KAKAO] queue created",
+                { uid: connection.uid }
             );
+            return;
         }
 
         // 여기부터는 미연결 사용자
@@ -3847,9 +4173,48 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", mi
         return sendNotConnectedMessage(callbackUrl);
     } catch (error) {
         console.error("[KAKAO WEBHOOK ERROR]", error);
-        return sendError(callbackUrl);
+        return res.status(500).json({
+            message: [
+                "처리 중 오류가 발생했습니다.",
+                "잠시 후 다시 시도해주세요."
+            ].join('\n')
+        });
     }
 })
+);
+
+export const handleKakaoWebhookQueue = onDocumentCreated(
+    "users/{userId}/integrations/kakao-capture/webhook_queue/{jobId}",
+    async (event) => {
+        const snapshot = event.data;
+        if (!snapshot) return;
+
+        const data = snapshot.data();
+        const { userId, jobId } = event.params;
+
+        console.log("[KAKAO QUEUE] start", { userId, jobId });
+
+        try {
+            await processConnectedUser(
+                userId,
+                data.utterance,
+                data.user,
+                data.kakaoUserId,
+                data.callbackUrl
+            );
+            await snapshot.ref.delete();
+            console.log("[KAKAO QUEUE] success", { userId, jobId });
+
+        } catch (error) {
+            console.error("[KAKAO QUEUE] ERROR", { userId, jobId, error });
+
+            await snapshot.ref.update({
+                status: "error",
+                error: String(error),
+                updatedAt: Date.now()
+            });
+        }
+    }
 );
 
 function logKakaoRequest(
@@ -3872,48 +4237,67 @@ function logKakaoRequest(
 }
 
 // #kakao
-async function processConnectedUser(
-    uid: string,
-    userMessage: string,
-    user: any,
-    kakaoUserId: string,
-    callbackUrl: string
-) {
-
+async function processConnectedUser(userId: string, userMessage: string, user: any, kakaoUserId: string, callbackUrl: string) {
     try {
-        // 2. 입력 준비
-        const { aiInput, entity } = await prepareAssistantInput(userMessage, uid);
-        const previousResult = await getLastAssistantContext(uid);
+        const { aiInput, entity } = await prepareAssistantInput(userMessage, userId);
+        const previousResult = await getLastAssistantContext(userId);
 
-        // 3. AI 판단
-        const result =
-            await requestKakaoAssistantActionFromAI(
-                aiInput,
-                previousResult
-            );
+        const result = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
 
-        if (result?.action === "help") {
-            result.response = HELP_RESPONSE;
-        }
+        if (result?.action === "help") result.response = HELP_RESPONSE;
 
-        // 4. 사용자에게 결과 전달
+        await processAfterResponse(userId, userMessage, user, kakaoUserId, aiInput, entity, result);
         await sendKakaoCallback(callbackUrl, result.response);
 
-        // 5. 기록 및 후처리
-        await processAfterResponse(
-            uid,
-            userMessage,
-            user,
-            kakaoUserId,
-            aiInput,
-            entity,
-            result
-        );
-
     } catch (e) {
+        console.error("[KAKAO ERROR - processConnectedUser]", e);
         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
     }
 }
+
+// async function processConnectedUser(
+//     uid: string,
+//     userMessage: string,
+//     user: any,
+//     kakaoUserId: string,
+//     callbackUrl: string
+// ) {
+
+//     try {
+//         // 2. 입력 준비
+//         const { aiInput, entity } = await prepareAssistantInput(userMessage, uid);
+//         const previousResult = await getLastAssistantContext(uid);
+
+//         // 3. AI 판단
+//         const result =
+//             await requestKakaoAssistantActionFromAI(
+//                 aiInput,
+//                 previousResult
+//             );
+
+//         if (result?.action === "help") {
+//             result.response = HELP_RESPONSE;
+//         }
+
+//         // 4. 사용자에게 결과 전달
+//         await sendKakaoCallback(callbackUrl, result.response);
+
+//         // 5. 기록 및 후처리
+//         await processAfterResponse(
+//             uid,
+//             userMessage,
+//             user,
+//             kakaoUserId,
+//             aiInput,
+//             entity,
+//             result
+//         );
+
+//     } catch (e) {
+//         console.error("[KAKAO ERROR - processConnectedUser]", e);
+//         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
+//     }
+// }
 
 async function sendKakaoCallback(
     callbackUrl: string,
@@ -3940,8 +4324,9 @@ async function sendKakaoCallback(
 }
 
 
+// #kakao notion
 async function processAfterResponse(
-    uid: string,
+    userId: string,
     userMessage: string,
     user: any,
     kakaoUserId: string,
@@ -3951,9 +4336,7 @@ async function processAfterResponse(
 ) {
     try {
         await Promise.allSettled([
-            saveCapture(uid, userMessage, user, kakaoUserId),
-
-            saveAssistantContext(uid, {
+            saveAssistantContext(userId, {
                 userMessage,
                 aiInput,
                 entity,
@@ -3961,19 +4344,22 @@ async function processAfterResponse(
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             }),
 
-            writeUserEvent(uid, {
-                agentId: AgentId.KAKAO_CAPTURE,
-                status: 'completed',
-                eventTitle: trimKorean(aiResult.response) ?? '카카오 비서 요청 처리', ///////////////////////////
-                description: [
-                    `사용자 입력: ${userMessage}`,
-                    `AI 입력:\n${typeof aiInput === 'string'
-                        ? aiInput
-                        : JSON.stringify(aiInput, null, 2)
-                    }`,
-                    `AI 결과:\n${JSON.stringify(aiResult, null, 2)}`
-                ].join('\n')
-            })
+            NotionService.createDbItemFromAiResult(userId, aiResult, entity);
+
+            // log 저장
+            // writeUserEvent(uid, {
+            //     agentId: AgentId.KAKAO_CAPTURE,
+            //     status: 'completed',
+            //     eventTitle: trimKorean(aiResult.response) ?? '카카오 비서 요청 처리', ///////////////////////////
+            //     description: [
+            //         `사용자 입력: ${userMessage}`,
+            //         `AI 입력:\n${typeof aiInput === 'string'
+            //             ? aiInput
+            //             : JSON.stringify(aiInput, null, 2)
+            //         }`,
+            //         `AI 결과:\n${JSON.stringify(aiResult, null, 2)}`
+            //     ].join('\n')
+            // })
         ]);
     } catch (error) {
         console.error('[KAKAO BACKGROUND ERROR]', error);
@@ -3985,50 +4371,77 @@ export const trimKorean = (text = '', max = 50) =>
         ? [...text].slice(0, max).join('') + '...'
         : text;
 
-// export interface AssistantInput {
-//     aiInput: string;
-//     entity?: ResolvedEntity | null;
-// }
+export async function prepareAssistantInput(userMessage: string, uid: string) {
+    console.log("[PREPARE] start", { uid, userMessage: userMessage });
 
-export async function prepareAssistantInput( userMessage: string, uid: string) {
-    if (isImageUrl(userMessage)) {
-        let fileName: string | undefined;
-
-        try {
-            // 1. storage 처리
-            const result = await processKakaoImage( userMessage, uid);
-
-            fileName = result.fileName;
-
-            // 2. AI 분석 (OCR + 분류)
-            const { ocrText, type } = await analyzeImageFromAI( result.imageUrl);
-
-            return {
-                aiInput: ocrText || "이미지",
-                entity: {
-                    type: "image",
-                    url: result.imageUrl,
-                    ocrText,
-                    imageType: type
-                }
-            };
-
-        } finally {
-            if (fileName) {
-                await deleteTemp(fileName);
+    if (!isKakaoImageUrl(userMessage)) {
+        console.log("[PREPARE] text input");
+        return {
+            aiInput: userMessage,
+            entity: {
+                type: "text"
             }
-        }
+        };
     }
 
-    return {
-        aiInput: userMessage,
-        entity: {
-            type: "text"
+    let fileName: string | undefined;
+
+    try {
+        console.log("[PREPARE] processKakaoImage start");
+
+        // 1. storage 처리
+        const result = await processKakaoImage(userMessage, uid);
+        fileName = result.fileName;
+
+        console.log("[PREPARE] processKakaoImage success", {
+            fileName,
+            imageUrl: result.imageUrl.substring(0, 100)
+        });
+
+        // 2. AI 분석
+        console.log("[PREPARE] analyzeImageFromAI start");
+        let imageUrl = result.imageUrl
+
+        const { ocrText, objects, context, hint } = await analyzeImageFromAI(imageUrl);
+
+        let imageDescription: string = JSON.stringify({
+            ocr: ocrText || "",
+            objects: objects || "",
+            context: context || "",
+            hint: hint || ""
+        });
+
+        console.log("[PREPARE] analyzeImageFromAI success", {
+            imageDescription,
+            ocrText, objects, context, hint,
+            ocrLength: ocrText?.length ?? 0
+        });
+
+        return {
+            aiInput: imageDescription || "이미지",
+            entity: {
+                type: "image",
+                url: imageUrl,
+                ocrText,
+                objects,
+                context,
+                hint
+            }
+        };
+
+    } catch (err) {
+        console.error("[PREPARE] ERROR", err);
+        throw err;
+    } finally {
+        if (fileName) {
+            console.log("[PREPARE] deleteTemp start", { fileName });
+            await deleteTemp(fileName);
+            console.log("[PREPARE] deleteTemp complete", { fileName });
         }
-    };
+    }
 }
 
-function isImageUrl(url: string) {
+function isKakaoImageUrl(url: string) {
     return /^https?:\/\/.*\.(jpg|jpeg|png|webp)/i.test(url)
         || url.includes('talk.kakaocdn.net');
 }
@@ -4043,55 +4456,78 @@ export async function analyzeImageFromAI(imageUrl: string) {
                     {
                         type: "text",
                         text: `
-다음 이미지를 분석하여 아래 2가지를 반환해라.
+다음 이미지를 분석하여 "의미 해석 데이터"를 생성해라.
 
-1. OCR
-- 이미지에 포함된 모든 텍스트를 가능한 정확하게 추출해라.
-- 텍스트가 없다면 빈 문자열을 반환해라.
+절대 행동 판단(task/memo/reference 등)은 하지 않는다.
+절대 실행/분류/의도 판단을 하지 않는다.
 
-2. TYPE
-- 이미지를 아래 분류 체계에 따라 가장 적절한 하나의 유형으로 분류해라.
-- 여러 유형이 가능하더라도 가장 주된 목적을 기준으로 하나만 선택해라.
-- 가능한 유형이 없다면 그냥 이미지가 뭔지 알려줘라.
-
-분류 체계:
-
-1. 할일
-- 할것 : 해야 할 일, 체크리스트, 업무
-- 읽을것 : 책, 기사, 블로그, 문서
-- 볼것 : 영화, 영상, 공연, 콘텐츠
-- 살것 : 상품, 쇼핑, 구매 예정 물품
-- 갈곳 : 장소, 여행지, 식당, 약속 장소
-
-2. 메모
-- 좋은글 : 명언, 좋은 문장, 인용구
-- 메모 : 일반 메모, 기록
-- 아이디어 : 아이디어, 기획, 브레인스토밍
-- 명함 : 명함 이미지
-- 연락처 : 연락 정보
-- 영수증 : 구매 내역, 영수증
-- 문서 : 일반 문서
-- 계약서 : 계약 관련 문서
-- 송장 : 인보이스, 청구서, 배송장
-
-3. 참고자료
-- 내가 직접 만든 자료가 아니라 참고하거나 학습하기 위한 자료
-- 웹 캡처, 기사, 논문, 책 페이지, 프레젠테이션, 통계, 차트 등
-
-분류 규칙:
-- 가장 적합한 하나의 유형만 선택한다.
-- 내가 작성한 노트나 문서는 '메모'를 우선한다.
-- 다른 사람이 만든 자료나 인터넷 자료는 '참고자료'를 우선한다.
-- 책 표지 이미지는 '읽을것'을 우선한다.
-- 영화 포스터나 콘텐츠 이미지는 '볼것'을 우선한다.
-- 상품 이미지는 '살것'을 우선한다.
-- 장소 사진은 '갈곳'을 우선한다.
-- 적절한 분류를 찾지 못하면 그 이미지가 뭔지 알려줘라
+---
 
 출력 형식 (설명 없이 정확히 출력):
 
-OCR: ...
-TYPE: ...
+ocrText: ...
+objects: ...
+context: ...
+hint: ...
+
+---
+
+## 1. OCR
+이미지 안의 텍스트를 가능한 정확하게 추출
+없으면 ""
+
+---
+
+## 2. OBJECTS
+이미지에 포함된 핵심 객체/요소를 나열
+예:
+사람
+책
+영수증
+웹페이지
+로고
+음식
+장소
+화면(UI)
+문서
+
+---
+
+## 3. CONTEXT
+이미지가 어떤 상황인지 설명 (짧게)
+예:
+쇼핑 관련 화면
+메모/아이디어 스크린샷
+웹 아티클 캡처
+영수증 사진
+일정/할일 메모
+광고/홍보 이미지
+
+---
+
+## 4. HINT (중요)
+다음 중 하나만 선택 (추측이 아니라 “가능성”)
+
+task-like
+memo-like
+reference-like
+unknown
+
+---
+
+## HINT 기준
+
+task-like:
+- 할일/구매/예약/방문/읽기/보기 의도가 보임
+
+memo-like:
+- 개인 기록 / 아이디어 / 메모 / 연락처 / 좋은 글
+
+reference-like:
+- 외부 콘텐츠 (웹, 뉴스, 책, PPT, 자료, 통계, 캡처)
+
+unknown:
+- 분류 불가 / 애매 / 정보 부족
 `
                     },
                     {
@@ -4107,16 +4543,20 @@ TYPE: ...
     });
 
     const text = res.choices[0].message.content ?? "";
+    const get = (key: string) => {
+        const match = text.match(new RegExp(`${key}:\\s*([^\\n]+)`));
+        return match?.[1]?.trim() ?? "";
+    };
 
-    const ocrText =
-        text.match(/OCR:\s*(.*)/)?.[1]?.trim() ?? "";
-
-    const type =
-        text.match(/TYPE:\s*(.*)/)?.[1]?.trim() ?? "unknown";
-
+    const ocrText = get("ocrText");
+    const objects = get("objects");
+    const context = get("context");
+    const hint = get("hint") || "unknown";
     return {
         ocrText,
-        type
+        objects,
+        context,
+        hint
     };
 }
 
@@ -4398,9 +4838,7 @@ export const disconnectKakao = onRequest({ timeoutSeconds: 60, memory: "256MiB" 
         return res.status(200).json({ success: true, message: "카카오 연결이 해제되었습니다." });
 
     } catch (error) {
-
         console.error("[DISCONNECT KAKAO ERROR]", error);
-
         return res.status(500).json({ success: false, message: "처리 중 오류가 발생했습니다." });
     }
 })
@@ -4433,21 +4871,18 @@ export async function findEnabledConnectedUser(
 /////////////////////////////////////////////////////////////
 
 
-function sendDisabledMessage(
-    callbackUrl: string
-) {
-    return sendKakaoCallback(
-        callbackUrl,
-        [
-            "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
-            "",
-            "노셔너블 비서를 이용하려면",
-            "자동화 에이전트 관리에서",
-            "'카카오톡 수집 자동화'를",
-            "활성화해주세요."
-        ].join('\n')
-    );
-}
+// function sendDisabledMessage(
+//     callbackUrl: string
+// ) {
+//     return sendKakaoCallback(
+//         callbackUrl,
+//         [
+//             "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
+//             "",
+//             "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 수집 자동화'를 활성화해주세요."
+//         ].join('\n')
+//     );
+// }
 
 function sendNotConnectedMessage(
     callbackUrl: string
@@ -4457,24 +4892,21 @@ function sendNotConnectedMessage(
         [
             "노셔너블 비서입니다.",
             "",
-            "아직 카카오 연결이",
-            "완료되지 않았습니다.",
-            "",
-            "notionable.net 에 접속하여",
-            "카카오 연결을 먼저 진행해주세요."
+            "아직 카카오 연결이 완료되지 않았습니다.",
+            "notionable.net 에 접속하여 카카오 연결을 먼저 진행해주세요."
         ].join('\n')
     );
 }
 
-function sendError(callbackUrl: any) {
-    return sendKakaoCallback(
-        callbackUrl,
-        [
-            "처리 중 오류가 발생했습니다.",
-            "잠시 후 다시 시도해주세요."
-        ].join('\n')
-    );
-}
+// function sendError(callbackUrl: any) {
+//     return sendKakaoCallback(
+//         callbackUrl,
+//         [
+//             "처리 중 오류가 발생했습니다.",
+//             "잠시 후 다시 시도해주세요."
+//         ].join('\n')
+//     );
+// }
 
 function sendInvalidVerificationCode(
     callbackUrl: any
@@ -4647,30 +5079,31 @@ Do not include markdown, code blocks, or explanations.
 }
 
 
+
 /////////////////////////////////////////////////////////////////////
 // image 처리
-
 export async function processKakaoImage(url: string, uid: string) {
+    console.log("[IMAGE] process start", { uid, url });
     const { buffer, contentType } = await downloadImage(url);
+    console.log("[IMAGE] download success", {
+        contentType,
+        size: buffer.length
+    });
+    const { fileName, imageUrl } = await uploadTempImage(buffer, uid, contentType);
 
-    const fileName =
-        await uploadTempImage(
-            buffer,
-            uid,
-            contentType
-        );
-
-    const imageUrl =
-        await getSignedUrl(fileName);
-
-    return {
-        imageUrl,
-        fileName
-    };
+    console.log("[IMAGE] upload success", { fileName, imageUrl });
+    return { imageUrl, fileName };
 }
 
 export async function downloadImage(url: string) {
+    console.log("[DOWNLOAD] start", { url });
+
     const response = await fetch(url);
+
+    console.log("[DOWNLOAD] response", {
+        status: response.status,
+        ok: response.ok
+    });
 
     if (!response.ok) {
         throw new Error(`download failed: ${response.status}`);
@@ -4681,6 +5114,11 @@ export async function downloadImage(url: string) {
 
     const arrayBuffer = await response.arrayBuffer();
 
+    console.log("[DOWNLOAD] complete", {
+        contentType,
+        bytes: arrayBuffer.byteLength
+    });
+
     return {
         buffer: Buffer.from(arrayBuffer),
         contentType
@@ -4690,16 +5128,31 @@ export async function downloadImage(url: string) {
 export async function uploadTempImage(
     buffer: Buffer,
     uid: string,
-    contentType: string = "image/jpeg"
+    contentType = "image/jpeg"
 ) {
+    console.log("[UPLOAD] start", {
+        uid,
+        contentType,
+        size: buffer.length
+    });
+
     const bucket = getStorage().bucket();
+
+    console.log("[UPLOAD] bucket", {
+        name: bucket.name
+    });
 
     const ext =
         contentType.includes("png") ? "png" :
             contentType.includes("webp") ? "webp" :
-                contentType.includes("gif") ? "gif" : "jpg";
+                contentType.includes("gif") ? "gif" :
+                    contentType.includes("jpeg") ? "jpg" :
+                        "jpg";
 
     const fileName = `tmp/${uid}/${Date.now()}.${ext}`;
+    const token = randomUUID();
+
+    console.log("[UPLOAD] fileName", { fileName });
 
     const file = bucket.file(fileName);
 
@@ -4707,37 +5160,42 @@ export async function uploadTempImage(
         resumable: false,
         metadata: {
             contentType,
-            cacheControl: "private, max-age=0, no-cache"
+            cacheControl: "private, max-age=0, no-cache",
+            metadata: {
+                firebaseStorageDownloadTokens: token
+            }
         }
     });
 
-    return fileName;
-}
+    const imageUrl =
+        `https://firebasestorage.googleapis.com/v0/b/` +
+        `${bucket.name}/o/${encodeURIComponent(fileName)}` +
+        `?alt=media&token=${token}`;
 
-export async function getSignedUrl(fileName: string) {
-    const bucket = getStorage().bucket();
-    const file = bucket.file(fileName);
-
-    const expires = Date.now() + 10 * 60 * 1000; // 10 min
-
-    const [url] = await file.getSignedUrl({
-        action: "read",
-        expires,
-        version: "v4"
+    console.log("[UPLOAD] success", {
+        fileName,
+        imageUrl
     });
 
-    return url;
+    return {
+        fileName,
+        imageUrl
+    };
 }
 
 export async function deleteTemp(fileName: string) {
+    console.log("[DELETE] start", { fileName });
+
     const bucket = getStorage().bucket();
 
     try {
         await bucket.file(fileName).delete();
+        console.log("[DELETE] success", { fileName });
     } catch (err: any) {
-        // 404 or already deleted는 정상 처리
         if (err?.code !== 404) {
-            console.error("[DELETE_TEMP_ERROR]", err);
+            console.error("[DELETE] ERROR", err);
+        } else {
+            console.log("[DELETE] already deleted");
         }
     }
 }

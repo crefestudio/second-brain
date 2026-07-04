@@ -4,22 +4,77 @@
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-1. url처리
 
-1. 이미지 처리               : 목
-3. 노션 템플릿에 실제 저장    : 금 => 혜민님 검수, 피드백      
 ## 템플릿 등록작업
 - 일정, 날짜 처리
 - 템플릿 등록
+- url처리
 
-6. 세컨드브레인 마이그레이션
+
+### title 생성 규칙
+
+- task:
+  사용자가 말한 핵심 할 일을 그대로 사용한다.
+
+- memo:
+  title은 메모의 핵심 주제를 10~30자 내외로 요약한다.
+  content는 원문 내용을 최대한 보존한다.
+  title과 content를 동일하게 작성하지 않는다.
+
+- reference:
+  title은 자료를 식별하기 쉬운 대표 제목을 생성한다.
+  content는 원문 내용을 최대한 보존한다.
+  title과 content를 동일하게 작성하지 않는다.
+
+### 예시
+
+입력:
+"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+
+출력:
+{
+  "db":"memo",
+  "title":"카카오톡 AI 비서 아이디어",
+  "content":"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+}
+
+입력:
+"https://example.com 에 RAG 구조 설명이 잘 되어 있다"
+
+출력:
+{
+  "db":"reference",
+  "title":"RAG 구조 설명 자료",
+  "content":"https://example.com 에 RAG 구조 설명이 잘 되어 있다"
+}
+
+title은 반드시 생성해야 한다.
+title이 content와 완전히 동일하면 안 된다.
+title은 파일명이나 노션 페이지 제목으로 사용될 수 있어야 한다.
+
+
 
 -----------------------------------
+6. 세컨드브레인 마이그레이션
+
+
+ await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
+            accessToken: notionToken.access_token,
+            workspaceId: notionToken.workspace_id,
+            botId: notionToken.bot_id,
+            duplicatedTemplateId: notionToken.duplicated_template_id,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            //noteDatabaseId: noteDatabaseId,
+            enabled: false
+        });
+
+
+-----------------------------------
+- 조회 -> 오늘 일정 요약 등
 
 ## 카카오 2차 기능 
 - 카카오 -> 내 노션 페이지 주소 링크
 - 피드백 접수
-- 조회 -> 오늘 일정 요약 등
 - 친구톡 
 
 =======================================================================================================
