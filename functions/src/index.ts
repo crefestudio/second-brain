@@ -345,15 +345,15 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
         });
 
         await Promise.all(
-            Object.entries(dbMap as Record<string, string>).map(
-                ([name, dbId]) =>
+            (Object.entries(dbMap) as [string, string][])
+                .map(([name, dbId]) =>
                     db.collection("notionDatabaseMap").doc(dbId).set({
                         userId,
                         dbName: name,
                         accessToken: notionToken.access_token,
                         createdAt: admin.firestore.FieldValue.serverTimestamp()
                     })
-            )
+                )
         );
 
         if (dbMap["note"]) {
@@ -880,6 +880,117 @@ class NotionService {
         return dbId
     }
 
+    static async resolveRelationIds(
+        accessToken: string,
+        relationDbId: string,
+        names: string[]
+    ): Promise<string[]> {
+        const notion = new Client({ auth: accessToken });
+
+        const db: any = await notion.databases.retrieve({
+            database_id: relationDbId
+        });
+
+        const dataSourceId = db.data_sources?.[0]?.id;
+
+        if (!dataSourceId) {
+            throw new Error(
+                `data source not found: ${relationDbId}`
+            );
+        }
+
+        const result: string[] = [];
+
+        for (const name of [...new Set(
+            names.map(v => v?.trim()).filter(Boolean)
+        )]) {
+            const existing: any =
+                await notion.dataSources.query({
+                    data_source_id: dataSourceId,
+                    filter: {
+                        property: "이름",
+                        title: {
+                            equals: name
+                        }
+                    }
+                });
+
+            if (existing.results.length > 0) {
+                result.push(existing.results[0].id);
+            }
+        }
+
+        return result;
+    }
+
+    static async resolveOrCreateRelationIds(
+        accessToken: string,
+        databaseId: string,
+        names: string[]
+    ): Promise<string[]> {
+        const ids = await this.resolveRelationIds(accessToken, databaseId, names);
+
+        const exists = new Set(ids);
+        const result = [...ids];
+
+        for (const name of names) {
+            const found = await this.resolveRelationIds(accessToken, databaseId, [name]);
+
+            if (found.length > 0) {
+                continue;
+            }
+
+            try {
+                const response = await fetch("https://api.notion.com/v1/pages", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Notion-Version": "2022-06-28",
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        parent: {
+                            database_id: databaseId
+                        },
+                        properties: {
+                            이름: {
+                                title: [
+                                    {
+                                        text: {
+                                            content: name
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    })
+                });
+
+                if (!response.ok) {
+                    console.error(
+                        `[Notion] failed to create relation page: ${name}`,
+                        await response.text()
+                    );
+                    continue;
+                }
+
+                const page = await response.json();
+
+                if (page.id && !exists.has(page.id)) {
+                    exists.add(page.id);
+                    result.push(page.id);
+                }
+            } catch (e) {
+                console.error(
+                    `[Notion] create relation page error: ${name}`,
+                    e
+                );
+            }
+        }
+
+        return result;
+    }
+
     static async getDatabaseIdByDatabaseName(accessToken: string, databaseType: string): Promise<string> {
         const response = await fetch(
             'https://api.notion.com/v1/search',
@@ -1364,83 +1475,85 @@ class NotionService {
         }
     }
 
-    //
+    // #kakao notion
+    static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any): Promise<string | undefined> {
+        if (!aiResult?.db || !["create", "correct"].includes(aiResult.action)) {
+            return undefined;
+        }
 
-    static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any) {
-        if (!aiResult?.db || aiResult.action !== "create") return;
+        let pageId: string | undefined;
+
+        console.log(`[NotionCreate] start db = ${aiResult?.db} action = ${aiResult?.action} title = "${aiResult?.title ?? ""}" entity = ${entity?.type ?? "text"} `);
+
+        if (aiResult.action === "correct") {
+            if (!aiResult.targetPageId) {
+                throw new Error("targetPageId required for correct");
+            }
+            pageId = aiResult.targetPageId;
+        }
 
         const userDoc = await db.collection("users").doc(userId).get();
         const accessToken = userDoc.data()?.notionAccessToken;
-        if (!accessToken) return;
+        console.log(`[NotionCreate] accessToken = ${!!accessToken} `);
+        if (!accessToken) return undefined;
 
         const notion = new Client({ auth: accessToken });
+
         const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
+        console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
 
-        // create image
-        const children: any[] = [
-            ...this.buildEntityBlocks(entity)
-        ];
 
-        // content
-        // if (aiResult.content) {
-        //     children.push({
-        //         object: "block",
-        //         type: "paragraph",
-        //         paragraph: {
-        //             rich_text: [{
-        //                 type: "text",
-        //                 text: { content: aiResult.content }
-        //             }]
-        //         }
-        //     });
-        // }
+        const entityBlocks = this.buildEntityBlocks(entity);
+        const children: any[] = [...entityBlocks];
+
+        const hasContext = entity?.context && typeof entity.context === "string" && entity.context.trim().length > 0;
+
+        if (aiResult.content && !hasContext) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: { content: aiResult.content }
+                    }]
+                }
+            });
+        }
 
         switch (aiResult.db) {
-            ////////////////////////////////////////////////////////////
             case "task": {
-                const importanceMap: Record<number, string> = {
-                    1: "중요",
-                    2: "매우 중요"
-                };
-
-                const urgencyMap: Record<number, string> = {
-                    1: "긴급",
-                    2: "매우 긴급"
-                };
-
                 const parsed = resolveDateExpr(aiResult.dateExpr);
+                const typeMap: Record<string, string> = {
+                    "할것": "할 것",
+                    "살것": "살 것",
+                    "읽을것": "읽을 것",
+                    "볼것": "볼 것",
+                    "갈곳": "갈 것"
+                };
+                const normalizedType = typeMap[aiResult.type] ?? aiResult.type ?? "할 것";
 
                 const properties: any = {
                     할일: {
-                        title: [{
-                            text: { content: aiResult.title ?? "" }
-                        }]
+                        title: [{ text: { content: aiResult.title ?? "" } }]
                     },
                     유형: {
-                        select: {
-                            name: aiResult.type ?? "할것"
-                        }
+                        status: { name: normalizedType }
                     },
                     분류: {
-                        select: {
-                            name: aiResult.kinds ?? "수집함"
-                        }
+                        select: { name: aiResult.kinds ?? "수집함" }
                     }
                 };
 
-                if (importanceMap[aiResult.importance]) {
+                if (aiResult.importance) {
                     properties.중요도 = {
-                        select: {
-                            name: importanceMap[aiResult.importance]
-                        }
+                        select: { name: aiResult.importance }
                     };
                 }
 
-                if (urgencyMap[aiResult.urgency]) {
+                if (aiResult.urgency) {
                     properties.긴급도 = {
-                        select: {
-                            name: urgencyMap[aiResult.urgency]
-                        }
+                        select: { name: aiResult.urgency }
                     };
                 }
 
@@ -1454,57 +1567,75 @@ class NotionService {
                     };
                 }
 
-                await notion.pages.create({
-                    parent: { database_id: databaseId },
-                    properties
-                });
+                if (!pageId) {
+                    const page: any = await notion.pages.create({
+                        parent: { database_id: databaseId },
+                        properties
+                    });
+
+                    pageId = page.id;
+                    console.log(`[NotionCreate][task] created pageId = ${pageId}`);
+                } else {
+                    await notion.pages.update({
+                        page_id: pageId,
+                        properties
+                    });
+
+                    console.log(`[NotionCreate][task] updated pageId = ${pageId}`);
+                }
 
                 break;
             }
 
-            ////////////////////////////////////////////////////////////
             case "memo":
             case "reference": {
-                const tagDbName = aiResult.db === "memo"
-                    ? "memo tag"
-                    : "reference tag";
+                const tagDbName = aiResult.db === "memo" ? "memo tag" : "reference tag";
+                const tagDbId = await this.resolveDatabaseId(accessToken, userId, tagDbName);
 
-                const tagDbId = await this.resolveDatabaseId(
-                    accessToken,
-                    userId,
-                    tagDbName
-                );
-
-                const tagIds = await this.resolveTagIds(
-                    accessToken,
-                    tagDbId,
-                    aiResult.tags ?? []
-                );
+                const tagIds = await this.resolveTagIds(accessToken, tagDbId, aiResult.tags ?? []);
 
                 const properties: any = {
                     이름: {
-                        title: [{
-                            text: { content: aiResult.title ?? "" }
-                        }]
+                        title: [{ text: { content: aiResult.title ?? "" } }]
                     },
                     태그: {
                         relation: tagIds.map(id => ({ id }))
                     }
                 };
 
-                if (aiResult.db === "memo") {
-                    properties.유형 = {
-                        select: {
-                            name: aiResult.type ?? "아이디어"
-                        }
-                    };
+                if (aiResult.type) {
+                    const typeDbName = aiResult.db === "memo" ? "memo type" : "reference type";
+                    const typeDbId = await this.resolveDatabaseId(accessToken, userId, typeDbName);
+                    const typeIds = await this.resolveOrCreateRelationIds(
+                        accessToken,
+                        typeDbId,
+                        [aiResult.type]
+                    );
+
+                    if (typeIds.length > 0) {
+                        properties.유형 = {
+                            relation: typeIds.map(id => ({ id }))
+                        };
+                    }
                 }
 
-                await notion.pages.create({
-                    parent: { database_id: databaseId },
-                    properties,
-                    children: children.length ? children : undefined
-                });
+                if (!pageId) {
+                    const page: any = await notion.pages.create({
+                        parent: { database_id: databaseId },
+                        properties,
+                        children: children.length ? children : undefined
+                    });
+
+                    pageId = page.id;
+                    console.log(`[NotionCreate][${aiResult.db}] created pageId = ${pageId}`);
+                } else {
+                    await notion.pages.update({
+                        page_id: pageId,
+                        properties
+                    });
+
+                    console.log(`[NotionCreate][${aiResult.db}] updated pageId = ${pageId}`);
+                }
 
                 break;
             }
@@ -1512,13 +1643,351 @@ class NotionService {
             default:
                 throw new Error(`Unsupported db type: ${aiResult.db}`);
         }
+
+        await writeUserEvent(userId, {
+            agentId: AgentId.KAKAO_CAPTURE,
+            status: "completed",
+            eventTitle: `${aiResult.db} ${aiResult.action === "create" ? "생성" : "수정"}`,
+            description: [
+                `action = ${aiResult.action}`,
+                `db = ${aiResult.db}`,
+                `pageId = ${pageId ?? "-"}`,
+                `title = ${aiResult.title ?? "-"}`,
+                `type = ${aiResult.type ?? "-"}`,
+                aiResult.kinds ? `kinds = ${aiResult.kinds}` : null,
+                aiResult.tags?.length ? `tags = ${aiResult.tags.join(",")}` : null,
+                aiResult.dateExpr ? `date = ${aiResult.dateExpr}` : null,
+                entity?.type ? `entity = ${entity.type}` : null
+            ].filter(Boolean).join(" | ")
+        });
+
+        console.log(`[NotionCreate] done db = ${aiResult.db} action = ${aiResult.action} pageId = ${pageId ?? "-"}`);
+
+        return pageId;
     }
+    // static async createDbItemFromAiResult(
+    //     userId: string,
+    //     aiResult: any,
+    //     entity: any
+    // ): Promise<string | undefined> {
+    //     if (
+    //         !aiResult?.db ||
+    //         !["create", "correct"].includes(aiResult.action)
+    //     ) {
+    //         return undefined;
+    //     }
+
+    //     let pageId: string | undefined;
+
+    //     console.log(`[NotionCreate] start db = ${aiResult?.db} action = ${aiResult?.action} title = "${aiResult?.title ?? ""}" entity = ${entity?.type ?? "text"} `);
+
+    //     if (aiResult.action === "correct" && !aiResult.targetPageId) {
+    //         console.log(`[NotionCreate] correct but targetPageId missing`);
+    //         return undefined;
+    //     }
+    //     const targetPageId = aiResult.targetPageId;
+
+    //     // get Notion accessToken
+    //     const userDoc = await db.collection("users").doc(userId).get();
+    //     const accessToken = userDoc.data()?.notionAccessToken;
+    //     console.log(`[NotionCreate] accessToken = ${!!accessToken} `);
+    //     if (!accessToken) return undefined;
+
+    //     // get database
+    //     const notion = new Client({ auth: accessToken });
+    //     const databaseId = await this.resolveDatabaseId(
+    //         accessToken,
+    //         userId,
+    //         aiResult.db
+    //     );
+    //     console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
+
+    //     // create image
+    //     const children: any[] = [
+    //         ...this.buildEntityBlocks(entity)
+    //     ];
+
+    //     console.log(`[NotionCreate] entity blocks = ${children.length} `);
+
+    //     // content
+    //     if (aiResult.content) {
+    //         children.push({
+    //             object: "block",
+    //             type: "paragraph",
+    //             paragraph: {
+    //                 rich_text: [{
+    //                     type: "text",
+    //                     text: { content: aiResult.content }
+    //                 }]
+    //             }
+    //         });
+
+    //         console.log(`[NotionCreate] content added length = ${aiResult.content.length} `);
+    //     }
+
+    //     switch (aiResult.db) {
+    //         ////////////////////////////////////////////////////////////
+    //         case "task": {
+    //             console.log(
+    //                 `[NotionCreate][task] title = "${aiResult.title ?? ""}" type = ${aiResult.type ?? "-"} kinds = ${aiResult.kinds ?? "-"} importance = ${aiResult.importance ?? "-"} urgency = ${aiResult.urgency ?? "-"} date = ${aiResult.dateExpr ?? "-"} `
+    //             );
+
+    //             const importanceMap: Record<number, string> = {
+    //                 1: "중요",
+    //                 2: "매우 중요"
+    //             };
+
+    //             const urgencyMap: Record<number, string> = {
+    //                 1: "긴급",
+    //                 2: "매우 긴급"
+    //             };
+
+    //             const parsed = resolveDateExpr(aiResult.dateExpr);
+
+    //             console.log(`[NotionCreate][task] parsedDate = ${parsed ? parsed.date.toISOString() : "none"} hasTime = ${parsed?.hasTime ?? false} `);
+
+    //             const typeMap: Record<string, string> = {
+    //                 "할것": "할 것",
+    //                 "살것": "살 것",
+    //                 "읽을것": "읽을 것",
+    //                 "볼것": "볼 것",
+    //                 "갈곳": "갈 곳"
+    //             };
+
+    //             const normalizedType =
+    //                 typeMap[aiResult.type] ??
+    //                 aiResult.type ??
+    //                 "할 것";
+
+    //             const properties: any = {
+    //                 할일: {
+    //                     title: [{
+    //                         text: {
+    //                             content: aiResult.title ?? ""
+    //                         }
+    //                     }]
+    //                 },
+    //                 유형: {
+    //                     status: {
+    //                         name: normalizedType
+    //                     }
+    //                 },
+    //                 분류: {
+    //                     select: {
+    //                         name: aiResult.kinds ?? "수집함"
+    //                     }
+    //                 }
+    //             };
+
+    //             if (importanceMap[aiResult.importance]) {
+    //                 properties.중요도 = {
+    //                     select: {
+    //                         name: importanceMap[aiResult.importance]
+    //                     }
+    //                 };
+    //             }
+
+    //             if (urgencyMap[aiResult.urgency]) {
+    //                 properties.긴급도 = {
+    //                     select: {
+    //                         name: urgencyMap[aiResult.urgency]
+    //                     }
+    //                 };
+    //             }
+
+    //             if (parsed) {
+    //                 properties.날짜 = {
+    //                     date: {
+    //                         start: parsed.hasTime
+    //                             ? parsed.date.toISOString()
+    //                             : parsed.date.toISOString().slice(0, 10)
+    //                     }
+    //                 };
+    //             }
+
+    //             if (aiResult.action === "create") {
+    //                 console.log(
+    //                     `[NotionCreate][task] creating page`
+    //                 );
+
+    //                 const page: any = await notion.pages.create({
+    //                     parent: {
+    //                         database_id: databaseId
+    //                     },
+    //                     properties
+    //                 });
+
+    //                 pageId = page.id;
+    //                 console.log(`[NotionCreate][task] created pageId id = ${pageId} `);
+    //             } else {
+    //                 const targetPageId = aiResult.targetPageId;
+    //                 if (!targetPageId) {
+    //                     throw new Error("targetPageId required for correct");
+    //                 }
+
+    //                 await notion.pages.update({
+    //                     page_id: targetPageId,
+    //                     properties
+    //                 });
+
+    //                 pageId = targetPageId; 
+    //                 console.log(
+    //                     `[NotionCreate][task] updated targetPageId = ${targetPageId} `
+    //                 );
+    //             }
+
+    //             break;
+    //         }
+
+    //         ////////////////////////////////////////////////////////////
+    //         case "memo":
+    //         case "reference": {
+    //             console.log(
+    //                 `[NotionCreate][${aiResult.db}]title = "${aiResult.title ?? ""}" type = ${aiResult.type ?? "-"} tags = ${(aiResult.tags ?? []).join(",")} children = ${children.length} `
+    //             );
+
+    //             // get Tag db
+    //             const tagDbName = aiResult.db === "memo" ? "memo tag" : "reference tag";
+    //             const tagDbId = await this.resolveDatabaseId(
+    //                 accessToken,
+    //                 userId,
+    //                 tagDbName
+    //             );
+    //             console.log(`[NotionCreate][${aiResult.db}]tagDb = ${tagDbName} tagDbId = ${tagDbId} `);
+
+    //             // get tags
+    //             const tagIds = await this.resolveTagIds(
+    //                 accessToken,
+    //                 tagDbId,
+    //                 aiResult.tags ?? []
+    //             );
+    //             console.log(`[NotionCreate][${aiResult.db}]tagIds = ${tagIds.length} `);
+
+    //             const properties: any = {
+    //                 이름: {
+    //                     title: [{
+    //                         text: {
+    //                             content: aiResult.title ?? ""
+    //                         }
+    //                     }]
+    //                 },
+    //                 태그: {
+    //                     relation: tagIds.map(id => ({
+    //                         id
+    //                     }))
+    //                 }
+    //             };
+
+    //             if (aiResult.type) {
+    //                 // 유형 처리
+    //                 const typeDbName = aiResult.db === "memo" ? "memo type" : "reference type";
+    //                 const typeDbId = await this.resolveDatabaseId(
+    //                     accessToken,
+    //                     userId,
+    //                     typeDbName
+    //                 );
+
+    //                 const typeIds = await this.resolveRelationIds(
+    //                     accessToken,
+    //                     typeDbId,
+    //                     [aiResult.type]
+    //                 );
+
+    //                 if (typeIds.length > 0) {
+    //                     properties.유형 = {
+    //                         relation: typeIds.map(id => ({ id }))
+    //                     };
+    //                 }
+    //                 console.log(`[NotionCreate][${aiResult.db}] type="${aiResult.type}" relationCount=${typeIds.length}`);
+    //             }
+
+    //             if (aiResult.action === "create") {
+    //                 console.log(`[NotionCreate][${aiResult.db}] creating page`);
+    //                 const page: any = await notion.pages.create({
+    //                     parent: {
+    //                         database_id: databaseId
+    //                     },
+    //                     properties,
+    //                     children: children.length
+    //                         ? children
+    //                         : undefined
+    //                 });
+    //                 pageId = page.id;
+    //                 console.log(`[NotionCreate][${aiResult.db}] created id = ${targetPageId} `);
+    //             } else {
+    //                  const targetPageId = aiResult.targetPageId;
+    //                 if (!targetPageId) {
+    //                     throw new Error("targetPageId required for correct");
+    //                 }
+
+    //                 await notion.pages.update({
+    //                     page_id: targetPageId,
+    //                     properties
+    //                 });
+
+    //                 pageId = targetPageId; 
+    //                 console.log(`[NotionCreate][${aiResult.db}] updated id = ${targetPageId} `);
+    //             }
+    //             break;
+    //         }
+
+    //         default:
+    //             console.log(
+    //                 `[NotionCreate] unsupported db = ${aiResult.db} `
+    //             );
+    //             throw new Error(
+    //                 `Unsupported db type: ${aiResult.db} `
+    //             );
+    //     }
+
+    //     console.log(
+    //         `[NotionCreate] write event db = ${aiResult.db} action = ${aiResult.action} title = "${aiResult.title ?? ""}" targetPageId = ${targetPageId ?? "-"} `
+    //     );
+
+    //     await writeUserEvent(userId, {
+    //         agentId: AgentId.KAKAO_CAPTURE,
+    //         status: "completed",
+    //         eventTitle: `${aiResult.db} ${aiResult.action === "create"
+    //             ? "생성"
+    //             : "수정"
+    //             } `,
+    //         description: [
+    //             `action = ${aiResult.action} `,
+    //             `db = ${aiResult.db} `,
+    //             `targetPageId = ${targetPageId ?? "-"} `,
+    //             `title = ${aiResult.title ?? "-"} `,
+    //             `type = ${aiResult.type ?? "-"} `,
+    //             aiResult.kinds
+    //                 ? `kinds = ${aiResult.kinds} `
+    //                 : null,
+    //             aiResult.tags?.length
+    //                 ? `tags = ${aiResult.tags.join(",")} `
+    //                 : null,
+    //             aiResult.dateExpr
+    //                 ? `date = ${aiResult.dateExpr} `
+    //                 : null,
+    //             entity?.type
+    //                 ? `entity = ${entity.type} `
+    //                 : null,
+    //             `confidence = ${aiResult.confidence ?? "-"} `
+    //         ].filter(Boolean).join(" | ")
+    //     });
+
+    //     console.log(
+    //         `[NotionCreate] done db = ${aiResult.db} action = ${aiResult.action} targetPageId = ${targetPageId ?? "-"} `
+    //     );
+
+    //     return pageId;
+    // }
+
 
     static async resolveTagIds(
         accessToken: string,
         tagDbId: string,
         tags: string[]
     ): Promise<string[]> {
+        console.log(`[Tag] start tagDbId = ${tagDbId} tags = ${tags.join(",")} `);
+
         const notion = new Client({ auth: accessToken });
 
         const db: any = await notion.databases.retrieve({
@@ -1527,13 +1996,22 @@ class NotionService {
 
         const dataSourceId = db.data_sources?.[0]?.id;
 
+        console.log(`[Tag] dataSourceId = ${dataSourceId ?? "none"} `);
+
         if (!dataSourceId) {
-            throw new Error(`data source not found: ${tagDbId}`);
+            console.log(
+                `[Tag] data source not found tagDbId = ${tagDbId} `
+            );
+            throw new Error(`data source not found: ${tagDbId} `);
         }
 
         const result: string[] = [];
 
         for (const tag of [...new Set(tags.map(t => t.trim()).filter(Boolean))]) {
+            console.log(
+                `[Tag] lookup tag = "${tag}"`
+            );
+
             const existing: any = await notion.dataSources.query({
                 data_source_id: dataSourceId,
                 filter: {
@@ -1545,9 +2023,17 @@ class NotionService {
             });
 
             if (existing.results.length > 0) {
+                console.log(
+                    `[Tag] existing tag = "${tag}" id = ${existing.results[0].id} `
+                );
+
                 result.push(existing.results[0].id);
                 continue;
             }
+
+            console.log(
+                `[Tag] create tag = "${tag}"`
+            );
 
             const created: any = await notion.pages.create({
                 parent: {
@@ -1565,57 +2051,53 @@ class NotionService {
                     }
                 }
             });
+
+            console.log(`[Tag] created tag = "${tag}" id = ${created.id} `);
             result.push(created.id);
         }
 
+        console.log(`[Tag] done count = ${result.length} `);
         return result;
     }
 
     static buildEntityBlocks(entity: any): any[] {
-        if (!entity || entity.type !== "image") return [];
+        const normalize = (v: any): string[] => {
+            return (Array.isArray(v) ? v : v ? [v] : [])
+                .flat()
+                .map((t: any) => String(t))
+                .map((t: string) => t.replace(/^"+|"+$/g, "").trim())
+                .filter((t: string) => t.length > 0);
+        };
+
+        const objects: string[] = normalize(entity?.objects);
+        const ocrText: string = typeof entity?.ocrText === "string" ? entity.ocrText.trim() : "";
+        const context: string = typeof entity?.context === "string" ? entity.context.trim() : "";
+
+        console.log(`[Entity] start type = ${entity?.type ?? "none"} image = ${!!entity?.url} objects = ${objects.length} ocr = ${ocrText.length}`);
+
+        if (!entity || entity.type !== "image") {
+            console.log(`[Entity] skip type = ${entity?.type ?? "none"}`);
+            return [];
+        }
 
         const children: any[] = [];
 
-        // 이미지
-        if (entity.url) {
+        // 1. image
+        const imageUrl: string = typeof entity.url === "string" ? entity.url.trim() : "";
+
+        if (imageUrl.length > 0) {
             children.push({
                 object: "block",
                 type: "image",
                 image: {
                     type: "external",
-                    external: {
-                        url: entity.url
-                    }
+                    external: { url: imageUrl }
                 }
             });
         }
 
-        // 이미지 분석 정보
-        const analysis: string[] = [];
-
-        if (entity.objects?.length) {
-            analysis.push(`태그: ${entity.objects.join(", ")}, ${entity.context}`);
-        }
-
-        if (analysis.length > 0) {
-            children.push({
-                object: "block",
-                type: "callout",
-                callout: {
-                    rich_text: [
-                        {
-                            type: "text",
-                            text: {
-                                content: analysis.join("\n")
-                            }
-                        }
-                    ]
-                }
-            });
-        }
-
-        // OCR
-        if (entity.ocrText) {
+        if (context.length > 0) {
+            // 2. fallback context -> heading_3
             children.push({
                 object: "block",
                 type: "heading_3",
@@ -1623,13 +2105,32 @@ class NotionService {
                     rich_text: [
                         {
                             type: "text",
-                            text: {
-                                content: "OCR"
-                            }
+                            text: { content: context }
                         }
                     ]
                 }
             });
+        }
+
+        // 3. OCR -> paragraph
+        if (ocrText.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [
+                        {
+                            type: "text",
+                            text: { content: ocrText }
+                        }
+                    ]
+                }
+            });
+        }
+
+        // 4. tags -> blue paragraph
+        if (objects.length > 0) {
+            const tagLine: string = objects.map((t: string) => `#${t}`).join(", ");
 
             children.push({
                 object: "block",
@@ -1638,21 +2139,19 @@ class NotionService {
                     rich_text: [
                         {
                             type: "text",
-                            text: {
-                                content: entity.ocrText
-                            }
+                            text: { content: tagLine },
+                            annotations: { color: "blue" }
                         }
                     ]
                 }
             });
         }
 
+        console.log(`[Entity] done blocks = ${children.length}`);
+
         return children;
     }
 }
-
-
-
 
 
 // Firebase HTTPS 함수
@@ -1799,7 +2298,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                         await writeUserEvent(userId, {
                             agentId: AgentId.SECOND_BRAIN,
                             status: "running",
-                            eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트의 키워드 추출 작업을 진행중입니다.`
+                            eventTitle: `< span style = "color:#7fb7ff" > ${pageData.title} </span> 노트의 키워드 추출 작업을 진행중입니다.`
                         });
                     }
 
@@ -1920,9 +2419,8 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                 eventTitle: `키워드 추출 작업 중 오류가 발생했습니다.`
             });
         }
-    }));
-
-
+    }
+    ));
 
 const DEBOUNCE_DELAY = 60 * 1000; // 3초: 마지막 이벤트 후 대기 시간
 
@@ -3066,130 +3564,223 @@ const HELP_RESPONSE = `
 4. 분류가 잘못되었다면 다시 요청해주시면 수정 가능합니다.
 `;
 
+
+// #kakao ai
+
 export const kakaoAssistantPrompt = `
 당신은 "노셔너블 라이프업 비서 AI"입니다.
 사용자 메시지를 "실행 가능한 JSON"으로 변환합니다.
 
 ## 최우선 규칙
-- 반드시 하나의 action만 선택
+- 반드시 다음 중 하나의 action만 선택 : "create", "correct", "delete", "chat", "help"
 - JSON 외 출력 금지
 - 설명, 코드블럭 금지
-- confidence 필수
 - response는 사용자 표시 문장
 
 ## ACTION 분류
-
-우선순위는 task, memo, reference순
-task는 해야 할 일 즉 행동이 필요한 일
-memo: 내가 생성한 정보 / 생각 / 기록 / 개인 데이터 (비외부) / 아이디어, 계정정보, 연락처, 좋은글
-reference: 외부에서 온 정보 / 링크 / 기사 / 콘텐츠 / 발췌
+task: 해야 할 일, 즉 행동이 필요한 일
+memo: 내가 만들어낸 정보 / 내 생각 / 내 기록 / 내 개인 데이터 / 내 아이디어, 내 계정정보
+reference: 다른 사람이 만든 정보 / 링크 / 기사 / 논문 / 연락처 
 
 1. task
-a.type:
-할것 / 살것 / 읽을것 / 볼것 / 갈곳
-- 기본 "할것"
-- 구매 = 살것
-- 책/문서 = 읽을것
-- 영상/영화 = 볼것
-- 장소 = 갈곳
 
-b.importance: 0 | 1 | 2
+[task.type]
 
-c.urgency: 0 | 1 | 2
-그 외 값 절대 금지
-문장중에 중요, 긴급 관련 언급  
-0 = 없음, 1 : 중요, 긴급, 2:  매우 중요, 매우 긴급
+허용값:
+"할 것" | "살 것" | "읽을 것" | "볼 것" | "갈 곳"
 
-d.date: 진행할 날짜, ISO 8601
+규칙:
 
-e.kinds: 수집함, 다음, 일정, 대기중, 나중에 
-수집함 = 기본값
-일정 = 날짜가 있는 경우
-다음 = 다믕을 언급한 경우
-대기중 = 바로 진행하지 못하는 경우
-나중에 = 나중에 할일, 언젠가, 천천히 할일
+* 기본값: "할 것"
+* 구매/쇼핑/구입/사기 → "살 것"
+* 책/문서/글/논문/기사 → "읽을 것"
+* 영상/영화/드라마/유튜브 → "볼 것"
+* 장소/방문/여행/식당 → "갈 곳"
 
-f.dateExpr 규칙:
-사용자의 상대 시간 표현을 현재 시간을 기준으로 계산 가능한
-상대 시간 표현으로 변환한다.
-절대로 실제 날짜를 계산하지 않는다.
+---
+
+[task.title]
+
+규칙:
+1. title은 반드시 사용자의 원문을 최대한 유지한다.
+2. 의미를 재구성하거나 보완하지 않는다. (매우 중요)
+3. 다음 단어만 제거 대상이다: "사기", "읽기", "보기", "가기" 
+4. 해당 단어가 단독으로 끝에 붙은 경우만 제거한다.
+5. 그 외 어떤 형태의 추론/추가/보정도 금지한다.
+
+예:
+- "우산 사기" → "우산"
+- "핸드크림 사기" → "핸드크림"
+- "클린 코드 읽기" → "클린 코드"
+- "오징어게임 보기" → "오징어게임"
+- "강남역 맛집 가기" → "강남역 맛집"
+- "볼펜" → "볼펜"
+
+---
+
+[task.importance]
+
+허용값:
+"중요" | "매우 중요"
+
+규칙:
+
+* 중요 관련 언급이 있을 때만 포함한다.
+* 언급이 없으면 필드를 출력하지 않는다.
+* "중요", "꼭", "반드시", "우선" → "중요"
+* "매우 중요", "최우선", "절대 잊지 말기" → "매우 중요"
+
+---
+
+[task.urgency]
+
+허용값:
+"긴급" | "매우 긴급"
+
+규칙:
+
+* 긴급 관련 언급이 있을 때만 포함한다.
+* 언급이 없으면 필드를 출력하지 않는다.
+* "긴급", "빨리", "오늘 안에" → "긴급"
+* "매우 긴급", "당장", "즉시" → "매우 긴급"
+
+---
+
+[task.kinds]
+
+허용값:
+"수집함" | "다음" | "일정" | "대기중" | "나중에"
+
+규칙:
+
+* 기본값: "수집함"
+* 날짜가 있는 경우 → "일정"
+* "다음", "다음에", "후속" → "다음"
+* 바로 진행할 수 없는 경우 → "대기중"
+* "나중에", "언젠가", "천천히" → "나중에"
+
+---
+
+[task.dateExpr]
+
+규칙:
+
+* 상대 시간 표현으로 변환한다.
+* 절대로 실제 날짜를 계산하지 않는다.
+* 날짜 언급이 있을 때만 포함한다.
+* 날짜 언급이 없으면 필드를 출력하지 않는다.
 
 허용 예:
-오늘 → "dateExpr": "today"
-내일 → "dateExpr": "tomorrow"
-모레 → "dateExpr": "dayafter"
-15분 후 → "dateExpr": "now+15m"
-3시간 후 → "dateExpr": "now+3h"
-7일 후 → "dateExpr": "now+7d"
-다음주 월요일 → "dateExpr": "next:monday"
-이번주 금요일 → "dateExpr": "this:friday"
 
-오늘 오후 3시 → "dateExpr": "today+15:00"
-내일 오전 9시 → "dateExpr": "tomorrow+09:00"
-모레 오후 6시 → "dateExpr": "dayafter+18:00"
-다음주 월요일 오후 2시 → "dateExpr": "next:monday+14:00"
+* 오늘 → "today"
+* 내일 → "tomorrow"
+* 모레 → "dayafter"
+* 15분 후 → "now+15m"
+* 3시간 후 → "now+3h"
+* 7일 후 → "now+7d"
+* 이번주 월요일 → "this:monday"
+* 다음주 월요일 → "next:monday"
+* 이번주 금요일 → "this:friday"
+* 오늘 오후 3시 → "today+15:00"
+* 내일 오전 9시 → "tomorrow+09:00"
+* 모레 오후 6시 → "dayafter+18:00"
+* 다음주 월요일 오후 2시 → "next:monday+14:00"
+* 2026년 7월 3일 → "date:2026-07-03"
 
-명시적 날짜인 경우만 실제 날짜를 사용한다.
-예: 2026년 7월 3일 → "dateExpr": "date:2026-07-03"
-dateExpr가 없으면 null을 반환한다.
+2. memo
+사용자와 관계가 가까운 정보이다.
+사용자가 직접 생성했거나, 관리하거나, 기억해야 하는 정보를 저장한다.
+
+a.type: 아이디어, 내 생각, 계정 정보, 연락처, 필기, 개인 문서, 독서 기록
+
+아이디어 : 사용자의 새로운 생각, 계획, 발상
+내 생각 : 사용자의 감상, 평가, 의견, 회고
+계정 정보 : 서비스 계정, 로그인 정보, 인증 정보
+연락처 : 명함, 전화번호, 주소, 사람과의 연락 정보
+필기 : 사용자가 직접 작성하거나 참여하여 생성한 필기, 화이트보드, 강의 노트, 회의 메모
+개인 문서 : 사용자와 직접 관련된 문서, 예: 영수증, 병원 기록, 계약서, 고지서 등
+독서 기록 : 사용자가 읽고 있는 책의 발췌, 메모, 감상
+
+* 중요 규칙
+- 위 메모의 typoe이 명확할 때만 memo로 분류하고 모호하면 reference로 분류한다.
+- 영문/숫자 식별자(예: ESGDbreeze, abc123)는 계정 정보를 우선 고려한다.
+- 추측해서 "내 생각"으로 분류하지 않는다.
+
+
+b.tags: 메모를 설명하는 부가 키워드 1-2개
+c.importance: 중요, 매우 중요
+- 중요 관련 언급이 있을 때만 포함한다.
+- 언급이 없으면 필드를 출력하지 않는다.
 
 출력 예시:
 {
-  "db": "task",
   "action": "create",
-  "title": "치과 예약",
-  "type": "할것",
-  "kinds": "수집함",
-  "importance": 0,
-  "urgency": 0,
-  "confidence": 0.95,
-  "response": "'치과 예약'을 할일(살것)로 등록했습니다.",
-  "dateExpr": "today"
-}
-
-2. memo/create
-type:
-- 아이디어
-- 계정정보
-- 연락처
-- 좋은글
-- 사진메모
-
-tags: 메모를 설명하는 부가 키워드 1-2개
-
-출력 예시:
-{
   "db": "memo",
-  "action": "create",
   "title": "카카오톡 비서",
   "type": "아이디어",
   "tags": ["카카오톡","AI","자동화"],
   "content": "카카오톡 비서",
-  "confidence": 0.92,
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
 
-3. reference/create
-tags: reference를 설명하는 부가 키워드 1-2개
+3. reference
+- 위 memo 카테고리에 명확하게 해당하지 않는 모든 정보는 reference로 분류한다.
+- reference는 나중에 참고하기 위해 수집하는 정보이다.
+
+a.tags: reference를 설명하는 부가 키워드 1-2개
+b.type: 이미지, 동영상, 글, 북마크
+c.importance: 중요, 매우 중요
+- 중요 관련 언급이 있을 때만 포함한다.
+- 언급이 없으면 필드를 출력하지 않는다.importance: 중요, 매우 중요
 
 출력 예시:
 {
-  "db": "reference",
   "action": "create",
+  "db": "reference",
   "title": "카카오톡 비서",
+  "type": "글",
   "tags": ["카카오톡","AI","자동화"],
   "content": "카카오톡 비서",
-  "confidence": 0.92,
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
-4. chat 
-- 답변 가능한 일반 질문
-- 사용자가 일반 질문이면: 노셔너블 비서 역할로 답변
+
+4. chat
+chat은 사용자가 '노셔너블 비서'에게 답변을 직접 요구하는 경우에만 선택한다.
+
+chat 예시:
+- "~가 뭐야?"
+- "~왜 그래?"
+- "~어떻게 해?"
+- "~알려줘"
+- "~설명해줘"
+- "~추천해줘"
+- "~해석해줘"
+- "~인가?"
+- 물음표(?)가 포함된 직접 질문
+
+다음은 절대 chat으로 분류하지 않는다.
+- 설명문
+- 해석문
+- 발췌문
+- 기사
+- 리뷰
+- 경험담
+- 좋은 글
+- 꿈 해몽 내용
+- 공부 내용
+- 메모
+- 기록
+- 정보 정리
+- 긴 텍스트
+
+질문이 아닌 정보성 텍스트는 반드시 task, memo, reference 중 하나로 분류한다.
+분류가 애매하면 chat이 아니라 memo를 우선 선택한다.
+
+출력 예시:
 {
   "action": "chat",
-  "confidence": 0.8,
   "response": "사용자 질문에 대한 자연스러운 답변"
 }
 
@@ -3199,7 +3790,6 @@ tags: reference를 설명하는 부가 키워드 1-2개
 출력:
 {
   "action": "help",
-  "confidence": 1.0,
   "response": ""
 }
 중요:
@@ -3207,30 +3797,45 @@ tags: reference를 설명하는 부가 키워드 1-2개
 - 실제 도움말 문구는 서버에서 처리한다
 
 6. correct
+correct는 기존 항목을 수정하기 위한 action이다.
 
 사용자가 직전 입력 또는 직전 분류 결과를 수정하려는 의도가 있으면,
 새로운 create를 생성하지 말고 반드시 action="correct"를 선택한다.
 
-correct는 기존 항목을 수정하기 위한 action이다.
-
 중요:
 - 기존 결과를 기반으로 수정된 전체 결과를 반환한다.
+- 수정 대상이 명확하지 않으면 action=create를 반환한다.
 
-correct 판단 기준:
-- "아니", "수정", "변경", "옮겨", "다시", "사실은", "~가 아니라" 등의 표현
-- 직전 항목의 종류, 날짜, 중요도, 긴급도, 제목, 내용을 변경하려는 경우
-- 사용자가 직전 항목을 재분류하거나 정정하려는 경우
+수정(update)은 아래 경우에만 수행한다.
+
+- 사용자가 명시적으로
+  "아니", "옮겨", "다시", "수정", "변경", "바꿔", "고쳐", "추가해", "삭제해"
+  등의 표현을 사용한 경우
+
+- 직전 항목과 핵심 대상이 동일하고 추가 요청이 있는 경우
+  예)
+  "우산 사기" → "우산 2개 사기"
+  "치과 예약" → "치과 예약 내일로 변경"
+
+다음은 절대 수정으로 판단하지 않는다.
+- 명사가 변경된 경우
+  "썬크림 사기" → "핸드크림 사기"
+  "사과 사기" → "바나나 사기"
+  "책 읽기" → "유튜브 보기"
+
+명사가 바뀌면 새로운 항목(create)이다.
 
 예:
 
 직전:
 {
+  "action":"create",
   "db": "task",
   "title": "나트랑",
-  "type": "갈곳",
+  "type": "갈 곳",
   "kinds": "수집함",
   "importance": 0,
-  "urgency": 0
+  "urgency": 0,
 }
 
 사용자:
@@ -3245,22 +3850,60 @@ correct 판단 기준:
   "kinds": "수집함",
   "importance": 0,
   "urgency": 0,
-  "confidence": 0.95,
   "response": "'나트랑'을 할것으로 수정했습니다.",
   "dateExpr": null
 }
 
-9. confidence 규칙:
-- 0.7 이상: 정상 처리
-- 0.5~0.7: chat 처리
-- 0.50 미만: 분류가 어렵다고 판단 / 가능하면 chat를 선택
+6. tags 규칙
+해당 항목을 설명하는 부가 키워드 1~2개 (선택)
 
-10. 고유명사 처리
+tags는 필수가 아니다.
+tags는 여러 메모를 함께 묶어 탐색할 가치가 있을 때만 사용한다.
+내용 자체를 반복하거나 너무 구체적인 단어는 사용하지 않는다.
+
+사용 가능 예시
+
+분야: 골프, 투자, 개발, 독서
+프로젝트/서비스: 비즈업, 이니시스, 노셔너블
+주제 영역: 세무, 마케팅, 건강관리
+
+사용 불가 예시
+
+너무 작은 범위: 스윙, 생크
+이미 type과 중복: 계정, 전화번호
+상태 표현: 보류, 완료, 진행중
+개별 고유명사: GODOBreeze, ESGDbreeze
+단일 행동/상황: 연습, 확인, 저장
+하나의 문서나 메모에만 해당될 가능성이 높은 키워드
+
+판단 기준
+
+"이 태그로 나중에 여러 메모를 모아볼 가치가 있는가?"를 기준으로 한다.
+가치가 없거나 확신이 없으면 tags를 출력하지 않는다.
+
+7. '[이미지 분석] 텍스트' 처리 규칙
+
+이미지에서 추출된 OCR, objects, context, hint 정보를 기반해서 일반 텍스트 입력과 동일하게 처리한다.
+
+## 예외 규칙 (중요)
+
+* '[이미지 분석] 텍스트' 입력은 절대로 "chat"으로 처리하지 않는다.
+* 의미 해석이 불가능한 경우에도 chat fallback 금지
+* 반드시 기존 텍스트 분류 로직을 그대로 적용한다
+  (task / memo / reference 시스템 재사용)
+
+## 핵심 원칙
+
+'[이미지 분석] 텍스트'는 별도 입력 타입이 아니라
+“추가 정보가 포함된 일반 텍스트 입력”이다.
+
+
+8. 고유명사 처리
 책=read / 영화·드라마=watch / 장소=go / 상품=buy
 
-11. 단일 명사 처리 규칙
+9. 단일 명사 처리 규칙
 사용자가 한 단어 또는 짧은 명사만 입력한 경우:
-1순위: 구매 가능한 실물 물건이면 task(type="살것")
+1순위: 구매 가능한 실물 물건이면 task(type="살 것")
 예:
 딸기
 바나나
@@ -3271,11 +3914,11 @@ correct 판단 기준:
 노트북
 마우스
 
-2순위: 책이나 문서 제목이면 task(type="읽을것")
+2순위: 책이나 문서 제목이면 task(type="읽을 것")
 
-3순위: 영화, 드라마, 유튜브, 영상 콘텐츠이면 task(type="볼것")
+3순위: 영화, 드라마, 유튜브, 영상 콘텐츠이면 task(type="볼 것")
 
-4순위: 장소 관련 명사이면 task(type="갈곳")
+4순위: 장소 관련 명사이면 task(type="갈 곳")
 포함:
 - 국가명
 - 도시명
@@ -3299,13 +3942,61 @@ correct 판단 기준:
 롯데월드
 성심당
 
-5순위: 위 어느 것도 아니면 task(type="할것")
+5순위: 위 어느 것도 아니면 task(type="할 것")
 
-12. 중요 규칙:
+
+10. title 생성 규칙
+
+- task:
+  사용자가 말한 핵심 할 일을 그대로 사용한다.
+
+- memo:
+  title은 메모의 핵심 주제를 10~30자 내외로 요약한다.
+  content는 원문 내용을 최대한 보존한다.
+  title과 content를 동일하게 작성하지 않는다.
+
+- reference:
+  title은 자료를 식별하기 쉬운 대표 제목을 생성한다.
+  content는 원문 내용을 최대한 보존한다.
+  title과 content를 동일하게 작성하지 않는다.
+
+### 예시
+
+입력:
+"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+
+출력:
+{
+  "action":"create",
+  "db":"memo",
+  "title":"카카오톡 AI 비서 아이디어",
+  "content":"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+}
+
+입력:
+"https://example.com 에 RAG 구조 설명이 잘 되어 있다"
+
+출력:
+{
+  "action":"create",
+  "db":"reference",
+  "title":"RAG 구조 설명 자료",
+  "content":"https://example.com 에 RAG 구조 설명이 잘 되어 있다"
+}
+
+title은 반드시 생성해야 한다.
+title이 content와 완전히 동일하면 안 된다.
+title은 파일명이나 노션 페이지 제목으로 사용될 수 있어야 한다.
+
+
+11. 중요 규칙:
+- 반드시 action 필드를 포함해야 한다 (최상위 필수 필드)
+- action이 없으면 절대 유효한 JSON이 아니다
+- 모든 응답은 action 기준으로 동작한다
+
 - JSON만 출력
 - response는 필수
 - codeblock 금지
-- confidence 필수
 - chat도 반드시 response 포함
 
 - 하나만 선택한다.
@@ -4136,7 +4827,7 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", mi
                 version: "2.0",
                 useCallback: true,
                 data: {
-                    text: "내용을 분석 중입니다. 곧 안내해 드리겠습니다."
+                    text: "처리중입니다..."
                 }
             });
 
@@ -4238,20 +4929,34 @@ function logKakaoRequest(
 
 // #kakao
 async function processConnectedUser(userId: string, userMessage: string, user: any, kakaoUserId: string, callbackUrl: string) {
+    //let fileName: string | undefined;
     try {
-        const { aiInput, entity } = await prepareAssistantInput(userMessage, userId);
-        const previousResult = await getLastAssistantContext(userId);
+        const prepared = await prepareAssistantInput(userMessage, userId);
+        const { aiInput, entity } = prepared;
+        //fileName = prepared.fileName;
+        const previousResult: any = await getLastAssistantContext(userId);
 
         const result = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
 
         if (result?.action === "help") result.response = HELP_RESPONSE;
 
-        await processAfterResponse(userId, userMessage, user, kakaoUserId, aiInput, entity, result);
+        const enrichedResult = {
+            ...result
+        };
+
+        if (result.action === "correct" && previousResult?.pageId) {
+            enrichedResult.targetPageId = previousResult.pageId;
+        }
+        await processAfterResponse(userId, userMessage, user, kakaoUserId, aiInput, entity, enrichedResult);
         await sendKakaoCallback(callbackUrl, result.response);
 
     } catch (e) {
         console.error("[KAKAO ERROR - processConnectedUser]", e);
         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
+    } finally {
+        // if (fileName) {
+        //     await deleteTempImage(fileName);
+        // }
     }
 }
 
@@ -4335,32 +5040,23 @@ async function processAfterResponse(
     aiResult: any
 ) {
     try {
-        await Promise.allSettled([
-            saveAssistantContext(userId, {
-                userMessage,
-                aiInput,
-                entity,
-                result: aiResult,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            }),
+        let pageId: string | undefined;
+        try {
+            pageId = await NotionService.createDbItemFromAiResult(userId, aiResult, entity);
+        } catch (e) {
+            console.error("[NOTION ERROR]", e);
+        }
 
-            NotionService.createDbItemFromAiResult(userId, aiResult, entity);
+        const payload: any = {
+            userMessage,
+            aiInput,
+            entity,
+            result: aiResult,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
 
-            // log 저장
-            // writeUserEvent(uid, {
-            //     agentId: AgentId.KAKAO_CAPTURE,
-            //     status: 'completed',
-            //     eventTitle: trimKorean(aiResult.response) ?? '카카오 비서 요청 처리', ///////////////////////////
-            //     description: [
-            //         `사용자 입력: ${userMessage}`,
-            //         `AI 입력:\n${typeof aiInput === 'string'
-            //             ? aiInput
-            //             : JSON.stringify(aiInput, null, 2)
-            //         }`,
-            //         `AI 결과:\n${JSON.stringify(aiResult, null, 2)}`
-            //     ].join('\n')
-            // })
-        ]);
+        if (pageId) payload.pageId = pageId;
+        await saveAssistantContext(userId, payload);
     } catch (error) {
         console.error('[KAKAO BACKGROUND ERROR]', error);
     }
@@ -4404,40 +5100,36 @@ export async function prepareAssistantInput(userMessage: string, uid: string) {
 
         const { ocrText, objects, context, hint } = await analyzeImageFromAI(imageUrl);
 
-        let imageDescription: string = JSON.stringify({
-            ocr: ocrText || "",
-            objects: objects || "",
-            context: context || "",
-            hint: hint || ""
-        });
+        const aiInput = `
+        [이미지 분석]
+        OCR: ${ocrText || "없음"}
+        객체: ${(Array.isArray(objects) ? objects : objects ? [objects] : []).join(", ") || "없음"}
+        설명: ${context || "없음"}
+        힌트: ${hint || "없음"}
+        `.trim();
 
         console.log("[PREPARE] analyzeImageFromAI success", {
-            imageDescription,
+            aiInput,
             ocrText, objects, context, hint,
             ocrLength: ocrText?.length ?? 0
         });
 
         return {
-            aiInput: imageDescription || "이미지",
+            aiInput,
             entity: {
                 type: "image",
                 url: imageUrl,
                 ocrText,
-                objects,
+                objects: Array.isArray(objects) ? objects : objects ? [objects] : [],
                 context,
                 hint
-            }
+            },
+            fileName
         };
 
     } catch (err) {
         console.error("[PREPARE] ERROR", err);
         throw err;
-    } finally {
-        if (fileName) {
-            console.log("[PREPARE] deleteTemp start", { fileName });
-            await deleteTemp(fileName);
-            console.log("[PREPARE] deleteTemp complete", { fileName });
-        }
     }
 }
 
@@ -4465,10 +5157,10 @@ export async function analyzeImageFromAI(imageUrl: string) {
 
 출력 형식 (설명 없이 정확히 출력):
 
-ocrText: ...
-objects: ...
-context: ...
-hint: ...
+ocrText: "welcome, 2026",
+objects: ["사람", "책", "고양이"],
+context: "디지털 플래너 또는 개인 생산성 관리용 노트 화면 캡처.",
+hint: "memo-like"
 
 ---
 
@@ -4480,6 +5172,10 @@ hint: ...
 
 ## 2. OBJECTS
 이미지에 포함된 핵심 객체/요소를 나열
+
+규칙:
+- 배열로 출력
+
 예:
 사람
 책
@@ -4549,7 +5245,7 @@ unknown:
     };
 
     const ocrText = get("ocrText");
-    const objects = get("objects");
+    const objects = Array.isArray(get("objects")) ? get("objects") : get("objects") ? [get("objects")] : [];
     const context = get("context");
     const hint = get("hint") || "unknown";
     return {
@@ -4622,7 +5318,6 @@ async function saveAssistantContext(
     uid: string,
     context: any
 ) {
-
     await db
         .collection('users')
         .doc(uid)
@@ -4630,60 +5325,60 @@ async function saveAssistantContext(
         .add(context);
 }
 
-async function saveCapture(
-    uid: string,
-    utterance: string,
-    user: any,
-    kakaoUserId: string
-) {
+// async function saveCapture(
+//     uid: string,
+//     utterance: string,
+//     user: any,
+//     kakaoUserId: string
+// ) {
 
-    await db
-        .collection("users")
-        .doc(uid)
-        .collection("integrations")
-        .doc("kakaoAgent")
-        .collection("captures")
-        .add({
-            kakaoUserId,
-            plusfriendUserKey:
-                user?.properties?.plusfriendUserKey,
-            botUserKey: user?.id,
-            content: utterance,
-            source: "kakao",
-            status: "received",
-            createdAt:
-                admin.firestore.FieldValue.serverTimestamp()
-        });
+//     await db
+//         .collection("users")
+//         .doc(uid)
+//         .collection("integrations")
+//         .doc("kakaoAgent")
+//         .collection("captures")
+//         .add({
+//             kakaoUserId,
+//             plusfriendUserKey:
+//                 user?.properties?.plusfriendUserKey,
+//             botUserKey: user?.id,
+//             content: utterance,
+//             source: "kakao",
+//             status: "received",
+//             createdAt:
+//                 admin.firestore.FieldValue.serverTimestamp()
+//         });
 
-    saveCaptureEvent(uid, utterance, user, kakaoUserId);
-}
+//     saveCaptureEvent(uid, utterance, user, kakaoUserId);
+// }
 
-async function saveCaptureEvent(
-    uid: string,
-    utterance: string,
-    user: any,
-    kakaoUserId: string
-) {
+// async function saveCaptureEvent(
+//     uid: string,
+//     utterance: string,
+//     user: any,
+//     kakaoUserId: string
+// ) {
 
-    const preview =
-        utterance.length > 30
-            ? `${utterance.substring(0, 30)}...`
-            : utterance;
+//     const preview =
+//         utterance.length > 30
+//             ? `${utterance.substring(0, 30)}...`
+//             : utterance;
 
-    await writeUserEvent(uid, {
-        agentId: AgentId.KAKAO_CAPTURE,
-        status: "completed",
-        eventTitle:
-            `'${preview}'으로 시작하는 메시지를 수집했습니다.`,
-        description: [
-            `수집 내용: ${utterance}`,
-            `카카오 사용자 ID: ${kakaoUserId}`,
-            `플러스친구 사용자 키: ${user?.properties?.plusfriendUserKey ?? '-'}`,
-            `봇 사용자 키: ${user?.id ?? '-'}`,
-            `사용자 타입: ${user?.type ?? '-'}`
-        ].join('\n')
-    });
-}
+//     await writeUserEvent(uid, {
+//         agentId: AgentId.KAKAO_CAPTURE,
+//         status: "completed",
+//         eventTitle:
+//             `'${preview}'으로 시작하는 메시지를 수집했습니다.`,
+//         description: [
+//             `수집 내용: ${utterance}`,
+//             `카카오 사용자 ID: ${kakaoUserId}`,
+//             `플러스친구 사용자 키: ${user?.properties?.plusfriendUserKey ?? '-'}`,
+//             `봇 사용자 키: ${user?.id ?? '-'}`,
+//             `사용자 타입: ${user?.type ?? '-'}`
+//         ].join('\n')
+//     });
+// }
 
 async function processVerificationCode(
     res: any,
@@ -5183,7 +5878,7 @@ export async function uploadTempImage(
     };
 }
 
-export async function deleteTemp(fileName: string) {
+export async function deleteTempImage(fileName: string) {
     console.log("[DELETE] start", { fileName });
 
     const bucket = getStorage().bucket();
