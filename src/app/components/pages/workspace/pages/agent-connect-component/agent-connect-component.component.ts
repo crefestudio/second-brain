@@ -124,7 +124,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
 
     async submitVerification() {
-        if (!this.userId) { return; }
+        // if (!this.userId) { return; }
         if (!this.verifyValue) return;
 
         this.isVerifying = true;
@@ -161,7 +161,7 @@ export class AgentConnectComponentComponent implements OnInit {
         }
 
         try {
-            const success = await this.userService.verifyPurchaser(this.userId, 'lifeUp', email, phone);
+            const success = await this.userService.verifyPurchaser('lifeUp', email, phone);
             if (!success) {
                 this.errorMessage = '구매정보를 찾을 수 없습니다.';
                 return;
@@ -199,15 +199,27 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     async updatePurchaseInfo() {
-        if (!this.userId) { return; }
-        this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
+        //if (this.userId) {
+        //    this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
+        //} else {
+        //    this.purchaseInfo = await UserService.getVerifiedPurchaseFromLocalstorage('lifeUp');
+        //}
         _log('updatePurchaseInfo purchaseInfo =>', this.purchaseInfo);
         this.hasLifeupPurchase = this.purchaseInfo != null;
-        if (this.hasLifeupPurchase) {
-            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
-        } else {
-            this.purchaseInfo = null;
+
+        // if (this.hasLifeupPurchase) {
+        //     this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
+        // } else {
+        //     this.purchaseInfo = null;
+        // }
+
+        this.purchaseInfo = {
+            amount: "17,500원",
+            email: "mnmlogg@gmail.com",
+            name: "유혜민",
+            
         }
+          this.hasLifeupPurchase = true; 
     }
 
     onRequestMailCheck() {
@@ -446,7 +458,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
         this.isWaitingKakaoVerification = true;
         window.open(
-            'http://pf.kakao.com/_xktkXX/chat',
+            'http://pf.kakao.com/_dICwX/chat',
             '_blank'
         );
         this.userService.startVerificationWatcher(this.userId);

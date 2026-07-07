@@ -43,8 +43,8 @@ export class AutoManagerComponent {
         },
         {
             id: 'kakao-capture',
-            category: ['LifeUp', '수집'],
-            name: '카카오톡 수집',
+            category: ['LifeUp', '비서'],
+            name: '카카오톡 비서',
             description: [
                 '카카오톡 메시지 수신',
                 '설정된 규칙 자동 분석',

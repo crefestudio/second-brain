@@ -309,13 +309,13 @@ export class UserService {
     }
 
     async verifyPurchaser(
-        userId: string,
         templateId: string,
         email?: string,
-        phone?: string
+        phone?: string,
+        userId?: string
     ): Promise<boolean> {
 
-        if (!userId || !templateId || (!email && !phone)) {
+        if (!templateId || (!email && !phone)) {
             return false;
         }
 
@@ -350,21 +350,23 @@ export class UserService {
             );
 
             // firestore 저장
-            await setDoc(
-                doc(
-                    firestore,
-                    'users',
-                    userId,
-                    'purchases',
-                    templateId
-                ),
-                {
-                    verified: true,
-                    purchaser: result.purchaser,
-                    verifiedAt: serverTimestamp()
-                },
-                { merge: true }
-            );
+            if (userId) {
+                await setDoc(
+                    doc(
+                        firestore,
+                        'users',
+                        userId,
+                        'purchases',
+                        templateId
+                    ),
+                    {
+                        verified: true,
+                        purchaser: result.purchaser,
+                        verifiedAt: serverTimestamp()
+                    },
+                    { merge: true }
+                );
+            }
             return true;
 
         } catch (error: any) {
@@ -429,6 +431,24 @@ export class UserService {
             ...data?.purchaser ?? null,
             verified: data.verified
         };
+    }
+
+    static getVerifiedPurchaseFromLocalstorage(templateId: string): any | undefined {
+        const STORAGE_KEY = "notionable_verified_purchases";
+
+        const purchases = JSON.parse(
+            localStorage.getItem(STORAGE_KEY) || "{}"
+        );
+
+        return purchases[templateId];
+    }
+
+    static getVerifiedPurchases(): Record<string, any> {
+        const STORAGE_KEY = "notionable_verified_purchases";
+
+        return JSON.parse(
+            localStorage.getItem(STORAGE_KEY) || "{}"
+        );
     }
 
     //import { deleteDoc, doc } from 'firebase/firestore';
@@ -771,7 +791,7 @@ export class UserService {
 
                 const userData = userSnap.data();
                 const kakaoUserId = userData?.['kakaoUserId'];
-                
+
                 if (kakaoUserId) {
                     await setDoc(
                         doc(

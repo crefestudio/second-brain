@@ -63,6 +63,7 @@ export interface EventPayload {
     description?: string;
 }
 
+
 // import * as functions from "firebase-functions";
 // import * as admin from "firebase-admin";
 
@@ -846,6 +847,22 @@ class NotionService {
     //     return matched[0].id;
     // }
 
+    static async resolveDataSourceId(accessToken: string, databaseId: string): Promise<string> {
+        const notion = new Client({ auth: accessToken });
+
+        const db: any = await notion.databases.retrieve({
+            database_id: databaseId
+        });
+
+        const dataSourceId = db.data_sources?.[0]?.id;
+
+        if (!dataSourceId) {
+            throw new Error(`Data source not found. databaseId=${databaseId}`);
+        }
+
+        return dataSourceId;
+    }
+
     static async updateTemplateDbs(accessToken: string, dbNames: string[]) {
         const entries = await Promise.all(
             dbNames.map(async (t) => [
@@ -1502,6 +1519,11 @@ class NotionService {
         const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
         console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
 
+        let dataSourceId: string | undefined;
+
+        if (aiResult.action === "create") {
+            dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
+        }
 
         const entityBlocks = this.buildEntityBlocks(entity);
         const children: any[] = [...entityBlocks];
@@ -1509,16 +1531,45 @@ class NotionService {
         const hasContext = entity?.context && typeof entity.context === "string" && entity.context.trim().length > 0;
 
         if (aiResult.content && !hasContext) {
-            children.push({
-                object: "block",
-                type: "paragraph",
-                paragraph: {
-                    rich_text: [{
-                        type: "text",
-                        text: { content: aiResult.content }
-                    }]
-                }
-            });
+            const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+
+            if (youtubeRegex.test(aiResult.content.trim())) {
+                // URL 텍스트
+                children.push({
+                    object: "block",
+                    type: "paragraph",
+                    paragraph: {
+                        rich_text: [
+                            {
+                                type: "text",
+                                text: {
+                                    content: aiResult.content.trim()
+                                }
+                            }
+                        ]
+                    }
+                });
+
+                // 기존 embed
+                children.push({
+                    object: "block",
+                    type: "embed",
+                    embed: {
+                        url: aiResult.content.trim()
+                    }
+                });
+            } else {
+                children.push({
+                    object: "block",
+                    type: "paragraph",
+                    paragraph: {
+                        rich_text: [{
+                            type: "text",
+                            text: { content: aiResult.content }
+                        }]
+                    }
+                });
+            }
         }
 
         switch (aiResult.db) {
@@ -1569,17 +1620,38 @@ class NotionService {
 
                 if (!pageId) {
                     const page: any = await notion.pages.create({
-                        parent: { database_id: databaseId },
-                        properties
+                        parent: { data_source_id: dataSourceId! },
+                        properties,
+                        template: {
+                            type: "default"
+                        }
                     });
 
                     pageId = page.id;
+
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+
+                    if (children.length > 0) {
+                        await notion.blocks.children.append({
+                            block_id: pageId!,
+                            children
+                        });
+                    }
+
                     console.log(`[NotionCreate][task] created pageId = ${pageId}`);
                 } else {
+
                     await notion.pages.update({
                         page_id: pageId,
                         properties
                     });
+
+                    if (children.length > 0) {
+                        await notion.blocks.children.append({
+                            block_id: pageId,
+                            children
+                        });
+                    }
 
                     console.log(`[NotionCreate][task] updated pageId = ${pageId}`);
                 }
@@ -1617,16 +1689,49 @@ class NotionService {
                             relation: typeIds.map(id => ({ id }))
                         };
                     }
+
+                    // 메모에 색지정
+                    if (aiResult.db === 'memo') {
+                        const colorMap: Record<string, string> = {
+                            "아이디어": "파란색",
+                            "연락처": "분홍색",
+                            "계정 정보": "초록색",
+                            "필기": "보라색",
+                            "개인 문서": "노란색",
+                            "독서 기록": "보라색"
+                        };
+
+                        const color = colorMap[aiResult.type];
+
+                        if (color) {
+                            properties.색상 = {
+                                select: {
+                                    name: color
+                                }
+                            };
+                        }
+                    }
                 }
 
                 if (!pageId) {
                     const page: any = await notion.pages.create({
-                        parent: { database_id: databaseId },
+                        parent: { data_source_id: dataSourceId! },
                         properties,
-                        children: children.length ? children : undefined
+                        template: {
+                            type: "default"
+                        }
                     });
 
                     pageId = page.id;
+
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+
+                    if (children.length > 0) {
+                        await notion.blocks.children.append({
+                            block_id: pageId!,
+                            children
+                        });
+                    }
                     console.log(`[NotionCreate][${aiResult.db}] created pageId = ${pageId}`);
                 } else {
                     await notion.pages.update({
@@ -1655,10 +1760,12 @@ class NotionService {
                 `title = ${aiResult.title ?? "-"}`,
                 `type = ${aiResult.type ?? "-"}`,
                 aiResult.kinds ? `kinds = ${aiResult.kinds}` : null,
-                aiResult.tags?.length ? `tags = ${aiResult.tags.join(",")}` : null,
+                aiResult.tags?.length ? `tags = ${aiResult.tags.join(", ")}` : null,
                 aiResult.dateExpr ? `date = ${aiResult.dateExpr}` : null,
                 entity?.type ? `entity = ${entity.type}` : null
-            ].filter(Boolean).join(" | ")
+            ]
+                .filter(Boolean)
+                .join("\n")
         });
 
         console.log(`[NotionCreate] done db = ${aiResult.db} action = ${aiResult.action} pageId = ${pageId ?? "-"}`);
@@ -2049,6 +2156,9 @@ class NotionService {
                             }
                         ]
                     }
+                },
+                template: {
+                    type: "default"
                 }
             });
 
@@ -2061,29 +2171,33 @@ class NotionService {
     }
 
     static buildEntityBlocks(entity: any): any[] {
-        const normalize = (v: any): string[] => {
-            return (Array.isArray(v) ? v : v ? [v] : [])
-                .flat()
-                .map((t: any) => String(t))
-                .map((t: string) => t.replace(/^"+|"+$/g, "").trim())
-                .filter((t: string) => t.length > 0);
-        };
-
-        const objects: string[] = normalize(entity?.objects);
-        const ocrText: string = typeof entity?.ocrText === "string" ? entity.ocrText.trim() : "";
-        const context: string = typeof entity?.context === "string" ? entity.context.trim() : "";
-
-        console.log(`[Entity] start type = ${entity?.type ?? "none"} image = ${!!entity?.url} objects = ${objects.length} ocr = ${ocrText.length}`);
-
-        if (!entity || entity.type !== "image") {
-            console.log(`[Entity] skip type = ${entity?.type ?? "none"}`);
+        if (!entity?.type) {
+            console.log(`[Entity] skip type = none`);
             return [];
         }
 
-        const children: any[] = [];
+        switch (entity.type) {
+            case "image":
+                return this.buildImageBlocks(entity);
 
-        // 1. image
+            case "youtube":
+                return this.buildYoutubeBlocks(entity);
+
+            default:
+                console.log(`[Entity] unsupported type = ${entity.type}`);
+                return [];
+        }
+    }
+
+    static buildImageBlocks(entity: any): any[] {
+        const objects: string[] = Array.isArray(entity.objects) ? entity.objects : [];
+        const ocrText: string = typeof entity.ocrText === "string" ? entity.ocrText.trim() : "";
+        const context: string = typeof entity.context === "string" ? entity.context.trim() : "";
         const imageUrl: string = typeof entity.url === "string" ? entity.url.trim() : "";
+
+        console.log(`[Entity][image] start image = ${!!imageUrl} objects = ${objects.length} ocr = ${ocrText.length}`);
+
+        const children: any[] = [];
 
         if (imageUrl.length > 0) {
             children.push({
@@ -2097,7 +2211,6 @@ class NotionService {
         }
 
         if (context.length > 0) {
-            // 2. fallback context -> heading_3
             children.push({
                 object: "block",
                 type: "heading_3",
@@ -2112,7 +2225,6 @@ class NotionService {
             });
         }
 
-        // 3. OCR -> paragraph
         if (ocrText.length > 0) {
             children.push({
                 object: "block",
@@ -2128,10 +2240,7 @@ class NotionService {
             });
         }
 
-        // 4. tags -> blue paragraph
         if (objects.length > 0) {
-            const tagLine: string = objects.map((t: string) => `#${t}`).join(", ");
-
             children.push({
                 object: "block",
                 type: "paragraph",
@@ -2139,7 +2248,9 @@ class NotionService {
                     rich_text: [
                         {
                             type: "text",
-                            text: { content: tagLine },
+                            text: {
+                                content: objects.map(t => `#${t}`).join(", ")
+                            },
                             annotations: { color: "blue" }
                         }
                     ]
@@ -2147,10 +2258,194 @@ class NotionService {
             });
         }
 
-        console.log(`[Entity] done blocks = ${children.length}`);
+        console.log(`[Entity][image] done blocks = ${children.length}`);
 
         return children;
     }
+
+    // #youtube
+    // entity: {
+    //     type: "youtube",
+    //     url: userMessage.trim(),
+    //     title,
+    //     author,
+    //     thumbnail,
+    //     description
+    // }
+    static buildYoutubeBlocks(entity: any): any[] {
+        const thumbnail: string = typeof entity.thumbnail === "string" ? entity.thumbnail.trim() : "";
+        const title: string = typeof entity.title === "string" ? entity.title.trim() : "";
+        const channel: string = typeof entity.channel === "string" ? entity.channel.trim() : "";
+        //const description: string = typeof entity.description === "string" ? entity.description.trim() : "";
+        const videoUrl: string = typeof entity.url === "string" ? entity.url.trim() : "";
+
+        console.log(`[Entity][youtube] start thumbnail = ${!!thumbnail} title = ${title.length} channel = ${channel.length}`);
+
+        const children: any[] = [];
+
+        if (thumbnail.length > 0) {
+            children.push({
+                object: "block",
+                type: "image",
+                image: {
+                    type: "external",
+                    external: {
+                        url: thumbnail
+                    }
+                }
+            });
+        }
+
+        if (videoUrl.length > 0) {
+            children.push({
+                object: "block",
+                type: "embed",
+                embed: {
+                    url: videoUrl
+                }
+            });
+        }
+
+        // if (title.length > 0) {
+        //     children.push({
+        //         object: "block",
+        //         type: "heading_3",
+        //         heading_3: {
+        //             rich_text: [
+        //                 {
+        //                     type: "text",
+        //                     text: {
+        //                         content: title,
+        //                         link: videoUrl ? { url: videoUrl } : undefined
+        //                     }
+        //                 }
+        //             ]
+        //         }
+        //     });
+        // }
+
+        // if (channel.length > 0) {
+        //     children.push({
+        //         object: "block",
+        //         type: "paragraph",
+        //         paragraph: {
+        //             rich_text: [
+        //                 {
+        //                     type: "text",
+        //                     text: {
+        //                         content: `채널: ${channel}`
+        //                     }
+        //                 }
+        //             ]
+        //         }
+        //     });
+        // }
+
+        // if (description.length > 0) {
+        //     children.push({
+        //         object: "block",
+        //         type: "paragraph",
+        //         paragraph: {
+        //             rich_text: [
+        //                 {
+        //                     type: "text",
+        //                     text: {
+        //                         content: description
+        //                     }
+        //                 }
+        //             ]
+        //         }
+        //     });
+        // }
+
+        console.log(`[Entity][youtube] done blocks = ${children.length}`);
+
+        return children;
+    }
+
+
+    // static buildEntityBlocks(entity: any): any[] {
+    //     if (!entity || entity.type !== "image") {
+    //         console.log(`[Entity] skip type = ${entity?.type ?? "none"}`);
+    //         return [];
+    //     }
+
+    //     const objects: string[] = Array.isArray(entity.objects) ? entity.objects : [];
+    //     const ocrText: string = typeof entity.ocrText === "string" ? entity.ocrText.trim() : "";
+    //     const context: string = typeof entity.context === "string" ? entity.context.trim() : "";
+    //     const imageUrl: string = typeof entity.url === "string" ? entity.url.trim() : "";
+
+    //     console.log(`[Entity] start type = ${entity.type} image = ${!!imageUrl} objects = ${objects.length} ocr = ${ocrText.length}`);
+
+    //     const children: any[] = [];
+
+    //     // 1. image
+    //     if (imageUrl.length > 0) {
+    //         children.push({
+    //             object: "block",
+    //             type: "image",
+    //             image: {
+    //                 type: "external",
+    //                 external: { url: imageUrl }
+    //             }
+    //         });
+    //     }
+
+    //     // 2. context
+    //     if (context.length > 0) {
+    //         children.push({
+    //             object: "block",
+    //             type: "heading_3",
+    //             heading_3: {
+    //                 rich_text: [
+    //                     {
+    //                         type: "text",
+    //                         text: { content: context }
+    //                     }
+    //                 ]
+    //             }
+    //         });
+    //     }
+
+    //     // 3. OCR
+    //     if (ocrText.length > 0) {
+    //         children.push({
+    //             object: "block",
+    //             type: "paragraph",
+    //             paragraph: {
+    //                 rich_text: [
+    //                     {
+    //                         type: "text",
+    //                         text: { content: ocrText }
+    //                     }
+    //                 ]
+    //             }
+    //         });
+    //     }
+
+    //     // 4. objects tags
+    //     if (objects.length > 0) {
+    //         const tagLine = objects.map(t => `#${t}`).join(", ");
+
+    //         children.push({
+    //             object: "block",
+    //             type: "paragraph",
+    //             paragraph: {
+    //                 rich_text: [
+    //                     {
+    //                         type: "text",
+    //                         text: { content: tagLine },
+    //                         annotations: { color: "blue" }
+    //                     }
+    //                 ]
+    //             }
+    //         });
+    //     }
+
+    //     console.log(`[Entity] done blocks = ${children.length}`);
+
+    //     return children;
+    // }
 }
 
 
@@ -3546,18 +3841,19 @@ const HELP_RESPONSE = `
 어떻게 활용하면 되는지 알려드릴게요. 😊
 
 1. 할 일 등록하기
-할일이 떠오르면 바로 알려주세요. 알아서 척척 분류해 드립니다.
-분류: 할 것, 살 것, 읽을 것, 볼 것, 갈 곳으로 딱딱 나눠서 정리해 줘요.
-유형: 오늘, 내일, 일정, 다음, 나중에, 대기중
-중요도/긴급도: "이건 진짜 중요해!", "오늘까지 해야 돼!" 하고 말씀하시면 중요도, 긴급도 지정이 됩니다.
-날짜 : 오늘, 내일, 아니면 구체적인 날짜를 말씀해주세요. 해당날짜에 일정을 등록해 드릴께요.
+할일이 떠오르면 바로 알려주세요.
+알아서 척척 분류해 드립니다.
+
+분류: 할 것, 살 것, 읽을 것, 볼 것, 갈 곳
+유형: 오늘, 내일, 일정, 다음에, 나중에, 대기중
+중요도/긴급도: 중요, 매우 중요, 긴급, 매우 긴급 
+날짜 : 오늘, 내일, 몇일 후, 아니면 구체적인 날짜를 말씀해주세요.
 사진 첨부 가능: 책 표지, 영수증, 기억하고 싶은 사진을 툭 던져주셔도 다 기록해 드립니다.
 
 2. 메모 보관하기
-잊어버리기 쉬운 정보들을 안전하게 저장해 보세요.
-떠오르는 아이디어, 깜빡하기 쉬운 계정 정보, 연락처는 물론이고 책에서 본 좋은 글귀까지 싹 다 기억해 드릴게요.
+아이디어, 계정 정보, 연락처, 필기, 개인 문서, 독서 메모
 
-3. 링크 및 스크랩 저장하기
+3. 참고 자료 저장하기
 나중에 다시 보고 싶은 콘텐츠가 있다면 링크만 슥 보내주세요.
 유용한 웹사이트 링크, 인터넷 뉴스 기사, 유튜브 같은 영상까지 깔끔하게 수집해 둡니다.
 
@@ -3572,10 +3868,15 @@ export const kakaoAssistantPrompt = `
 사용자 메시지를 "실행 가능한 JSON"으로 변환합니다.
 
 ## 최우선 규칙
-- 반드시 다음 중 하나의 action만 선택 : "create", "correct", "delete", "chat", "help"
+이 AI는 일반 대화형 챗봇이 아니다.
+사용자의 모든 입력을 개인 지식 관리 대상으로 처리한다.
+질문 형태의 입력이라도 답변하지 않는다.
+
+- 반드시 다음 중 하나의 action만 선택 : "create", "correct", "delete", "help"
 - JSON 외 출력 금지
 - 설명, 코드블럭 금지
 - response는 사용자 표시 문장
+
 
 ## ACTION 분류
 task: 해야 할 일, 즉 행동이 필요한 일
@@ -3691,23 +3992,21 @@ reference: 다른 사람이 만든 정보 / 링크 / 기사 / 논문 / 연락처
 사용자와 관계가 가까운 정보이다.
 사용자가 직접 생성했거나, 관리하거나, 기억해야 하는 정보를 저장한다.
 
-a.type: 아이디어, 내 생각, 계정 정보, 연락처, 필기, 개인 문서, 독서 기록
+a.type: 아이디어, 계정 정보, 연락처, 필기, 개인 문서, 독서 메모
 
-아이디어 : 사용자의 새로운 생각, 계획, 발상
-내 생각 : 사용자의 감상, 평가, 의견, 회고
+아이디어: 사용자가 직접 만든 생각, 계획, 발상, 의견, 감상, 회고 등 개인적인 지식과 생각을 저장하는 메모
 계정 정보 : 서비스 계정, 로그인 정보, 인증 정보
 연락처 : 명함, 전화번호, 주소, 사람과의 연락 정보
 필기 : 사용자가 직접 작성하거나 참여하여 생성한 필기, 화이트보드, 강의 노트, 회의 메모
 개인 문서 : 사용자와 직접 관련된 문서, 예: 영수증, 병원 기록, 계약서, 고지서 등
-독서 기록 : 사용자가 읽고 있는 책의 발췌, 메모, 감상
+독서 메모 : 사용자가 읽고 있는 책의 발췌, 메모, 감상
 
 * 중요 규칙
-- 위 메모의 typoe이 명확할 때만 memo로 분류하고 모호하면 reference로 분류한다.
+- 위 메모의 type이 명확할 때만 memo로 분류하고 모호하면 reference로 분류한다.
 - 영문/숫자 식별자(예: ESGDbreeze, abc123)는 계정 정보를 우선 고려한다.
-- 추측해서 "내 생각"으로 분류하지 않는다.
+- type은 1개 필수
+- type 중에 해당하는 경우 1개 이상을 경우 예외적으로 2개까지만 가능
 
-
-b.tags: 메모를 설명하는 부가 키워드 1-2개
 c.importance: 중요, 매우 중요
 - 중요 관련 언급이 있을 때만 포함한다.
 - 언급이 없으면 필드를 출력하지 않는다.
@@ -3718,7 +4017,7 @@ c.importance: 중요, 매우 중요
   "db": "memo",
   "title": "카카오톡 비서",
   "type": "아이디어",
-  "tags": ["카카오톡","AI","자동화"],
+  "tags": ["AI"],
   "content": "카카오톡 비서",
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
@@ -3728,7 +4027,6 @@ c.importance: 중요, 매우 중요
 - 위 memo 카테고리에 명확하게 해당하지 않는 모든 정보는 reference로 분류한다.
 - reference는 나중에 참고하기 위해 수집하는 정보이다.
 
-a.tags: reference를 설명하는 부가 키워드 1-2개
 b.type: 이미지, 동영상, 글, 북마크
 c.importance: 중요, 매우 중요
 - 중요 관련 언급이 있을 때만 포함한다.
@@ -3740,48 +4038,9 @@ c.importance: 중요, 매우 중요
   "db": "reference",
   "title": "카카오톡 비서",
   "type": "글",
-  "tags": ["카카오톡","AI","자동화"],
+  "tags": ["AI"],
   "content": "카카오톡 비서",
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
-}
-
-
-4. chat
-chat은 사용자가 '노셔너블 비서'에게 답변을 직접 요구하는 경우에만 선택한다.
-
-chat 예시:
-- "~가 뭐야?"
-- "~왜 그래?"
-- "~어떻게 해?"
-- "~알려줘"
-- "~설명해줘"
-- "~추천해줘"
-- "~해석해줘"
-- "~인가?"
-- 물음표(?)가 포함된 직접 질문
-
-다음은 절대 chat으로 분류하지 않는다.
-- 설명문
-- 해석문
-- 발췌문
-- 기사
-- 리뷰
-- 경험담
-- 좋은 글
-- 꿈 해몽 내용
-- 공부 내용
-- 메모
-- 기록
-- 정보 정리
-- 긴 텍스트
-
-질문이 아닌 정보성 텍스트는 반드시 task, memo, reference 중 하나로 분류한다.
-분류가 애매하면 chat이 아니라 memo를 우선 선택한다.
-
-출력 예시:
-{
-  "action": "chat",
-  "response": "사용자 질문에 대한 자연스러운 답변"
 }
 
 5. help
@@ -3855,48 +4114,90 @@ correct는 기존 항목을 수정하기 위한 action이다.
 }
 
 6. tags 규칙
-해당 항목을 설명하는 부가 키워드 1~2개 (선택)
+tags는 필수 필드이다.
 
-tags는 필수가 아니다.
-tags는 여러 메모를 함께 묶어 탐색할 가치가 있을 때만 사용한다.
-내용 자체를 반복하거나 너무 구체적인 단어는 사용하지 않는다.
+tags의 목적:
+- 검색용 키워드가 아니다.
+- 해당 항목을 상위 개념으로 묶기 위한 카테고리 역할이다.
 
-사용 가능 예시
+생성 규칙:
+- 정말 대표성이 높은 카테고리 1개 생성한다.
+- 최대 2개까지만 허용한다.
 
-분야: 골프, 투자, 개발, 독서
-프로젝트/서비스: 비즈업, 이니시스, 노셔너블
-주제 영역: 세무, 마케팅, 건강관리
+예시:
 
-사용 불가 예시
+개발 관련:
+- 개발
+- AI
+- 웹서비스
 
-너무 작은 범위: 스윙, 생크
-이미 type과 중복: 계정, 전화번호
-상태 표현: 보류, 완료, 진행중
-개별 고유명사: GODOBreeze, ESGDbreeze
-단일 행동/상황: 연습, 확인, 저장
-하나의 문서나 메모에만 해당될 가능성이 높은 키워드
+비즈니스 관련:
+- 사업
+- 마케팅
+- 투자
 
-판단 기준
+생활 관련:
+- 건강관리
+- 여행
+- 독서
 
-"이 태그로 나중에 여러 메모를 모아볼 가치가 있는가?"를 기준으로 한다.
-가치가 없거나 확신이 없으면 tags를 출력하지 않는다.
+취미 관련:
+- 골프
+- 운동
 
-7. '[이미지 분석] 텍스트' 처리 규칙
+서비스/프로젝트 관련:
+- 노셔너블
+- 라이프업
 
-이미지에서 추출된 OCR, objects, context, hint 정보를 기반해서 일반 텍스트 입력과 동일하게 처리한다.
+생성 금지:
+
+너무 구체적인 단어:
+- 스윙
+- 생크
+- 아이언
+- OCR
+- Firebase 함수
+- 특정 오류명
+
+이미 type과 의미가 겹치는 것:
+- 아이디어
+- 연락처
+- 계정
+- 필기
+- 문서
+
+행동이나 상태:
+- 확인
+- 저장
+- 구매
+- 진행중
+- 완료
+
+단일 문서 또는 하나의 항목에만 해당되는 고유명사:
+- 파일명
+- 상품명
+- 책 제목
+- 사람 이름
+
+7. '[AI 분석] 텍스트' 처리 규칙
+
+이미지, 동영상 등에서 AI가 추출한 OCR, 객체, 설명, 메타데이터 등의 정보를 기반으로 일반 텍스트 입력과 동일하게 처리한다.
+
+## 대상
+
+- 이미지 분석 결과
+- 동영상 분석 결과
+- 기타 AI가 생성한 분석 결과
 
 ## 예외 규칙 (중요)
 
-* '[이미지 분석] 텍스트' 입력은 절대로 "chat"으로 처리하지 않는다.
-* 의미 해석이 불가능한 경우에도 chat fallback 금지
-* 반드시 기존 텍스트 분류 로직을 그대로 적용한다
+* 반드시 기존 텍스트 분류 로직을 그대로 적용한다.
   (task / memo / reference 시스템 재사용)
 
 ## 핵심 원칙
 
-'[이미지 분석] 텍스트'는 별도 입력 타입이 아니라
-“추가 정보가 포함된 일반 텍스트 입력”이다.
-
+'[AI 분석] 텍스트'는 별도 입력 타입이 아니라,
+추가 정보가 포함된 일반 텍스트 입력이다.
 
 8. 고유명사 처리
 책=read / 영화·드라마=watch / 장소=go / 상품=buy
@@ -3997,10 +4298,8 @@ title은 파일명이나 노션 페이지 제목으로 사용될 수 있어야 �
 - JSON만 출력
 - response는 필수
 - codeblock 금지
-- chat도 반드시 response 포함
 
 - 하나만 선택한다.
-- 애매하면 chat
 `;
 
 
@@ -4815,9 +5114,9 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", mi
             if (!connection.enabled) {
                 return res.status(500).json({
                     message: [
-                        "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
+                        "현재 카카오톡 비서 자동화가 꺼져 있습니다.",
                         "",
-                        "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 수집 자동화'를 활성화해주세요."
+                        "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 비서 자동화'를 활성화해주세요."
                     ].join('\n')
                 });
             }
@@ -5068,17 +5367,33 @@ export const trimKorean = (text = '', max = 50) =>
         : text;
 
 export async function prepareAssistantInput(userMessage: string, uid: string) {
-    console.log("[PREPARE] start", { uid, userMessage: userMessage });
-
-    if (!isKakaoImageUrl(userMessage)) {
-        console.log("[PREPARE] text input");
-        return {
-            aiInput: userMessage,
-            entity: {
-                type: "text"
-            }
-        };
+    if (isYoutubeUrl(userMessage)) {
+        return prepareYoutubeInput(userMessage);
     }
+
+    if (isKakaoImageUrl(userMessage)) {
+        return prepareImageInput(userMessage, uid);
+    }
+
+    return prepareTextInput(userMessage);
+}
+
+async function prepareTextInput(userMessage: string) {
+    return {
+        aiInput: userMessage,
+        entity: {
+            type: "text"
+        }
+    };
+}
+
+function isKakaoImageUrl(url: string) {
+    return /^https?:\/\/.*\.(jpg|jpeg|png|webp)/i.test(url)
+        || url.includes('talk.kakaocdn.net');
+}
+
+async function prepareImageInput(userMessage: string, uid: string) {
+    console.log("[PREPARE] start", { uid, userMessage: userMessage });
 
     let fileName: string | undefined;
 
@@ -5101,12 +5416,12 @@ export async function prepareAssistantInput(userMessage: string, uid: string) {
         const { ocrText, objects, context, hint } = await analyzeImageFromAI(imageUrl);
 
         const aiInput = `
-        [이미지 분석]
-        OCR: ${ocrText || "없음"}
-        객체: ${(Array.isArray(objects) ? objects : objects ? [objects] : []).join(", ") || "없음"}
-        설명: ${context || "없음"}
-        힌트: ${hint || "없음"}
-        `.trim();
+[이미지 분석]
+OCR: ${ocrText || "없음"}
+객체: ${objects.length > 0 ? objects.join(", ") : "없음"}
+설명: ${context || "없음"}
+힌트: ${hint || "없음"}
+`.trim();
 
         console.log("[PREPARE] analyzeImageFromAI success", {
             aiInput,
@@ -5120,7 +5435,7 @@ export async function prepareAssistantInput(userMessage: string, uid: string) {
                 type: "image",
                 url: imageUrl,
                 ocrText,
-                objects: Array.isArray(objects) ? objects : objects ? [objects] : [],
+                objects: Array.isArray(objects) ? objects : [],
                 context,
                 hint
             },
@@ -5133,14 +5448,144 @@ export async function prepareAssistantInput(userMessage: string, uid: string) {
     }
 }
 
-function isKakaoImageUrl(url: string) {
-    return /^https?:\/\/.*\.(jpg|jpeg|png|webp)/i.test(url)
-        || url.includes('talk.kakaocdn.net');
+export function isYoutubeUrl(url: string): boolean {
+    try {
+        const u = new URL(url.trim());
+        const host = u.hostname.toLowerCase();
+
+        if (![
+            "youtube.com",
+            "www.youtube.com",
+            "m.youtube.com",
+            "youtu.be"
+        ].includes(host)) {
+            return false;
+        }
+
+        return (
+            host === "youtu.be" ||
+            u.pathname === "/watch" ||
+            u.pathname.startsWith("/shorts/") ||
+            u.pathname.startsWith("/live/")
+        );
+    } catch {
+        return false;
+    }
 }
+
+// #youtube
+async function prepareYoutubeInput(userMessage: string) {
+    console.log("[PREPARE] start", { userMessage });
+
+    try {
+        console.log("[PREPARE] analyzeYoutube start");
+        const { title, author, thumbnail, description } = await fetchYoutubeMetadata(userMessage);
+
+        const aiInput = `
+[유튜브 영상]
+제목: ${title || "없음"}
+채널: ${author || "없음"}
+설명: ${description || "없음"}
+`.trim();
+
+        console.log("[PREPARE] analyzeYoutube success", { title, author, thumbnail });
+
+        return {
+            aiInput,
+            entity: {
+                type: "youtube",
+                url: userMessage.trim(),
+                title,
+                author,
+                thumbnail,
+                description
+            }
+        };
+    } catch (err) {
+        console.error("[PREPARE] ERROR", err);
+        throw err;
+    }
+}
+
+export async function fetchYoutubeMetadata(youtubeUrl: string): Promise<any> {
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    const videoId = extractYoutubeVideoId(youtubeUrl);
+
+    if (!videoId) {
+        throw new Error(`Invalid YouTube URL: ${youtubeUrl}`);
+    }
+
+    const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet&key=${apiKey}`;
+
+    const res = await fetch(url);
+
+    if (!res.ok) {
+        throw new Error(`YouTube API failed ${res.status}`);
+    }
+
+    const data = await res.json();
+    const item = data.items?.[0];
+
+    if (!item) {
+        throw new Error(`YouTube video not found: ${videoId}`);
+    }
+
+    const snippet = item.snippet;
+    const description = typeof snippet.description === "string" ? snippet.description.trim() : "";
+
+    return {
+        title: snippet.title,
+        author: snippet.channelTitle,
+        description: description.length > 500 ? `${description.substring(0, 500)}...` : description,
+        thumbnail: snippet.thumbnails?.high?.url ?? ""
+    };
+}
+
+function extractYoutubeVideoId(url: string): string | undefined {
+    const match = url.match(
+        /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([^&?\/]+)/
+    );
+
+    return match?.[1];
+}
+// export async function fetchYoutubeMetadata(url: string): Promise<{
+//     title?: string;
+//     author?: string;
+//     thumbnail?: string;
+//     description?: string;
+// }> {
+//     try {
+//         const endpoint = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+//         const res = await fetch(endpoint, {
+//             headers: {
+//                 "User-Agent": "Mozilla/5.0"
+//             }
+//         });
+//         if (!res.ok) {
+//             throw new Error(`YouTube oEmbed failed (${res.status})`);
+//         }
+
+//         const json = await res.json();
+
+//         return {
+//             title: json.title,
+//             author: json.author_name,
+//             thumbnail: json.thumbnail_url
+//         };
+//     } catch (err) {
+//         console.error("[YouTube] fetchYoutubeMetadata", err);
+
+//         return {};
+//     }
+// }
+
 
 export async function analyzeImageFromAI(imageUrl: string) {
     const res = await clientAI.chat.completions.create({
         model: "gpt-4.1-mini",
+        response_format: {
+            type: "json_object"
+        },
         messages: [
             {
                 role: "user",
@@ -5148,61 +5593,62 @@ export async function analyzeImageFromAI(imageUrl: string) {
                     {
                         type: "text",
                         text: `
-다음 이미지를 분석하여 "의미 해석 데이터"를 생성해라.
+다음 이미지를 분석하여 "의미 해석 데이터" JSON을 생성해라.
 
 절대 행동 판단(task/memo/reference 등)은 하지 않는다.
 절대 실행/분류/의도 판단을 하지 않는다.
 
----
+반드시 아래 JSON 형식으로만 출력한다.
+설명, 마크다운, 코드블록 금지.
 
-출력 형식 (설명 없이 정확히 출력):
-
-ocrText: "welcome, 2026",
-objects: ["사람", "책", "고양이"],
-context: "디지털 플래너 또는 개인 생산성 관리용 노트 화면 캡처.",
-hint: "memo-like"
+{
+  "ocrText": "",
+  "objects": [],
+  "context": "",
+  "hint": ""
+}
 
 ---
 
 ## 1. OCR
-이미지 안의 텍스트를 가능한 정확하게 추출
-없으면 ""
+이미지 안의 텍스트를 가능한 정확히 추출한다.
+없으면 빈 문자열 ""
 
 ---
 
 ## 2. OBJECTS
-이미지에 포함된 핵심 객체/요소를 나열
-
-규칙:
-- 배열로 출력
+이미지에 포함된 핵심 객체/요소를 배열로 출력한다.
 
 예:
-사람
-책
-영수증
-웹페이지
-로고
-음식
-장소
-화면(UI)
-문서
+[
+  "사람",
+  "책",
+  "영수증",
+  "웹페이지",
+  "로고",
+  "음식",
+  "장소",
+  "화면(UI)",
+  "문서"
+]
 
 ---
 
 ## 3. CONTEXT
-이미지가 어떤 상황인지 설명 (짧게)
+이미지가 어떤 상황인지 짧게 설명한다.
+
 예:
-쇼핑 관련 화면
-메모/아이디어 스크린샷
-웹 아티클 캡처
-영수증 사진
-일정/할일 메모
-광고/홍보 이미지
+- 쇼핑 관련 화면
+- 메모/아이디어 스크린샷
+- 웹 아티클 캡처
+- 영수증 사진
+- 일정/할일 메모
+- 광고/홍보 이미지
 
 ---
 
-## 4. HINT (중요)
-다음 중 하나만 선택 (추측이 아니라 “가능성”)
+## 4. HINT
+아래 값 중 하나만 선택한다.
 
 task-like
 memo-like
@@ -5217,13 +5663,26 @@ task-like:
 - 할일/구매/예약/방문/읽기/보기 의도가 보임
 
 memo-like:
-- 개인 기록 / 아이디어 / 메모 / 연락처 / 좋은 글
+- 개인 기록
+- 아이디어
+- 메모
+- 연락처
+- 좋은 글
 
 reference-like:
-- 외부 콘텐츠 (웹, 뉴스, 책, PPT, 자료, 통계, 캡처)
+- 외부 콘텐츠
+- 웹
+- 뉴스
+- 책
+- PPT
+- 자료
+- 통계
+- 캡처
 
 unknown:
-- 분류 불가 / 애매 / 정보 부족
+- 분류 불가
+- 애매함
+- 정보 부족
 `
                     },
                     {
@@ -5238,24 +5697,17 @@ unknown:
         temperature: 0
     });
 
-    const text = res.choices[0].message.content ?? "";
-    const get = (key: string) => {
-        const match = text.match(new RegExp(`${key}:\\s*([^\\n]+)`));
-        return match?.[1]?.trim() ?? "";
-    };
+    const text = res.choices[0].message.content ?? "{}";
 
-    const ocrText = get("ocrText");
-    const objects = Array.isArray(get("objects")) ? get("objects") : get("objects") ? [get("objects")] : [];
-    const context = get("context");
-    const hint = get("hint") || "unknown";
+    const result = JSON.parse(text);
+
     return {
-        ocrText,
-        objects,
-        context,
-        hint
+        ocrText: result.ocrText ?? "",
+        objects: Array.isArray(result.objects) ? result.objects : [],
+        context: result.context ?? "",
+        hint: result.hint ?? "unknown"
     };
 }
-
 // async function describeImage(imageUrl: string) {
 
 //     const response = await clientAI.chat.completions.create({

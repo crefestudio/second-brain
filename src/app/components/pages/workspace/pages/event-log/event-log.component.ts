@@ -42,7 +42,7 @@ export class EventLogComponent {
         },
         {
             id: 'kakao-capture',
-            name: '카카오톡 수집'
+            name: '카카오톡 비서'
         }
     ];
 
@@ -208,7 +208,7 @@ export class EventLogComponent {
 
     readonly agentNames: Record<string, string> = {
         'secondbrain': '세컨드브레인 노트 키워드 추출',
-        'kakao-capture': '카카오톡 수집'
+        'kakao-capture': '카카오톡 비서'
     };
 
     getAgentName(agentId: string): string {
