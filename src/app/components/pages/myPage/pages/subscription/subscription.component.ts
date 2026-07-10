@@ -4,6 +4,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
+import { _log } from '../../../../../lib/cf-common/cf-common';
+
+const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-subscription',
@@ -54,15 +57,14 @@ export class SubscriptionComponent implements OnInit {
     }
 
     async updatePurchaseInfo() {
-        this.userId = this.authService.getUserId();
-        if (!this.userId) { return; }
-        this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
-        this.hasLifeupPurchase = this.purchaseInfo != null;
-        if (this.hasLifeupPurchase) {
-            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
+        if (this.userId) {
+            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, TEMPLATE_KEY_LIFEUP);
         } else {
-            this.purchaseInfo = null;
+            this.purchaseInfo = await UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
         }
+        _log('updatePurchaseInfo userId, purchaseInfo =>', this.userId, this.purchaseInfo);
+
+        this.hasLifeupPurchase = this.purchaseInfo != null;
     }
 
 
@@ -74,8 +76,7 @@ export class SubscriptionComponent implements OnInit {
         if (!this.userId) {
             console.error('사용자를 찾을 수 없습니다.');
             // this.errorMessage = '사용자를 찾을 수 없습니다.';
-            return;
-        }
+            return;        }
     }
 
     submitVerification() {

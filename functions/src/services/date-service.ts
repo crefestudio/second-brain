@@ -19,6 +19,14 @@ const WEEKDAY: Record<string, number> = {
     saturday: 6,
 };
 
+export function formatDateTime(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:00`;
+}
+
+export function formatDate(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export function resolveDateExpr(
     dateExpr: string | null,
     now: Date = new Date()
@@ -30,7 +38,7 @@ export function resolveDateExpr(
     const explicit = dateExpr.match(/^date:(\d{4}-\d{2}-\d{2})$/);
     if (explicit) {
         return {
-            date: new Date(`${explicit[1]}T00:00:00`),
+            date: new Date(`${explicit[1]}T00:00:00+09:00`),
             hasTime: false,
         };
     }
@@ -116,21 +124,21 @@ export function resolveDateExpr(
         const d = new Date(now);
 
         switch (unit) {
-        case "m":
-            d.setMinutes(d.getMinutes() + value);
-            break;
+            case "m":
+                d.setMinutes(d.getMinutes() + value);
+                break;
 
-        case "h":
-            d.setHours(d.getHours() + value);
-            break;
+            case "h":
+                d.setHours(d.getHours() + value);
+                break;
 
-        case "d":
-            d.setDate(d.getDate() + value);
-            d.setHours(0, 0, 0, 0);
-            return {
-                date: d,
-                hasTime: false,
-            };
+            case "d":
+                d.setDate(d.getDate() + value);
+                d.setHours(0, 0, 0, 0);
+                return {
+                    date: d,
+                    hasTime: false,
+                };
         }
 
         return {
@@ -181,6 +189,118 @@ export function resolveDateExpr(
         return {
             date: d,
             hasTime: false,
+        };
+    }
+
+    // /////////////////////////////////////////////////
+    // date:2026-07-03
+    const explicitYmd = dateExpr.match(/^date:(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (explicitYmd) {
+        const [, y, m, d] = explicitYmd;
+
+        return {
+            date: new Date(`${y}-${m}-${d}T00:00:00+09:00`),
+            hasTime: false,
+        };
+    }
+
+    // /////////////////////////////////////////////////
+    // date:08-08
+    const explicitMd = dateExpr.match(/^date:(\d{2})-(\d{2})$/);
+
+    if (explicitMd) {
+        const [, m, d] = explicitMd;
+
+        return {
+            date: new Date(
+                now.getFullYear(),
+                Number(m) - 1,
+                Number(d)
+            ),
+            hasTime: false,
+        };
+    }
+
+    // /////////////////////////////////////////////////
+    // date:08
+    const explicitDay = dateExpr.match(/^date:(\d{2})$/);
+
+    if (explicitDay) {
+        const [, d] = explicitDay;
+
+        return {
+            date: new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                Number(d)
+            ),
+            hasTime: false,
+        };
+    }
+
+    // /////////////////////////////////////////////////
+    // date:2026-07-03+15:00
+    const explicitYmdTime = dateExpr.match(
+        /^date:(\d{4})-(\d{2})-(\d{2})\+(\d{2}):(\d{2})$/
+    );
+
+    if (explicitYmdTime) {
+        const [, y, m, d, hh, mm] = explicitYmdTime;
+
+        return {
+            date: new Date(`${y}-${m}-${d}T${hh}:${mm}:00+09:00`),
+            hasTime: true,
+        };
+    }
+
+    // /////////////////////////////////////////////////
+    // date:08-08+15:00
+    const explicitMdTime = dateExpr.match(
+        /^date:(\d{2})-(\d{2})\+(\d{2}):(\d{2})$/
+    );
+
+    if (explicitMdTime) {
+        const [, m, d, hh, mm] = explicitMdTime;
+
+        const date = new Date(
+            now.getFullYear(),
+            Number(m) - 1,
+            Number(d),
+            Number(hh),
+            Number(mm),
+            0,
+            0
+        );
+
+        return {
+            date,
+            hasTime: true,
+        };
+    }
+
+    // /////////////////////////////////////////////////
+    // date:08+15:00
+    const explicitDayTime = dateExpr.match(
+        /^date:(\d{2})\+(\d{2}):(\d{2})$/
+    );
+
+    if (explicitDayTime) {
+        const [, d, hh, mm] = explicitDayTime;
+
+        const date = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            Number(d),
+            Number(hh),
+            Number(mm),
+            0,
+            0
+        );
+
+        return {
+            date,
+            hasTime: true,
         };
     }
 

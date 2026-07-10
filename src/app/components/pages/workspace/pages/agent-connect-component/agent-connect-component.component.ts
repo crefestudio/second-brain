@@ -11,7 +11,7 @@ import { AuthService } from '../../../../../services/auth.service';
 import { NACommonService } from '../../../../../services/common.service';
 
 
-const templateKey = 'lifeUp';
+const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-agent-connect-component',
@@ -124,7 +124,6 @@ export class AgentConnectComponentComponent implements OnInit {
 
 
     async submitVerification() {
-        // if (!this.userId) { return; }
         if (!this.verifyValue) return;
 
         this.isVerifying = true;
@@ -161,12 +160,17 @@ export class AgentConnectComponentComponent implements OnInit {
         }
 
         try {
-            const success = await this.userService.verifyPurchaser('lifeUp', email, phone);
+            const success = await this.userService.verifyPurchaser(TEMPLATE_KEY_LIFEUP, email, phone);
             if (!success) {
                 this.errorMessage = '구매정보를 찾을 수 없습니다.';
                 return;
             }
-
+            // 만약에 이미 userId가 있다면 서버에 저장해야 함
+            if (this.userId) {
+                let purchaseInfo = UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
+                _log('submitVerification purchaseInfo =>', purchaseInfo);
+                await UserService.savePurchaserInfo(this.userId, TEMPLATE_KEY_LIFEUP, purchaseInfo);
+            }
             this.updatePurchaseInfo();
             ToastService.show('구매 정보가 확인되었습니다.');
 
@@ -199,27 +203,14 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     async updatePurchaseInfo() {
-        //if (this.userId) {
-        //    this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
-        //} else {
-        //    this.purchaseInfo = await UserService.getVerifiedPurchaseFromLocalstorage('lifeUp');
-        //}
-        _log('updatePurchaseInfo purchaseInfo =>', this.purchaseInfo);
-        this.hasLifeupPurchase = this.purchaseInfo != null;
-
-        // if (this.hasLifeupPurchase) {
-        //     this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, 'lifeUp');
-        // } else {
-        //     this.purchaseInfo = null;
-        // }
-
-        this.purchaseInfo = {
-            amount: "17,500원",
-            email: "mnmlogg@gmail.com",
-            name: "유혜민",
-            
+        if (this.userId) {
+            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, TEMPLATE_KEY_LIFEUP);
+        } else {
+            this.purchaseInfo = await UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
         }
-          this.hasLifeupPurchase = true; 
+        _log('updatePurchaseInfo userId, purchaseInfo =>', this.userId, this.purchaseInfo);
+
+        this.hasLifeupPurchase = this.purchaseInfo != null;
     }
 
     onRequestMailCheck() {
@@ -383,6 +374,11 @@ export class AgentConnectComponentComponent implements OnInit {
 
                 this.userId = result.userId;
 
+                // localstorage에 있는 것을 firestore에 저장
+                if (this.purchaseInfo) {
+                    await UserService.savePurchaserInfo(this.userId, TEMPLATE_KEY_LIFEUP, this.purchaseInfo);
+                }
+
                 // 세션 단계로 넘어감   
                 // if (this.userId !== result.userId) {
                 //     this.userId = result.userId;
@@ -533,7 +529,7 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     async onClickDisconnectNotionTemplate() {
-        const result = await this.userService.disconnectNotionTemplate( this.userId);
+        const result = await this.userService.disconnectNotionTemplate(this.userId);
         this.updateSession();
 
         if (result) {

@@ -1,4 +1,229 @@
-<div class="coming-soon">
+<div class="page">
+    <div class="page-header">
+
+        <h1>
+            ⚡ 라이프업 자동화 비서
+        </h1>
+
+        <div class="hero-box">
+
+            <div class="hero-title">
+                환영합니다. 🎉
+            </div>
+
+            <div class="hero-description">
+                이곳은 AI를 활용하여 <strong>라이프업 템플릿</strong>을 더욱 편리하게 활용하기 위한 <strong> 자동화 기능</strong>을 관리하는 공간 입니다.<br>
+                <strong>라이프업 비서</strong>를 템플릿과 연결을 하고, 각 <strong>자동화 기능</strong>을 설정하거나 이용 현황을 확인할 수 있습니다.<br>
+            </div>
+            @if(!(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId)) {
+            <div class="hero-action">
+                <div class="hero-action-text">
+                    템플릿을 연결하고 바로 시작해보세요.&nbsp;&nbsp;&nbsp;<button class="verify-btn" routerLink="/workspace/connect">
+                        템플릿 연결 하기
+                    </button>
+
+                </div>
+            </div>
+            }
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard-grid">
+
+        <!-- 연결 상태 -->
+
+        <div class="dashboard-card">
+
+            <div class="dashboard-title">
+                라이프업 비서 연결 상태
+            </div>
+
+            <div class="dashboard-content">
+
+                <div class="dashboard-item">
+                    <span>라이프업 템플릿</span>
+
+                    @if(userId && hasLifeupPurchase && notionAccessToken) {
+                    <span class="badge success">
+                        연결 완료
+                    </span>
+                    } @else {
+                    <span class="badge pending">
+                        미연결
+                    </span>
+                    }
+                </div>
+
+                <div class="dashboard-item">
+                    <span>카카오톡 비서</span>
+
+                    @if(kakaoUserId && userId && hasLifeupPurchase && notionAccessToken) {
+                    <span class="badge success">
+                        연결 완료
+                    </span>
+                    } @else {
+                    <span class="badge pending">
+                        미연결
+                    </span>
+                    }
+                </div>
+
+            </div>
+
+            <div class="dashboard-footer">
+                <button class="verify-btn" routerLink="/workspace/connect">
+                    @if(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId) {
+                    연결 관리하기
+                    } @else {
+                    연결하러 가기
+                    }
+                </button>
+            </div>
+
+        </div>
+
+        <!-- 자동화 비서 -->
+
+        <div class="dashboard-card">
+
+            <div class="dashboard-title">
+                자동화 비서 동작 상태
+            </div>
+
+            <div class="dashboard-content">
+
+                <div class="dashboard-item">
+
+                    <span>세컨드브레인 키워드 추출</span>
+
+                    <span class="badge success">
+                        사용중
+                    </span>
+
+                </div>
+
+                <div class="dashboard-item">
+
+                    <span>카카오톡 비서</span>
+
+                    <span class="badge success">
+                        사용중
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- 오늘 비서가 한 일 -->
+
+        <div class="dashboard-card">
+
+            <div class="dashboard-title">
+                오늘 비서가 한 일
+            </div>
+
+            <!-- <div class="dashboard-summary">
+
+                <div class="summary-title">
+                    오늘 처리한 작업
+                </div>
+
+                <button class="summary-number">
+                    33
+                </button>
+
+            </div> -->
+
+            <div class="dashboard-content">
+                <div class="dashboard-item">
+                    <span>TOTAL</span>
+
+                    <button class="count-btn" routerLink="/workspace/event-log">
+                        {{totalCount}}
+                    </button>
+                </div>
+
+                <div class="dashboard-item">
+                    <span>카카오톡 비서</span>
+
+                    <button class="count-btn" routerLink="/workspace/event-log/kakao-capture">
+                        {{kakaoCount}}
+                    </button>
+                </div>
+
+                <div class="dashboard-item">
+                    <span>세컨드브레인 키워드 추출</span>
+
+                    <button class="count-btn" routerLink="/workspace/event-log/secondbrain">
+                        {{secondbrainCount}}
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Guide -->
+    <section class="guide">
+
+        <div class="guide-card">
+
+            <h2>AI 비서가 도와드리는 일</h2>
+
+            <div class="guide-item">
+                <h3>💬 카카오톡 비서</h3>
+                <p>
+                    카카오톡으로 보낸 메모, 할 일, 링크, 사진 등을
+                    AI가 자동으로 분류하여 라이프업 템플릿에 저장합니다.
+                </p>
+            </div>
+            <div class="guide-item">
+                <h3>🧠 세컨드브레인 키워드 추출</h3>
+                <p>
+                    노트를 분석하여 핵심 키워드를 자동으로 추출하고
+                    지식 간의 연결을 더욱 쉽게 만들어줍니다.
+                </p>
+            </div>
+        </div>
+
+        <div class="guide-card">
+            <h2>자주 묻는 질문</h2>
+            <h4>비용은 어떻게 되나요?</h4>
+            <p>
+                현재는 베타 테스트 기간으로 모든 기능을 무료로 이용할 수 있습니다.
+                추후 구독제가 도입되더라도 충분한 사전 안내 후 진행되며,
+                자동으로 결제되거나 구독되지 않습니다.
+            </p>
+            <h4>보안은 안전한가요?</h4>
+            <p>
+                자동화 비서는 사용자가 권한을 허용한 라이프업 템플릿만 접근합니다.
+                작업을 위해 필요한 데이터는 처리 후 즉시 삭제되며,
+                일부 기능의 캐시 데이터는 자동화 관리에서 확인할 수 있습니다.
+            </p>
+        </div>
+
+        <div class="guide-card">
+
+            <h2>앞으로 추가될 기능</h2>
+
+            <ul>
+                <li>✨ 라이프업 코치</li>
+                <li>🔄 템플릿 자동 업데이트</li>
+                <li>☁  라이프업 자료 저장소</li>
+                <li>📝 노트 제목 자동 생성</li>
+            </ul>
+
+        </div>
+
+    </section>
+
+</div>
+
+<!-- <div class="coming-soon">
 
     <div class="icon">
         🚧
@@ -9,7 +234,7 @@
     </h2>
 
     <p>
-        이 기증은 아직 준비중입니다.
+        이 기능은 아직 준비중입니다.
     </p>
 
-</div>
+</div> -->

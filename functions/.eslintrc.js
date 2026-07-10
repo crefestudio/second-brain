@@ -9,7 +9,6 @@ module.exports = {
         "plugin:import/errors",
         "plugin:import/warnings",
         "plugin:import/typescript",
-        "google",
         "plugin:@typescript-eslint/recommended",
     ],
     parser: "@typescript-eslint/parser",
@@ -26,9 +25,12 @@ module.exports = {
         "import",
     ],
     rules: {
-        "quotes": ["error", "double"],
-        "import/no-unresolved": 0,
-        "indent": ["error", 4],
+        "quote-props": "off",
+        "comma-dangle": "off",
+        "indent": "off",
+        "no-multiple-empty-lines": "off",
+        "no-trailing-spaces": "off",
         "require-jsdoc": "off",
-    },
+
+    }
 };

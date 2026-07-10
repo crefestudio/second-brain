@@ -262,7 +262,7 @@ export const routes: Routes = [
 
   {
     path: '**',
-    redirectTo: 'workspace/home'
+    redirectTo: 'workspace'
   }
 ];
 

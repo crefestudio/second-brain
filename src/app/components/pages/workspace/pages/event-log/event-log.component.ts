@@ -2,8 +2,7 @@ import { _log } from '../../../../../lib/cf-common/cf-common';
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
-
+import { ActivatedRoute, Router } from '@angular/router';
 import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 import { UserService } from '../../../../../services/user.service';
@@ -52,7 +51,8 @@ export class EventLogComponent {
 
     constructor(
         private authService: AuthService,
-        private route: ActivatedRoute
+        private route: ActivatedRoute,
+        private router: Router
     ) {
     }
 
@@ -227,8 +227,13 @@ export class EventLogComponent {
     }
 
     async selectAgent(agentId: string) {
-
         this.selectedAgentId = agentId;
+
+        await this.router.navigate(
+            agentId
+                ? ['/workspace/event-log', agentId]
+                : ['/workspace/event-log']
+        );
 
         this.logs = [];
         this.lastDoc = null;
@@ -236,7 +241,7 @@ export class EventLogComponent {
 
         await this.loadLogs();
     }
-
+    
     toggleLog(log: any) {
         this.selectedLog =
             this.selectedLog === log ? null : log;

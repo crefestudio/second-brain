@@ -4,7 +4,7 @@ import { Injectable } from '@angular/core';
 import { firestore } from '../firebase';
 import {
     doc, updateDoc, deleteField, collection, query, where, getDocs, setDoc, getDoc, deleteDoc, Timestamp, limit, onSnapshot, serverTimestamp, orderBy,
-    startAfter, QueryDocumentSnapshot, DocumentData
+    startAfter, QueryDocumentSnapshot, DocumentData, getCountFromServer
 } from 'firebase/firestore';
 
 import { firstValueFrom, Subject, Subscription } from 'rxjs';
@@ -308,19 +308,12 @@ export class UserService {
         }
     }
 
-    async verifyPurchaser(
-        templateId: string,
-        email?: string,
-        phone?: string,
-        userId?: string
-    ): Promise<boolean> {
-
+    async verifyPurchaser(templateId: string, email?: string, phone?: string, userId?: string): Promise<boolean> {
         if (!templateId || (!email && !phone)) {
             return false;
         }
 
         try {
-
             const result = await firstValueFrom(
                 this.http.post<any>(
                     `${this.functionsBaseUrl}/verifyPurchaser`,
@@ -334,41 +327,18 @@ export class UserService {
 
             // localStorage 저장
             const STORAGE_KEY = 'notionable_verified_purchases';
-
             const purchases = JSON.parse(
                 localStorage.getItem(STORAGE_KEY) || '{}'
             );
-
             purchases[templateId] = {
                 ...result.purchaser,
                 verifiedAt: Date.now()
             };
-
             localStorage.setItem(
                 STORAGE_KEY,
                 JSON.stringify(purchases)
             );
-
-            // firestore 저장
-            if (userId) {
-                await setDoc(
-                    doc(
-                        firestore,
-                        'users',
-                        userId,
-                        'purchases',
-                        templateId
-                    ),
-                    {
-                        verified: true,
-                        purchaser: result.purchaser,
-                        verifiedAt: serverTimestamp()
-                    },
-                    { merge: true }
-                );
-            }
             return true;
-
         } catch (error: any) {
 
             console.error(
@@ -380,6 +350,33 @@ export class UserService {
         }
     }
 
+    static async savePurchaserInfo(
+        userId: string,
+        templateId: string,
+        purchaser: any
+    ): Promise<void> {
+        if (!userId) {
+            throw new Error('userId is required.');
+        }
+
+        if (!templateId) {
+            throw new Error('templateId is required.');
+        }
+
+        if (!purchaser) {
+            throw new Error('purchaser is required.');
+        }
+
+        await setDoc(
+            doc(firestore, 'users', userId, 'purchases', templateId),
+            {
+                verified: true,
+                purchaser,
+                verifiedAt: serverTimestamp()
+            },
+            { merge: true }
+        );
+    }
     // static async isPurchased(
     //     userId: string,
     //     templateId: string
@@ -433,7 +430,7 @@ export class UserService {
         };
     }
 
-    static getVerifiedPurchaseFromLocalstorage(templateId: string): any | undefined {
+    static getPurchaseInfoFromLocalstorage(templateId: string): any | undefined {
         const STORAGE_KEY = "notionable_verified_purchases";
 
         const purchases = JSON.parse(
@@ -441,14 +438,6 @@ export class UserService {
         );
 
         return purchases[templateId];
-    }
-
-    static getVerifiedPurchases(): Record<string, any> {
-        const STORAGE_KEY = "notionable_verified_purchases";
-
-        return JSON.parse(
-            localStorage.getItem(STORAGE_KEY) || "{}"
-        );
     }
 
     //import { deleteDoc, doc } from 'firebase/firestore';
@@ -749,6 +738,49 @@ export class UserService {
         };
     }
 
+    static async getTodayEventCount(userId: string, agentId?: string): Promise<number> {
+        if (!userId) {
+            return 0;
+        }
+
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+
+        const constraints: any[] = [
+            where('updatedAt', '>=', start),
+            where('updatedAt', '<=', end)
+        ];
+
+        if (agentId) {
+            constraints.push(
+                where('agentId', '==', agentId)
+            );
+        }
+
+        console.log('[EventCount] userId =', userId);
+        console.log('[EventCount] agentId =', agentId);
+        console.log('[EventCount] start =', start);
+        console.log('[EventCount] end =', end);
+
+        const q = query(
+            collection(
+                firestore,
+                'users',
+                userId,
+                'events'
+            ),
+            ...constraints
+        );
+
+        const snapshot = await getCountFromServer(q);
+
+        console.log('[EventCount] count =', snapshot.data().count);
+
+        return snapshot.data().count;
+    }
     static async updateUserAutomation(
         userId: string,
         agentId: string,
@@ -783,7 +815,7 @@ export class UserService {
 
             ///////////////////////////////////////////////////
             // 카카오 비서라면 캐시 동기화
-            if (agentId === 'kakaoAssistant') {
+            if (agentId === 'kakao-capture') {
 
                 const userSnap = await getDoc(
                     doc(firestore, 'users', userId)

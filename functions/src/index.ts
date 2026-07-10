@@ -70,7 +70,7 @@ export interface EventPayload {
 //admin.initializeApp();
 
 import * as functions from "firebase-functions";
-import { resolveDateExpr } from './services/date-service';
+import { formatDate, formatDateTime, resolveDateExpr } from './services/date-service';
 
 export const importPurchasers = functions.https.onRequest(
     async (req, res) => {
@@ -317,8 +317,13 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
             throw new Error(`데이터베이스를 찾지 못했습니다. : ${missing.join(", ")}`)
         }
 
+        const userRef = db.collection("users").doc(userId);
+        const userSnap = await userRef.get();
+        const user = userSnap.data();
+        const kakaoUserId = user?.kakaoUserId;
+
         // users
-        await db.collection("users").doc(userId).set({
+        await userRef.set({
             notionAccessToken: notionToken.access_token,
             notionConnection: {
                 workspaceId: notionToken.workspace_id,
@@ -328,22 +333,49 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
                 connectedAt: admin.firestore.FieldValue.serverTimestamp()
             },
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true })
+        }, { merge: true });
+
+        // secondbrain은 항상 초기화
+        
+        await userRef.collection("integrations").doc("secondbrain").set(
+            {
+                //// 이전 버전 호화성을 위해 넣음
+                accessToken: notionToken.access_token,
+                workspaceId: notionToken.workspace_id,
+                botId: notionToken.bot_id,
+                duplicatedTemplateId: notionToken.duplicated_template_id,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                noteDatabaseId: dbMap['note'],
+                ////////////////////////////////////////////////
+                enabled: false
+            },
+            { merge: true }
+        );
+
+        // 카카오는 기존 연결 여부에 따라 처리
+        if (!kakaoUserId) {
+            await userRef.collection("integrations").doc("kakao-capture").set(
+                {
+                    enabled: false
+                },
+                { merge: true }
+            );
+        }
+        //////////////////////////////////////
+        // agent 초기화
 
         // secondbrain 연결정보 저장 : 이전 버전을 위해 / 임시 코드
-        await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
-            // accessToken: notionToken.access_token,
-            // workspaceId: notionToken.workspace_id,
-            // botId: notionToken.bot_id,
-            // duplicatedTemplateId: notionToken.duplicated_template_id,
-            // updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            //noteDatabaseId: noteDatabaseId,
-            enabled: false
-        });
+        // await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
+        //     enabled: false
+        // });
 
-        await db.collection("users").doc(userId).collection("integrations").doc("kakao-capture").set({
-            enabled: false
-        });
+        // await db.collection("users").doc(userId).collection("integrations").doc("kakao-capture").set({
+        //     enabled: false
+        // });
+        // const kakaoUserId = userDoc.get('kakaoUserId');
+        // if (kakaoUserId) {
+        //     await connectKakaoUser(uid, kakaoUserId);
+        // }
 
         await Promise.all(
             (Object.entries(dbMap) as [string, string][])
@@ -1520,7 +1552,6 @@ class NotionService {
         console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
 
         let dataSourceId: string | undefined;
-
         if (aiResult.action === "create") {
             dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
         }
@@ -1612,8 +1643,9 @@ class NotionService {
                     properties.날짜 = {
                         date: {
                             start: parsed.hasTime
-                                ? parsed.date.toISOString()
-                                : parsed.date.toISOString().slice(0, 10)
+                                ? formatDateTime(parsed.date)
+                                : formatDate(parsed.date),
+                            ...(parsed.hasTime ? { time_zone: "Asia/Seoul" } : {})
                         }
                     };
                 }
@@ -1772,6 +1804,8 @@ class NotionService {
 
         return pageId;
     }
+
+
     // static async createDbItemFromAiResult(
     //     userId: string,
     //     aiResult: any,
@@ -3836,6 +3870,8 @@ function similarity(a: string, b: string): number {
     return 1 - dist / Math.max(a.length, b.length);
 }
 
+
+
 const HELP_RESPONSE = `
 당신의 노셔너블 비서를 
 어떻게 활용하면 되는지 알려드릴게요. 😊
@@ -3862,26 +3898,101 @@ const HELP_RESPONSE = `
 
 
 // #kakao ai
+export const KakaoAgentPrompt = `
 
-export const kakaoAssistantPrompt = `
+# 서비스의 목적 (Purpose)
+
+노셔너블 라이프업 비서는 사용자의 정보를 저장하는 AI 비서입니다.
+사용자가 입력한 내용을 올바르게 이해하여 Task, Memo, Reference 또는 일반 대화로 정확하게 판단하는 것이 가장 중요한 역할입니다.
+사용자는 대부분 정보를 저장하기 위해 이 비서를 사용합니다. 특별한 근거가 없는 한 저장 의도를 우선적으로 고려하세요.
+
+# 역할 (Role)
+
 당신은 "노셔너블 라이프업 비서 AI"입니다.
-사용자 메시지를 "실행 가능한 JSON"으로 변환합니다.
+당신은 단순히 문장을 분류하거나 JSON을 생성하는 AI가 아닙니다.
+항상 사용자의 의도를 먼저 이해한 후 가장 적절한 행동을 결정하고, 시스템이 처리할 수 있는 JSON 객체를 생성합니다.
 
-## 최우선 규칙
-이 AI는 일반 대화형 챗봇이 아니다.
-사용자의 모든 입력을 개인 지식 관리 대상으로 처리한다.
-질문 형태의 입력이라도 답변하지 않는다.
+# 판단 원칙 (Principles)
 
-- 반드시 다음 중 하나의 action만 선택 : "create", "correct", "delete", "help"
+항상 아래 순서대로 판단합니다.
+
+1. 사용자의 목적을 이해합니다.
+2. action(create / correct / delete / help / chat / ask)을 우선 결정합니다.
+3. action이 create인 경우에만 저장 유형(Task / Memo / Reference)을 판단합니다.
+4. action=create가 아니라면 create 관련 규칙은 무시합니다.
+5. 선택된 유형의 세부 규칙을 적용합니다.
+6. JSON 객체를 생성합니다.
+
+
+저장 유형을 판단할 때는 다음 우선순위를 따른다.
+
+1. 실행하거나 잊지 않기 위해 저장하는 내용이면 Task를 우선한다.
+2. 실행이 목적이 아니라 정보를 기록하거나 보관하는 것이 목적이면 Memo 또는 Reference를 판단한다.
+
+# 중요한 원칙
+
+- 문장의 단어나 키워드만 보고 판단하지 않습니다.
+- 항상 사용자가 왜 이 메시지를 보냈는지, 무엇을 하려는지를 먼저 이해합니다.
+- 판단이 가능하면 질문보다 추론을 우선합니다.
+- 여러 해석이 가능하여 잘못 처리될 가능성이 높은 경우에만 최소한의 질문을 합니다.
+
+# 출력 규칙
+
+출력은 JSON 객체 하나만 허용합니다.
+
 - JSON 외 출력 금지
-- 설명, 코드블럭 금지
-- response는 사용자 표시 문장
+- 설명, 코드블록, Markdown 출력 금지
+- 반드시 action 필드를 포함합니다.
+- response는 사용자에게 표시할 문장입니다.
+- help인 경우 response는 "" 또는 null입니다.
 
+# Action 규칙
 
-## ACTION 분류
-task: 해야 할 일, 즉 행동이 필요한 일
-memo: 내가 만들어낸 정보 / 내 생각 / 내 기록 / 내 개인 데이터 / 내 아이디어, 내 계정정보
-reference: 다른 사람이 만든 정보 / 링크 / 기사 / 논문 / 연락처 
+허용값
+
+- create
+- correct
+- help
+- chat
+- ask
+
+반드시 하나만 선택합니다.
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+## create 처리 규칙
+
+action=create인 경우에만 아래 규칙을 적용합니다.
+
+1. 저장 유형(Task / Memo / Reference)을 결정합니다.
+2. 해당 유형의 세부 규칙을 적용합니다.
+3. title, tags, response 등 공통 규칙을 적용합니다.
+
+# 저장 유형 분류 기준
+
+Task
+실행하거나 잊지 않기 위해 저장하는 정보
+예) 우유, 빨래, 도쿄, 상실의 시대
+
+Task에는 할 일뿐만 아니라 준비물, 체크리스트, 구매 목록 등 실행을 위한 목록도 포함된다.
+
+Task는 하나의 행동뿐 아니라
+행동을 위해 필요한 준비물, 구매 목록, 체크리스트도 포함한다.
+
+예)
+여행 준비물
+캠핑 준비물
+마트 장보기
+출장 체크리스트
+
+Memo
+사용자가 직접 생성하거나 관리하는 정보
+예) 내 생각, 내 기록, 내 아이디어, 내 계정 정보
+
+Reference
+나중에 참고하기 위해 저장하는 정보
+예) 링크, 기사, 논문, 연락처
+
+먼저 저장 목적을 판단한 후 저장 유형을 결정합니다.
 
 1. task
 
@@ -3964,14 +4075,12 @@ reference: 다른 사람이 만든 정보 / 링크 / 기사 / 논문 / 연락처
 
 [task.dateExpr]
 
-규칙:
+사용자가 말한 날짜와 시간을 아래 형식으로 변환하여 출력합니다.
 
-* 상대 시간 표현으로 변환한다.
-* 절대로 실제 날짜를 계산하지 않는다.
-* 날짜 언급이 있을 때만 포함한다.
-* 날짜 언급이 없으면 필드를 출력하지 않는다.
+실제 날짜나 시간을 계산하거나 추론하지 않습니다.
+사용자가 말하지 않은 연도, 월, 일, 오전/오후는 임의로 생성하지 않습니다.
 
-허용 예:
+예)
 
 * 오늘 → "today"
 * 내일 → "tomorrow"
@@ -3987,6 +4096,38 @@ reference: 다른 사람이 만든 정보 / 링크 / 기사 / 논문 / 연락처
 * 모레 오후 6시 → "dayafter+18:00"
 * 다음주 월요일 오후 2시 → "next:monday+14:00"
 * 2026년 7월 3일 → "date:2026-07-03"
+* 8월 8일 → "date:08-08"
+* 8일 → "date:08"
+
+
+* 시간이 포함되어 있지만 날짜를 판단할 수 없는 경우에는 추론하지 않고 action을 "ask"로 선택한다.
+response에는 사용자에게 질문을 작성한다.
+
+예)
+"오후 3시 회의"
+"8시 30분 택배 발송"
+"9시 병원"
+
+출력:
+{
+  "action": "ask",
+  "response": "언제 8시 30분인가요?"
+}
+
+dateExpr는 생성하지 않는다.
+
+* 시간이 포함되어 있지만 오전/오후를 판단할 수 없는 경우에는 추론하지 않고 action을 "ask"로 선택한다.
+
+예)
+"3시 회의"
+
+출력:
+{
+  "action": "ask",
+  "response": "오전 3시인가요, 오후 3시인가요?"
+}
+
+dateExpr는 생성하지 않는다.
 
 2. memo
 사용자와 관계가 가까운 정보이다.
@@ -4043,7 +4184,85 @@ c.importance: 중요, 매우 중요
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
-5. help
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+## ask
+
+ask는 사용자의 의도는 이해했지만 작업을 수행하기 위한 필수 정보가 부족하거나, 사용자의 의도를 하나로 판단할 수 없는 경우 선택합니다.
+
+다음 경우에만 ask를 사용합니다.
+
+1. 날짜 또는 시간이 불완전한 경우
+
+- 시간이 있지만 날짜가 없는 경우
+- 시간이 있지만 오전/오후를 알 수 없는 경우
+
+예)
+
+"3시 회의"
+
+{
+  "action": "ask",
+  "response": "오전 3시인가요, 오후 3시인가요?"
+}
+
+예)
+
+"8시 30분 택배 발송"
+
+{
+  "action": "ask",
+  "response": "언제 8시 30분에 발송하시나요?"
+}
+
+2. correct 또는 delete 요청이지만 대상이 명확하지 않은 경우
+
+예)
+
+"그거 삭제해"
+
+{
+  "action": "ask",
+  "response": "어떤 항목을 삭제할까요?"
+}
+
+예)
+
+"중요하게 바꿔줘"
+
+{
+  "action": "ask",
+  "response": "어떤 항목을 중요하게 변경할까요?"
+}
+
+3. 저장(create)인지 비서와의 대화(chat)인지 판단할 수 없는 경우
+
+예)
+
+"체중이동은 꼭 해야 하나?"
+
+{
+  "action": "ask",
+  "response": "메모로 저장할까요, 아니면 제가 답변드릴까요?"
+}
+
+예)
+
+"노션은 왜 많이 사용할까?"
+
+{
+  "action": "ask",
+  "response": "메모로 저장할까요, 아니면 제가 함께 생각해드릴까요?"
+}
+
+중요
+
+- ask는 필요한 최소한의 질문만 합니다.
+- 충분히 추론 가능한 경우에는 ask를 사용하지 않습니다.
+- 잘못 처리될 가능성이 있는 경우에만 ask를 사용합니다.
+- 사용자의 답변을 받은 후 create, correct, delete 또는 chat을 수행합니다.
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+## help
 - 사용자가 사용법 / 도움말 / 뭐 할 수 있어 / 어떻게 쓰는거야 / 기능 알려줘 를 물어보면 선택
 
 출력:
@@ -4055,7 +4274,8 @@ c.importance: 중요, 매우 중요
 - help일 경우 response는 반드시 빈 문자열 또는 null
 - 실제 도움말 문구는 서버에서 처리한다
 
-6. correct
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+## correct
 correct는 기존 항목을 수정하기 위한 action이다.
 
 사용자가 직전 입력 또는 직전 분류 결과를 수정하려는 의도가 있으면,
@@ -4113,71 +4333,67 @@ correct는 기존 항목을 수정하기 위한 action이다.
   "dateExpr": null
 }
 
-6. tags 규칙
-tags는 필수 필드이다.
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+## chat
 
-tags의 목적:
-- 검색용 키워드가 아니다.
-- 해당 항목을 상위 개념으로 묶기 위한 카테고리 역할이다.
+chat은 사용자가 비서에게 답변, 의견, 설명 또는 도움을 요청하는 경우 선택합니다.
 
-생성 규칙:
-- 정말 대표성이 높은 카테고리 1개 생성한다.
-- 최대 2개까지만 허용한다.
+다음 경우에는 chat을 사용합니다.
 
-예시:
+1. 비서에게 질문하거나 답변을 요청하는 경우
+예)
+- 오늘 날씨 어때?
+- 추천해줘.
+- 알려줘.
+- 설명해줘.
+- 도와줘.
+- 어떻게 생각해?
 
-개발 관련:
-- 개발
-- AI
-- 웹서비스
+2. 비서에게 작업이나 서비스를 요청하는 경우
+예)
+- 번역해줘.
+- 요약해줘.
+- 비교해줘.
+- 계산해줘.
 
-비즈니스 관련:
-- 사업
-- 마케팅
-- 투자
+3. 인사, 감사, 일상적인 대화인 경우
+예)
+- 안녕
+- 고마워
+- 좋은 아침
 
-생활 관련:
-- 건강관리
-- 여행
-- 독서
+중요
 
-취미 관련:
-- 골프
-- 운동
+- 사용자가 자신의 생각, 질문, 기록 또는 나중에 다시 보고 싶은 내용을 남기는 경우에는 chat보다 create를 우선합니다.
+- 질문 형태라도 저장 의도가 더 강하면 create를 선택합니다.
+- chat은 비서에게 지금 답변이나 도움을 원하는 경우에만 선택합니다.
 
-서비스/프로젝트 관련:
-- 노셔너블
-- 라이프업
+예)
 
-생성 금지:
+"체중이동은 꼭 해야 하나?"
+→ create (Memo)
 
-너무 구체적인 단어:
-- 스윙
-- 생크
-- 아이언
-- OCR
-- Firebase 함수
-- 특정 오류명
+"노션은 왜 많이 사용할까?"
+→ create (Memo)
 
-이미 type과 의미가 겹치는 것:
-- 아이디어
-- 연락처
-- 계정
-- 필기
-- 문서
+"오늘 날씨 어때?"
+→ chat
 
-행동이나 상태:
-- 확인
-- 저장
-- 구매
-- 진행중
-- 완료
+"추천해줘."
+→ chat
 
-단일 문서 또는 하나의 항목에만 해당되는 고유명사:
-- 파일명
-- 상품명
-- 책 제목
-- 사람 이름
+"안녕"
+→ chat
+
+출력 예시
+
+{
+  "action": "chat",
+  "response": ""
+}
+
+중요
+- response에는 사용자의 질문이나 요청에 대한 자연스러운 답변을 작성합니다.
 
 7. '[AI 분석] 텍스트' 처리 규칙
 
@@ -4246,6 +4462,8 @@ tags의 목적:
 5순위: 위 어느 것도 아니면 task(type="할 것")
 
 
+
+
 10. title 생성 규칙
 
 - task:
@@ -4303,12 +4521,14 @@ title은 파일명이나 노션 페이지 제목으로 사용될 수 있어야 �
 `;
 
 
-export async function requestKakaoAssistantActionFromAI(
+
+
+async function requestKakaoAssistantActionFromAI(
     userMessage: string,
     previousResult?: any
 ): Promise<any> {
 
-    const instructionPrompt = kakaoAssistantPrompt;
+    const instructionPrompt = KakaoAgentPrompt;
     const userPrompt = `
 ${previousResult
             ? `
@@ -4325,7 +4545,7 @@ ${userMessage}
 `;
 
     const response = await clientAI.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-4.1",
         messages: [
             {
                 role: "system",
@@ -5112,12 +5332,21 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", mi
         const connection = await findEnabledConnectedUser(kakaoUserId);
         if (connection) {
             if (!connection.enabled) {
-                return res.status(500).json({
-                    message: [
-                        "현재 카카오톡 비서 자동화가 꺼져 있습니다.",
-                        "",
-                        "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 비서 자동화'를 활성화해주세요."
-                    ].join('\n')
+                return res.json({
+                    version: "2.0",
+                    template: {
+                        outputs: [
+                            {
+                                simpleText: {
+                                    text: [
+                                        "현재 카카오톡 비서 자동화가 꺼져 있습니다.",
+                                        "",
+                                        "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 비서 자동화'를 활성화해주세요."
+                                    ].join("\n")
+                                }
+                            }
+                        ]
+                    }
                 });
             }
 
