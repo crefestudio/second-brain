@@ -1,5 +1,18 @@
 <div class="page-container">
-  <div class="page-header">
+  <!-- 연결되지 않은 경우 -->
+  <div class="empty-state" *ngIf="!userId">
+    <h2>권한이 없습니다.</h2>
+
+    <p>
+      자동화 에이전트를 이용하려면 먼저 워크스페이스 연결을 진행해주세요.
+    </p>
+
+    <button class="connect-btn" routerLink="/workspace/connect">
+      연결 설정하기
+    </button>
+  </div>
+
+  <div class="page-header" *ngIf="userId">
     <div class="breadcrumb">
       <span>워크스페이스</span>
       <span>›</span>
@@ -12,71 +25,42 @@
   </div>
 
   <!-- 에이전트 필터 -->
-<div class="agent-filter-card">
+  <div class="agent-filter-card" *ngIf="userId">
+    <div class="agent-filter-list">
+      <button class="agent-chip" [class.active]="selectedAgentId === ''" (click)="selectAgent('')">
+        전체
+      </button>
+      <button *ngFor="let agent of agents" class="agent-chip" [ngClass]="getAgentClass(agent.id)"
+        [class.active]="selectedAgentId === agent.id" (click)="selectAgent(agent.id)">
+        {{ agent.name }}
+      </button>
+    </div>
+    <div class="right-tools">
+      <button class="refresh-button" (click)="onClickRefreahBtn()" title="새로고침">
 
-  <div class="agent-filter-list">
-    <button
-      class="agent-chip"
-      [class.active]="selectedAgentId === ''"
-      (click)="selectAgent('')">
-      전체
-    </button>    
-    <button
-      *ngFor="let agent of agents"
-      class="agent-chip"
-      [ngClass]="getAgentClass(agent.id)"
-      [class.active]="selectedAgentId === agent.id"
-      (click)="selectAgent(agent.id)">
-      {{ agent.name }}
-    </button>
+        <svg class="refresh-icon" fill="none" viewBox="0 0 24 24">
+          <path d="M5.07,8A8,8,0,0,1,20,12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+          </path>
+
+          <path d="M18.93,16A8,8,0,0,1,4,12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+          </path>
+
+          <polyline points="5 3 5 8 10 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+          </polyline>
+
+          <polyline points="19 21 19 16 14 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+          </polyline>
+        </svg>
+      </button>
+    </div>
   </div>
-  <div class="right-tools">
-    <button
-      class="refresh-button"
-      (click)="onClickRefreahBtn()"
-      title="새로고침">
-  
-      <svg class="refresh-icon" fill="none" viewBox="0 0 24 24">
-        <path
-          d="M5.07,8A8,8,0,0,1,20,12"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round">
-        </path>
-  
-        <path
-          d="M18.93,16A8,8,0,0,1,4,12"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round">
-        </path>
-  
-        <polyline
-          points="5 3 5 8 10 8"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round">
-        </polyline>
-  
-        <polyline
-          points="19 21 19 16 14 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round">
-        </polyline>
-      </svg>
-    </button>
-  </div>
-</div>
 
   <!-- 검색 -->
-  <div class="filter-card">
+  <div class="filter-card" *ngIf="userId">
     <input type="date" [(ngModel)]="startDate">
     <span>~</span>
     <input type="date" [(ngModel)]="endDate">
@@ -86,7 +70,7 @@
   </div>
 
   <!-- 테이블 -->
-  <div class="table-card">
+  <div class="table-card" *ngIf="userId">
     <table class="service-table">
       <thead>
         <tr>
@@ -165,7 +149,7 @@
       </tbody>
     </table>
   </div>
-  <div class="load-more" *ngIf="hasMore">
+  <div class="load-more" *ngIf="hasMore && userId" >
     <button class="load-more-btn" (click)="loadMore()">
       더 불러오기
       <span class="arrow">▾</span>

@@ -70,7 +70,7 @@ export interface EventPayload {
 //admin.initializeApp();
 
 import * as functions from "firebase-functions";
-import { formatDate, formatDateTime, resolveDateExpr } from './services/date-service';
+import { formatDate, formatDateTime, formatKoreanDate, formatKoreanDateTime, resolveDateExpr } from './services/date-service';
 
 export const importPurchasers = functions.https.onRequest(
     async (req, res) => {
@@ -336,7 +336,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
         }, { merge: true });
 
         // secondbrain은 항상 초기화
-        
+
         await userRef.collection("integrations").doc("secondbrain").set(
             {
                 //// 이전 버전 호화성을 위해 넣음
@@ -1524,6 +1524,226 @@ class NotionService {
         }
     }
 
+    private static async moveNotionPage(
+        notion: Client,
+        accessToken: string,
+        userId: string,
+        sourcePage: any,
+        aiResult: any,
+        entity: any
+    ): Promise<string | undefined> {
+        const sourceProperties = sourcePage.properties ?? {};
+
+        // title
+        const extractTitle = (property: any) => {
+            return property?.title?.[0]?.text?.content ?? "";
+        };
+
+        const extractRelationIds = (property: any) => {
+            return property?.relation?.map((v: any) => v.id).filter(Boolean) ?? [];
+        };
+
+        const extractPageContent = async () => {
+            const response = await notion.blocks.children.list({
+                block_id: sourcePage.id
+            });
+
+            return response.results
+                .filter((block: any) => block.type === "paragraph")
+                .map((block: any) => {
+                    return block.paragraph?.rich_text
+                        ?.map((v: any) => v.text?.content ?? "")
+                        .join("") ?? "";
+                })
+                .filter(Boolean)
+                .join("\n");
+        };
+
+        const sourceTitle =
+            extractTitle(sourceProperties.할일) ||
+            extractTitle(sourceProperties.이름) ||
+            "";
+
+        const content = await extractPageContent() || aiResult.content || "";
+
+        const sourceTagIds = extractRelationIds(sourceProperties.태그);
+
+        console.log("[NotionMove] source", {
+            sourceTitle,
+            sourceTagIds,
+            targetDb: aiResult.db
+        });
+
+        const databaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            aiResult.db
+        );
+
+        const dataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            databaseId
+        );
+
+        const properties: any = {};
+
+        if (aiResult.db === "task") {
+            const typeMap: Record<string, string> = {
+                "할것": "할 것",
+                "살것": "살 것",
+                "읽을것": "읽을 것",
+                "볼것": "볼 것",
+                "갈곳": "갈 곳"
+            };
+
+            properties.할일 = {
+                title: [{
+                    text: {
+                        content: aiResult.title ?? sourceTitle
+                    }
+                }]
+            };
+
+            properties.유형 = {
+                status: {
+                    name: typeMap[aiResult.type] ?? aiResult.type ?? "할 것"
+                }
+            };
+
+            properties.분류 = {
+                select: {
+                    name: aiResult.kinds ?? "수집함"
+                }
+            };
+
+            if (aiResult.importance) {
+                properties.중요도 = {
+                    select: {
+                        name: aiResult.importance
+                    }
+                };
+            }
+
+            if (aiResult.urgency) {
+                properties.긴급도 = {
+                    select: {
+                        name: aiResult.urgency
+                    }
+                };
+            }
+
+        } else if (aiResult.db === "memo" || aiResult.db === "reference") {
+            const tagDbName = aiResult.db === "memo"
+                ? "memo tag"
+                : "reference tag";
+
+            const tagDbId = await this.resolveDatabaseId(
+                accessToken,
+                userId,
+                tagDbName
+            );
+
+            // TODO:
+            // 기존 tag relation ID -> tag 이름 추출 후 재생성 필요
+            const tags = aiResult.tags ?? [];
+
+            const tagIds = await this.resolveTagIds(
+                accessToken,
+                tagDbId,
+                tags
+            );
+
+            properties.이름 = {
+                title: [{
+                    text: {
+                        content: aiResult.title ?? sourceTitle
+                    }
+                }]
+            };
+
+            properties.태그 = {
+                relation: tagIds.map(id => ({
+                    id
+                }))
+            };
+
+            if (aiResult.type) {
+                const typeDbName = aiResult.db === "memo"
+                    ? "memo type"
+                    : "reference type";
+
+                const typeDbId = await this.resolveDatabaseId(
+                    accessToken,
+                    userId,
+                    typeDbName
+                );
+
+                const typeIds = await this.resolveOrCreateRelationIds(
+                    accessToken,
+                    typeDbId,
+                    [aiResult.type]
+                );
+
+                if (typeIds.length > 0) {
+                    properties.유형 = {
+                        relation: typeIds.map(id => ({
+                            id
+                        }))
+                    };
+                }
+            }
+        }
+
+        const page: any = await notion.pages.create({
+            parent: {
+                data_source_id: dataSourceId
+            },
+            properties,
+            template: {
+                type: "default"
+            }
+        });
+
+        const newPageId = page.id;
+
+        if (content) {
+            await notion.blocks.children.append({
+                block_id: newPageId,
+                children: [
+                    {
+                        object: "block",
+                        type: "paragraph",
+                        paragraph: {
+                            rich_text: [{
+                                type: "text",
+                                text: {
+                                    content
+                                }
+                            }]
+                        }
+                    }
+                ]
+            });
+        }
+
+        console.log("[NotionMove] created", {
+            from: sourcePage.id,
+            to: newPageId,
+            db: aiResult.db
+        });
+
+        await notion.pages.update({
+            page_id: sourcePage.id,
+            archived: true
+        });
+
+        console.log("[NotionMove] archived", {
+            pageId: sourcePage.id
+        });
+
+        return newPageId;
+    }
+
     // #kakao notion
     static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any): Promise<string | undefined> {
         if (!aiResult?.db || !["create", "correct"].includes(aiResult.action)) {
@@ -1534,20 +1754,12 @@ class NotionService {
 
         console.log(`[NotionCreate] start db = ${aiResult?.db} action = ${aiResult?.action} title = "${aiResult?.title ?? ""}" entity = ${entity?.type ?? "text"} `);
 
-        if (aiResult.action === "correct") {
-            if (!aiResult.targetPageId) {
-                throw new Error("targetPageId required for correct");
-            }
-            pageId = aiResult.targetPageId;
-        }
-
         const userDoc = await db.collection("users").doc(userId).get();
         const accessToken = userDoc.data()?.notionAccessToken;
         console.log(`[NotionCreate] accessToken = ${!!accessToken} `);
         if (!accessToken) return undefined;
 
         const notion = new Client({ auth: accessToken });
-
         const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
         console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
 
@@ -1558,8 +1770,47 @@ class NotionService {
 
         const entityBlocks = this.buildEntityBlocks(entity);
         const children: any[] = [...entityBlocks];
-
         const hasContext = entity?.context && typeof entity.context === "string" && entity.context.trim().length > 0;
+
+        ////////////////////////////////////////////////////
+        if (aiResult.action === "correct") {
+            if (!aiResult.targetPageId) {
+                throw new Error("targetPageId required for correct");
+            }
+
+            const sourcePage: any = await notion.pages.retrieve({
+                page_id: aiResult.targetPageId
+            });
+
+            const sourceDatabaseId = sourcePage.parent?.database_id;
+
+            const targetDatabaseId = await this.resolveDatabaseId(
+                accessToken,
+                userId,
+                aiResult.db
+            );
+
+            if (sourceDatabaseId !== targetDatabaseId) {
+                console.log("[NotionMove] database changed", {
+                    from: sourceDatabaseId,
+                    to: targetDatabaseId,
+                    targetDb: aiResult.db
+                });
+
+                return await this.moveNotionPage(
+                    notion,
+                    accessToken,
+                    userId,
+                    sourcePage,
+                    aiResult,
+                    entity
+                );
+            }
+
+            pageId = aiResult.targetPageId;
+        }
+        ////////////////////////////////////////////////////
+
 
         if (aiResult.content && !hasContext) {
             const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
@@ -1707,6 +1958,7 @@ class NotionService {
                     }
                 };
 
+
                 if (aiResult.type) {
                     const typeDbName = aiResult.db === "memo" ? "memo type" : "reference type";
                     const typeDbId = await this.resolveDatabaseId(accessToken, userId, typeDbName);
@@ -1744,6 +1996,13 @@ class NotionService {
                         }
                     }
                 }
+
+                if (aiResult.importance) {
+                    properties.중요도 = {
+                        select: { name: aiResult.importance }
+                    };
+                }
+
 
                 if (!pageId) {
                     const page: any = await notion.pages.create({
@@ -3903,14 +4162,14 @@ export const KakaoAgentPrompt = `
 # 서비스의 목적 (Purpose)
 
 노셔너블 라이프업 비서는 사용자의 정보를 저장하는 AI 비서입니다.
-사용자가 입력한 내용을 올바르게 이해하여 Task, Memo, Reference 또는 일반 대화로 정확하게 판단하는 것이 가장 중요한 역할입니다.
+사용자가 입력한 내용을 올바르게 이해하여 Task, Memo, Reference 또는 일반 대화(chat)으로 정확하게 판단하는 것이 가장 중요한 역할입니다.
 사용자는 대부분 정보를 저장하기 위해 이 비서를 사용합니다. 특별한 근거가 없는 한 저장 의도를 우선적으로 고려하세요.
 
 # 역할 (Role)
 
 당신은 "노셔너블 라이프업 비서 AI"입니다.
 당신은 단순히 문장을 분류하거나 JSON을 생성하는 AI가 아닙니다.
-항상 사용자의 의도를 먼저 이해한 후 가장 적절한 행동을 결정하고, 시스템이 처리할 수 있는 JSON 객체를 생성합니다.
+항상 사용자의 의도를 먼저 이해한 후 가장 적절한 행동(action)을 결정하고, 시스템이 처리할 수 있는 JSON 객체를 생성합니다.
 
 # 판단 원칙 (Principles)
 
@@ -3923,10 +4182,9 @@ export const KakaoAgentPrompt = `
 5. 선택된 유형의 세부 규칙을 적용합니다.
 6. JSON 객체를 생성합니다.
 
-
 저장 유형을 판단할 때는 다음 우선순위를 따른다.
 
-1. 실행하거나 잊지 않기 위해 저장하는 내용이면 Task를 우선한다.
+1. 실행이 필요한 내용(해야 할 일, 살 것, 준비할 것 등)이면 Task를 우선한다.
 2. 실행이 목적이 아니라 정보를 기록하거나 보관하는 것이 목적이면 Memo 또는 Reference를 판단한다.
 
 # 중요한 원칙
@@ -3958,14 +4216,14 @@ export const KakaoAgentPrompt = `
 
 반드시 하나만 선택합니다.
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////
 ## create 처리 규칙
 
 action=create인 경우에만 아래 규칙을 적용합니다.
 
 1. 저장 유형(Task / Memo / Reference)을 결정합니다.
 2. 해당 유형의 세부 규칙을 적용합니다.
-3. title, tags, response 등 공통 규칙을 적용합니다.
+3. title, response 등 공통 규칙을 적용합니다.
 
 # 저장 유형 분류 기준
 
@@ -3973,10 +4231,7 @@ Task
 실행하거나 잊지 않기 위해 저장하는 정보
 예) 우유, 빨래, 도쿄, 상실의 시대
 
-Task에는 할 일뿐만 아니라 준비물, 체크리스트, 구매 목록 등 실행을 위한 목록도 포함된다.
-
-Task는 하나의 행동뿐 아니라
-행동을 위해 필요한 준비물, 구매 목록, 체크리스트도 포함한다.
+Task에는 하나의 행동뿐 아니라 준비물, 체크리스트, 구매 목록 등 실행을 위한 목록도 포함된다.
 
 예)
 여행 준비물
@@ -4009,24 +4264,52 @@ Reference
 * 영상/영화/드라마/유튜브 → "볼 것"
 * 장소/방문/여행/식당 → "갈 곳"
 
----
+* 고유명사 처리
+책 = 읽을 것 / 영화·드라마 = 볼 것 / 장소 = 갈 곳 / 상품 = 살 것
 
-[task.title]
+* 단일 명사 처리 규칙
+사용자가 한 단어 또는 짧은 명사만 입력한 경우:
+1순위: 구매 가능한 실물 물건이면 task(type="살 것")
+예:
+딸기
+바나나
+우유
+휴지
+샴푸
+에어팟
+노트북
+마우스
 
-규칙:
-1. title은 반드시 사용자의 원문을 최대한 유지한다.
-2. 의미를 재구성하거나 보완하지 않는다. (매우 중요)
-3. 다음 단어만 제거 대상이다: "사기", "읽기", "보기", "가기" 
-4. 해당 단어가 단독으로 끝에 붙은 경우만 제거한다.
-5. 그 외 어떤 형태의 추론/추가/보정도 금지한다.
+2순위: 책이나 문서 제목이면 task(type="읽을 것")
+
+3순위: 영화, 드라마, 유튜브, 영상 콘텐츠이면 task(type="볼 것")
+
+4순위: 장소 관련 명사이면 task(type="갈 곳")
+포함:
+- 국가명
+- 도시명
+- 지역명
+- 관광지
+- 랜드마크
+- 식당명
+- 카페명
+- 호텔명
+- 공원명
+- 역 이름
+- 공항명
 
 예:
-- "우산 사기" → "우산"
-- "핸드크림 사기" → "핸드크림"
-- "클린 코드 읽기" → "클린 코드"
-- "오징어게임 보기" → "오징어게임"
-- "강남역 맛집 가기" → "강남역 맛집"
-- "볼펜" → "볼펜"
+베트남
+나트랑
+제주도
+에펠탑
+스타벅스
+인천공항
+롯데월드
+성심당
+
+5순위: 위 어느 것도 아니면 task(type="할 것")
+
 
 ---
 
@@ -4099,7 +4382,6 @@ Reference
 * 8월 8일 → "date:08-08"
 * 8일 → "date:08"
 
-
 * 시간이 포함되어 있지만 날짜를 판단할 수 없는 경우에는 추론하지 않고 action을 "ask"로 선택한다.
 response에는 사용자에게 질문을 작성한다.
 
@@ -4126,7 +4408,6 @@ dateExpr는 생성하지 않는다.
   "action": "ask",
   "response": "오전 3시인가요, 오후 3시인가요?"
 }
-
 dateExpr는 생성하지 않는다.
 
 2. memo
@@ -4184,7 +4465,7 @@ c.importance: 중요, 매우 중요
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////
 ## ask
 
 ask는 사용자의 의도는 이해했지만 작업을 수행하기 위한 필수 정보가 부족하거나, 사용자의 의도를 하나로 판단할 수 없는 경우 선택합니다.
@@ -4214,27 +4495,7 @@ ask는 사용자의 의도는 이해했지만 작업을 수행하기 위한 필�
   "response": "언제 8시 30분에 발송하시나요?"
 }
 
-2. correct 또는 delete 요청이지만 대상이 명확하지 않은 경우
-
-예)
-
-"그거 삭제해"
-
-{
-  "action": "ask",
-  "response": "어떤 항목을 삭제할까요?"
-}
-
-예)
-
-"중요하게 바꿔줘"
-
-{
-  "action": "ask",
-  "response": "어떤 항목을 중요하게 변경할까요?"
-}
-
-3. 저장(create)인지 비서와의 대화(chat)인지 판단할 수 없는 경우
+2. 저장(create)인지 비서와의 대화(chat)인지 판단할 수 없는 경우
 
 예)
 
@@ -4248,20 +4509,33 @@ ask는 사용자의 의도는 이해했지만 작업을 수행하기 위한 필�
 예)
 
 "노션은 왜 많이 사용할까?"
-
 {
   "action": "ask",
   "response": "메모로 저장할까요, 아니면 제가 함께 생각해드릴까요?"
 }
 
 중요
-
 - ask는 필요한 최소한의 질문만 합니다.
 - 충분히 추론 가능한 경우에는 ask를 사용하지 않습니다.
 - 잘못 처리될 가능성이 있는 경우에만 ask를 사용합니다.
-- 사용자의 답변을 받은 후 create, correct, delete 또는 chat을 수행합니다.
+- 사용자의 답변을 받은 후 create, correct 또는 chat을 수행합니다.
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+### ask 후속 응답 처리
+
+직전 action이 ask인 경우,
+사용자의 다음 입력은 새로운 요청이 아니라
+이전 요청에 대한 추가 답변으로 간주한다.
+
+추가 답변을 기존 요청과 합쳐 다시 해석한다.
+
+정보가 충분하면 create를 반환한다.
+
+여전히 정보가 부족하면 ask를 반환한다.
+
+correct를 사용하지 않는다.
+
+
+//////////////////////////////////////////
 ## help
 - 사용자가 사용법 / 도움말 / 뭐 할 수 있어 / 어떻게 쓰는거야 / 기능 알려줘 를 물어보면 선택
 
@@ -4274,64 +4548,143 @@ ask는 사용자의 의도는 이해했지만 작업을 수행하기 위한 필�
 - help일 경우 response는 반드시 빈 문자열 또는 null
 - 실제 도움말 문구는 서버에서 처리한다
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////
 ## correct
+
 correct는 기존 항목을 수정하기 위한 action이다.
 
-사용자가 직전 입력 또는 직전 분류 결과를 수정하려는 의도가 있으면,
-새로운 create를 생성하지 말고 반드시 action="correct"를 선택한다.
+### 판단 원칙 (매우 중요)
 
-중요:
-- 기존 결과를 기반으로 수정된 전체 결과를 반환한다.
-- 수정 대상이 명확하지 않으면 action=create를 반환한다.
+correct는 매우 제한적으로 사용한다.
 
-수정(update)은 아래 경우에만 수행한다.
+다음 두 조건을 모두 만족하는 경우에만 action="correct"를 선택한다.
 
-- 사용자가 명시적으로
-  "아니", "옮겨", "다시", "수정", "변경", "바꿔", "고쳐", "추가해", "삭제해"
-  등의 표현을 사용한 경우
+1. 사용자가 수정 의사를 명시적으로 표현했다.
+2. 수정 대상이 직전 항목임이 명확하다.
 
-- 직전 항목과 핵심 대상이 동일하고 추가 요청이 있는 경우
-  예)
-  "우산 사기" → "우산 2개 사기"
-  "치과 예약" → "치과 예약 내일로 변경"
+위 조건 중 하나라도 만족하지 않으면 반드시 action="create"를 선택한다.
 
-다음은 절대 수정으로 판단하지 않는다.
-- 명사가 변경된 경우
-  "썬크림 사기" → "핸드크림 사기"
-  "사과 사기" → "바나나 사기"
-  "책 읽기" → "유튜브 보기"
+애매한 경우에는 항상 create를 선택한다.
 
-명사가 바뀌면 새로운 항목(create)이다.
+절대 대화 흐름이나 문맥만으로 수정이라고 추론하지 않는다.
 
-예:
+---
+
+### 수정 의사로 인정하는 표현
+
+다음과 같이 사용자가 명시적으로 수정을 요청한 경우만 correct이다.
+
+- OO로
+- 아니
+- 수정
+- 변경
+- 바꿔
+- 고쳐
+- 다시
+- 옮겨
+- 추가해
+- 삭제해
+- ○○으로 변경
+- ○○으로 수정
+- ○○로 바꿔
+- ○○만 바꿔
+- ○○만 추가해
+- ○○만 삭제해
+
+---
+
+### correct 예
 
 직전:
-{
-  "action":"create",
-  "db": "task",
-  "title": "나트랑",
-  "type": "갈 곳",
-  "kinds": "수집함",
-  "importance": 0,
-  "urgency": 0,
-}
+우산 사기
 
 사용자:
-"아니 할것으로 분류해줘"
+우산 2개 사기
 
-출력:
-{
-  "action": "correct",
-  "db": "task",
-  "title": "나트랑",
-  "type": "할것",
-  "kinds": "수집함",
-  "importance": 0,
-  "urgency": 0,
-  "response": "'나트랑'을 할것으로 수정했습니다.",
-  "dateExpr": null
-}
+→ correct
+
+---
+
+직전:
+치과 예약
+
+사용자:
+치과 예약 내일로 변경
+
+→ correct
+
+---
+
+직전:
+나트랑
+
+사용자:
+아니 할 것으로 분류해줘
+
+→ correct
+
+---
+
+### create 예
+
+다음은 반드시 create이다.
+
+- 명사가 변경된 경우
+- 새로운 대상이 등장한 경우
+- 수정 의사가 명시되지 않은 경우
+
+예)
+
+썬크림 사기
+→ 핸드크림 사기
+
+사과 사기
+→ 바나나 사기
+
+책 읽기
+→ 유튜브 보기
+
+홍길동 명함
+→ 김철수 명함
+
+위 예시는 모두 create이다.
+
+직전 항목과 관련 있어 보이더라도 수정 의사가 명시되지 않았다면 create를 선택한다.
+
+---
+
+시간대 변경 규칙
+
+기존 dateExpr에 정확한 시간이 있는 경우
+
+- "오전으로"
+- "오후로"
+
+같은 시간대 변경 요청은 기존 hour를 유지한 채 오전/오후만 변경한다.
+
+예)
+
+previous:
+tomorrow+15:00
+
+사용자:
+오전으로
+
+결과:
+tomorrow+03:00
+
+previous:
+tomorrow+09:00
+
+사용자:
+오후로
+
+결과:
+tomorrow+21:00
+
+주의
+
+임의로 09:00, 15:00 등의 기본 시간을 생성하지 않는다.
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ## chat
@@ -4395,117 +4748,209 @@ chat은 사용자가 비서에게 답변, 의견, 설명 또는 도움을 요청
 중요
 - response에는 사용자의 질문이나 요청에 대한 자연스러운 답변을 작성합니다.
 
-7. '[AI 분석] 텍스트' 처리 규칙
 
-이미지, 동영상 등에서 AI가 추출한 OCR, 객체, 설명, 메타데이터 등의 정보를 기반으로 일반 텍스트 입력과 동일하게 처리한다.
+## 요청형 문장 처리 규칙
 
-## 대상
+사용자가 "~해줘", "~알려줘", "~조회해줘", "~예약해줘", "~보여줘" 등 요청형 문장을 입력한 경우에는,
+먼저 현재 시스템이 실제로 수행 가능한 요청인지 판단한다.
 
-- 이미지 분석 결과
-- 동영상 분석 결과
-- 기타 AI가 생성한 분석 결과
+### 수행 가능한 요청
 
-## 예외 규칙 (중요)
+다음과 같은 요청은 chat으로 처리한다.
 
-* 반드시 기존 텍스트 분류 로직을 그대로 적용한다.
-  (task / memo / reference 시스템 재사용)
+- 일반적인 질문
+- 설명
+- 번역
+- 요약
+- 비교
+- 계산
+- 의미 설명
+- 상식 및 지식 질문
+
+예)
+
+- apple 뜻 알려줘
+- Git이 뭐야?
+- 번역해줘
+- 요약해줘
+
+### 수행할 수 없는 요청
+
+현재 시스템에서 제공하지 않는 기능을 요청한 경우에는
+실행하거나 실행한 것처럼 응답하지 않는다.
+
+예)
+
+- 조회하기
+- 완료 처리해줘
+- 내일 일정 알려줘
+- 예약해줘
+- 내 메모 보여줘
+- 검색해줘
+
+위와 같은 요청은 수행했다고 가정하거나 조회 결과를 생성하지 않는다.
+
+response에는 현재 지원하지 않는 기능임을 자연스럽게 안내한다.
+
+### 중요
+
+단, 저장(create) 의도로도 해석될 수 있는 입력인 경우에는
+지원하지 않는 기능이라고 단정하지 말고,
+기존 create 판단 규칙을 우선 적용한다.
+
+예)
+
+- 홍길동 명함
+- 여행 준비물
+- 회의록
+- 카카오톡 비서 아이디어
+
+위 입력은 기능 요청이 아니라 저장 의도로 판단하여 기존 규칙을 적용한다.
+
+///////////////////////////////////////////////////////////////////
+# '[AI 분석] 텍스트' 처리 규칙
+
+이미지, 동영상 등에서 AI가 추출한 OCR, 객체, 설명, 메타데이터 등의 정보는 일반 텍스트 입력과 동일하게 처리한다.
+[AI 분석]이라는 형식은 입력 타입이 아니라 추가 정보일 뿐이며, 기존의 Task / Memo / Reference 분류 규칙을 그대로 적용한다.
+
+명함 -> Memo - 연락처
+영수증 -> Memo - 개인 문서
+회의 화이트보드 -> Memo - 필기
+기사 스크린샷  -> Reference - 글
+문서 캡쳐 -> 개인 문서
+논문 캡쳐 -> Reference
+
+중요
+
+이미지인지 여부로 분류하지 않는다.
+항상 사용자가 해당 정보를 왜 저장하려는지(저장 목적) 를 기준으로 분류한다.
 
 ## 핵심 원칙
-
 '[AI 분석] 텍스트'는 별도 입력 타입이 아니라,
 추가 정보가 포함된 일반 텍스트 입력이다.
 
-8. 고유명사 처리
-책=read / 영화·드라마=watch / 장소=go / 상품=buy
 
-9. 단일 명사 처리 규칙
-사용자가 한 단어 또는 짧은 명사만 입력한 경우:
-1순위: 구매 가능한 실물 물건이면 task(type="살 것")
+//////////////////////////////////////////////////////////////////////
+title 생성  규칙
+
+## 공통 규칙
+
+- title은 반드시 생성해야 한다.
+- title은 파일명이나 노션 페이지 제목으로 사용할 수 있는 형태로 작성한다.
+- title과 content를 동일하게 작성하지 않는다.
+- title은 사용자의 입력 의도와 핵심 내용을 반영한다.
+- title 생성 시 명백한 모바일 입력 오타는 보정한다.
+
+### 오타 보정 규칙
+
+사용자는 모바일 환경에서 입력하므로 입력 과정에서 발생한 오타가 포함될 수 있다.
+title 생성 시 의미가 명확한 오타만 보정한다.
+
+보정 대상:
+- 자판 입력 오류로 보이는 명백한 오타
+- 글자 일부가 잘못 입력된 단어
+- 의미가 명확한 잘못 입력된 단어
+
+주의:
+- 맞춤법을 적극적으로 교정하지 않는다.
+- 사용자의 표현 방식과 말투를 변경하지 않는다.
+- 의미가 여러 가지로 해석될 경우 원문을 유지한다.
+- 문장을 자연스럽게 다듬거나 요약하는 과정에서 불필요한 수정을 하지 않는다.
+
+[task.title]
+
+규칙:
+1. title은 반드시 사용자의 원문 표현을 그대로 유지한다.
+2. 문장을 자연스럽게 바꾸거나, 동사 형태를 변경하거나, 유사 표현으로 변환하지 않는다. (매우 중요)
+3. AI는 title을 새로 작성하지 않는다. 원문에서 필요한 최소한의 제거만 수행한다.
+4. task의 '유형'에 따라 아래 대상 유형에서만 끝 표현 제거가 가능하다.
+5. '할 것' 유형은 절대 변경하지 않는다.
+6. 사용자의 입력에서 날짜·시간 표현이 dateExpr로 추출된 경우, 해당 날짜·시간 표현은 title에서 제거한다.
+7. 제거 후 남은 표현만 title로 사용한다.
+8. 날짜·시간 외의 표현은 수정하거나 재작성하지 않는다.
+
 예:
-딸기
-바나나
-우유
-휴지
-샴푸
-에어팟
-노트북
-마우스
+- "8월 8일 태국 출발" → title: "태국 출발"
+- "내일 3시 기획회의" → title: "기획회의"
+- "다음주 화요일 병원" → title: "병원"
+- "오늘 저녁 엄마 전화" → title: "엄마 전화"
 
-2순위: 책이나 문서 제목이면 task(type="읽을 것")
+주의:
+- dateExpr로 해석되지 않은 숫자나 단어는 제거하지 않는다.
+- 날짜·시간 표현만 제거하고 나머지 표현은 그대로 유지한다.
 
-3순위: 영화, 드라마, 유튜브, 영상 콘텐츠이면 task(type="볼 것")
+### 검색 키워드 변환 대상 유형
 
-4순위: 장소 관련 명사이면 task(type="갈 곳")
-포함:
-- 국가명
-- 도시명
-- 지역명
-- 관광지
-- 랜드마크
-- 식당명
-- 카페명
-- 호텔명
-- 공원명
-- 역 이름
-- 공항명
+다음 유형은 검색 키워드 활용을 위해 마지막 동작 표현만 제거할 수 있다.
+
+대상 유형:
+- 살 것
+- 읽을 것
+- 볼 것
+- 갈 곳
+
+제거 대상:
+- "사기"
+- "읽기"
+- "보기"
+- "가기"
+
+조건:
+- 반드시 문장 마지막에 단독으로 존재할 때만 제거한다.
+- 제거 후 남은 나머지 표현은 절대 수정하지 않는다.
 
 예:
-베트남
-나트랑
-제주도
-에펠탑
-스타벅스
-인천공항
-롯데월드
-성심당
+- "우산 사기" → "우산"
+- "핸드크림 사기" → "핸드크림"
+- "클린 코드 읽기" → "클린 코드"
+- "오징어게임 보기" → "오징어게임"
+- "강남역 맛집 가기" → "강남역 맛집"
 
-5순위: 위 어느 것도 아니면 task(type="할 것")
+### 금지 예
 
+- "오늘 혜민님 업무 정리해야 하는데" → "오늘 혜민님 업무 정리하기" ❌
+- "보고서 작성해야 함" → "보고서 작성하기" ❌
+- "회의 준비 필요" → "회의 준비하기" ❌
 
+원문:
+- "오늘 혜민님 업무 정리해야 하는데"
+결과:
+- "오늘 혜민님 업무 정리해야 하는데"
 
+[memo.title]
 
-10. title 생성 규칙
-
-- task:
-  사용자가 말한 핵심 할 일을 그대로 사용한다.
-
-- memo:
   title은 메모의 핵심 주제를 10~30자 내외로 요약한다.
   content는 원문 내용을 최대한 보존한다.
   title과 content를 동일하게 작성하지 않는다.
 
-- reference:
+  예시
+
+    입력:
+    "카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+
+    출력:
+    {
+    "action":"create",
+    "db":"memo",
+    "title":"카카오톡 AI 비서 아이디어",
+    "content":"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+    }
+
+[reference.title]
   title은 자료를 식별하기 쉬운 대표 제목을 생성한다.
   content는 원문 내용을 최대한 보존한다.
   title과 content를 동일하게 작성하지 않는다.
 
-### 예시
+    입력:
+    "https://example.com 에 RAG 구조 설명이 잘 되어 있다"
 
-입력:
-"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
-
-출력:
-{
-  "action":"create",
-  "db":"memo",
-  "title":"카카오톡 AI 비서 아이디어",
-  "content":"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
-}
-
-입력:
-"https://example.com 에 RAG 구조 설명이 잘 되어 있다"
-
-출력:
-{
-  "action":"create",
-  "db":"reference",
-  "title":"RAG 구조 설명 자료",
-  "content":"https://example.com 에 RAG 구조 설명이 잘 되어 있다"
-}
-
-title은 반드시 생성해야 한다.
-title이 content와 완전히 동일하면 안 된다.
-title은 파일명이나 노션 페이지 제목으로 사용될 수 있어야 한다.
+    출력:
+    {
+    "action":"create",
+    "db":"reference",
+    "title":"RAG 구조 설명 자료",
+    "content":"https://example.com 에 RAG 구조 설명이 잘 되어 있다"
+    }
 
 
 11. 중요 규칙:
@@ -4521,7 +4966,7 @@ title은 파일명이나 노션 페이지 제목으로 사용될 수 있어야 �
 `;
 
 
-
+// #kakao ai
 
 async function requestKakaoAssistantActionFromAI(
     userMessage: string,
@@ -4529,23 +4974,44 @@ async function requestKakaoAssistantActionFromAI(
 ): Promise<any> {
 
     const instructionPrompt = KakaoAgentPrompt;
-    const userPrompt = `
-${previousResult
-            ? `
-[직전 사용자 입력]
-${previousResult.userMessage}
 
-[직전 분류 결과]
-${JSON.stringify(previousResult.result, null, 2)}
-`
-            : ''}
+    let userPrompt: string;
 
-[현재 사용자 입력]
-${userMessage}
-`;
+    if (previousResult?.result?.action === "ask") {
+        userPrompt = `
+            [이전 요청]
+            ${previousResult.aiInput}
+
+            [사용자 추가 답변]
+            ${userMessage}
+
+            위 추가 답변을 반영하여 이전 요청을 완성한다.
+
+            규칙
+            - 정보가 충분하면 create를 반환한다.
+            - 여전히 부족하면 ask를 반환한다.
+            - correct는 사용하지 않는다.
+        `;
+    } else {
+        userPrompt = `
+            ${previousResult ? `
+            [직전 사용자 입력]
+            ${previousResult.userMessage}
+
+            [직전 분류 결과]
+            ${JSON.stringify(previousResult.result, null, 2)}
+            ` : ""}
+
+            [현재 사용자 입력]
+            ${userMessage}
+        `;
+    }
+
+    console.log('requestKakaoAssistantActionFromAI ', JSON.stringify(previousResult?.result, null, 2));
+    console.log('requestKakaoAssistantActionFromAI userPrompt => ', userPrompt);
 
     const response = await clientAI.chat.completions.create({
-        model: "gpt-4.1",
+        model: "gpt-4.1-mini",
         messages: [
             {
                 role: "system",
@@ -5317,7 +5783,7 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
 
 // minInstances:1 => 콜드 스타트 방지, 사용비용 발생
 // #kakao
-export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "256MiB", minInstances: 1 }, withCors(async (req, res) => {
+export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", minInstances: 1 }, withCors(async (req, res) => {
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
     const user = payload?.userRequest?.user;
@@ -5412,9 +5878,25 @@ export const handleKakaoWebhookQueue = onDocumentCreated(
         const { userId, jobId } = event.params;
 
         console.log("[KAKAO QUEUE] start", { userId, jobId });
-
+        let locked = false;
         try {
-            await processConnectedUser(
+            locked = await acquireKakaoProcessingLock(userId, jobId);
+            if (!locked) {
+                console.log("[KAKAO QUEUE] user busy", {
+                    userId,
+                    jobId
+                });
+
+                await sendKakaoCallback(
+                    data.callbackUrl,
+                    "⏳ 이전 요청을 처리하고 있습니다.\n응답을 받은 후 다시 말씀해주세요. 🙂"
+                );
+
+                await snapshot.ref.delete();
+                return;
+            }
+
+            await processKakaoAgent(
                 userId,
                 data.utterance,
                 data.user,
@@ -5432,6 +5914,10 @@ export const handleKakaoWebhookQueue = onDocumentCreated(
                 error: String(error),
                 updatedAt: Date.now()
             });
+        } finally {
+            if (locked) {
+                await releaseKakaoProcessingLock(userId, jobId);
+            }
         }
     }
 );
@@ -5456,31 +5942,84 @@ function logKakaoRequest(
 }
 
 // #kakao
-async function processConnectedUser(userId: string, userMessage: string, user: any, kakaoUserId: string, callbackUrl: string) {
-    //let fileName: string | undefined;
+async function processKakaoAgent(
+    userId: string,
+    userMessage: string,
+    user: any,
+    kakaoUserId: string,
+    callbackUrl: string
+) {
+    const totalStart = Date.now();
+
+    const logTime = (label: string, start: number) => {
+        console.log(`[TIME] ${label}: ${Date.now() - start}ms`);
+    };
+
     try {
+        let t = Date.now();
         const prepared = await prepareAssistantInput(userMessage, userId);
+        logTime("prepareAssistantInput", t);
+
         const { aiInput, entity } = prepared;
-        //fileName = prepared.fileName;
+
+        t = Date.now();
         const previousResult: any = await getLastAssistantContext(userId);
+        console.log("[processKakaoAgent] previousResult =>", previousResult);
+        logTime("getLastAssistantContext", t);
 
-        const result = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
+        t = Date.now();
+        const result = await requestKakaoAssistantActionFromAI(
+            aiInput,
+            previousResult
+        );        
 
-        if (result?.action === "help") result.response = HELP_RESPONSE;
+        logTime("requestKakaoAssistantActionFromAI", t);
 
-        const enrichedResult = {
-            ...result
-        };
+        const enrichedResult = enrichKakaoAssistantResult(result, previousResult);
 
-        if (result.action === "correct" && previousResult?.pageId) {
-            enrichedResult.targetPageId = previousResult.pageId;
-        }
-        await processAfterResponse(userId, userMessage, user, kakaoUserId, aiInput, entity, enrichedResult);
-        await sendKakaoCallback(callbackUrl, result.response);
+        // if (result?.action === "help") result.response = HELP_RESPONSE;
 
+        // const enrichedResult = {
+        //     ...result
+        // };
+
+        // if (result.action === "correct" && previousResult?.pageId) {
+        //     enrichedResult.targetPageId = previousResult.pageId;
+        // }
+
+        // if (["create", "correct"].includes(result.action)) {
+        //     result.response = buildAssistantResponse(result);
+        // }
+
+        t = Date.now();
+        console.log("[TIME] sendKakaoCallback START");
+        await sendKakaoCallback(callbackUrl, enrichedResult.response);
+        logTime("sendKakaoCallback", t);
+
+        t = Date.now();
+        const contextAiInput =
+            previousResult?.result?.action === "ask"
+                ? `${previousResult.aiInput}\n${aiInput}`
+                : aiInput;
+
+        await processAfterResponse(
+            userId,
+            userMessage,
+            contextAiInput,
+            entity,
+            enrichedResult
+        );
+
+        logTime("processAfterResponse", t);
+        logTime("TOTAL", totalStart);
     } catch (e) {
-        console.error("[KAKAO ERROR - processConnectedUser]", e);
+        console.error("[KAKAO ERROR - processKakaoAgent]", e);
+
+        const t = Date.now();
+        console.log("[TIME] sendKakaoCallback(ERROR) START");
         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
+        logTime("sendKakaoCallback(ERROR)", t);
+
     } finally {
         // if (fileName) {
         //     await deleteTempImage(fileName);
@@ -5488,7 +6027,125 @@ async function processConnectedUser(userId: string, userMessage: string, user: a
     }
 }
 
-// async function processConnectedUser(
+function enrichKakaoAssistantResult(result: any, previousResult: any) {
+    const enrichedResult = {
+        ...result
+    };
+
+    if (enrichedResult.dateExpr && !enrichedResult.kinds) {
+        enrichedResult.kinds = "일정";
+    }
+
+    if (enrichedResult.action === "help") {
+        enrichedResult.response = HELP_RESPONSE;
+    }
+
+    if (enrichedResult.action === "correct" && previousResult?.pageId) {
+        enrichedResult.targetPageId = previousResult.pageId;
+    }
+
+    if (["create", "correct"].includes(enrichedResult.action)) {
+        enrichedResult.response = buildAssistantResponse(enrichedResult);
+    }
+
+    return enrichedResult;
+}
+
+// Kakao Assistant AI => {
+//   "action": "correct",
+//   "dateExpr": "tomorrow+19:00",
+//   "response": "내일 오후 7시 약속으로 수정했습니다."
+// }
+
+export function buildAssistantResponse(result: any): string {
+    const lines: string[] = [];
+
+    // 날짜
+    if (result.dateExpr) {
+        const parsed = resolveDateExpr(result.dateExpr);
+
+        if (parsed) {
+            const dateText = parsed.hasTime
+                ? formatKoreanDateTime(parsed.date)
+                : formatKoreanDate(parsed.date);
+
+            lines.push(`🗓️ ${dateText}`);
+            lines.push("");
+        }
+    }
+
+    // 제목
+    if (result.title) {
+        lines.push(`📌 ${result.title}`);
+    }
+
+    // 할일 · 할 것
+    const categoryMap: Record<string, string> = {
+        task: "할일",
+        memo: "메모",
+        reference: "참고자료"
+    };
+
+    const category = categoryMap[result.db];
+    if (category) {
+        lines.push(result.type
+            ? `🏷️ ${category} · ${result.type}`
+            : `🏷️ ${category}`);
+    }
+
+    // 중요도
+    if (result.importance) {
+        lines.push(`⭐ ${result.importance}`);
+    }
+
+    // 긴급도
+    if (result.urgency) {
+        lines.push(`🚨 ${result.urgency}`);
+    }
+
+    // 분류
+    if (result.classification) {
+        lines.push(`📂 ${result.classification}`);
+    }
+
+    // 태그
+    if (result.tags?.length) {
+        lines.push(`🏷️ ${result.tags.map((tag: string) => `#${tag}`).join(" ")}`);
+    }
+
+    if (lines.length > 0) {
+        lines.push("");
+    }
+
+    // 안내 문구
+    switch (result.action) {
+        case "create":
+            lines.push(`'${result.title}'을 ${result.type ?? category}으로 등록했습니다.`);
+            break;
+
+        case "correct":
+            if (result.title) {
+                lines.push(`'${result.title}'을 수정했습니다.`);
+            } else if (result.dateExpr) {
+                lines.push("일정을 수정했습니다.");
+            } else {
+                lines.push(result.response ?? "수정했습니다.");
+            }
+            break;
+
+        case "delete":
+            lines.push(`'${result.title}'을 삭제했습니다.`);
+            break;
+
+        default:
+            if (result.response) {
+                lines.push(result.response);
+            }
+    }
+
+    return lines.join("\n");
+}
+// async function processKakaoAgent(
 //     uid: string,
 //     userMessage: string,
 //     user: any,
@@ -5527,7 +6184,7 @@ async function processConnectedUser(userId: string, userMessage: string, user: a
 //         );
 
 //     } catch (e) {
-//         console.error("[KAKAO ERROR - processConnectedUser]", e);
+//         console.error("[KAKAO ERROR - processKakaoAgent]", e);
 //         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
 //     }
 // }
@@ -5561,30 +6218,43 @@ async function sendKakaoCallback(
 async function processAfterResponse(
     userId: string,
     userMessage: string,
-    user: any,
-    kakaoUserId: string,
-    aiInput: any,
+    aiInput: string,
     entity: any,
     aiResult: any
 ) {
+    const start = Date.now();
+
     try {
         let pageId: string | undefined;
+
+        console.log("[TIME] NotionService.createDbItemFromAiResult START");
+        let t = Date.now();
+
         try {
             pageId = await NotionService.createDbItemFromAiResult(userId, aiResult, entity);
         } catch (e) {
             console.error("[NOTION ERROR]", e);
         }
 
+        console.log(`[TIME] NotionService.createDbItemFromAiResult: ${Date.now() - t}ms`);
+
         const payload: any = {
             userMessage,
-            aiInput,
+            aiInput: aiInput,
             entity,
             result: aiResult,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
         if (pageId) payload.pageId = pageId;
+
+        console.log("[TIME] saveAssistantContext START");
+        t = Date.now();
+
         await saveAssistantContext(userId, payload);
+
+        console.log(`[TIME] saveAssistantContext: ${Date.now() - t}ms`);
+        console.log(`[TIME] processAfterResponse TOTAL: ${Date.now() - start}ms`);
     } catch (error) {
         console.error('[KAKAO BACKGROUND ERROR]', error);
     }
@@ -5840,9 +6510,19 @@ export async function analyzeImageFromAI(imageUrl: string) {
 ---
 
 ## 1. OCR
-이미지 안의 텍스트를 가능한 정확히 추출한다.
-없으면 빈 문자열 ""
 
+이미지 안의 텍스트를 가능한 정확히 추출한다.
+
+규칙
+
+- OCR은 추출만 수행하며, 의미를 추론하거나 보정하지 않는다.
+- 읽을 수 있는 부분만 그대로 출력한다.
+- 잘 보이지 않거나 확신할 수 없는 글자는 추측하지 않는다.
+- 일부만 읽히는 경우에는 읽히는 부분만 출력한다.
+- 숫자, 주소, 전화번호, 이메일, 계정번호 등 식별 정보는 절대 추측하거나 수정하지 않는다.
+- 맞춤법, 띄어쓰기, 오탈자를 임의로 교정하지 않는다.
+- 의미상 자연스럽더라도 단어나 문장을 완성하지 않는다.
+- 전혀 읽을 수 없는 경우에는 빈 문자열("")을 출력한다.
 ---
 
 ## 2. OBJECTS
@@ -5975,23 +6655,54 @@ unknown:
 //     return response.choices[0].message.content ?? '';
 // }
 
-
-async function getLastAssistantContext(uid: string) {
-    const snap = await db
-        .collection('users')
-        .doc(uid)
-        .collection('assistantContext')
-        .orderBy('createdAt', 'desc')
+async function getLastAssistantContext(userId: string) {
+    const snapshot = await db
+        .collection("users")
+        .doc(userId)
+        .collection("assistantContext")
+        .orderBy("createdAt", "desc")
         .limit(1)
         .get();
 
-    if (snap.empty) return null;
+    if (snapshot.empty) {
+        console.log("[CONTEXT] empty");
+        return null;
+    }
 
-    const doc = snap.docs[0];
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+
+    const createdAt = data.createdAt?.toDate?.();
+
+    if (!createdAt) {
+        console.log("[CONTEXT] invalid createdAt", {
+            userId,
+            data
+        });
+        return null;
+    }
+
+    const expireMinutes = 30;
+    const age = Date.now() - createdAt.getTime();
+
+    if (age > expireMinutes * 60 * 1000) {
+        console.log("[CONTEXT] expired", {
+            userId,
+            createdAt,
+            ageMinutes: Math.floor(age / 60000)
+        });
+
+        return null;
+    }
+
+    console.log("[CONTEXT] valid", {
+        userId,
+        ageMinutes: Math.floor(age / 60000)
+    });
 
     return {
-        id: doc.id,
-        ...doc.data()
+        ...data,
+        contextId: doc.id
     };
 }
 
@@ -6000,10 +6711,13 @@ async function saveAssistantContext(
     context: any
 ) {
     await db
-        .collection('users')
+        .collection("users")
         .doc(uid)
-        .collection('assistantContext')
-        .add(context);
+        .collection("assistantContext")
+        .add({
+            ...context,
+            createdAt: context.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
+        });
 }
 
 // async function saveCapture(
@@ -6574,4 +7288,48 @@ export async function deleteTempImage(fileName: string) {
             console.log("[DELETE] already deleted");
         }
     }
+}
+
+async function acquireKakaoProcessingLock(userId: string, jobId: string): Promise<boolean> {
+    const userRef = db.collection("users").doc(userId);
+
+    return await db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        const data = snap.data();
+
+        const processing = data?.kakaoProcessing;
+        const processingAt = data?.kakaoProcessingAt?.toMillis?.() ?? 0;
+
+        // 기존 lock이 있고 5분 이내면 처리중으로 판단
+        if (processing && Date.now() - processingAt < 5 * 60 * 1000) {
+            return false;
+        }
+
+        tx.update(userRef, {
+            kakaoProcessing: true,
+            kakaoProcessingJobId: jobId,
+            kakaoProcessingAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return true;
+    });
+}
+
+async function releaseKakaoProcessingLock(userId: string, jobId: string) {
+    const userRef = db.collection("users").doc(userId);
+
+    await db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        const data = snap.data();
+
+        if (data?.kakaoProcessingJobId !== jobId) {
+            return;
+        }
+
+        tx.update(userRef, {
+            kakaoProcessing: false,
+            kakaoProcessingJobId: admin.firestore.FieldValue.delete(),
+            kakaoProcessingAt: admin.firestore.FieldValue.delete()
+        });
+    });
 }

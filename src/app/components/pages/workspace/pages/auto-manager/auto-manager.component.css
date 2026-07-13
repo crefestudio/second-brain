@@ -64,6 +64,7 @@
   font-weight: 600;
 
   border-bottom: 1px solid #333;
+  border-radius: 16px;
 }
 
 .service-table td {
@@ -253,4 +254,25 @@ input:checked + .slider::before {
 .category-divider {
   color: #6b7280;
   font-size: 12px;
+}
+
+.empty-state {
+    padding: 64px 24px;
+    text-align: center;
+}
+
+.empty-state h2 {
+    margin-bottom: 12px;
+}
+
+.empty-state p {
+    margin-bottom: 24px;
+    color: #888;
+}
+
+.connect-btn {
+    padding: 10px 22px;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
 }

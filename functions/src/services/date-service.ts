@@ -306,3 +306,23 @@ export function resolveDateExpr(
 
     return null;
 }
+
+export function formatKoreanDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const weekday = new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(date);
+
+    return `${year}년 ${month}월 ${day}일 (${weekday})`;
+}
+
+export function formatKoreanDateTime(date: Date): string {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const weekday = new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(date);
+    const hour = date.getHours();
+    const minute = String(date.getMinutes()).padStart(2, "0");
+
+    return `${year}년 ${month}월 ${day}일 (${weekday}) ${hour}:${minute}`;
+}

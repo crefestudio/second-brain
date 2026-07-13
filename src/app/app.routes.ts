@@ -38,7 +38,7 @@ import { WorkspaceComponent } from './components/pages/workspace/workspace.compo
 
 import { UnauthorizedComponent } from './components/login/app-unauthorized.component';
 
-import { authGuard } from './services/auth.guard';
+import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect-component/agent-connect-component.component';
 
 export const routes: Routes = [
@@ -54,7 +54,7 @@ export const routes: Routes = [
   {
     path: 'workspace',
     component: WorkspaceLayoutComponent,
-    canActivate: [authGuard],
+    canActivate: [memberGuard],
     children: [
       {
         path: 'home',
@@ -124,7 +124,7 @@ export const routes: Routes = [
   {
     path: 'mypage',
     component: WorkspaceLayoutComponent,
-    canActivate: [authGuard],
+    canActivate: [memberGuard],
     children: [
       {
         path: '',

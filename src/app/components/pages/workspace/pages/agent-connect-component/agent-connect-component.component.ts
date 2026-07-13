@@ -111,11 +111,11 @@ export class AgentConnectComponentComponent implements OnInit {
 
         _log('updateSession memberUid, userId, notionAccessToken =>', this.memberUid, this.userId, this.kakaoUserId, this.notionAccessToken);
 
-        if (!this.userId) {
-            console.error('워크스페이스 로그인에 실패하였습니다.');
-            this.errorMessage = '워크스페이스 로그인에 실패하였습니다.';
-            return;
-        }
+        // if (!this.userId) {
+        //     console.error('워크스페이스 로그인에 실패하였습니다.');
+        //     this.errorMessage = '워크스페이스 로그인에 실패하였습니다.';
+        //     return;
+        // }
     }
 
     get email(): string {

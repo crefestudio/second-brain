@@ -23,9 +23,13 @@ export class AuthService {
 
         // 서버에서 다시 가져옴
         const user = await UserService.getUserByImwebMemberId(this.memberUid);
-        this.userId = user?.userId ?? '';
+        this.userId = user?.userId ?? '';        
         this.kakaoUserId = user?.kakaoUserId ?? '';
         this.notionAccessToken = user?.notionAccessToken ?? '';
+
+        // this.userId = "";
+        // this.kakaoUserId = '';
+        // this.notionAccessToken = '';  
     }
 
     getUserIds() {
