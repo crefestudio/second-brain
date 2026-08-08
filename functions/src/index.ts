@@ -1746,7 +1746,14 @@ class NotionService {
 
     // #kakao notion
     static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any): Promise<string | undefined> {
+        console.log("[createDbItemFromAiResult] called");
+        console.log("[createDbItemFromAiResult] aiResult =", JSON.stringify(aiResult, null, 2));
+
         if (!aiResult?.db || !["create", "correct"].includes(aiResult.action)) {
+            console.log("[createDbItemFromAiResult] skipped", {
+                action: aiResult?.action,
+                db: aiResult?.db
+            });
             return undefined;
         }
 
@@ -1774,40 +1781,45 @@ class NotionService {
 
         ////////////////////////////////////////////////////
         if (aiResult.action === "correct") {
-            if (!aiResult.targetPageId) {
-                throw new Error("targetPageId required for correct");
-            }
+            try {
+                pageId = await waitForTargetPageId(userId, aiResult.contextId);
 
-            const sourcePage: any = await notion.pages.retrieve({
-                page_id: aiResult.targetPageId
-            });
-
-            const sourceDatabaseId = sourcePage.parent?.database_id;
-
-            const targetDatabaseId = await this.resolveDatabaseId(
-                accessToken,
-                userId,
-                aiResult.db
-            );
-
-            if (sourceDatabaseId !== targetDatabaseId) {
-                console.log("[NotionMove] database changed", {
-                    from: sourceDatabaseId,
-                    to: targetDatabaseId,
-                    targetDb: aiResult.db
+                const sourcePage: any = await notion.pages.retrieve({
+                    page_id: pageId
                 });
 
-                return await this.moveNotionPage(
-                    notion,
+                const sourceDatabaseId = sourcePage.parent?.database_id;
+
+                const targetDatabaseId = await this.resolveDatabaseId(
                     accessToken,
                     userId,
-                    sourcePage,
-                    aiResult,
-                    entity
+                    aiResult.db
                 );
-            }
 
-            pageId = aiResult.targetPageId;
+                if (sourceDatabaseId !== targetDatabaseId) {
+                    console.log("[NotionMove] database changed", {
+                        from: sourceDatabaseId,
+                        to: targetDatabaseId,
+                        targetDb: aiResult.db
+                    });
+
+                    return await this.moveNotionPage(
+                        notion,
+                        accessToken,
+                        userId,
+                        sourcePage,
+                        aiResult,
+                        entity
+                    );
+                }
+            } catch (e) {
+                console.warn("[NotionCorrect] target page not found. create new page.", e);
+
+                aiResult.response +=
+                    "\n\n⚠️ 원본 항목을 찾지 못해 수정할 수 없었습니다. 대신 새 항목으로 등록했습니다.";
+
+                pageId = undefined;
+            }
         }
         ////////////////////////////////////////////////////
 
@@ -2003,6 +2015,10 @@ class NotionService {
                     };
                 }
 
+                console.log("[CREATE CHECK]", {
+                    pageId,
+                    action: aiResult.action
+                });
 
                 if (!pageId) {
                     const page: any = await notion.pages.create({
@@ -4465,7 +4481,7 @@ c.importance: 중요, 매우 중요
   "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
-///////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 ## ask
 
 ask는 사용자의 의도는 이해했지만 작업을 수행하기 위한 필수 정보가 부족하거나, 사용자의 의도를 하나로 판단할 수 없는 경우 선택합니다.
@@ -4548,7 +4564,7 @@ correct를 사용하지 않는다.
 - help일 경우 response는 반드시 빈 문자열 또는 null
 - 실제 도움말 문구는 서버에서 처리한다
 
-/////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
 ## correct
 
 correct는 기존 항목을 수정하기 위한 action이다.
@@ -4556,9 +4572,7 @@ correct는 기존 항목을 수정하기 위한 action이다.
 ### 판단 원칙 (매우 중요)
 
 correct는 매우 제한적으로 사용한다.
-
 다음 두 조건을 모두 만족하는 경우에만 action="correct"를 선택한다.
-
 1. 사용자가 수정 의사를 명시적으로 표현했다.
 2. 수정 대상이 직전 항목임이 명확하다.
 
@@ -4572,7 +4586,7 @@ correct는 매우 제한적으로 사용한다.
 
 ### 수정 의사로 인정하는 표현
 
-다음과 같이 사용자가 명시적으로 수정을 요청한 경우만 correct이다.
+다음과 같이 사용자가 명시적으로 수정을 요청한 경우 correct이다.
 
 - OO로
 - 아니
@@ -4590,6 +4604,62 @@ correct는 매우 제한적으로 사용한다.
 - ○○만 바꿔
 - ○○만 추가해
 - ○○만 삭제해
+
+또한 직전 항목의 속성값 변경으로 명확하게 해석되는 단독 입력도 correct로 처리한다.
+
+예)
+- 중요로
+- 긴급으로
+- 다음으로
+- 나중에
+- 할 것으로
+- 살 것으로
+
+---
+
+### correct 변경값 생성 규칙 (중요)
+
+correct인 경우 반드시 실제 변경할 값을 생성해야 한다.
+response만 작성하고 변경 데이터를 생략하지 않는다.
+
+직전 항목의 title, type, importance, urgency, kinds, dateExpr 등의 속성과
+현재 사용자 입력을 비교하여 변경할 필드를 결정한다.
+
+사용자가 입력한 값이 특정 속성값과 일치하면 해당 속성을 변경한다.
+
+예)
+
+직전:
+{
+  "title": "연속 요청 응답 가능하게",
+  "type": "할 것"
+}
+
+사용자:
+중요로
+
+결과:
+{
+  "action": "correct",
+  "importance": "중요"  
+}
+
+---
+
+직전:
+{
+  "title": "치과 예약",
+  "dateExpr": "tomorrow+15:00"
+}
+
+사용자:
+오전으로
+
+결과:
+{
+  "action": "correct",
+  "dateExpr": "tomorrow+03:00"
+}
 
 ---
 
@@ -4649,11 +4719,37 @@ correct는 매우 제한적으로 사용한다.
 
 위 예시는 모두 create이다.
 
-직전 항목과 관련 있어 보이더라도 수정 의사가 명시되지 않았다면 create를 선택한다.
+직전 항목과 관련 있어 보여도 수정 의사가 명시되지 않았다면 create를 선택한다.
 
 ---
 
-시간대 변경 규칙
+### correct 출력 규칙 (중요)
+correct는 직전 분류 결과를 기준으로 변경사항만 반환한다.
+기존 title, db, type 등 변경되지 않는 값은 생성하지 않는다.
+
+예)
+
+직전:
+{
+  "action": "create",
+  "db": "task",
+  "title": "사용자 응답 빠르게 처리하기",
+  "type": "할 것"
+}
+
+현재:
+중요로
+
+출력:
+{
+  "action": "correct",
+  "importance": "중요",
+  "response": "중요도를 '중요'로 변경했습니다."
+}
+
+---
+
+### 시간대 변경 규칙
 
 기존 dateExpr에 정확한 시간이 있는 경우
 
@@ -4682,44 +4778,49 @@ tomorrow+09:00
 결과:
 tomorrow+21:00
 
-주의
+주의:
 
 임의로 09:00, 15:00 등의 기본 시간을 생성하지 않는다.
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ## chat
 
-chat은 사용자가 비서에게 답변, 의견, 설명 또는 도움을 요청하는 경우 선택합니다.
+chat은 사용자가 비서에게 지금 답변, 설명, 의견 또는 도움을 요청하는 경우 선택한다.
 
-다음 경우에는 chat을 사용합니다.
+### chat 선택 기준
 
-1. 비서에게 질문하거나 답변을 요청하는 경우
+다음 경우 chat으로 판단한다.
+
+1. 질문이나 답변 요청
 예)
 - 오늘 날씨 어때?
 - 추천해줘.
 - 알려줘.
 - 설명해줘.
-- 도와줘.
 - 어떻게 생각해?
 
-2. 비서에게 작업이나 서비스를 요청하는 경우
+2. 지식 또는 작업 요청
 예)
 - 번역해줘.
 - 요약해줘.
 - 비교해줘.
 - 계산해줘.
+- apple 뜻 알려줘.
+- Git이 뭐야?
 
-3. 인사, 감사, 일상적인 대화인 경우
+3. 인사 및 일상 대화
 예)
 - 안녕
 - 고마워
 - 좋은 아침
 
-중요
 
-- 사용자가 자신의 생각, 질문, 기록 또는 나중에 다시 보고 싶은 내용을 남기는 경우에는 chat보다 create를 우선합니다.
-- 질문 형태라도 저장 의도가 더 강하면 create를 선택합니다.
-- chat은 비서에게 지금 답변이나 도움을 원하는 경우에만 선택합니다.
+### 저장 우선 규칙 (중요)
+
+사용자가 자신의 생각, 기록, 업무, 개선 사항, 해야 할 일을 남기는 경우에는 chat보다 create를 우선한다.
+질문 형태라도 나중에 다시 보기 위한 기록 의도가 있으면 create를 선택한다.
 
 예)
 
@@ -4729,55 +4830,38 @@ chat은 사용자가 비서에게 답변, 의견, 설명 또는 도움을 요청
 "노션은 왜 많이 사용할까?"
 → create (Memo)
 
-"오늘 날씨 어때?"
-→ chat
+### 개발 작업 및 업무 기록 판단 (중요)
 
-"추천해줘."
-→ chat
-
-"안녕"
-→ chat
-
-출력 예시
-
-{
-  "action": "chat",
-  "response": ""
-}
-
-중요
-- response에는 사용자의 질문이나 요청에 대한 자연스러운 답변을 작성합니다.
-
-
-## 요청형 문장 처리 규칙
-
-사용자가 "~해줘", "~알려줘", "~조회해줘", "~예약해줘", "~보여줘" 등 요청형 문장을 입력한 경우에는,
-먼저 현재 시스템이 실제로 수행 가능한 요청인지 판단한다.
-
-### 수행 가능한 요청
-
-다음과 같은 요청은 chat으로 처리한다.
-
-- 일반적인 질문
-- 설명
-- 번역
-- 요약
-- 비교
-- 계산
-- 의미 설명
-- 상식 및 지식 질문
+사용자가 개발 작업, 업무 계획, 개선 사항, 기능 추가 사항을 짧게 기록하는 형태로 입력한 경우에는 명령형 문장처럼 보여도 Task로 우선 판단한다.
 
 예)
 
-- apple 뜻 알려줘
-- Git이 뭐야?
-- 번역해줘
-- 요약해줘
+- 로그인 오류 수정
+- 연속 요청 응답 가능하게
+- 이미지 분석 기능 추가
+- 자동 저장 기능 만들기
 
-### 수행할 수 없는 요청
+위 입력은 비서에게 실행 요청하는 것이 아니라 해야 할 작업 기록으로 판단한다.
 
-현재 시스템에서 제공하지 않는 기능을 요청한 경우에는
-실행하거나 실행한 것처럼 응답하지 않는다.
+### 요청형 문장 처리
+
+"~해줘", "~알려줘", "~조회해줘", "~예약해줘", "~보여줘" 형태라도 먼저 사용자의 목적을 판단한다.
+
+저장(create) 의도로 해석될 수 있는 경우에는 기능 요청으로 판단하지 않고 기존 create 규칙을 우선 적용한다.
+
+예)
+
+- 홍길동 명함
+- 여행 준비물
+- 회의록
+- 카카오톡 비서 아이디어
+
+위 입력은 기능 요청이 아니라 저장 대상으로 판단한다.
+
+
+### 지원하지 않는 기능 요청
+
+현재 시스템에서 수행할 수 없는 기능 요청은 실행하거나 실행한 것처럼 응답하지 않는다.
 
 예)
 
@@ -4789,46 +4873,49 @@ chat은 사용자가 비서에게 답변, 의견, 설명 또는 도움을 요청
 - 검색해줘
 
 위와 같은 요청은 수행했다고 가정하거나 조회 결과를 생성하지 않는다.
-
 response에는 현재 지원하지 않는 기능임을 자연스럽게 안내한다.
 
-### 중요
+///////////////////////////////////////////////////////////////////
+# '[이미지 분석]' 처리 규칙 (절대 규칙)
 
-단, 저장(create) 의도로도 해석될 수 있는 입력인 경우에는
-지원하지 않는 기능이라고 단정하지 말고,
-기존 create 판단 규칙을 우선 적용한다.
+사용자 입력이 '[이미지 분석]'으로 시작하는 경우에는
+이미지에서 AI가 추출한 OCR, 객체, 설명, 메타데이터 등을 포함한 입력이다.
+
+이 정보는 일반 텍스트와 동일하게 처리하되,
+사용자가 이미지를 보낸 목적은 기본적으로 저장(create)으로 판단한다.
+
+## 절대 규칙
+
+- '[이미지 분석]' 입력은 기본적으로 action="create"를 선택한다.
+- ask 또는 correct는 선택하지 않는다.
+- chat은 사용자가 이미지에 대해 명시적으로 질문하거나 설명, 번역, 분석 등을 요청한 경우에만 선택한다.
+
+## 저장 유형 판단
+
+이미지 여부가 아니라 저장 목적을 기준으로 Task / Memo / Reference를 판단한다.
 
 예)
 
-- 홍길동 명함
-- 여행 준비물
-- 회의록
-- 카카오톡 비서 아이디어
+명함 → Memo - 연락처
 
-위 입력은 기능 요청이 아니라 저장 의도로 판단하여 기존 규칙을 적용한다.
+영수증 → Memo - 개인 문서
 
-///////////////////////////////////////////////////////////////////
-# '[AI 분석] 텍스트' 처리 규칙
+회의 화이트보드 → Memo - 필기
 
-이미지, 동영상 등에서 AI가 추출한 OCR, 객체, 설명, 메타데이터 등의 정보는 일반 텍스트 입력과 동일하게 처리한다.
-[AI 분석]이라는 형식은 입력 타입이 아니라 추가 정보일 뿐이며, 기존의 Task / Memo / Reference 분류 규칙을 그대로 적용한다.
+기사 스크린샷 → Reference - 글
 
-명함 -> Memo - 연락처
-영수증 -> Memo - 개인 문서
-회의 화이트보드 -> Memo - 필기
-기사 스크린샷  -> Reference - 글
-문서 캡쳐 -> 개인 문서
-논문 캡쳐 -> Reference
+문서 캡처 → Memo - 개인 문서
 
-중요
+논문 캡처 → Reference - 글
 
-이미지인지 여부로 분류하지 않는다.
-항상 사용자가 해당 정보를 왜 저장하려는지(저장 목적) 를 기준으로 분류한다.
+할 일 목록, 체크리스트, 준비물 → Task
 
 ## 핵심 원칙
-'[AI 분석] 텍스트'는 별도 입력 타입이 아니라,
-추가 정보가 포함된 일반 텍스트 입력이다.
 
+'[이미지 분석]'은 입력 타입이 아니라,
+이미지에서 추출한 정보가 포함된 일반 입력이다.
+
+OCR, 객체, 설명, 힌트는 모두 저장 유형을 판단하기 위한 참고 정보로 활용한다.
 
 //////////////////////////////////////////////////////////////////////
 title 생성  규칙
@@ -5783,7 +5870,7 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
 
 // minInstances:1 => 콜드 스타트 방지, 사용비용 발생
 // #kakao
-export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", minInstances: 1 }, withCors(async (req, res) => {
+export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB" }, withCors(async (req, res) => {
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
     const user = payload?.userRequest?.user;
@@ -5878,46 +5965,34 @@ export const handleKakaoWebhookQueue = onDocumentCreated(
         const { userId, jobId } = event.params;
 
         console.log("[KAKAO QUEUE] start", { userId, jobId });
-        let locked = false;
+
         try {
-            locked = await acquireKakaoProcessingLock(userId, jobId);
-            if (!locked) {
-                console.log("[KAKAO QUEUE] user busy", {
-                    userId,
-                    jobId
-                });
-
-                await sendKakaoCallback(
-                    data.callbackUrl,
-                    "⏳ 이전 요청을 처리하고 있습니다.\n응답을 받은 후 다시 말씀해주세요. 🙂"
-                );
-
-                await snapshot.ref.delete();
-                return;
-            }
-
             await processKakaoAgent(
                 userId,
                 data.utterance,
-                data.user,
-                data.kakaoUserId,
-                data.callbackUrl
+                data.callbackUrl,
+                jobId
             );
+
             await snapshot.ref.delete();
-            console.log("[KAKAO QUEUE] success", { userId, jobId });
+
+            console.log("[KAKAO QUEUE] success", {
+                userId,
+                jobId
+            });
 
         } catch (error) {
-            console.error("[KAKAO QUEUE] ERROR", { userId, jobId, error });
+            console.error("[KAKAO QUEUE] ERROR", {
+                userId,
+                jobId,
+                error
+            });
 
             await snapshot.ref.update({
                 status: "error",
                 error: String(error),
                 updatedAt: Date.now()
             });
-        } finally {
-            if (locked) {
-                await releaseKakaoProcessingLock(userId, jobId);
-            }
         }
     }
 );
@@ -5945,22 +6020,32 @@ function logKakaoRequest(
 async function processKakaoAgent(
     userId: string,
     userMessage: string,
-    user: any,
-    kakaoUserId: string,
-    callbackUrl: string
+    callbackUrl: string,
+    jobId: string
 ) {
     const totalStart = Date.now();
+    const logTime = (label: string, start: number) => { console.log(`[TIME] ${label}: ${Date.now() - start}ms`); };
 
-    const logTime = (label: string, start: number) => {
-        console.log(`[TIME] ${label}: ${Date.now() - start}ms`);
-    };
+    let enrichedResult: any;
+    let entity: any;
+    let contextAiInput = userMessage;
+
+    const locked = await acquireKakaoProcessingLock(userId, jobId);
+    if (!locked) {
+        await sendKakaoCallback(
+            callbackUrl,
+            "⏳ 이전 요청을 처리하고 있습니다.\n잠시 후 다시 말씀해주세요. 🙂"
+        );
+        return;
+    }
 
     try {
         let t = Date.now();
         const prepared = await prepareAssistantInput(userMessage, userId);
         logTime("prepareAssistantInput", t);
 
-        const { aiInput, entity } = prepared;
+        const { aiInput, entity: preparedEntity } = prepared;
+        entity = preparedEntity;
 
         t = Date.now();
         const previousResult: any = await getLastAssistantContext(userId);
@@ -5968,39 +6053,41 @@ async function processKakaoAgent(
         logTime("getLastAssistantContext", t);
 
         t = Date.now();
-        const result = await requestKakaoAssistantActionFromAI(
-            aiInput,
-            previousResult
-        );        
-
+        const result = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
         logTime("requestKakaoAssistantActionFromAI", t);
 
-        const enrichedResult = enrichKakaoAssistantResult(result, previousResult);
+        enrichedResult = enrichKakaoAssistantResult(result, previousResult);
 
-        // if (result?.action === "help") result.response = HELP_RESPONSE;
+        contextAiInput =
+            previousResult?.result?.action === "ask"
+                ? `${previousResult.aiInput}\n${aiInput}`
+                : aiInput;
 
-        // const enrichedResult = {
-        //     ...result
-        // };
-
-        // if (result.action === "correct" && previousResult?.pageId) {
-        //     enrichedResult.targetPageId = previousResult.pageId;
-        // }
-
-        // if (["create", "correct"].includes(result.action)) {
-        //     result.response = buildAssistantResponse(result);
-        // }
-
+        const payload: any = {
+            userMessage,
+            aiInput: contextAiInput,
+            entity,
+            result: enrichedResult,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        console.log("[TIME] saveAssistantContext START");
         t = Date.now();
+        enrichedResult.contextId = await saveAssistantContext(userId, payload);
+        console.log(`[TIME] saveAssistantContext: ${Date.now() - t}ms`);
+
+    } finally {
+        await releaseKakaoProcessingLock(userId, jobId);
+    }
+
+    try {
+        let t = Date.now();
+
+        // 사용자 응답 
         console.log("[TIME] sendKakaoCallback START");
         await sendKakaoCallback(callbackUrl, enrichedResult.response);
         logTime("sendKakaoCallback", t);
 
         t = Date.now();
-        const contextAiInput =
-            previousResult?.result?.action === "ask"
-                ? `${previousResult.aiInput}\n${aiInput}`
-                : aiInput;
 
         await processAfterResponse(
             userId,
@@ -6012,25 +6099,104 @@ async function processKakaoAgent(
 
         logTime("processAfterResponse", t);
         logTime("TOTAL", totalStart);
+
     } catch (e) {
         console.error("[KAKAO ERROR - processKakaoAgent]", e);
 
-        const t = Date.now();
-        console.log("[TIME] sendKakaoCallback(ERROR) START");
-        await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
-        logTime("sendKakaoCallback(ERROR)", t);
-
-    } finally {
-        // if (fileName) {
-        //     await deleteTempImage(fileName);
-        // }
+        try {
+            await sendKakaoCallback(
+                callbackUrl,
+                "처리 중 오류가 발생했습니다."
+            );
+        } catch { }
     }
 }
+// async function processKakaoAgent(
+//     userId: string,
+//     userMessage: string,
+//     user: any,
+//     kakaoUserId: string,
+//     callbackUrl: string
+// ) {
+//     const totalStart = Date.now();
+
+//     const logTime = (label: string, start: number) => {
+//         console.log(`[TIME] ${label}: ${Date.now() - start}ms`);
+//     };
+
+//     try {
+//         let t = Date.now();
+//         const prepared = await prepareAssistantInput(userMessage, userId);
+//         logTime("prepareAssistantInput", t);
+
+//         const { aiInput, entity } = prepared;
+
+//         t = Date.now();
+//         const previousResult: any = await getLastAssistantContext(userId);
+//         console.log("[processKakaoAgent] previousResult =>", previousResult);
+//         logTime("getLastAssistantContext", t);
+
+//         t = Date.now();
+//         const result = await requestKakaoAssistantActionFromAI(aiInput, previousResult);
+
+//         logTime("requestKakaoAssistantActionFromAI", t);
+
+//         const enrichedResult = enrichKakaoAssistantResult(result, previousResult);
+
+//         t = Date.now();
+//         console.log("[TIME] sendKakaoCallback START");
+//         await sendKakaoCallback(callbackUrl, enrichedResult.response);
+//         logTime("sendKakaoCallback", t);
+
+//         t = Date.now();
+//         const contextAiInput =
+//             previousResult?.result?.action === "ask"
+//                 ? `${previousResult.aiInput}\n${aiInput}`
+//                 : aiInput;
+
+//         await processAfterResponse(
+//             userId,
+//             userMessage,
+//             contextAiInput,
+//             entity,
+//             enrichedResult
+//         );
+
+//         logTime("processAfterResponse", t);
+//         logTime("TOTAL", totalStart);
+//     } catch (e) {
+//         console.error("[KAKAO ERROR - processKakaoAgent]", e);
+
+//         const t = Date.now();
+//         console.log("[TIME] sendKakaoCallback(ERROR) START");
+//         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
+//         logTime("sendKakaoCallback(ERROR)", t);
+
+//     } finally {
+//         // if (fileName) {
+//         //     await deleteTempImage(fileName);
+//         // }
+//     }
+// }
 
 function enrichKakaoAssistantResult(result: any, previousResult: any) {
-    const enrichedResult = {
+    console.log("[enrich] result =", JSON.stringify(result, null, 2));
+    console.log("[enrich] previousResult =", JSON.stringify(previousResult, null, 2));
+
+    let enrichedResult = {
         ...result
     };
+
+    // 수정이라면 기존 값에 덮음
+    if (enrichedResult.action === "correct" && previousResult) {
+        enrichedResult = {
+            ...previousResult.result,
+            ...enrichedResult,
+            action: "correct"
+        };
+
+        console.log("[enrich] merged =", JSON.stringify(enrichedResult, null, 2));
+    }
 
     if (enrichedResult.dateExpr && !enrichedResult.kinds) {
         enrichedResult.kinds = "일정";
@@ -6048,9 +6214,10 @@ function enrichKakaoAssistantResult(result: any, previousResult: any) {
         enrichedResult.response = buildAssistantResponse(enrichedResult);
     }
 
+    console.log("[enrich] final =", JSON.stringify(enrichedResult, null, 2));
+
     return enrichedResult;
 }
-
 // Kakao Assistant AI => {
 //   "action": "correct",
 //   "dateExpr": "tomorrow+19:00",
@@ -6220,40 +6387,45 @@ async function processAfterResponse(
     userMessage: string,
     aiInput: string,
     entity: any,
-    aiResult: any
+    aiResult: any,
 ) {
     const start = Date.now();
 
     try {
         let pageId: string | undefined;
 
+        console.log("[processAfterResponse] aiResult =", JSON.stringify(aiResult, null, 2));
+        console.log("[processAfterResponse] action =", aiResult?.action);
+        console.log("[processAfterResponse] db =", aiResult?.db);
+        console.log("[processAfterResponse] entity =", JSON.stringify(entity, null, 2));
+
         console.log("[TIME] NotionService.createDbItemFromAiResult START");
         let t = Date.now();
 
         try {
             pageId = await NotionService.createDbItemFromAiResult(userId, aiResult, entity);
+            console.log("[processAfterResponse] pageId =", pageId);
+
+            if (pageId) {
+                console.log(
+                    "[CONTEXT UPDATE]",
+                    aiResult.contextId,
+                    pageId
+                );
+                await db
+                    .collection("users")
+                    .doc(userId)
+                    .collection("assistantContext")
+                    .doc(aiResult.contextId)
+                    .update({
+                        pageId
+                    });
+            }
         } catch (e) {
             console.error("[NOTION ERROR]", e);
         }
 
         console.log(`[TIME] NotionService.createDbItemFromAiResult: ${Date.now() - t}ms`);
-
-        const payload: any = {
-            userMessage,
-            aiInput: aiInput,
-            entity,
-            result: aiResult,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-
-        if (pageId) payload.pageId = pageId;
-
-        console.log("[TIME] saveAssistantContext START");
-        t = Date.now();
-
-        await saveAssistantContext(userId, payload);
-
-        console.log(`[TIME] saveAssistantContext: ${Date.now() - t}ms`);
         console.log(`[TIME] processAfterResponse TOTAL: ${Date.now() - start}ms`);
     } catch (error) {
         console.error('[KAKAO BACKGROUND ERROR]', error);
@@ -6315,12 +6487,12 @@ async function prepareImageInput(userMessage: string, uid: string) {
         const { ocrText, objects, context, hint } = await analyzeImageFromAI(imageUrl);
 
         const aiInput = `
-[이미지 분석]
-OCR: ${ocrText || "없음"}
-객체: ${objects.length > 0 ? objects.join(", ") : "없음"}
-설명: ${context || "없음"}
-힌트: ${hint || "없음"}
-`.trim();
+            [이미지 분석]
+            OCR: ${ocrText || "없음"}
+            객체: ${objects.length > 0 ? objects.join(", ") : "없음"}
+            설명: ${context || "없음"}
+            힌트: ${hint || "없음"}
+            `.trim();
 
         console.log("[PREPARE] analyzeImageFromAI success", {
             aiInput,
@@ -6706,20 +6878,75 @@ async function getLastAssistantContext(userId: string) {
     };
 }
 
-async function saveAssistantContext(
-    uid: string,
-    context: any
-) {
-    await db
+export async function saveAssistantContext(userId: string, payload: any): Promise<string> {
+    const collectionRef = db
         .collection("users")
-        .doc(uid)
-        .collection("assistantContext")
-        .add({
-            ...context,
-            createdAt: context.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
-        });
+        .doc(userId)
+        .collection("assistantContext");
+
+    const previous = await collectionRef
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
+
+    // previousContextId
+    if (!previous.empty) {
+        payload.previousContextId = previous.docs[0].id;
+    }
+
+    const docRef = collectionRef.doc();
+
+    // contextId
+    payload.contextId = docRef.id;
+
+    await docRef.set(payload);
+
+    return docRef.id;
 }
 
+async function resolveTargetPageId(userId: string, contextId: string): Promise<string | undefined> {
+    while (contextId) {
+        const doc = await db
+            .collection("users")
+            .doc(userId)
+            .collection("assistantContext")
+            .doc(contextId)
+            .get();
+
+        if (!doc.exists) {
+            return undefined;
+        }
+
+        const data = doc.data();
+
+        if (data?.pageId) {
+            return data.pageId;
+        }
+
+        contextId = data?.previousContextId;
+    }
+
+    return undefined;
+}
+
+async function waitForTargetPageId(
+    userId: string,
+    contextId: string,
+    timeoutMs = 30000
+): Promise<string> {
+    const started = Date.now();
+
+    while (Date.now() - started < timeoutMs) {
+        const pageId = await resolveTargetPageId(userId, contextId);
+        if (pageId) {
+            return pageId;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    throw new Error("pageId not found");
+}
 // async function saveCapture(
 //     uid: string,
 //     utterance: string,
