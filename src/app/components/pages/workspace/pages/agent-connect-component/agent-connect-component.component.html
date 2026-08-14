@@ -1,9 +1,9 @@
 @if(isLoading) {
 <div class="page-loading">
-    <div class="loading-spinner"></div>
-    <div class="loading-text">
-        연결 정보를 불러오는 중입니다...
-    </div>
+  <div class="loading-spinner"></div>
+  <div class="loading-text">
+    연결 정보를 불러오는 중입니다...
+  </div>
 </div>
 } @else {
 <div class="page-container">
@@ -18,7 +18,7 @@
     </h1>
 
     <p>
-      노셔너블 에이전트 서비스 사용을 위한 연결 설정을 단계별로 진행해주세요.
+      노셔너블 자동화 에이전트 서비스 사용을 위한 연결 설정을 단계별로 진행해주세요.
     </p>
 
   </div>
@@ -46,9 +46,9 @@
             </span>
 
             <span class="table-header-title">
-              계정 생성&nbsp;
+              연결 계정 생성&nbsp;
               <span class="help-icon">ⓘ
-                <span class="tooltip">템플릿과 에이전트를 연결하기 전에 보안 인증 절차를 진행하고 워크스페이스 계정을 생성합니다.</span>
+                <span class="tooltip">템플릿과 에이전트를 연결하기 전에 보안 인증 절차를 진행하고 자동화 관리를 위한 연결 계정을 생성합니다.</span>
               </span>
 
             </span>
@@ -78,6 +78,9 @@
 
           <td class="task-cell">
             템플릿 구매 확인
+            <span class="help-icon">ⓘ
+              <span class="tooltip">구매 확인이 되지 않는 경우 관리자에게 문의해주세요. 아직 구매 정보 연동이 원활하지 않아 바로 확인이 되지 않을 수 있습니다. </span>
+            </span>
           </td>
 
           <td class="action-cell">
@@ -444,7 +447,7 @@
             }
           </td>
           <td class="task-cell">
-            카카오 비서 연결
+            카카오톡 AI 비서 연결
           </td>
           <td class="action-cell">
             <div class="verify-wrap">
@@ -466,7 +469,7 @@
               </div>
               } @else if (!isRequestKakaoConnect) {
               <button class="verify-btn" (click)="onRequestConnetKakao()">
-                카카오 연결
+                카카오톡 연결
               </button>
               } @else {
               <div class="kakao-connect-box">
@@ -482,7 +485,7 @@
                 <div class="kakao-message">
                   인증번호
                   <span class="code">{{ kakaoVerificationCode }}</span>를&nbsp;
-                  <span class="kakao-highlight">카카오톡</span>&nbsp;1으로 보내주세요. (10분 유효)
+                  <span class="kakao-highlight">카카오톡</span>&nbsp;으로 보내주세요. (10분 유효)
                 </div>
                 } @else {
                 <div class="kakao-message">
@@ -548,7 +551,7 @@
 <div class="warn-message" [innerHTML]="warnMessage">
 </div>
 
-<!-- 카카오 연결해제 -->
+<!-- 카카오톡 연결해제 -->
 <div class="modal-backdrop" *ngIf="isConfirmRemoveDisconnectKakao">
 
   <div class="confirm-box" (click)="$event.stopPropagation()">

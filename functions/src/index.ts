@@ -702,7 +702,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         // 만료 확인
         const now = admin.firestore.Timestamp.now();
         if (data!.expiresAt.toMillis() < now.toMillis()) {
-            return res.status(200).json({ message: '인증번호가 만료되었습니다.' });
+            return res.status(200).json({ message: '인증번호가 만료되었습니다. 홈페이지에서 다시 연결요청을 해주세요.' });
         }
 
         // 코드 비교
@@ -775,6 +775,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
     const userId: string = req.body.userId;
 
+    const verificationId = crypto.randomUUID();
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
 
@@ -787,6 +788,7 @@ export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
         .collection('verifications')
         .doc(userId)
         .set({
+            verificationId,
             code: hashedCode,
             verified: false,
             kakaoUserId: null,
@@ -797,7 +799,8 @@ export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
 
     return res.status(200).json({
         code,
-        expiresAt
+        expiresAt,
+        verificationId
     });
 })
 );
@@ -4398,8 +4401,17 @@ Reference
 * 8월 8일 → "date:08-08"
 * 8일 → "date:08"
 
-* 시간이 포함되어 있지만 날짜를 판단할 수 없는 경우에는 추론하지 않고 action을 "ask"로 선택한다.
-response에는 사용자에게 질문을 작성한다.
+[최우선 규칙]
+시간 표현의 오전/오후가 명확하지 않으면 다른 모든 판단보다 이 규칙을 우선한다.
+
+- 오전/오후가 명시되지 않은 시간은 절대 추론하지 않는다.
+- 날짜가 명시되어 있어도 오전/오후가 불명확하면 ask이다.
+- 문맥상 자연스러운 시간이라고 판단하지 않는다.
+- 일정의 종류, 장소, 사람, 업무 내용 등을 근거로 오전/오후를 추론하지 않는다.
+- "6시"는 오전 6시인지 오후 6시인지 알 수 없으므로 반드시 ask이다.
+- "내일 6시"도 반드시 ask이다.
+단, "아침 6시", "오전 6시", "저녁 6시", "오후 6시"처럼
+시간대가 명시된 경우에는 ask하지 않는다.
 
 예)
 "오후 3시 회의"
@@ -4412,10 +4424,6 @@ response에는 사용자에게 질문을 작성한다.
   "response": "언제 8시 30분인가요?"
 }
 
-dateExpr는 생성하지 않는다.
-
-* 시간이 포함되어 있지만 오전/오후를 판단할 수 없는 경우에는 추론하지 않고 action을 "ask"로 선택한다.
-
 예)
 "3시 회의"
 
@@ -4424,7 +4432,6 @@ dateExpr는 생성하지 않는다.
   "action": "ask",
   "response": "오전 3시인가요, 오후 3시인가요?"
 }
-dateExpr는 생성하지 않는다.
 
 2. memo
 사용자와 관계가 가까운 정보이다.
@@ -4453,11 +4460,11 @@ c.importance: 중요, 매우 중요
 {
   "action": "create",
   "db": "memo",
-  "title": "카카오톡 비서",
+  "title": "카카오톡 AI 비서",
   "type": "아이디어",
   "tags": ["AI"],
-  "content": "카카오톡 비서",
-  "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
+  "content": "카카오톡 AI 비서",
+  "response": "'카카오톡 AI 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
 
@@ -4474,11 +4481,11 @@ c.importance: 중요, 매우 중요
 {
   "action": "create",
   "db": "reference",
-  "title": "카카오톡 비서",
+  "title": "카카오톡 AI 비서",
   "type": "글",
   "tags": ["AI"],
-  "content": "카카오톡 비서",
-  "response": "'카카오톡 비서'를 '메모 - 아이디어'에 등록했습니다."
+  "content": "카카오톡 AI 비서",
+  "response": "'카카오톡 AI 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -4854,7 +4861,7 @@ chat은 사용자가 비서에게 지금 답변, 설명, 의견 또는 도움을
 - 홍길동 명함
 - 여행 준비물
 - 회의록
-- 카카오톡 비서 아이디어
+- 카카오톡 AI 비서 아이디어
 
 위 입력은 기능 요청이 아니라 저장 대상으로 판단한다.
 
@@ -5013,14 +5020,14 @@ title 생성 시 의미가 명확한 오타만 보정한다.
   예시
 
     입력:
-    "카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+    "카카오톡 AI 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
 
     출력:
     {
     "action":"create",
     "db":"memo",
     "title":"카카오톡 AI 비서 아이디어",
-    "content":"카카오톡 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
+    "content":"카카오톡 AI 비서를 만들어서 음성, 이미지 분석까지 연결하면 좋겠다"
     }
 
 [reference.title]
@@ -5892,9 +5899,9 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB" }, 
                             {
                                 simpleText: {
                                     text: [
-                                        "현재 카카오톡 비서 자동화가 꺼져 있습니다.",
+                                        "현재 카카오톡 AI 비서 자동화가 꺼져 있습니다.",
                                         "",
-                                        "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 비서 자동화'를 활성화해주세요."
+                                        "노셔너블 비서를 이용하려면 자동화 에이전트 관리에서 '카카오톡 AI 비서 자동화'를 활성화해주세요."
                                     ].join("\n")
                                 }
                             }
@@ -5942,7 +5949,15 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB" }, 
                 kakaoUserId
             );
         }
-        return sendNotConnectedMessage(callbackUrl);
+        return resposeKakaoMesagee(
+            [
+                "노셔너블 비서입니다.",
+                "",
+                "아직 카카오톡 연결이 완료되지 않았습니다.",
+                "notionable.net에 접속하여 카카오톡 연결을 먼저 진행해주세요."
+            ].join('\n'),
+            res
+        );
     } catch (error) {
         console.error("[KAKAO WEBHOOK ERROR]", error);
         return res.status(500).json({
@@ -6032,9 +6047,9 @@ async function processKakaoAgent(
 
     const locked = await acquireKakaoProcessingLock(userId, jobId);
     if (!locked) {
-        await sendKakaoCallback(
-            callbackUrl,
-            "⏳ 이전 요청을 처리하고 있습니다.\n잠시 후 다시 말씀해주세요. 🙂"
+        await resposeKakaoMessageByCallbackUrl(
+            "⏳ 이전 요청을 처리하고 있습니다.\n잠시 후 다시 말씀해주세요. 🙂",
+            callbackUrl
         );
         return;
     }
@@ -6084,7 +6099,7 @@ async function processKakaoAgent(
 
         // 사용자 응답 
         console.log("[TIME] sendKakaoCallback START");
-        await sendKakaoCallback(callbackUrl, enrichedResult.response);
+        await resposeKakaoMessageByCallbackUrl(enrichedResult.response, callbackUrl);
         logTime("sendKakaoCallback", t);
 
         t = Date.now();
@@ -6104,9 +6119,9 @@ async function processKakaoAgent(
         console.error("[KAKAO ERROR - processKakaoAgent]", e);
 
         try {
-            await sendKakaoCallback(
-                callbackUrl,
-                "처리 중 오류가 발생했습니다."
+            await resposeKakaoMessageByCallbackUrl(
+                "처리 중 오류가 발생했습니다.",
+                callbackUrl
             );
         } catch { }
     }
@@ -6145,7 +6160,7 @@ async function processKakaoAgent(
 
 //         t = Date.now();
 //         console.log("[TIME] sendKakaoCallback START");
-//         await sendKakaoCallback(callbackUrl, enrichedResult.response);
+//         await resposeKakaoMesagee(callbackUrl, enrichedResult.response);
 //         logTime("sendKakaoCallback", t);
 
 //         t = Date.now();
@@ -6168,9 +6183,9 @@ async function processKakaoAgent(
 //         console.error("[KAKAO ERROR - processKakaoAgent]", e);
 
 //         const t = Date.now();
-//         console.log("[TIME] sendKakaoCallback(ERROR) START");
-//         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
-//         logTime("sendKakaoCallback(ERROR)", t);
+//         console.log("[TIME] resposeKakaoMesagee(ERROR) START");
+//         await resposeKakaoMesagee(callbackUrl, "처리 중 오류가 발생했습니다.");
+//         logTime("resposeKakaoMesagee(ERROR)", t);
 
 //     } finally {
 //         // if (fileName) {
@@ -6337,7 +6352,7 @@ export function buildAssistantResponse(result: any): string {
 //         }
 
 //         // 4. 사용자에게 결과 전달
-//         await sendKakaoCallback(callbackUrl, result.response);
+//         await resposeKakaoMesagee(callbackUrl, result.response);
 
 //         // 5. 기록 및 후처리
 //         await processAfterResponse(
@@ -6352,14 +6367,11 @@ export function buildAssistantResponse(result: any): string {
 
 //     } catch (e) {
 //         console.error("[KAKAO ERROR - processKakaoAgent]", e);
-//         await sendKakaoCallback(callbackUrl, "처리 중 오류가 발생했습니다.");
+//         await resposeKakaoMesagee(callbackUrl, "처리 중 오류가 발생했습니다.");
 //     }
 // }
 
-async function sendKakaoCallback(
-    callbackUrl: string,
-    text: string
-) {
+async function resposeKakaoMessageByCallbackUrl(text: string, callbackUrl: string) {
     await fetch(callbackUrl, {
         method: "POST",
         headers: {
@@ -6380,6 +6392,20 @@ async function sendKakaoCallback(
     });
 }
 
+async function resposeKakaoMesagee(text: string, res: any) {
+    return res.json({
+        version: "2.0",
+        template: {
+            outputs: [
+                {
+                    simpleText: {
+                        text
+                    }
+                }
+            ]
+        }
+    });
+}
 
 // #kakao notion
 async function processAfterResponse(
@@ -7046,11 +7072,12 @@ async function processVerificationCode(
             .get();
 
         if (!targetUserSnap.exists) {
+            //인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요.
             return sendInvalidVerificationCode(res);
-        }
+        }        
 
         ///////////////////////////////////////////////////
-        // 카카오 연결
+        // 카카오톡 연결
         await connectKakaoUser(userId, kakaoUserId);
 
         ///////////////////////////////////////////////////
@@ -7060,7 +7087,6 @@ async function processVerificationCode(
             verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
             kakaoUserId
         });
-
         return sendConnectedMessage(res);
     }
 
@@ -7109,10 +7135,12 @@ export async function disconnectKakaoUser(uid: string, kakaoUserId: string) {
     try {
         const batch = db.batch();
 
+        // users/OOO/kakoUserId 필드 삭제
         batch.update(db.collection('users').doc(uid), {
             kakaoUserId: admin.firestore.FieldValue.delete()
         });
 
+        // kakaoConnections 삭제
         batch.delete(db.collection('kakaoConnections').doc(kakaoUserId));
 
         batch.set(
@@ -7152,7 +7180,7 @@ export const disconnectKakao = onRequest({ timeoutSeconds: 60, memory: "256MiB" 
 
         await disconnectKakaoUser(userId, kakaoUserId);
 
-        return res.status(200).json({ success: true, message: "카카오 연결이 해제되었습니다." });
+        return res.status(200).json({ success: true, message: "카카오톡 연결이 해제되었습니다." });
 
     } catch (error) {
         console.error("[DISCONNECT KAKAO ERROR]", error);
@@ -7191,7 +7219,7 @@ export async function findEnabledConnectedUser(
 // function sendDisabledMessage(
 //     callbackUrl: string
 // ) {
-//     return sendKakaoCallback(
+//     return resposeKakaoMesagee(
 //         callbackUrl,
 //         [
 //             "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
@@ -7201,22 +7229,8 @@ export async function findEnabledConnectedUser(
 //     );
 // }
 
-function sendNotConnectedMessage(
-    callbackUrl: string
-) {
-    return sendKakaoCallback(
-        callbackUrl,
-        [
-            "노셔너블 비서입니다.",
-            "",
-            "아직 카카오 연결이 완료되지 않았습니다.",
-            "notionable.net 에 접속하여 카카오 연결을 먼저 진행해주세요."
-        ].join('\n')
-    );
-}
-
 // function sendError(callbackUrl: any) {
-//     return sendKakaoCallback(
+//     return resposeKakaoMesagee(
 //         callbackUrl,
 //         [
 //             "처리 중 오류가 발생했습니다.",
@@ -7226,28 +7240,26 @@ function sendNotConnectedMessage(
 // }
 
 function sendInvalidVerificationCode(
-    callbackUrl: any
+    res: any
 ) {
-    return sendKakaoCallback(
-        callbackUrl,
-        "인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요."
+    return resposeKakaoMesagee(
+        "인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요.",
+        res
     );
 }
 
 function sendExpiredVerificationCode(
-    callbackUrl: any
+    res: any
 ) {
-    return sendKakaoCallback(
-        callbackUrl,
-        "인증번호가 만료되었습니다."
+    return resposeKakaoMesagee(
+        "인증번호가 만료되었습니다.", res
     );
 }
 
 function sendConnectedMessage(
-    callbackUrl: any
+    res: any
 ) {
-    return sendKakaoCallback(
-        callbackUrl,
+    return resposeKakaoMesagee(
         [
             "라이프업 비서와 연결이 되었습니다.",
             "",
@@ -7260,7 +7272,8 @@ function sendConnectedMessage(
             "",
             "사용법이 궁금하시면",
             "'사용법'이라고 입력해보세요."
-        ].join('\n')
+        ].join('\n'), 
+        res
     );
 }
 

@@ -37,6 +37,7 @@ export class AgentConnectComponentComponent implements OnInit {
     // kakao
     isRequestingKakaoCode = false;
     kakaoVerificationCode = '';
+    kakaoVerificationId = '';
 
     public isRequestKakaoConnect = false;
     public isWaitingKakaoVerification = false;
@@ -423,12 +424,13 @@ export class AgentConnectComponentComponent implements OnInit {
                 return;
             }
             this.kakaoVerificationCode = result.code;
+            this.kakaoVerificationId = result.verificationId;
             this.isRequestKakaoConnect = true;
 
             ToastService.show('인증번호가 생성되었습니다.');
         } catch (e) {
             console.error(e);
-            ToastService.error('카카오 연결 준비 중 오류가 발생했습니다.');
+            ToastService.error('카카오톡 연결 준비 중 오류가 발생했습니다.');
         }
     }
 
@@ -437,6 +439,7 @@ export class AgentConnectComponentComponent implements OnInit {
         this.isWaitingKakaoVerification = false;
         this.isKakaoVerificationSuccess = false;
         this.kakaoVerificationCode = '';
+        this.kakaoVerificationId = '';
         this.userService.stopVerificationWatcher();
     }
 
@@ -457,7 +460,7 @@ export class AgentConnectComponentComponent implements OnInit {
             'http://pf.kakao.com/_dICwX/chat',
             '_blank'
         );
-        this.userService.startVerificationWatcher(this.userId);
+        this.userService.startVerificationWatcher(this.userId, this.kakaoVerificationId);
     }
 
     onComplateKakaoConnect() {
@@ -466,7 +469,7 @@ export class AgentConnectComponentComponent implements OnInit {
         this.isRequestKakaoConnect = false;
 
         ToastService.show(
-            '카카오 연결이 완료되었습니다.'
+            '카카오톡 연결이 완료되었습니다.'
         );
         this.updateSession();
     }

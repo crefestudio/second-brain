@@ -47,33 +47,25 @@
           <td>라이프업</td>
 
           <td>
-            @if (userId) {
-
+            @if (hasLifeupPurchase && purchaseInfo.email) {
             <span class="badge success">
               확인됨
             </span>
-
             } @else {
-
             <div class="verify-wrap">
               <span class="badge pending">
                 미확인
               </span>
-
               &nbsp;
-
               <button class="verify-btn" (click)="router.navigate(['/workspace/mypage/agent-connect'])">
-
                 구매 확인
-
               </button>
             </div>
-
             }
           </td>
 
           <td>
-            @if (userId) {
+            @if (hasLifeupPurchase && purchaseInfo.email) {
 
             <button class="verify-btn" [class.close-btn]="showPurchaseDetail"
               (click)="showPurchaseDetail = !showPurchaseDetail">
@@ -92,12 +84,10 @@
           </td>
 
           <td>
-            @if (userId) {
+            @if (hasLifeupPurchase && purchaseInfo.email) {
 
-            <button class="verify-btn" [class.close-btn]="showDownload" (click)="showDownload = !showDownload">
-
-              {{ showDownload ? '접기' : '다운로드' }}
-
+            <button class="verify-btn" (click)="downloadTemplate()">
+              다운로드
             </button>
 
             } @else {
@@ -110,12 +100,10 @@
           </td>
 
           <td>
-            @if (userId) {
+            @if (hasLifeupPurchase && purchaseInfo.email) {
 
-            <button class="verify-btn" (click)="router.navigate(['/workspace/mypage/agent-connect'])">
-
+            <button class="verify-btn" (click)="router.navigate(['/workspace/connect'])">
               연결 하기
-
             </button>
 
             } @else {

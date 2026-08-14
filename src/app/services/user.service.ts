@@ -546,17 +546,16 @@ export class UserService {
     //     return snapshot.docs[0].id;
     // }
 
-    async requestKakaoVerification(userId: string): Promise<{ code: string; expiresAt: any } | null> {
+    async requestKakaoVerification(userId: string): Promise<{ code: string; expiresAt: any; verificationId: string } | null> {
         if (!userId) return null;
 
         try {
             const result = await firstValueFrom(
-                this.http.post<{ code: string; expiresAt: any }>(
+                this.http.post<{ code: string; expiresAt: any; verificationId: string }>(
                     `${this.functionsBaseUrl}/requestKakaoVerification`,
                     { userId }
                 )
             );
-
             return result;
         } catch (error) {
             console.error('requestKakaoVerification failed', error);
@@ -564,27 +563,24 @@ export class UserService {
         }
     }
 
-    startVerificationWatcher(userId: string) {
-        if (!userId) { return; }
+    startVerificationWatcher(userId: string, verificationId: string) {
+        if (!userId || !verificationId) { return; }
         this.stopVerificationWatcher();
-        const docRef = doc(
-            firestore,
-            'verifications',
-            userId
-        );
 
-        this.verificationUnsubscribe = onSnapshot(
-            docRef,
-            (snapshot) => {
-                if (!snapshot.exists()) { return; }
+        const docRef = doc(firestore, 'verifications', userId);
 
-                const data = snapshot.data();
-                if (data['verified']) {
-                    this.kakaoVerified$.next();
-                    this.stopVerificationWatcher();
-                }
+        this.verificationUnsubscribe = onSnapshot(docRef, (snapshot) => {
+            if (!snapshot.exists()) { return; }
+
+            const data = snapshot.data();
+
+            if (data['verificationId'] !== verificationId) { return; }
+
+            if (data['verified'] === true) {
+                this.kakaoVerified$.next();
+                this.stopVerificationWatcher();
             }
-        );
+        });
     }
 
     stopVerificationWatcher() {
@@ -814,7 +810,7 @@ export class UserService {
             );
 
             ///////////////////////////////////////////////////
-            // 카카오 비서라면 캐시 동기화
+            // 카카오톡 AI 비서라면 캐시 동기화
             if (agentId === 'kakao-capture') {
 
                 const userSnap = await getDoc(

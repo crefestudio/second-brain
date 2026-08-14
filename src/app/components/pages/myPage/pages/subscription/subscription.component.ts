@@ -76,7 +76,8 @@ export class SubscriptionComponent implements OnInit {
         if (!this.userId) {
             console.error('사용자를 찾을 수 없습니다.');
             // this.errorMessage = '사용자를 찾을 수 없습니다.';
-            return;        }
+            return;
+        }
     }
 
     submitVerification() {
@@ -98,6 +99,13 @@ export class SubscriptionComponent implements OnInit {
         this.verifyValue = '';
 
         this.requestMode = false;
+    }
+
+    downloadTemplate(): void {
+        const link = document.createElement('a');
+        link.href = '/templateDownload/LifeUp-1.3-Template-Passport.pdf';
+        link.download = 'Life Up 1.3 템프릿 패스포트.pdf';
+        link.click();
     }
 
 }

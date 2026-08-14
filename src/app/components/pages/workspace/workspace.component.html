@@ -2,29 +2,33 @@
     <div class="page-header">
 
         <h1>
-            ⚡ 라이프업 자동화 비서
+            ⚡ 라이프업 자동화 비서 (🚧 제작중입니다.)
         </h1>
 
         <div class="hero-box">
-
-            <div class="hero-title">
-                환영합니다. 🎉
+            <div class="hero-image">
+                <img src="assets/images/welcome_lifeupBot.png" alt="라이프업 봇">
             </div>
-
-            <div class="hero-description">
-                이곳은 AI를 활용하여 <strong>라이프업 템플릿</strong>을 더욱 편리하게 활용하기 위한 <strong> 자동화 기능</strong>을 관리하는 공간 입니다.<br>
-                <strong>라이프업 비서</strong>를 템플릿과 연결을 하고, 각 <strong>자동화 기능</strong>을 설정하거나 이용 현황을 확인할 수 있습니다.<br>
-            </div>
-            @if(!(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId)) {
-            <div class="hero-action">
-                <div class="hero-action-text">
-                    템플릿을 연결하고 바로 시작해보세요.&nbsp;&nbsp;&nbsp;<button class="verify-btn" routerLink="/workspace/connect">
-                        템플릿 연결 하기
-                    </button>
-
+            <div class="hero-content">
+                <div class="hero-title">
+                    안녕하세요. 라이프봇입니다. 🎉
                 </div>
+                <div class="hero-description">
+                    이곳은 라이프봇을 활용하여 <strong>라이프업 템플릿</strong>을 더욱 편리하게 만들어줄 <strong>자동화 공간</strong>입니다.<br>
+                    <strong>라이프업 봇</strong>을 템플릿과 연결하고, 각 <strong>자동화 기능</strong>을 설정하거나
+                    이용 현황을 확인할 수 있습니다.<br>
+                </div>
+                @if(!(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId)) {
+                <div class="hero-action">
+                    <div class="hero-action-text">
+                        지금 바로 템플릿을 연결하고 저와 함께 시작해 보실래요?&nbsp;&nbsp;&nbsp;
+                        <button class="verify-btn" routerLink="/workspace/connect">
+                            템플릿 연결 하기
+                        </button>
+                    </div>
+                </div>
+                }
             </div>
-            }
         </div>
     </div>
 
@@ -35,14 +39,14 @@
 
         <div class="dashboard-card">
 
-            <div class="dashboard-title">
+            <div class="dashboard-title" routerLink="/workspace/connect" style="cursor: pointer;">
                 라이프업 비서 연결 상태
             </div>
 
             <div class="dashboard-content">
 
                 <div class="dashboard-item">
-                    <span>라이프업 템플릿</span>
+                    <span>라이프업 템플릿 연결</span>
 
                     @if(userId && hasLifeupPurchase && notionAccessToken) {
                     <span class="badge success">
@@ -56,7 +60,7 @@
                 </div>
 
                 <div class="dashboard-item">
-                    <span>카카오톡 비서</span>
+                    <span>카카오톡 AI 비서 연결</span>
 
                     @if(kakaoUserId && userId && hasLifeupPurchase && notionAccessToken) {
                     <span class="badge success">
@@ -86,35 +90,28 @@
         <!-- 자동화 비서 -->
 
         <div class="dashboard-card">
-
-            <div class="dashboard-title">
+            <div class="dashboard-title" routerLink="/workspace/auto" style="cursor: pointer;">
                 자동화 비서 동작 상태
             </div>
-
             <div class="dashboard-content">
-
                 <div class="dashboard-item">
-
-                    <span>세컨드브레인 키워드 추출</span>
-
+                    <span>세컨드브레인 노트 키워드 자동 추출</span>
                     <span class="badge success">
                         사용중
                     </span>
-
                 </div>
-
                 <div class="dashboard-item">
-
-                    <span>카카오톡 비서</span>
-
+                    <span>카카오톡 AI 비서</span>
                     <span class="badge success">
                         사용중
                     </span>
-
                 </div>
-
             </div>
-
+            <div class="dashboard-footer">
+                <button class="verify-btn" routerLink="/workspace/auto">
+                    자동화 비서 관리하기
+                </button>
+            </div>
         </div>
 
         <!-- 오늘 비서가 한 일 -->
@@ -147,7 +144,7 @@
                 </div>
 
                 <div class="dashboard-item">
-                    <span>카카오톡 비서</span>
+                    <span>카카오톡 AI 비서</span>
 
                     <button class="count-btn" routerLink="/workspace/event-log/kakao-capture">
                         {{kakaoCount}}
@@ -172,10 +169,10 @@
 
         <div class="guide-card">
 
-            <h2>AI 비서가 도와드리는 일</h2>
+            <h2>AI 비서가 하는 일</h2>
 
             <div class="guide-item">
-                <h3>💬 카카오톡 비서</h3>
+                <h3>💬 카카오톡 AI 비서</h3>
                 <p>
                     카카오톡으로 보낸 메모, 할 일, 링크, 사진 등을
                     AI가 자동으로 분류하여 라이프업 템플릿에 저장합니다.
@@ -194,14 +191,13 @@
             <h2>자주 묻는 질문</h2>
             <h4>비용은 어떻게 되나요?</h4>
             <p>
-                현재는 베타 테스트 기간으로 모든 기능을 무료로 이용할 수 있습니다.
-                추후 구독제가 도입되더라도 충분한 사전 안내 후 진행되며,
-                자동으로 결제되거나 구독되지 않습니다.
+                현재는 베타 테스트 기간으로 모든 기능을 무료로 이용할 수 있습니다.<br>
+                추후 구독제가 도입 되더라도 충분한 사전 안내 후 진행되며, 자동으로 결제되거나 구독되지 않습니다.
             </p>
             <h4>보안은 안전한가요?</h4>
             <p>
-                자동화 비서는 사용자가 권한을 허용한 라이프업 템플릿만 접근합니다.
-                작업을 위해 필요한 데이터는 처리 후 즉시 삭제되며,
+                자동화 비서는 사용자가 권한을 허용한 라이프업 템플릿만 접근합니다.<br>
+                작업을 위해 필요한 데이터는 처리 후 별도 저장하지 않습니다,
                 일부 기능의 캐시 데이터는 자동화 관리에서 확인할 수 있습니다.
             </p>
         </div>
@@ -211,10 +207,10 @@
             <h2>앞으로 추가될 기능</h2>
 
             <ul>
-                <li>✨ 라이프업 코치</li>
+                <li>✨ 내 삶은 루틴을 관리해주는 <strong>라이프업 코치</strong></li>
                 <li>🔄 템플릿 자동 업데이트</li>
-                <li>☁  라이프업 자료 저장소</li>
                 <li>📝 노트 제목 자동 생성</li>
+                <li>☁ 라이프업 자료 저장소</li>
             </ul>
 
         </div>
