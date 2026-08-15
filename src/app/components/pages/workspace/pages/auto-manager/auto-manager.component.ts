@@ -73,11 +73,11 @@ export class AutoManagerComponent {
         await this.updateSession();
 
         const automations = await UserService.getUserIntegrations(this.userId);
-
         this.automationAgents =
             this.automationAgents.map(agent => ({
                 ...agent,
-                enabled: automations[agent.id]?.enabled ?? false
+                enabled: automations[agent.id]?.enabled ?? false,
+                status: automations[agent.id]?.enabled ? 'running' : 'waiting'
             }));
     }
 

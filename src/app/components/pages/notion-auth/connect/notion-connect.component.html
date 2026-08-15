@@ -20,10 +20,50 @@
   </div>
 
   <div class="connect-container" *ngIf="state !== 'notjoin'">
-    <h1>
+    <!-- <h1>
       노셔너블 에이전트 ⇄ 노션 템플릿 연결
-    </h1>
-    <div class="guide-box">
+    </h1> -->
+    <div class="connect-wizard">
+      <div class="wizard-card">
+        <!-- <div class="wizard-step-title">
+          <span class="step-number">{{ currentStep }}</span>
+          <strong>STEP {{ currentStep }}</strong>
+        </div> -->
+
+        <div class="wizard-image">
+          <img [src]="'assets/images/notionable_auto_connect_guide_' + currentStep + '.png'"
+            [alt]="'노셔너블 자동화 연결 가이드 Step ' + currentStep" class="guide-image">
+        </div>
+
+        <!-- <div class="wizard-description" *ngIf="currentStep === 1">
+          아래 <strong>라이프업 템플릿 연결하기</strong> 버튼을 눌러주세요.
+        </div>
+
+        <div class="wizard-description" *ngIf="currentStep === 2">
+          연결 화면이 열리면 안내에 따라 <strong>다음</strong> 버튼을 눌러주세요.
+        </div>
+
+        <div class="wizard-description" *ngIf="currentStep === 3">
+          연결 화면에서 안내에 따라 진행한 후<br>
+          <strong>라이프업 템플릿 연결하기</strong>를 완료해주세요.
+        </div> -->
+
+        <div class="wizard-navigation">
+          <button class="wizard-btn prev" *ngIf="currentStep > 1" (click)="previousStep()">
+            이전
+          </button>
+
+          <button class="wizard-btn next" *ngIf="currentStep < 3" (click)="nextStep()">
+            다음
+          </button>
+
+          <button class="wizard-btn next" *ngIf="currentStep === 3" (click)="connectNotion()">
+            라이프업 템플릿 연결하기
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- <div class="guide-box">
       <div class="guide-step">
         <span class="step-number">1</span>
         <span>아래 <strong>라이프업 템플릿 연결하기</strong> 버튼을 눌러주세요.</span>
@@ -47,7 +87,7 @@
       <button class="api-btn" (click)="connectNotion()">
         라이프업 템플릿 연결하기
       </button>
-    </div>
+    </div> -->
 
   </div>
 

@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { UserService } from '../../../services/user.service';
 import { AuthService } from '../../../services/auth.service';
@@ -8,7 +9,7 @@ const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-workspace',
-    imports: [RouterLink],
+    imports: [CommonModule, RouterLink],
     templateUrl: './workspace.component.html',
     styleUrl: './workspace.component.css'
 })
@@ -25,6 +26,20 @@ export class WorkspaceComponent implements OnInit {
     totalCount: number = 0;
     kakaoCount: number = 0;
     secondbrainCount: number = 0;
+
+    automationAgents = [
+        {
+            id: 'secondbrain',
+            name: '세컨드브레인 노트 키워드 추출',
+            status: 'waiting',
+        },
+        {
+            id: 'kakao-capture',
+            name: '카카오톡 AI 비서',
+            status: 'waiting',
+        }
+    ];
+
 
     constructor(private userService: UserService, private authService: AuthService) {
 
@@ -43,6 +58,16 @@ export class WorkspaceComponent implements OnInit {
         await this.updateSession();
         await this.updatePurchaseInfo();
         await this.updateEventCount();
+
+        // 자동화 정보
+        const automations = await UserService.getUserIntegrations(this.userId);
+        this.automationAgents =
+            this.automationAgents.map(agent => ({
+                ...agent,
+                enabled: automations[agent.id]?.enabled ?? false,
+                status: automations[agent.id]?.enabled ? 'running' : 'waiting'
+            }));
+
     }
 
     async updateEventCount() {

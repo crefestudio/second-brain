@@ -198,3 +198,89 @@ a.notion-btn:hover {
 .guide-step strong {
   color: #ff9f5a;
 }
+
+.connect-wizard {
+    width: 100%;
+    max-width: 720px;
+    margin: 30px auto;
+}
+
+.wizard-card {
+    padding: 30px;
+    /* border: 1px solid #e5e7eb; */
+    border-radius: 16px;
+    /* background: #fff; */
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.wizard-step-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 24px;
+    font-size: 18px;
+}
+
+.step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #111827;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wizard-image {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+    padding: 20px;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.guide-image {
+    display: block;
+    width: 100%;
+    max-width: 620px;
+    height: auto;
+    border-radius: 8px;
+}
+
+.wizard-description {
+    min-height: 60px;
+    margin-bottom: 24px;
+    text-align: center;
+    line-height: 1.7;
+    color: #4b5563;
+}
+
+.wizard-navigation {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.wizard-btn {
+    min-width: 90px;
+    padding: 11px 20px;
+    border: 1px solid #9d9d9d;
+    border-radius: 8px;
+    background: #9d9d9d;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.wizard-btn.next {
+    border-color: #4384ff;
+    background: var(--primary-blue);
+    color: #fff;
+}
+
+.api-btn {
+    padding: 12px 24px;
+}

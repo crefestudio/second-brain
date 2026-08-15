@@ -94,16 +94,19 @@
                 자동화 비서 동작 상태
             </div>
             <div class="dashboard-content">
-                <div class="dashboard-item">
-                    <span>세컨드브레인 노트 키워드 자동 추출</span>
-                    <span class="badge success">
-                        사용중
+                <div class="dashboard-item" *ngFor="let agent of automationAgents">
+                    <span>{{ agent.name }}</span>
+
+                    <span class="badge success" *ngIf="agent.status === 'running'">
+                        동작중
                     </span>
-                </div>
-                <div class="dashboard-item">
-                    <span>카카오톡 AI 비서</span>
-                    <span class="badge success">
-                        사용중
+
+                    <span class="badge pending" *ngIf="agent.status === 'waiting'">
+                        정지됨
+                    </span>
+
+                    <span class="badge error" *ngIf="agent.status === 'error'">
+                        오류
                     </span>
                 </div>
             </div>
