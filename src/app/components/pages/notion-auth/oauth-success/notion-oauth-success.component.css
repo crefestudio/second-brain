@@ -23,7 +23,7 @@
 }
 
 .desc {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   color: #b5b5b5;
   margin-bottom: 22px;
@@ -77,4 +77,33 @@
 
 .home-btn:hover {
   background: #2a2a2e;
+}
+
+.guide {
+    margin: 24px 0 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+.close-btn {
+    padding: 12px 28px;
+    border: 0;
+    border-radius: 8px;
+    background: #111827;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.close-btn:hover {
+    opacity: 0.9;
+}
+
+.guide {
+    margin: 24px 0 20px;
+    color: #ef8a72;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.6;
 }

@@ -8,7 +8,7 @@ import { ActivatedRoute } from '@angular/router';
     selector: 'app-oauth-success',
     standalone: true,
     imports: [
-        CommonModule 
+        CommonModule
     ],
     templateUrl: './notion-oauth-success.component.html',
     styleUrls: ['./notion-oauth-success.component.css'],
@@ -18,7 +18,7 @@ export class NotionOauthSuccessComponent implements OnInit {
     // workspaceName: string | null = null;
     // botId: string | null = null;
 
-    constructor( private route: ActivatedRoute, private userService: UserService) { 
+    constructor(private route: ActivatedRoute, private userService: UserService) {
 
     }
 
@@ -46,5 +46,9 @@ export class NotionOauthSuccessComponent implements OnInit {
     //     this.botId = data.botId ?? null;    // 보안상 botId를 connectKey로 저장한다. 
     //     this.workspaceName = data.workspaceName ?? null;
     // }   
+
+    // closeWindow() {
+    //     window.close();
+    // }
 
 }

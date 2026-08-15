@@ -1767,7 +1767,10 @@ class NotionService {
         const userDoc = await db.collection("users").doc(userId).get();
         const accessToken = userDoc.data()?.notionAccessToken;
         console.log(`[NotionCreate] accessToken = ${!!accessToken} `);
-        if (!accessToken) return undefined;
+        if (!accessToken) {
+            throw new Error("NOTION_NOT_CONNECTED");
+        }
+
 
         const notion = new Client({ auth: accessToken });
         const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
@@ -5949,7 +5952,7 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB" }, 
                 kakaoUserId
             );
         }
-        return resposeKakaoMesagee(
+        return resposeKakaoMessage(
             [
                 "노셔너블 비서입니다.",
                 "",
@@ -6038,6 +6041,21 @@ async function processKakaoAgent(
     callbackUrl: string,
     jobId: string
 ) {
+    const userDoc = await db.collection("users").doc(userId).get();
+    const accessToken = userDoc.data()?.notionAccessToken;
+    if (!accessToken) {
+        console.error("[KAKAO NOTION ERROR] Notion accessToken 없음", {
+            userId,
+            jobId
+        });
+
+        await resposeKakaoMessageByCallbackUrl(
+            "라이프업 템플릿이 연결되어 있지 않습니다.\n라이프봇을 이용하시려면 먼저 라이프업 템플릿을 연결해주세요.\n👇 템플릿 연결하기\nhttps://notionable.net",
+            callbackUrl
+        );
+        return;
+    }
+
     const totalStart = Date.now();
     const logTime = (label: string, start: number) => { console.log(`[TIME] ${label}: ${Date.now() - start}ms`); };
 
@@ -6106,8 +6124,6 @@ async function processKakaoAgent(
 
         await processAfterResponse(
             userId,
-            userMessage,
-            contextAiInput,
             entity,
             enrichedResult
         );
@@ -6160,7 +6176,7 @@ async function processKakaoAgent(
 
 //         t = Date.now();
 //         console.log("[TIME] sendKakaoCallback START");
-//         await resposeKakaoMesagee(callbackUrl, enrichedResult.response);
+//         await resposeKakaoMessage(callbackUrl, enrichedResult.response);
 //         logTime("sendKakaoCallback", t);
 
 //         t = Date.now();
@@ -6183,9 +6199,9 @@ async function processKakaoAgent(
 //         console.error("[KAKAO ERROR - processKakaoAgent]", e);
 
 //         const t = Date.now();
-//         console.log("[TIME] resposeKakaoMesagee(ERROR) START");
-//         await resposeKakaoMesagee(callbackUrl, "처리 중 오류가 발생했습니다.");
-//         logTime("resposeKakaoMesagee(ERROR)", t);
+//         console.log("[TIME] resposeKakaoMessage(ERROR) START");
+//         await resposeKakaoMessage(callbackUrl, "처리 중 오류가 발생했습니다.");
+//         logTime("resposeKakaoMessage(ERROR)", t);
 
 //     } finally {
 //         // if (fileName) {
@@ -6352,7 +6368,7 @@ export function buildAssistantResponse(result: any): string {
 //         }
 
 //         // 4. 사용자에게 결과 전달
-//         await resposeKakaoMesagee(callbackUrl, result.response);
+//         await resposeKakaoMessage(callbackUrl, result.response);
 
 //         // 5. 기록 및 후처리
 //         await processAfterResponse(
@@ -6367,7 +6383,7 @@ export function buildAssistantResponse(result: any): string {
 
 //     } catch (e) {
 //         console.error("[KAKAO ERROR - processKakaoAgent]", e);
-//         await resposeKakaoMesagee(callbackUrl, "처리 중 오류가 발생했습니다.");
+//         await resposeKakaoMessage(callbackUrl, "처리 중 오류가 발생했습니다.");
 //     }
 // }
 
@@ -6392,7 +6408,7 @@ async function resposeKakaoMessageByCallbackUrl(text: string, callbackUrl: strin
     });
 }
 
-async function resposeKakaoMesagee(text: string, res: any) {
+async function resposeKakaoMessage(text: string, res: any) {
     return res.json({
         version: "2.0",
         template: {
@@ -6410,8 +6426,6 @@ async function resposeKakaoMesagee(text: string, res: any) {
 // #kakao notion
 async function processAfterResponse(
     userId: string,
-    userMessage: string,
-    aiInput: string,
     entity: any,
     aiResult: any,
 ) {
@@ -6447,8 +6461,19 @@ async function processAfterResponse(
                         pageId
                     });
             }
-        } catch (e) {
-            console.error("[NOTION ERROR]", e);
+        } catch (error) {
+            console.error("[NOTION ERROR]", {
+                userId,
+                action: aiResult?.action,
+                db: aiResult?.db,
+                error
+            });
+
+            aiResult.response =
+                "라이프업 템플릿에 내용을 반영하는 중 오류가 발생하였습니다.\n" +
+                "잠시 후 다시 시도해주세요.";
+
+            throw error;
         }
 
         console.log(`[TIME] NotionService.createDbItemFromAiResult: ${Date.now() - t}ms`);
@@ -7074,7 +7099,7 @@ async function processVerificationCode(
         if (!targetUserSnap.exists) {
             //인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요.
             return sendInvalidVerificationCode(res);
-        }        
+        }
 
         ///////////////////////////////////////////////////
         // 카카오톡 연결
@@ -7219,7 +7244,7 @@ export async function findEnabledConnectedUser(
 // function sendDisabledMessage(
 //     callbackUrl: string
 // ) {
-//     return resposeKakaoMesagee(
+//     return resposeKakaoMessage(
 //         callbackUrl,
 //         [
 //             "현재 카카오톡 수집 자동화가 꺼져 있습니다.",
@@ -7230,7 +7255,7 @@ export async function findEnabledConnectedUser(
 // }
 
 // function sendError(callbackUrl: any) {
-//     return resposeKakaoMesagee(
+//     return resposeKakaoMessage(
 //         callbackUrl,
 //         [
 //             "처리 중 오류가 발생했습니다.",
@@ -7242,7 +7267,7 @@ export async function findEnabledConnectedUser(
 function sendInvalidVerificationCode(
     res: any
 ) {
-    return resposeKakaoMesagee(
+    return resposeKakaoMessage(
         "인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요.",
         res
     );
@@ -7251,7 +7276,7 @@ function sendInvalidVerificationCode(
 function sendExpiredVerificationCode(
     res: any
 ) {
-    return resposeKakaoMesagee(
+    return resposeKakaoMessage(
         "인증번호가 만료되었습니다.", res
     );
 }
@@ -7259,7 +7284,7 @@ function sendExpiredVerificationCode(
 function sendConnectedMessage(
     res: any
 ) {
-    return resposeKakaoMesagee(
+    return resposeKakaoMessage(
         [
             "라이프업 비서와 연결이 되었습니다.",
             "",
@@ -7272,7 +7297,7 @@ function sendConnectedMessage(
             "",
             "사용법이 궁금하시면",
             "'사용법'이라고 입력해보세요."
-        ].join('\n'), 
+        ].join('\n'),
         res
     );
 }
