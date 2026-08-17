@@ -16,7 +16,7 @@
   "main": "lib/index.js",
   "dependencies": {
     "@google-cloud/storage": "^6.9.0",
-    "@notionhq/client": "^5.9.0",
+    "@notionhq/client": "^5.25.2",
     "dotenv": "^17.2.3",
     "firebase-admin": "^12.1.0",
     "firebase-functions": "^5.0.0",
