@@ -13,7 +13,8 @@ import { customAlphabet } from 'nanoid';
 import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 
-//import { kakaoAssistantPrompt } from "./prompts/kakaoAssistant.prompt";
+import { AssistantEntity, TextEntity, WebPageEntity, ImageEntity, ContactEntity, YoutubeEntity, ProductEntity, BookEntity } from './services/assistant-entity';
+import { WebPageAnalyzer } from './services/web-page-analyzer';
 
 // notion
 import { Client } from "@notionhq/client";
@@ -63,6 +64,10 @@ export interface EventPayload {
     description?: string;
 }
 
+// export interface PreparedAssistantInput {
+//     aiInput: string;
+//     entity: AssistantEntity;
+// }
 
 // import * as functions from "firebase-functions";
 // import * as admin from "firebase-admin";
@@ -1896,9 +1901,11 @@ class NotionService {
 
         let dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
 
-        const entityBlocks = this.buildEntityBlocks(entity);
-        const contentBlocks: any[] = [...entityBlocks];
-        const hasContext = entity?.context && typeof entity.context === "string" && entity.context.trim().length > 0;
+        // entity있으면 entity만, 컨텐츠까지 넣으면 중복됨
+        const entityBlocks = this.buildContentBlocks(entity);
+        const contentBlocks = entityBlocks.length > 0
+            ? entityBlocks
+            : this.buildAiContentBlocks(aiResult.content);
 
         ////////////////////////////////////////////////////
         if (aiResult.action === "correct") {
@@ -1953,53 +1960,11 @@ class NotionService {
             }
         }
 
-        ////////////////////////////////////////////////////
-        // contentBlocks  추가
-        if (aiResult.content && !hasContext) {
-            const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
-            if (youtubeRegex.test(aiResult.content.trim())) {
-                // URL 텍스트
-                contentBlocks.push({
-                    object: "block",
-                    type: "paragraph",
-                    paragraph: {
-                        rich_text: [
-                            {
-                                type: "text",
-                                text: {
-                                    content: aiResult.content.trim()
-                                }
-                            }
-                        ]
-                    }
-                });
-
-                // 기존 embed
-                contentBlocks.push({
-                    object: "block",
-                    type: "embed",
-                    embed: {
-                        url: aiResult.content.trim()
-                    }
-                });
-            } else {
-                contentBlocks.push({
-                    object: "block",
-                    type: "paragraph",
-                    paragraph: {
-                        rich_text: [{
-                            type: "text",
-                            text: { content: aiResult.content }
-                        }]
-                    }
-                });
-            }
-        }
-
         //////////////////////////////////////////////////
         // properties
 
         let properties: any;
+        let cover: any;
         switch (aiResult.db) {
             case "task": {
                 const parsed = resolveDateExpr(aiResult.dateExpr);
@@ -2117,28 +2082,115 @@ class NotionService {
                 });
                 break;
             }
+            case "contact": {
+                const contact = aiResult.entity?.type === "contact" ? aiResult.entity : {};
 
+                properties = {
+                    이름: {
+                        title: [{
+                            text: {
+                                content: contact.name || aiResult.title || ""
+                            }
+                        }]
+                    }
+                };
+
+                if (contact.company) {
+                    properties.회사명 = {
+                        select: {
+                            name: contact.company
+                        }
+                    };
+                }
+
+                if (contact.department) {
+                    properties.부서 = {
+                        select: {
+                            name: contact.department
+                        }
+                    };
+                }
+
+                if (contact.position) {
+                    properties.직책 = {
+                        select: {
+                            name: contact.position
+                        }
+                    };
+                }
+
+                if (contact.phone) {
+                    properties["전화번호"] = {
+                        phone_number: contact.phone
+                    };
+                }
+
+                if (contact.mobile) {
+                    properties["휴대폰 번호"] = {
+                        phone_number: contact.mobile
+                    };
+                }
+
+                if (contact.fax) {
+                    properties["FAX"] = {
+                        phone_number: contact.fax
+                    };
+                }
+
+
+                if (contact.email) {
+                    properties.이메일 = {
+                        email: contact.email
+                    };
+                }
+
+                if (contact.address) {
+                    properties.주소 = {
+                        rich_text: [{
+                            text: {
+                                content: contact.address
+                            }
+                        }]
+                    };
+                }
+
+                if (contact.website) {
+                    properties.웹사이트 = {
+                        url: contact.website
+                    };
+                }
+
+                if (entity?.type === "contact" && entity.imageUrl) {
+                    cover = {
+                        type: "external",
+                        external: {
+                            url: entity.imageUrl
+                        }
+                    };
+                }
+
+                break;
+            }
             default:
                 throw new Error(`Unsupported db type: ${aiResult.db}`);
         }
 
         if (pageId) {
-            // 속성 바꾸고
             await notion.pages.update({
                 page_id: pageId,
-                properties
+                properties,
+                ...(cover ? { cover } : {})
             });
-            // 기존 블럭 삭제하고 새 블럭으로 교체 할 필요가 있는가?
-
         } else {
-            // 기본 템플릿 만들고 
             const page: any = await notion.pages.create({
                 parent: { data_source_id: dataSourceId! },
                 properties,
                 template: {
                     type: "default"
-                }
+                },
+                ...(cover ? { cover } : {})
             });
+
             pageId = page.id;
 
             // 10초 기다리고
@@ -2156,60 +2208,6 @@ class NotionService {
 
             console.log(`[NotionCreate][task] created pageId = ${pageId}`);
         }
-
-
-        // // 새로 만들면
-        // if (!pageId) {
-        //     // 기본 템플릿 만들고 
-        //     const page: any = await notion.pages.create({
-        //         parent: { data_source_id: dataSourceId! },
-        //         properties,
-        //         template: {
-        //             type: "default"
-        //         }
-        //     });
-        //     pageId = page.id;
-
-        //     // 10초 기다리고
-        //     await new Promise(resolve => setTimeout(resolve, 10000));
-
-        //     // 새 컨텐츠 블럭 넣어주고
-        //     if (contentBlocks.length > 0) {
-        //         await notion.blocks.children.append({
-        //             block_id: pageId!,
-        //             children: contentBlocks
-        //         });
-        //     }
-
-        //     console.log(`[NotionCreate][task] created pageId = ${pageId}`);
-        // } else {
-
-        //     // 속성 바꾸고
-        //     await notion.pages.update({
-        //         page_id: pageId,
-        //         properties
-        //     });
-
-        //     // // 기존 블럭 삭제
-        //     // const existingBlocks = await notion.blocks.children.list({
-        //     //     block_id: pageId
-        //     // });
-        //     // for (const block of existingBlocks.results) {
-        //     //     await notion.blocks.delete({
-        //     //         block_id: block.id
-        //     //     });
-        //     // }
-
-        //     // // 새 블럭 넣어주고
-        //     // if (contentBlocks.length > 0) {
-        //     //     await notion.blocks.children.append({
-        //     //         block_id: pageId,
-        //     //         children: contentBlocks
-        //     //     });
-        //     // }
-        //     console.log(`[NotionCreate][task] updated pageId = ${pageId}`);
-        // }
-
 
         await writeUserEvent(userId, {
             agentId: AgentId.KAKAO_CAPTURE,
@@ -2634,32 +2632,84 @@ class NotionService {
         return result;
     }
 
-    static buildEntityBlocks(entity: any): any[] {
-        if (!entity?.type) {
-            console.log(`[Entity] skip type = none`);
-            return [];
+    // #entity
+    static buildContentBlocks(entity: AssistantEntity | null, content?: string): any[] {
+        if (!entity?.type || entity.type === "text") {
+            return content ? this.buildTextBlocks(content) : [];
         }
 
         switch (entity.type) {
             case "image":
                 return this.buildImageBlocks(entity);
-
             case "youtube":
                 return this.buildYoutubeBlocks(entity);
-
+            case "product":
+                return this.buildProductBlocks(entity);
+            case "book":
+                return this.buildBookBlocks(entity);
+            case 'contact':
+                return this.buildContactBlocks(entity);
+            case "webpage":
+                return this.buildWebPageBlocks(entity);
             default:
-                console.log(`[Entity] unsupported type = ${entity.type}`);
-                return [];
+                return content ? this.buildTextBlocks(content) : [];
         }
     }
 
-    static buildImageBlocks(entity: any): any[] {
+    static buildTextBlocks(content?: string): any[] {
+        const text = typeof content === "string" ? content.trim() : "";
+
+        if (!text) {
+            return [];
+        }
+
+        return [{
+            object: "block",
+            type: "paragraph",
+            paragraph: {
+                rich_text: [{
+                    type: "text",
+                    text: {
+                        content: text
+                    }
+                }]
+            }
+        }];
+    }
+
+    private static buildAiContentBlocks(content?: string): any[] {
+        if (!content?.trim()) return [];
+
+        return content
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .map(line => {
+                const text = line.replace(/^[-*]\s*/, "").trim();
+
+                return {
+                    object: "block",
+                    type: "bulleted_list_item",
+                    bulleted_list_item: {
+                        rich_text: [{
+                            type: "text",
+                            text: {
+                                content: text
+                            }
+                        }]
+                    }
+                };
+            });
+    }
+
+    // #image
+    static buildImageBlocks(entity: ImageEntity): any[] {
         const objects: string[] = Array.isArray(entity.objects) ? entity.objects : [];
         const ocrText: string = typeof entity.ocrText === "string" ? entity.ocrText.trim() : "";
         const context: string = typeof entity.context === "string" ? entity.context.trim() : "";
-        const imageUrl: string = typeof entity.url === "string" ? entity.url.trim() : "";
+        const imageUrl: string = typeof entity.imageUrl === "string" ? entity.imageUrl.trim() : "";
 
-        console.log(`[Entity][image] start image = ${!!imageUrl} objects = ${objects.length} ocr = ${ocrText.length}`);
+        console.log(`[Entity][image] start image = ${!!imageUrl} context = ${context.length} objects = ${objects.length} ocr = ${ocrText.length}`);
 
         const children: any[] = [];
 
@@ -2677,14 +2727,17 @@ class NotionService {
         if (context.length > 0) {
             children.push({
                 object: "block",
-                type: "heading_3",
-                heading_3: {
-                    rich_text: [
-                        {
-                            type: "text",
-                            text: { content: context }
+                type: "heading_4",
+                heading_4: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: context
+                        },
+                        annotations: {
+                            color: "blue"
                         }
-                    ]
+                    }]
                 }
             });
         }
@@ -2692,14 +2745,17 @@ class NotionService {
         if (ocrText.length > 0) {
             children.push({
                 object: "block",
-                type: "paragraph",
-                paragraph: {
-                    rich_text: [
-                        {
-                            type: "text",
-                            text: { content: ocrText }
-                        }
-                    ]
+                type: "callout",
+                callout: {
+                    rich_text: [{
+                        type: "text",
+                        text: { content: ocrText }
+                    }],
+                    icon: {
+                        type: "emoji",
+                        emoji: "📝"
+                    },
+                    color: "gray_background"
                 }
             });
         }
@@ -2709,15 +2765,15 @@ class NotionService {
                 object: "block",
                 type: "paragraph",
                 paragraph: {
-                    rich_text: [
-                        {
-                            type: "text",
-                            text: {
-                                content: objects.map(t => `#${t}`).join(", ")
-                            },
-                            annotations: { color: "blue" }
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: objects.map(t => `#${t}`).join(", ")
+                        },
+                        annotations: {
+                            color: "blue"
                         }
-                    ]
+                    }]
                 }
             });
         }
@@ -2728,34 +2784,75 @@ class NotionService {
     }
 
     // #youtube
-    // entity: {
-    //     type: "youtube",
-    //     url: userMessage.trim(),
-    //     title,
-    //     author,
-    //     thumbnail,
-    //     description
-    // }
     static buildYoutubeBlocks(entity: any): any[] {
-        const thumbnail: string = typeof entity.thumbnail === "string" ? entity.thumbnail.trim() : "";
+        const imageUrl: string = typeof entity.imageUrl === "string" ? entity.imageUrl.trim() : "";
         const title: string = typeof entity.title === "string" ? entity.title.trim() : "";
-        const channel: string = typeof entity.channel === "string" ? entity.channel.trim() : "";
-        //const description: string = typeof entity.description === "string" ? entity.description.trim() : "";
+        const author: string = typeof entity.author === "string" ? entity.author.trim() : "";
+        const description: string = typeof entity.description === "string" ? entity.description.trim() : "";
         const videoUrl: string = typeof entity.url === "string" ? entity.url.trim() : "";
 
-        console.log(`[Entity][youtube] start thumbnail = ${!!thumbnail} title = ${title.length} channel = ${channel.length}`);
+        console.log(`[Entity][youtube] start imageUrl = ${!!imageUrl} title = ${title.length} author = ${author.length} description = ${description.length}`);
 
         const children: any[] = [];
 
-        if (thumbnail.length > 0) {
+        if (imageUrl.length > 0) {
             children.push({
                 object: "block",
                 type: "image",
                 image: {
                     type: "external",
                     external: {
-                        url: thumbnail
+                        url: imageUrl
                     }
+                }
+            });
+        }
+
+        if (title.length > 0) {
+            children.push({
+                object: "block",
+                type: "heading_4",
+                heading_4: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: title,
+                            link: videoUrl ? { url: videoUrl } : undefined
+                        },
+                        annotations: {
+                            color: "blue"
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (author.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: `채널: ${author}`
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (description.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: description
+                        }
+                    }]
                 }
             });
         }
@@ -2769,64 +2866,470 @@ class NotionService {
                 }
             });
         }
-
-        // if (title.length > 0) {
-        //     children.push({
-        //         object: "block",
-        //         type: "heading_3",
-        //         heading_3: {
-        //             rich_text: [
-        //                 {
-        //                     type: "text",
-        //                     text: {
-        //                         content: title,
-        //                         link: videoUrl ? { url: videoUrl } : undefined
-        //                     }
-        //                 }
-        //             ]
-        //         }
-        //     });
-        // }
-
-        // if (channel.length > 0) {
-        //     children.push({
-        //         object: "block",
-        //         type: "paragraph",
-        //         paragraph: {
-        //             rich_text: [
-        //                 {
-        //                     type: "text",
-        //                     text: {
-        //                         content: `채널: ${channel}`
-        //                     }
-        //                 }
-        //             ]
-        //         }
-        //     });
-        // }
-
-        // if (description.length > 0) {
-        //     children.push({
-        //         object: "block",
-        //         type: "paragraph",
-        //         paragraph: {
-        //             rich_text: [
-        //                 {
-        //                     type: "text",
-        //                     text: {
-        //                         content: description
-        //                     }
-        //                 }
-        //             ]
-        //         }
-        //     });
-        // }
-
         console.log(`[Entity][youtube] done blocks = ${children.length}`);
+        return children;
+    }
+
+    static buildBookBlocks(entity: BookEntity): any[] {
+        const imageUrl = typeof entity.imageUrl === "string" ? entity.imageUrl.trim() : "";
+        const siteName = typeof entity.siteName === "string" ? entity.siteName.trim() : "";
+        const title = typeof entity.title === "string" ? entity.title.trim() : "";
+        const authors = Array.isArray(entity.authors)
+            ? entity.authors.map(value => String(value).trim()).filter(Boolean).join(", ")
+            : "";
+        const translators = Array.isArray(entity.translators)
+            ? entity.translators.map(value => String(value).trim()).filter(Boolean).join(", ")
+            : "";
+        const publisher = typeof entity.publisher === "string" ? entity.publisher.trim() : "";
+        const publishedAt = typeof entity.publishedAt === "string" ? entity.publishedAt.trim() : "";
+        const isbn = typeof entity.isbn === "string" ? entity.isbn.trim() : "";
+        const pages = entity.pages != null ? String(entity.pages).trim() : "";
+        const category = typeof entity.category === "string" ? entity.category.trim() : "";
+        const price = typeof entity.price === "string" ? entity.price.trim() : "";
+        const currency = typeof entity.currency === "string" ? entity.currency.trim() : "";
+        const formattedPrice = formatProductPrice(price, currency);
+        const description = typeof entity.description === "string" ? entity.description.trim() : "";
+        const bookUrl = typeof entity.url === "string" ? entity.url.trim() : "";
+
+        console.log(`[Entity][book] start imageUrl = ${!!imageUrl} siteName = ${siteName.length} title = ${title.length} authors = ${authors.length} publisher = ${publisher.length} isbn = ${isbn.length}`);
+
+        const children: any[] = [];
+
+        if (imageUrl.length > 0) {
+            children.push({
+                object: "block",
+                type: "image",
+                image: {
+                    type: "external",
+                    external: {
+                        url: imageUrl
+                    }
+                }
+            });
+        }
+
+        if (siteName.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: `사이트: ${siteName}`
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (title.length > 0) {
+            children.push({
+                object: "block",
+                type: "heading_4",
+                heading_4: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: title,
+                            link: bookUrl ? { url: bookUrl } : undefined
+                        },
+                        annotations: {
+                            color: "blue"
+                        }
+                    }]
+                }
+            });
+        }
+
+        const information: string[] = [];
+
+        if (authors.length > 0) {
+            information.push(`저자: ${authors}`);
+        }
+
+        if (translators.length > 0) {
+            information.push(`역자: ${translators}`);
+        }
+
+        if (publisher.length > 0) {
+            information.push(`출판사: ${publisher}`);
+        }
+
+        if (publishedAt.length > 0) {
+            information.push(`출간일: ${publishedAt}`);
+        }
+
+        if (isbn.length > 0) {
+            information.push(`ISBN: ${isbn}`);
+        }
+
+        if (pages.length > 0) {
+            information.push(`페이지: ${pages}`);
+        }
+
+        if (category.length > 0) {
+            information.push(`분야: ${category}`);
+        }
+
+        if (formattedPrice.length > 0) {
+            information.push(`가격: ${formattedPrice}`);
+        }
+
+        if (information.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: information.join(" · ")
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (description.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: description
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (bookUrl.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: bookUrl,
+                            link: {
+                                url: bookUrl
+                            }
+                        }
+                    }]
+                }
+            });
+        }
+
+        console.log(`[Entity][book] done blocks = ${children.length}`);
 
         return children;
     }
 
+    static buildProductBlocks(entity: ProductEntity): any[] {
+        const imageUrl = typeof entity.imageUrl === "string" ? entity.imageUrl.trim() : "";
+        const siteName = typeof entity.siteName === "string" ? entity.siteName.trim() : "";
+        const storeName = typeof entity.storeName === "string" ? entity.storeName.trim() : "";
+        const title = typeof entity.title === "string" ? entity.title.trim() : "";
+        const productId = typeof entity.productId === "string" ? entity.productId.trim() : "";
+        const brand = typeof entity.brand === "string" ? entity.brand.trim() : "";
+        const price = typeof entity.price === "string" ? entity.price.trim() : "";
+        const currency = typeof entity.currency === "string" ? entity.currency.trim().toUpperCase() : "";
+        const formattedPrice = formatProductPrice(price, currency);
+        const description = typeof entity.description === "string" ? entity.description.trim() : "";
+        const productUrl = typeof entity.url === "string" ? entity.url.trim() : "";
+        const metadata = entity.metadata || {};
+        const itemId = metadata.itemId != null ? String(metadata.itemId).trim() : "";
+        const vendorItemId = metadata.vendorItemId != null ? String(metadata.vendorItemId).trim() : "";
+
+        console.log(`[Entity][product] start imageUrl = ${!!imageUrl} siteName = ${siteName.length} title = ${title.length} storeName = ${storeName.length} productId = ${productId.length} brand = ${brand.length} price = ${price.length}`);
+
+        const children: any[] = [];
+
+        if (imageUrl.length > 0) {
+            children.push({
+                object: "block",
+                type: "image",
+                image: {
+                    type: "external",
+                    external: {
+                        url: imageUrl
+                    }
+                }
+            });
+        }
+
+        if (siteName.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: `사이트: ${siteName}`
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (storeName.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: `스토어: ${storeName}`
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (title.length > 0) {
+            children.push({
+                object: "block",
+                type: "heading_4",
+                heading_4: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: title,
+                            link: productUrl ? { url: productUrl } : undefined
+                        },
+                        annotations: {
+                            color: "blue"
+                        }
+                    }]
+                }
+            });
+        }
+
+        const information: string[] = [];
+
+        if (brand.length > 0) {
+            information.push(`브랜드: ${brand}`);
+        }
+
+        if (formattedPrice.length > 0) {
+            information.push(`가격: ${formattedPrice}`);
+        }
+
+        if (productId.length > 0) {
+            information.push(`상품ID: ${productId}`);
+        }
+
+        if (itemId.length > 0) {
+            information.push(`아이템ID: ${itemId}`);
+        }
+
+        if (vendorItemId.length > 0) {
+            information.push(`판매자상품ID: ${vendorItemId}`);
+        }
+
+        if (information.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: information.join(" · ")
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (description.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: description
+                        }
+                    }]
+                }
+            });
+        }
+
+        if (productUrl.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [{
+                        type: "text",
+                        text: {
+                            content: productUrl,
+                            link: {
+                                url: productUrl
+                            }
+                        }
+                    }]
+                }
+            });
+        }
+
+        console.log(`[Entity][product] done blocks = ${children.length}`);
+
+        return children;
+    }
+
+    static buildWebPageBlocks(entity: WebPageEntity): any[] {
+        const imageUrl = typeof entity.imageUrl === "string" ? entity.imageUrl.trim() : "";
+        const title = typeof entity.title === "string" ? entity.title.trim() : "";
+        const siteName = typeof entity.siteName === "string" ? entity.siteName.trim() : "";
+        const author = typeof entity.author === "string" ? entity.author.trim() : "";
+        const description = typeof entity.description === "string" ? entity.description.trim() : "";
+        const url = typeof entity.url === "string" ? entity.url.trim() : "";
+
+        console.log(`[Entity][web] start image = ${!!imageUrl} title = ${title.length} site = ${siteName.length}`);
+
+        const children: any[] = [];
+
+        if (imageUrl.length > 0) {
+            children.push({
+                object: "block",
+                type: "image",
+                image: {
+                    type: "external",
+                    external: {
+                        url: imageUrl
+                    }
+                }
+            });
+        }
+
+        if (title.length > 0) {
+            children.push({
+                object: "block",
+                type: "heading_3",
+                heading_3: {
+                    rich_text: [
+                        {
+                            type: "text",
+                            text: {
+                                content: title,
+                                link: url ? { url } : undefined
+                            }
+                        }
+                    ]
+                }
+            });
+        }
+
+        const info: string[] = [];
+
+        if (siteName.length > 0) {
+            info.push(`사이트: ${siteName}`);
+        }
+
+        if (author.length > 0) {
+            info.push(`작성자: ${author}`);
+        }
+
+        if (info.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [
+                        {
+                            type: "text",
+                            text: {
+                                content: info.join(" · ")
+                            }
+                        }
+                    ]
+                }
+            });
+        }
+
+        if (description.length > 0) {
+            children.push({
+                object: "block",
+                type: "paragraph",
+                paragraph: {
+                    rich_text: [
+                        {
+                            type: "text",
+                            text: {
+                                content: description
+                            }
+                        }
+                    ]
+                }
+            });
+        }
+
+        if (url.length > 0) {
+            children.push({
+                object: "block",
+                type: "bookmark",
+                bookmark: {
+                    url
+                }
+            });
+        }
+
+        console.log(`[Entity][web] done blocks = ${children.length}`);
+
+        return children;
+    }
+
+    // #contact
+    static buildContactBlocks(entity: ContactEntity): any[] {
+        const imageUrl: string = typeof entity.imageUrl === "string" ? entity.imageUrl.trim() : "";
+        const ocrText: string = typeof entity.ocrText === "string" ? entity.ocrText.trim() : "";
+
+        console.log(`[Entity][contact] start image = ${!!imageUrl} ocr = ${ocrText.length}`);
+
+        const children: any[] = [];
+
+        if (imageUrl.length > 0) {
+            children.push({
+                object: "block",
+                type: "image",
+                image: {
+                    type: "external",
+                    external: { url: imageUrl }
+                }
+            });
+        }
+
+        if (ocrText.length > 0) {
+            children.push({
+                object: "block",
+                type: "callout",
+                callout: {
+                    rich_text: [{
+                        type: "text",
+                        text: { content: ocrText }
+                    }],
+                    icon: {
+                        type: "emoji",
+                        emoji: "📝"
+                    },
+                    color: "gray_background"
+                }
+            });
+        }
+
+        console.log(`[Entity][contact] done blocks = ${children.length}`);
+
+        return children;
+    }
 
     // static buildEntityBlocks(entity: any): any[] {
     //     if (!entity || entity.type !== "image") {
@@ -2912,6 +3415,34 @@ class NotionService {
     // }
 }
 
+
+function formatProductPrice(price: string, currency: string): string {
+    if (!price) {
+        return "";
+    }
+
+    const numericPrice = Number(price);
+
+    if (!Number.isFinite(numericPrice)) {
+        return currency === "KRW" ? `${price}원` : `${price}${currency ? ` ${currency}` : ""}`;
+    }
+
+    const formatted = new Intl.NumberFormat("ko-KR").format(numericPrice);
+
+    if (currency === "KRW") {
+        return `${formatted}원`;
+    }
+
+    const currencyNames: Record<string, string> = {
+        USD: "달러",
+        JPY: "엔",
+        CNY: "위안",
+        EUR: "유로",
+        GBP: "파운드"
+    };
+
+    return `${formatted}${currencyNames[currency] ? ` ${currencyNames[currency]}` : currency ? ` ${currency}` : ""}`;
+}
 
 // Firebase HTTPS 함수
 // export const genetateNotionNoteKMData = onRequest(withCors(async (req, res) => {
@@ -4301,6 +4832,77 @@ function similarity(a: string, b: string): number {
 }
 
 
+async function getTagCache(userId: string): Promise<string[]> {
+    console.log("[TagCache] get start", { userId });
+
+    const sbDoc = await db
+        .collection("users")
+        .doc(userId)
+        .collection("integrations")
+        .doc("kakao-capture")
+        .get();
+
+    console.log("[TagCache] document exists", {
+        userId,
+        exists: sbDoc.exists
+    });
+
+    const data = sbDoc.data();
+    const tags = data?.tagCache;
+
+    console.log("[TagCache] raw data", {
+        userId,
+        tagCache: tags
+    });
+
+    const result = Array.isArray(tags)
+        ? tags.filter((tag: any) => typeof tag === "string" && tag.trim())
+        : [];
+
+    console.log("[TagCache] get result", {
+        userId,
+        count: result.length,
+        tags: result
+    });
+
+    return result;
+}
+
+async function updateTagCache(userId: string, tags: string[]): Promise<void> {
+    console.log("[TagCache] update start", {
+        userId,
+        tags
+    });
+
+    const ref = db
+        .collection("users")
+        .doc(userId)
+        .collection("integrations")
+        .doc("kakao-capture");
+
+    const tagCache = [...new Set(
+        tags
+            .map(tag => tag.trim())
+            .filter(Boolean)
+    )];
+
+    console.log("[TagCache] update data", {
+        userId,
+        count: tagCache.length,
+        tagCache
+    });
+
+    await ref.set({
+        tagCache
+    }, { merge: true });
+
+    console.log("[TagCache] update success", {
+        userId,
+        count: tagCache.length,
+        tagCache
+    });
+}
+
 
 const HELP_RESPONSE = `
 당신의 노셔너블 비서를 
@@ -4329,12 +4931,10 @@ const HELP_RESPONSE = `
 
 // #kakao ai
 export const KakaoAgentPrompt = `
-
 # 서비스의 목적 (Purpose)
-
 노셔너블 라이프업 비서는 사용자의 정보를 저장하는 AI 비서입니다.
-사용자가 입력한 내용을 올바르게 이해하여 Task, Memo, Reference 또는 일반 대화(chat)으로 정확하게 판단하는 것이 가장 중요한 역할입니다.
-사용자는 대부분 정보를 저장하기 위해 이 비서를 사용합니다. 특별한 근거가 없는 한 저장 의도를 우선적으로 고려하세요.
+사용자가 입력한 내용을 올바르게 이해하여 Task, Memo, Reference, contact 또는 일반 대화(chat)으로 정확하게 판단하는 것이 가장 중요한 역할입니다.
+사용자는 정보를 저장하기 위해 이 비서를 사용합니다. 특별한 근거가 없는 한 저장 의도를 우선적으로 고려하세요.
 
 # 역할 (Role)
 
@@ -4348,15 +4948,29 @@ export const KakaoAgentPrompt = `
 
 1. 사용자의 목적을 이해합니다.
 2. action(create / correct / delete / help / chat / ask)을 우선 결정합니다.
-3. action이 create인 경우에만 저장 유형(Task / Memo / Reference)을 판단합니다.
+3. action이 create인 경우에만 저장 유형(Task / Memo / Reference/ contact)을 판단합니다.
 4. action=create가 아니라면 create 관련 규칙은 무시합니다.
 5. 선택된 유형의 세부 규칙을 적용합니다.
 6. JSON 객체를 생성합니다.
 
-저장 유형을 판단할 때는 다음 우선순위를 따른다.
+[최우선 저장 유형 판단]
 
-1. 실행이 필요한 내용(해야 할 일, 살 것, 준비할 것 등)이면 Task를 우선한다.
-2. 실행이 목적이 아니라 정보를 기록하거나 보관하는 것이 목적이면 Memo 또는 Reference를 판단한다.
+다음 순서로 판단한다.
+
+1. 사용자가 실제로 해야 하는 행동이 있으면 Task
+2. 사용자의 생각, 아이디어, 개인 기록이면 Memo
+3. 사용자의 계정 또는 개인정보 자체를 기록하면 Memo - 계정 정보
+4. 연락처, 전화번호, 이메일 주소, 회사명, 직책, 주소 등 특정 인물이나 업체의 연락 정보를 저장하려는 경우 Contact
+5. 나중에 참고하기 위해 저장하는 외부 자료이면 Reference
+
+특히 메세지에 행동을 의미하는 동사가 있으면 항상 Task이다.
+추가, 하기, 해지, 취소, 환불, 신청, 예약, 구매, 결제, 변경, 문의, 연락, 방문, 확인, 제출, 약속
+
+# [현재 사용자 입력] 처리 
+- [현재 사용자 입력]이 '상품'이면 db를 'task', type을 '살 것'으로 한다.
+- '책'이면 db를 'task', type을 '읽을 것'으로 한다.
+- '유튜브'이면 db를 'reference'로 하고 tag는 제공된 정보를 보고 판단한다.
+- '연락처'이면 db를 'contact'로 한다.
 
 # 중요한 원칙
 
@@ -4600,7 +5214,28 @@ a.type: 아이디어, 계정 정보, 연락처, 필기, 개인 문서, 독서 �
 
 * 중요 규칙
 - 위 메모의 type이 명확할 때만 memo로 분류하고 모호하면 reference로 분류한다.
-- 영문/숫자 식별자(예: ESGDbreeze, abc123)는 계정 정보를 우선 고려한다.
+- 계정 정보는 사용자의 실제 계정이나 인증 정보를 저장하는 경우에만 해당한다.
+
+다음과 같이 실제 계정 정보가 포함된 경우에만 계정 정보로 분류한다.
+- 아이디
+- 이메일 계정
+- 사용자명
+- 로그인 정보
+- 비밀번호
+- 인증 코드
+- API Key
+- 계정 번호
+- 서비스의 개인 계정 정보
+단순히 서비스명, 앱명, 플랫폼명, 브랜드명이 등장했다고 해서 계정 정보로 분류하지 않는다.
+
+예:
+ "타입캐스트 구독 해지" → Task
+ "넷플릭스 해지" → Task
+ "카카오톡 탈퇴" → Task
+ "노션 요금제 변경" → Task
+ "타입캐스트 계정 이메일은 abc@example.com" → Memo - 계정 정보
+ "넷플릭스 로그인 아이디는 abc@example.com" → Memo - 계정 정보
+
 - type은 1개 필수
 - type 중에 해당하는 경우 1개 이상을 경우 예외적으로 2개까지만 가능
 
@@ -4644,6 +5279,111 @@ d.tags: 반드시 tags 규칙에 따라 판단한다.
   "response": "'카카오톡 AI 비서'를 '메모 - 아이디어'에 등록했습니다."
 }
 
+4. contact
+특정 인물이나 업체의 연락처 정보를 저장하려는 경우 db를 "contact"로 한다.
+
+### 판단 규칙
+
+다음과 같은 연락 정보가 의미 있게 포함된 경우 Contact로 판단할 수 있다.
+
+- 이름 (필수)
+- 전화번호 또는 휴대폰번호
+- 이메일
+- 주소
+- 회사명
+- 직책
+- 웹사이트
+- 그 외 특정 인물이나 업체를 식별하고 연락하는 데 필요한 정보
+
+[현재 사용자 입력]이 연락처이면 contact
+하나의 연락 정보만으로도 특정 인물이나 업체를 식별할 수 있는 경우 Contact로 판단할 수 있다.
+단순히 문장에 사람이나 업체의 이름이 등장하는 것만으로는 Contact로 판단하지 않는다.
+
+## 전화번호, 휴대폰 번호 구분 
+
+전화번호(phone): 일반 전화번호, 대표번호, 회사 전화번호
+휴대폰(mobile): 휴대전화, 모바일 번호
+
+전화번호와 휴대폰은 서로 다른 필드이다.
+명함에 두 번호가 모두 있으면 각각 분리해서 저장한다.
+전화번호가 없으면 빈 문자열로 둔다.
+휴대폰 번호가 없으면 빈 문자열로 둔다.
+휴대폰 번호를 전화번호 필드에 넣지 않는다.
+
+
+다음은 Contact가 아니다.
+
+- 특정 인물에게 해야 할 일이 있는 경우 → Task
+- 사람이나 업체에 대한 생각, 기록, 메모 → Memo
+- 연락처가 포함된 외부 자료나 참고 자료 → Reference
+- 연락처 정보를 묻거나 관련 질문을 하는 경우 → Chat
+
+예:
+
+- "홍길동 010-1234-5678" → Contact
+- "김철수 과장 / 삼성전자 / 010-1234-5678" → Contact
+- "홍길동 abc@example.com" → Contact
+- "김철수에게 내일 전화하기" → Task
+- "오늘 홍길동을 만났다" → Memo
+- "김철수 연락처 찾아보기" → Task
+- "홍길동은 누구야?" → Chat
+
+### 출력 JSON
+Contact인 경우 반드시 다음 형식으로 출력한다.
+{
+  "action": "create",
+  "db": "contact",
+  "title": "",
+  "content": "",
+  "response": "",
+  "entity": {
+    "type": "contact",
+    "name": "",
+    "company": "",
+    "department": "",
+    "position": "",
+    "phone": "",
+    "mobile": "",
+    "fax": "",
+    "email": "",
+    "address": "",
+    "website": ""
+  }
+}
+
+연락처 정보가 없는 필드는 빈 문자열("")로 출력한다.
+title에는 연락처의 이름(name)을 입력한다.
+entity에는 Contact에 특화된 정보를 입력한다.
+
+출력 예시
+
+입력:
+
+홍길동 / 삼성전자 마케팅팀 과장 / 010-1234-5678 / hong@example.com
+
+출력:
+
+{
+  "action": "create",
+  "db": "contact",
+  "title": "홍길동",
+  "content": "",
+  "response": "'홍길동' 연락처를 등록했습니다.",
+  "entity": {
+    "type": "contact",
+    "name": "홍길동",
+    "company": "삼성전자",
+    "department": "마케팅팀",
+    "position": "과장",
+    "phone": "02-1234-5678",
+    "mobile": "010-1234-5678",
+    "fax": "02-1234-5679",
+    "email": "hong@example.com",
+    "address": "",
+    "website": ""
+  }
+}
+
 ## tags 규칙
 
 tags는 나중에 자료를 다시 찾기 위한 핵심 검색 태그이다.
@@ -4651,10 +5391,8 @@ tags는 나중에 자료를 다시 찾기 위한 핵심 검색 태그이다.
 - create인 memo/reference는 tags 필드를 반드시 포함한다.
 - 적절한 대표 태그가 있으면 1개를 출력한다.
 - 정말 적절한 태그가 없을 때만 빈 배열 []을 출력한다.
-- [이미지 분석] 항목도 tags를 판단하는 데에도 활용한다.
-
-
-- 1개 이상, 보톤 1개, 꼭 필요한 경우 최대 2개까지만 출력한다.
+- [현재 사용자 입력] 항목도 tags를 판단하는 데 활용한다.
+- tags는 비어 있을 수 있으며, 태그를 선택할 경우 보통 1개, 꼭 필요한 경우 최대 2개까지만 출력한다.
 - 억지로 2개를 채우지 않는다.
 - 자료 전체를 대표하는 가장 핵심적인 주제나 대상을 선택한다.
 - 제목이나 본문의 단어를 단순히 복사하지 않고 검색에 도움이 되는 핵심 개념을 선택한다.
@@ -4684,12 +5422,13 @@ tags는 나중에 자료를 다시 찾기 위한 핵심 검색 태그이다.
 
 [기존 태그]가 제공되면 다음 순서로 판단한다.
 
-1. 자료의 핵심을 대표하는 기존 태그가 있는지 확인한다.
-2. 적합한 기존 태그가 있으면 반드시 우선 사용한다.
-3. 기존 태그와 의미가 같거나 유사한 새로운 태그를 만들지 않는다.
-4. 기존 태그만으로 충분하면 새로운 태그를 추가하지 않는다.
-5. 기존 태그로 핵심 주제를 표현하기 어려울 때만 새로운 태그를 만든다.
-6. 새로운 태그도 가능한 한 여러 자료에서 재사용할 수 있는 일반적인 이름으로 만든다.
+1. 자료의 핵심을 명확하게 대표하는 기존 태그가 있는지 확인한다.
+2. 의미가 단순히 비슷하거나 일부 내용과만 관련된 태그는 사용하지 않는다.
+3. 기존 태그가 자료의 핵심 주제와 명확하게 맞을 때만 우선 사용한다.
+4. 기존 태그와 의미가 같거나 유사한 새로운 태그를 만들지 않는다.
+5. 기존 태그만으로 충분하면 새로운 태그를 추가하지 않는다.
+6. 기존 태그로 핵심 주제를 표현하기 어려운 경우에만 새로운 태그 생성을 검토한다.
+7. 새로운 태그도 가능한 한 여러 자료에서 재사용할 수 있는 일반적인 이름으로 만든다.
 
 예:
 
@@ -4742,9 +5481,10 @@ tags의 목적은 자료를 세밀하게 분류하는 것이 아니라
 
 따라서 다음 순서로 판단한다.
 
-기존 태그 재사용> 재사용성 > 상위 개념 > 대표성 > 태그 개수
+핵심 주제와의 적합성 > 기존 태그 재사용 > 재사용성 > 상위 개념 > 대표성 > 태그 개수
 
-적절한 대표 태그가 없으면 억지로 태그를 만들지 않는다.
+적절한 대표 태그가 없으면 억지로 기존 태그를 선택하거나
+새로운 태그를 만들지 않고 빈 배열 []을 출력한다.
 
 //////////////////////////////////////////////////////////////////////////////////////
 ## ask
@@ -4838,13 +5578,12 @@ correct는 기존 항목을 수정하기 위한 action이다.
 
 correct는 매우 제한적으로 사용한다.
 다음 두 조건을 모두 만족하는 경우에만 action="correct"를 선택한다.
+
 1. 사용자가 수정 의사를 명시적으로 표현했다.
 2. 수정 대상이 직전 항목임이 명확하다.
 
 위 조건 중 하나라도 만족하지 않으면 반드시 action="create"를 선택한다.
-
 애매한 경우에는 항상 create를 선택한다.
-
 절대 대화 흐름이나 문맥만으로 수정이라고 추론하지 않는다.
 
 ---
@@ -4870,7 +5609,7 @@ correct는 매우 제한적으로 사용한다.
 - ○○만 추가해
 - ○○만 삭제해
 
-또한 직전 항목의 속성값 변경으로 명확하게 해석되는 단독 입력도 correct로 처리한다.
+또한 직전 항목의 속성값 변경이나 DB 변경으로 명확하게 해석되는 단독 입력도 correct로 처리한다.
 
 예)
 - 중요로
@@ -4880,6 +5619,16 @@ correct는 매우 제한적으로 사용한다.
 - 할 것으로
 - 살 것으로
 
+다음 표현은 직전 항목의 DB를 변경하는 특별 명령으로 처리한다.
+
+- 할일로 → task
+- 메모로 → memo
+- 참고자료로 → reference
+- 자료로 → reference
+
+"할 것으로", "살 것으로" 등은 해당 속성값 변경으로 판단할 수 있지만,
+"할일로", "메모로", "참고자료로", "자료로"는 DB 변경 명령으로 판단한다.
+
 ---
 
 ### correct 변경값 생성 규칙 (중요)
@@ -4887,8 +5636,14 @@ correct는 매우 제한적으로 사용한다.
 correct인 경우 반드시 실제 변경할 값을 생성해야 한다.
 response만 작성하고 변경 데이터를 생략하지 않는다.
 
-직전 항목의 title, type, importance, urgency, kinds, dateExpr 등의 속성과
-현재 사용자 입력을 비교하여 변경할 필드를 결정한다.
+직전 항목의 title, type, importance, urgency, kinds, dateExpr 등의 속성과 현재 사용자 입력을 비교하여 변경할 필드를 결정한다.
+
+기존 항목을 메모, 할일, 참고자료 등 다른 분류로 변경하라는 요청은 기존 DB의 type만 변경하지 말고 해당 목적에 맞는 DB로 변경한다.
+
+DB가 변경되는 경우 기존 항목의 db와 type을 단순히 일부 수정하지 않는다.
+변경된 DB를 기준으로 현재 항목 전체를 다시 판단하여 해당 DB에 맞는 type과 필요한 속성을 생성한다.
+
+예를 들어 메모를 할일로 변경하는 경우 단순히 기존 memo의 type을 "할 것"으로 변경하는 것이 아니라 task DB의 항목으로 다시 판단한다.
 
 사용자가 입력한 값이 특정 속성값과 일치하면 해당 속성을 변경한다.
 
@@ -4906,7 +5661,7 @@ response만 작성하고 변경 데이터를 생략하지 않는다.
 결과:
 {
   "action": "correct",
-  "importance": "중요"  
+  "importance": "중요"
 }
 
 ---
@@ -4924,6 +5679,25 @@ response만 작성하고 변경 데이터를 생략하지 않는다.
 {
   "action": "correct",
   "dateExpr": "tomorrow+03:00"
+}
+
+---
+
+직전:
+{
+  "db": "memo",
+  "title": "라이프업 기본 프로젝트 노트 추가",
+  "type": "필기"
+}
+
+사용자:
+할일로
+
+결과:
+{
+  "action": "correct",
+  "db": "task",
+  "type": "할 것"
 }
 
 ---
@@ -4960,6 +5734,17 @@ response만 작성하고 변경 데이터를 생략하지 않는다.
 
 ---
 
+직전:
+메모 항목
+
+사용자:
+할일로
+
+→ correct
+→ db를 task로 변경
+
+---
+
 ### create 예
 
 다음은 반드시 create이다.
@@ -4989,8 +5774,11 @@ response만 작성하고 변경 데이터를 생략하지 않는다.
 ---
 
 ### correct 출력 규칙 (중요)
+
 correct는 직전 분류 결과를 기준으로 변경사항만 반환한다.
 기존 title, db, type 등 변경되지 않는 값은 생성하지 않는다.
+
+단, DB가 변경되는 경우에는 변경된 db와 새 DB 기준으로 다시 판단한 type 및 필요한 속성을 함께 반환한다.
 
 예)
 
@@ -5318,126 +6106,72 @@ title 생성 시 의미가 명확한 오타만 보정한다.
 `;
 
 
-async function getTagCache(userId: string): Promise<string[]> {
-    console.log("[TagCache] get start", { userId });
-
-    const sbDoc = await db
-        .collection("users")
-        .doc(userId)
-        .collection("integrations")
-        .doc("kakao-capture")
-        .get();
-
-    console.log("[TagCache] document exists", {
-        userId,
-        exists: sbDoc.exists
-    });
-
-    const data = sbDoc.data();
-    const tags = data?.tagCache;
-
-    console.log("[TagCache] raw data", {
-        userId,
-        tagCache: tags
-    });
-
-    const result = Array.isArray(tags)
-        ? tags.filter((tag: any) => typeof tag === "string" && tag.trim())
-        : [];
-
-    console.log("[TagCache] get result", {
-        userId,
-        count: result.length,
-        tags: result
-    });
-
-    return result;
-}
-
-async function updateTagCache(userId: string, tags: string[]): Promise<void> {
-    console.log("[TagCache] update start", {
-        userId,
-        tags
-    });
-
-    const ref = db
-        .collection("users")
-        .doc(userId)
-        .collection("integrations")
-        .doc("kakao-capture");
-
-    const tagCache = [...new Set(
-        tags
-            .map(tag => tag.trim())
-            .filter(Boolean)
-    )];
-
-    console.log("[TagCache] update data", {
-        userId,
-        count: tagCache.length,
-        tagCache
-    });
-
-    await ref.set({
-        tagCache
-    }, { merge: true });
-
-    console.log("[TagCache] update success", {
-        userId,
-        count: tagCache.length,
-        tagCache
-    });
-}
-
+// #kakao ai
 // #kakao ai
 async function requestKakaoAssistantActionFromAI(
     userId: string,
     userMessage: string,
+    aiAssistantMessage: string,
     previousResult?: any
 ): Promise<any> {
     const instructionPrompt = KakaoAgentPrompt;
     const tagCache = await getTagCache(userId);
 
+    const currentInput = [
+        userMessage?.trim(),
+        aiAssistantMessage?.trim()
+    ].filter(Boolean).join("\n");
+
     let userPrompt: string;
 
     if (previousResult?.result?.action === "ask") {
         userPrompt = `
-            [이전 요청]
-            ${previousResult.aiInput}
+[이전 요청]
+${previousResult.userMessage}
 
-            [사용자 추가 답변]
-            ${userMessage}
+[사용자 추가 입력]
+${userMessage}
 
-            [기존 태그]
-            ${tagCache.join(", ") || "(없음)"}
+${aiAssistantMessage ? `
+[추가 분석 정보]
+${aiAssistantMessage}
+` : ""}
 
-            위 추가 답변을 반영하여 이전 요청을 완성한다.
+[기존 태그]
+${tagCache.join(", ") || "(없음)"}
 
-            규칙
-            - 정보가 충분하면 create를 반환한다.
-            - 여전히 부족하면 ask를 반환한다.
-            - correct는 사용하지 않는다.
-        `;
+현재 입력은 이전 요청에 대한 추가 답변이다.
+이전 요청과 현재 입력을 함께 판단하여 요청을 완성한다.
+
+규칙
+- 정보가 충분하면 create를 반환한다.
+- 여전히 부족한 정보가 있으면 ask를 반환한다.
+- correct는 사용하지 않는다.
+`;
     } else {
         userPrompt = `
-            ${previousResult ? `
-            [직전 사용자 입력]
-            ${previousResult.userMessage}
+${previousResult ? `
+[직전 사용자 입력]
+${previousResult.userMessage}
 
-            [직전 분류 결과]
-            ${JSON.stringify(previousResult.result, null, 2)}
-            ` : ""}
+[직전 분류 결과]
+${JSON.stringify(previousResult.result, null, 2)}
+` : ""}
 
-            [기존 태그]
-            ${tagCache.join(", ") || "(없음)"}
+[기존 태그]
+${tagCache.join(", ") || "(없음)"}
 
-            [현재 사용자 입력]
-            ${userMessage}
-        `;
+[현재 사용자 입력]
+${currentInput}
+`;
     }
 
-    console.log('requestKakaoAssistantActionFromAI ', JSON.stringify(previousResult?.result, null, 2));
-    console.log('requestKakaoAssistantActionFromAI userPrompt => ', userPrompt);
+    console.log("requestKakaoAssistantActionFromAI", {
+        userMessage,
+        aiAssistantMessage,
+        previousResult: previousResult?.result
+    });
+    console.log("requestKakaoAssistantActionFromAI userPrompt =>", userPrompt);
 
     const response = await clientAI.chat.completions.create({
         model: "gpt-4.1-mini",
@@ -5470,6 +6204,7 @@ async function requestKakaoAssistantActionFromAI(
         if (result?.action === "create" &&
             Array.isArray(result?.tags) &&
             result.tags.length > 0) {
+
             const newTags = result.tags
                 .filter((tag: any) => typeof tag === "string" && tag.trim())
                 .map((tag: string) => tag.trim());
@@ -5481,13 +6216,13 @@ async function requestKakaoAssistantActionFromAI(
             }
         }
 
-
         return result;
     } catch (err) {
         console.error("AI JSON parse failed", {
             error: err,
             rawResponse: text
         });
+
         throw err;
     }
 }
@@ -6415,9 +7150,8 @@ async function processKakaoAgent(
     const totalStart = Date.now();
     const logTime = (label: string, start: number) => { console.log(`[TIME] ${label}: ${Date.now() - start}ms`); };
 
+    let entity: AssistantEntity;
     let enrichedResult: any;
-    let entity: any;
-    let contextAiInput = userMessage;
 
     const locked = await acquireKakaoProcessingLock(userId, jobId);
     if (!locked) {
@@ -6428,42 +7162,62 @@ async function processKakaoAgent(
         return;
     }
 
+
     try {
         let t = Date.now();
-        const prepared = await prepareAssistantInput(userMessage, userId);
-        logTime("prepareAssistantInput", t);
 
-        const { aiInput, entity: preparedEntity } = prepared;
-        entity = preparedEntity;
+        entity = await processAssistantEntity(userMessage, userId);
+        const currentAiAssistantMessage = buildAiMessageFromEntity(entity);
+        logTime("processAssistantEntity", t);
+
+        ////////////////////////////////////////////////////////////////////////////////////
 
         t = Date.now();
-        const previousResult: any = await getLastAssistantContext(userId);
-        console.log("[processKakaoAgent] previousResult =>", previousResult);
+
+        const previousContext: AssistantContext | null = await getLastAssistantContext(userId);
+        console.log("[processKakaoAgent] previousContext =>", previousContext);
         logTime("getLastAssistantContext", t);
 
+        ////////////////////////////////////////////////////////////////////////////////////
+
+        const aiAssistantMessage =
+            previousContext?.result?.action === "ask"
+                ? [
+                    previousContext.aiAssistantMessage,
+                    currentAiAssistantMessage
+                ].filter(Boolean).join("\n")
+                : currentAiAssistantMessage;
+
         t = Date.now();
-        const result = await requestKakaoAssistantActionFromAI(userId, aiInput, previousResult);
+
+        const result = await requestKakaoAssistantActionFromAI(
+            userId,
+            userMessage,
+            aiAssistantMessage,
+            previousContext
+        );
+
         logTime("requestKakaoAssistantActionFromAI", t);
 
-        enrichedResult = enrichKakaoAssistantResult(result, previousResult);
+        enrichedResult = enrichKakaoAssistantResult(result, previousContext);
 
-        contextAiInput =
-            previousResult?.result?.action === "ask"
-                ? `${previousResult.aiInput}\n${aiInput}`
-                : aiInput;
+        ////////////////////////////////////////////////////////////////////////////////////
 
         const payload: any = {
             userMessage,
-            aiInput: contextAiInput,
+            aiAssistantMessage,
             entity,
             result: enrichedResult,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
-        console.log("[TIME] saveAssistantContext START");
-        t = Date.now();
-        enrichedResult.contextId = await saveAssistantContext(userId, payload);
-        console.log(`[TIME] saveAssistantContext: ${Date.now() - t}ms`);
 
+        console.log("[TIME] saveAssistantContext START");
+
+        t = Date.now();
+
+        enrichedResult.contextId = await saveAssistantContext(userId, payload);
+
+        console.log(`[TIME] saveAssistantContext: ${Date.now() - t}ms`);
     } finally {
         await releaseKakaoProcessingLock(userId, jobId);
     }
@@ -6570,7 +7324,8 @@ export function buildAssistantResponse(result: any): string {
     const categoryMap: Record<string, string> = {
         task: "할일",
         memo: "메모",
-        reference: "참고자료"
+        reference: "참고자료",
+        contact: "연락처"
     };
 
     const category = categoryMap[result.db];
@@ -6672,7 +7427,7 @@ async function resposeKakaoMessage(text: string, res: any) {
 // #kakao notion
 async function processAfterResponse(
     userId: string,
-    entity: any,
+    entity: AssistantEntity,
     aiResult: any,
 ) {
     const start = Date.now();
@@ -6734,90 +7489,945 @@ export const trimKorean = (text = '', max = 50) =>
         ? [...text].slice(0, max).join('') + '...'
         : text;
 
-export async function prepareAssistantInput(userMessage: string, uid: string) {
-    if (isYoutubeUrl(userMessage)) {
-        return prepareYoutubeInput(userMessage);
-    }
+export async function processAssistantEntity(userMessage: string, uid: string): Promise<AssistantEntity> {
 
+    // 이미지 
     if (isKakaoImageUrl(userMessage)) {
-        return prepareImageInput(userMessage, uid);
+        return processImageEntity(userMessage, uid);
     }
 
-    return prepareTextInput(userMessage);
+    // url - 유튜브
+    if (isYoutubeUrl(userMessage)) {
+        return processYoutubeEntity(userMessage);
+    }
+
+    // url
+    if (isUrl(userMessage)) {
+        return processWebPageEntity(userMessage);
+    }
+
+    return processTextEntity(userMessage);
 }
 
-async function prepareTextInput(userMessage: string) {
-    return {
-        aiInput: userMessage,
-        entity: {
+async function processTextEntity(userMessage: string): Promise<TextEntity> {
+    try {
+        // const result = await analyzeTextEntityFromAI(userMessage);
+
+        // if (result.type === "contact") {
+        //     return {
+        //         aiInput: buildAiInputFromEntity(result),
+        //         entity: result
+        //     };
+        // }
+
+        return {
             type: "text"
-        }
-    };
+        };
+    } catch (err) {
+        console.error("[PREPARE] TEXT entity analysis error", err);
+
+        return {
+            type: "text"
+        };
+    }
 }
+
+// async function analyzeTextEntityFromAI(text: string): Promise<TextEntity | ContactEntity> {
+//     const res = await clientAI.chat.completions.create({
+//         model: "gpt-4.1-mini",
+//         response_format: {
+//             type: "json_object"
+//         },
+//         messages: [
+//             {
+//                 role: "user",
+//                 content: `
+// 다음 텍스트에서 의미 있는 Contact 정보를 추출할 수 있는지 판단하라.
+
+// 일반적인 문장, 메모, 할일, 질문 등은 Contact로 판단하지 않는다.
+
+// Contact로 판단할 수 있는 경우:
+// - 이름
+// - 전화번호
+// - 이메일
+// - 주소
+// - 회사명
+// - 직책
+// 등의 연락처 정보가 의미 있게 포함된 경우
+
+// 반드시 아래 JSON 형식으로만 응답한다.
+
+// Contact인 경우:
+
+// {
+//   "type": "contact",
+//   "name": "",
+//   "company": "",
+//   "position": "",
+//   "phone": "",
+//   "email": "",
+//   "address": "",
+//   "website": ""
+// }
+
+// Contact가 아닌 경우:
+
+// {
+//   "type": "text"
+// }
+
+// 입력 텍스트:
+
+// ${text}
+// `.trim()
+//             }
+//         ]
+//     });
+
+//     const content = res.choices[0].message.content ?? "{}";
+//     const result = JSON.parse(content);
+
+//     if (result.type === "contact") {
+//         return {
+//             type: "contact",
+//             name: typeof result.name === "string" ? result.name.trim() : "",
+//             company: typeof result.company === "string" ? result.company.trim() : "",
+//             position: typeof result.position === "string" ? result.position.trim() : "",
+//             phone: typeof result.phone === "string" ? result.phone.trim() : "",
+//             email: typeof result.email === "string" ? result.email.trim() : "",
+//             address: typeof result.address === "string" ? result.address.trim() : "",
+//             website: typeof result.website === "string" ? result.website.trim() : ""
+//         };
+//     }
+
+//     return {
+//         type: "text"
+//     };
+// }
 
 function isKakaoImageUrl(url: string) {
     return /^https?:\/\/.*\.(jpg|jpeg|png|webp)/i.test(url)
         || url.includes('talk.kakaocdn.net');
 }
 
-async function prepareImageInput(userMessage: string, uid: string) {
-    console.log("[PREPARE] start", { uid, userMessage: userMessage });
-
-    let fileName: string | undefined;
+async function processImageEntity(
+    userMessage: string,
+    uid: string
+): Promise<ImageEntity | ContactEntity | BookEntity> {
+    console.log("[PREPARE] IMAGE start", { uid, userMessage });
 
     try {
-        console.log("[PREPARE] processKakaoImage start");
-
-        // 1. storage 처리
         const result = await processKakaoImage(userMessage, uid);
-        fileName = result.fileName;
 
         console.log("[PREPARE] processKakaoImage success", {
-            fileName,
+            fileName: result.fileName,
             imageUrl: result.imageUrl.substring(0, 100)
         });
 
-        // 2. AI 분석
-        console.log("[PREPARE] analyzeImageFromAI start");
-        const { ocrText, objects, context, hint } = await analyzeImageFromAI(
-            result.buffer,
-            result.contentType
-        );
+        const entity = await analyzeImageFromAI(result.buffer, result.contentType);
 
-        const aiInput = `
-            [이미지 분석]
-            OCR: ${ocrText || "없음"}
-            객체: ${objects.length > 0 ? objects.join(", ") : "없음"}
-            설명: ${context || "없음"}
-            힌트: ${hint || "없음"}
-            `.trim();
+        if (entity.entityType === "contact") {
+            const contactEntity = await analyzeContactFromAI(result.buffer, result.contentType);
 
-        console.log("[PREPARE] analyzeImageFromAI success", {
-            aiInput,
-            ocrText, objects, context, hint,
-            ocrLength: ocrText?.length ?? 0
+            if (result.imageUrl) {
+                contactEntity.imageUrl = result.imageUrl;
+            }
+
+            console.log("[PREPARE] CONTACT analysis success", {
+                type: contactEntity.type,
+                name: contactEntity.name
+            });
+
+            return contactEntity;
+        }
+
+        if (entity.entityType === "book") {
+            const bookEntity = await analyzeBookFromAI(result.buffer, result.contentType);
+
+            if (result.imageUrl) {
+                bookEntity.imageUrl = result.imageUrl;
+            }
+
+            console.log("[PREPARE] BOOK analysis success entity =>", entity);
+            return bookEntity;
+        }
+
+        if (entity.type === "image" && result.fileName) {
+            entity.fileName = result.fileName;
+        }
+
+        if (result.imageUrl) {
+            entity.imageUrl = result.imageUrl;
+        }
+
+        console.log("[PREPARE] IMAGE analysis success", {
+            type: entity.type,
+            entityType: entity.entityType
         });
 
-        return {
-            aiInput,
-            entity: {
-                type: "image",
-                url: result.imageUrl,
-                ocrText,
-                objects: Array.isArray(objects) ? objects : [],
-                context,
-                hint
-            },
-            fileName
-        };
-
+        return entity;
     } catch (err) {
-        console.error("[PREPARE] ERROR", err);
+        console.error("[PREPARE] IMAGE ERROR", err);
         throw err;
     }
 }
 
-export function isYoutubeUrl(url: string): boolean {
+export async function analyzeBookFromAI(
+    buffer: Buffer,
+    contentType: string
+): Promise<BookEntity> {
+    const base64Image = buffer.toString("base64");
+
+    const res = await clientAI.chat.completions.create({
+        model: "gpt-4.1-mini",
+        response_format: {
+            type: "json_object"
+        },
+        messages: [
+            {
+                role: "user",
+                content: [
+                    {
+                        type: "text",
+                        text: `
+이 이미지는 책 이미지이다.
+이미지를 직접 보고 책 정보를 분석하여 Book Entity JSON을 생성해라.
+가장 중요한 원칙은 "추측하지 않는 것"이다.
+이미지에서 직접 확인할 수 있는 정보와 AI가 확실하게 알고 있는 정보만 입력한다.
+확실하지 않은 정보는 반드시 빈 값으로 둔다.
+잘못된 정보를 입력하는 것보다 정보를 비워두는 것이 훨씬 중요하다.
+
+다른 필드의 정보를 이용하여 새로운 정보를 추론하거나 만들어내지 않는다.
+특히 제목, 저자, 번역자, 출판사 등의 정보만으로 ISBN, 페이지 수,
+출판일, 가격 등을 추측하지 않는다.
+
+AI가 일반적으로 알고 있는 책 정보라도 현재 이미지의 책과 정확히 일치한다고
+확신할 수 없는 경우에는 입력하지 않는다.
+
+반드시 JSON 형식으로 반환한다.
+설명, 마크다운, 코드블록은 출력하지 않는다.
+
+{
+  "type": "book",
+  "title": "",
+  "authors": [],
+  "translators": [],
+  "publisher": "",
+  "publishedAt": "",
+  "isbn": "",
+  "pages": "",
+  "category": "",
+  "price": "",
+  "currency": "",
+  "imageUrl": "",
+  "description": ""
+}
+
+---
+
+## 정보 추출 원칙
+
+1. 이미지에 실제로 표시된 정보는 가능한 정확하게 읽는다.
+2. 이미지에 표시되지 않은 정보도 AI가 확실하게 알고 있다면 입력할 수 있다.
+3. 단, 해당 정보가 현재 이미지의 책과 정확히 일치한다고 확신할 수 있어야 한다.
+4. 확신할 수 없으면 빈 값으로 둔다.
+5. 다른 필드의 값을 이용하여 새로운 값을 추론하지 않는다.
+6. 일반적인 지식이나 상식만으로 값을 만들어내지 않는다.
+7. 비슷한 제목의 다른 책 정보를 사용하지 않는다.
+8. 다른 출판사나 다른 번역본의 정보를 현재 책에 사용하지 않는다.
+9. 다른 판본의 ISBN, 가격, 페이지 수, 출판일을 현재 책에 사용하지 않는다.
+10. 책에 대한 일반적인 지식만으로 ISBN이나 서지정보를 생성하지 않는다.
+11. 숫자 정보는 특히 보수적으로 판단한다.
+12. 확실하지 않은 정보는 모두 빈 값으로 둔다.
+
+---
+
+## title
+
+책 제목.
+이미지에서 제목을 명확하게 확인할 수 있으면 입력한다.
+AI가 해당 책의 제목을 확실하게 알고 있는 경우에도 입력할 수 있다.
+단, 제목이 비슷한 다른 책과 혼동될 가능성이 있으면 빈 문자열로 둔다.
+표지의 광고 문구, 추천 문구, 시리즈명 등을 제목으로 추측하지 않는다.
+---
+
+## authors
+
+저자 목록.
+이미지에서 저자로 명확하게 표시된 사람을 입력한다.
+AI가 해당 책의 저자를 확실하게 알고 있고 현재 책과 일치한다고 판단할 수
+있는 경우 입력할 수 있다.
+저자라고 확신할 수 없는 사람은 입력하지 않는다.
+여러 명이면 각각 배열의 항목으로 입력한다.
+예:
+
+["호메로스"]
+
+---
+
+## translators
+
+번역자 목록.
+이미지에 "옮김", "번역", "번역자" 등으로 명확하게 표시된 사람을 입력한다.
+AI가 해당 판본의 번역자를 확실하게 알고 있는 경우에도 입력할 수 있다.
+현재 책의 번역자인지 확실하지 않으면 빈 배열로 둔다.
+여러 명이면 각각 배열의 항목으로 입력한다.
+---
+
+## publisher
+
+출판사.
+출판사명으로 명확하게 확인되는 경우 입력한다.
+출판사인지 확실하지 않은 브랜드명이나 시리즈명은 입력하지 않는다.
+
+---
+
+## publishedAt
+
+출판일 또는 발행일.
+이미지에 명확하게 표시되어 있거나 현재 판본의 출판일을 확실하게 알고
+있는 경우에만 입력한다.
+다른 판본의 날짜를 사용하지 않는다.
+확실하지 않으면 빈 문자열로 둔다.
+
+---
+
+## isbn
+
+ISBN.
+
+이미지에서 ISBN을 직접 확인할 수 있거나 현재 이미지의 책과 정확하게
+일치하는 ISBN을 AI가 확실하게 알고 있는 경우에만 입력한다.
+
+ISBN은 판본마다 다를 수 있으므로 특히 주의한다.
+제목과 저자만 보고 ISBN을 추측하지 않는다.
+ISBN처럼 보이는 숫자를 임의로 수정하거나 완성하지 않는다.
+확실하지 않으면 빈 문자열로 둔다.
+---
+
+## pages
+
+페이지 수.
+
+이미지에 페이지 수가 표시되어 있거나 현재 판본의 페이지 수를 확실하게
+알고 있는 경우에만 입력한다.
+
+다른 판본의 페이지 수를 사용하지 않는다.
+
+가능하면 숫자로 입력한다.
+
+확실하지 않으면 빈 문자열로 둔다.
+
+---
+
+## category
+
+책의 분야 또는 카테고리.
+
+AI가 책의 내용을 확실하게 알고 있어 해당 책의 카테고리를 명확하게 판단할
+수 있는 경우 입력할 수 있다.
+
+단순히 제목만 보고 추측하지 않는다.
+
+예:
+
+"문학"
+"소설"
+"역사"
+"철학"
+
+확실하지 않으면 빈 문자열로 둔다.
+
+---
+
+## price
+
+책 가격.
+
+이미지에 가격이 명확하게 표시된 경우에만 입력한다.
+
+AI가 알고 있는 가격이라도 현재 판본과 판매 시점에 해당하는 가격인지
+확실하지 않으면 입력하지 않는다.
+
+일반적인 판매 가격을 추측하지 않는다.
+
+확실하지 않으면 빈 문자열로 둔다.
+
+---
+
+## currency
+
+가격의 통화.
+
+가격이 명확하게 확인되고 통화도 확실한 경우에만 입력한다.
+
+가능하면 ISO 통화 코드로 반환한다.
+
+예:
+
+KRW
+USD
+JPY
+
+가격이나 통화를 확실하게 알 수 없으면 빈 문자열로 둔다.
+
+---
+
+## imageUrl
+
+이미지 URL은 임의로 생성하지 않는다.
+
+현재 이미지와 관련된 실제 URL을 확실하게 알고 있는 경우에만 입력한다.
+
+그렇지 않으면 빈 문자열로 둔다.
+
+---
+
+## description
+
+책에 대한 짧은 설명.
+
+AI가 해당 책의 내용을 확실하게 알고 있는 경우에만 작성할 수 있다.
+
+책 제목만 보고 내용을 추측하거나 만들어내지 않는다.
+
+이미지의 광고 문구를 사실과 다르게 확대 해석하지 않는다.
+
+확실하지 않으면 빈 문자열로 둔다.
+
+---
+
+## 절대 추론하지 말 것
+
+다음과 같은 추론은 절대로 하지 않는다.
+
+제목이 "오디세이아"라고 해서 자동으로 ISBN을 생성하지 않는다.
+
+저자가 "호메로스"라고 해서 특정 출판사의 ISBN을 사용하지 않는다.
+
+출판사가 "현대지성"이라고 해서 특정 판본의 페이지 수를 사용하지 않는다.
+
+번역자가 "박문재"라고 해서 특정 ISBN을 추측하지 않는다.
+
+책 제목과 저자를 알고 있다고 해서 가격을 추측하지 않는다.
+
+책의 유명한 내용만 알고 있다고 해서 description을 임의로 만들어내지 않는다.
+
+다른 판본의 정보를 현재 책의 정보로 사용하지 않는다.
+
+---
+
+## 정보가 부족한 경우
+
+정보가 부족하면 빈 값으로 반환한다.
+
+예:
+
+{
+  "title": "오디세이아",
+  "authors": ["호메로스"],
+  "translators": ["박문재"],
+  "publisher": "현대지성",
+  "publishedAt": "",
+  "isbn": "",
+  "pages": "",
+  "category": "문학",
+  "price": "",
+  "currency": "",
+  "imageUrl": "",
+  "description": ""
+}
+
+이처럼 일부 정보만 있어도 정상적인 결과이다.
+
+모든 필드를 채우려고 하지 마라.
+
+"모르는 정보는 빈 값"이 최우선 원칙이다.
+
+---
+
+## 최종 검증
+
+JSON을 반환하기 전에 모든 필드를 다시 검증한다.
+
+1. 이 정보가 실제 책과 일치하는가?
+2. 다른 책이나 다른 판본의 정보가 섞이지 않았는가?
+3. 다른 필드의 정보를 근거로 추론한 값은 없는가?
+4. ISBN을 임의로 생성하지 않았는가?
+5. 가격을 임의로 추측하지 않았는가?
+6. 페이지 수를 임의로 추측하지 않았는가?
+7. 출판일을 다른 판본에서 가져오지 않았는가?
+8. 확실하지 않은 정보가 있다면 빈 값으로 변경했는가?
+
+하나라도 확실하지 않은 정보라면 해당 필드를 빈 값으로 변경한다.
+
+잘못된 정보보다 빈 정보가 항상 우선이다.
+`
+                    },
+                    {
+                        type: "image_url",
+                        image_url: {
+                            url: `data:${contentType};base64,${base64Image}`
+                        }
+                    }
+                ]
+            }
+        ],
+        temperature: 0
+    });
+
+    const text = res.choices[0].message.content ?? "{}";
+    const result = JSON.parse(text);
+    const analyzedAt = new Date().toISOString();
+
+    console.log("[AI][Book] raw result =>", JSON.stringify(result, null, 2));
+
+    const authors = Array.isArray(result.authors)
+        ? result.authors
+            .filter((value: unknown): value is string => typeof value === "string")
+            .map((value: string) => value.trim())
+            .filter(Boolean)
+        : [];
+
+    const translators = Array.isArray(result.translators)
+        ? result.translators
+            .filter((value: unknown): value is string => typeof value === "string")
+            .map((value: string) => value.trim())
+            .filter(Boolean)
+        : [];
+
+    const entity: BookEntity = {
+        type: "book",
+        title: typeof result.title === "string" ? result.title.trim() : "",
+        authors,
+        translators,
+        publisher: typeof result.publisher === "string" ? result.publisher.trim() : "",
+        publishedAt: typeof result.publishedAt === "string" ? result.publishedAt.trim() : "",
+        isbn: typeof result.isbn === "string" ? result.isbn.trim() : "",
+        pages: typeof result.pages === "number" || typeof result.pages === "string" ? result.pages : "",
+        category: typeof result.category === "string" ? result.category.trim() : "",
+        price: typeof result.price === "string" ? result.price.trim() : "",
+        currency: typeof result.currency === "string" ? result.currency.trim() : "",
+        imageUrl: typeof result.imageUrl === "string" ? result.imageUrl.trim() : "",
+        description: typeof result.description === "string" ? result.description.trim() : "",
+        analysis: {
+            status: "success",
+            analyzedAt
+        }
+    };
+
+    console.log("[AI][Book] entity =>", JSON.stringify(entity, null, 2));
+
+    return entity;
+}
+
+export async function analyzeContactFromAI(
+    buffer: Buffer,
+    contentType: string
+): Promise<ContactEntity> {
+    const base64Image = buffer.toString("base64");
+
+    const res = await clientAI.chat.completions.create({
+        model: "gpt-4.1-mini",
+        response_format: {
+            type: "json_object"
+        },
+        messages: [
+            {
+                role: "user",
+                content: [
+                    {
+                        type: "text",
+                        text: `
+다음 명함 이미지를 직접 보고 연락처 정보를 추출하여 Contact Entity JSON을 생성해라.
+
+가장 중요한 원칙은 "추측하지 않는 것"이다.
+
+이미지에 실제로 표시되어 있고 해당 필드라고 명확하게 판단할 수 있는 정보만 입력한다.
+필드의 의미가 불명확하면 해당 필드는 반드시 빈 문자열("")로 둔다.
+
+특히 회사명, 부서명, 직책, 주소를 서로 추측하여 다른 필드에 넣지 않는다.
+
+반드시 JSON만 출력한다.
+설명, 마크다운, 코드블록은 절대 출력하지 않는다.
+
+{
+  "type": "contact",
+  "name": "",
+  "company": "",
+  "department": "",
+  "position": "",
+  "phone": "",
+  "mobile": "",
+  "fax: "",
+  "email": "",
+  "address": "",
+  "website": "",
+  "ocrText": ""
+}
+
+---
+
+## 핵심 추출 원칙
+
+1. 이미지에 실제로 존재하는 정보만 추출한다.
+2. 읽기 어려운 정보는 추측하지 않는다.
+3. 필드의 의미가 확실하지 않으면 빈 문자열("")로 둔다.
+4. 다른 필드의 값을 근거로 새로운 값을 만들어내지 않는다.
+5. 회사명, 부서명, 직책, 주소를 서로 유추하지 않는다.
+6. OCR 결과를 자연스럽게 만들기 위해 단어나 문장을 보정하지 않는다.
+7. 이름, 전화번호, 이메일, 주소 등의 값을 임의로 완성하거나 수정하지 않는다.
+8. 이미지에 없는 정보는 절대로 생성하지 않는다.
+
+---
+
+## 필드별 판단 기준
+
+### name
+
+사람의 이름.
+
+이름으로 명확하게 표시된 경우에만 입력한다.
+
+---
+
+### company
+
+회사명 또는 소속 회사명.
+
+회사명으로 명확하게 표시된 경우에만 입력한다.
+
+예:
+회사명: ABC株式会社
+ABC Corporation
+농협은행
+
+회사명으로 보인다는 이유만으로 다른 텍스트를 회사명으로 만들지 않는다.
+
+---
+
+### department
+
+부서명.
+
+**부서명으로 명확하게 표시된 경우에만 입력한다.**
+
+예:
+영업부
+마케팅팀
+개발팀
+기획부
+인사팀
+
+다음과 같은 경우에는 department에 넣지 않는다.
+
+- 회사명
+- 사람 이름
+- 직책
+- 주소
+- 전화번호
+- 이메일
+- 웹사이트
+- 회사명에 포함된 단어
+- 주소에 포함된 단어
+- 회사명이나 주소에서 추출한 단어
+
+특히 회사명이나 주소에 어떤 단어가 포함되어 있다는 이유만으로 그것을 부서명으로 판단하지 않는다.
+
+부서명이 명확하지 않으면 반드시 ""로 둔다.
+
+---
+
+### position
+
+직책, 직급 또는 직위.
+
+직책 또는 직급으로 명확하게 표시된 경우에만 입력한다.
+
+예:
+대표
+대표이사
+사장
+이사
+상무
+전무
+부장
+차장
+과장
+팀장
+대리
+
+단순히 이름이나 회사명 옆에 있는 텍스트라고 해서 position으로 추측하지 않는다.
+
+---
+
+### phone
+
+일반 전화번호, 회사 전화번호 또는 대표번호.
+
+예:
+02-1234-5678
+031-123-4567
+1588-1234
+
+---
+
+### mobile
+
+휴대전화 또는 모바일 전화번호.
+
+일반적으로 010으로 시작하는 번호.
+
+예:
+010-1234-5678
+
+휴대전화 번호는 phone에 넣지 않는다.
+
+---
+
+### fax
+
+fax번호
+
+예:
+02-1234-5678
+
+---
+
+### email
+
+이메일 주소.
+
+이메일 형식으로 명확하게 표시된 값만 입력한다.
+
+---
+
+### address
+
+회사 또는 개인의 주소.
+
+주소로 명확하게 표시된 경우에만 입력한다.
+
+주소에 포함된 단어나 회사명이 있다고 해서 그것을 department나 다른 필드로 분리하지 않는다.
+
+---
+
+### website
+
+웹사이트 주소.
+
+URL 또는 홈페이지 주소로 명확하게 표시된 경우에만 입력한다.
+
+---
+
+## 필드 간 절대 추론 금지
+
+다음 규칙을 반드시 지켜라.
+
+회사명이 "인공지능테크놀로지"라고 해서
+department를 "테크놀로지"로 만들지 않는다.
+
+주소에 "디패턴"이라는 단어가 있다고 해서
+department를 "디패턴"으로 만들지 않는다.
+
+회사명이 "NongHyup"이라고 해서
+department를 임의로 "은행" 또는 "금융"으로 만들지 않는다.
+
+position이 "차장"이라고 해서 department를 추측하지 않는다.
+
+이름, 회사명, 주소, 직책에 포함된 단어를 다른 필드의 값으로 재사용하지 않는다.
+
+**명확한 근거가 없는 필드는 빈 문자열("")이다.**
+
+---
+
+## 전화번호 구분
+
+phone:
+- 일반 전화번호
+- 회사 전화번호
+- 대표번호
+- 지역번호가 있는 전화번호
+- 1588, 1644 등의 대표번호
+
+mobile:
+- 휴대전화
+- 모바일 번호
+- 일반적으로 010으로 시작하는 번호
+
+fax: 
+- 명시적으로 fax로 된 번호
+
+예:
+
+전화: 02-1234-5678
+휴대폰: 010-1234-5678
+FAX: 02-1234-5689
+
+결과:
+
+{
+  "phone": "02-1234-5678",
+  "mobile": "010-1234-5678",
+  "fax": "02-1234-5679"
+}
+
+---
+
+## OCR
+
+ocrText에는 이미지에서 실제로 읽은 텍스트를 가능한 그대로 기록한다.
+
+OCR은 추출만 수행한다.
+
+- 이미지에 실제로 존재하는 텍스트만 기록한다.
+- 읽기 어려운 글자를 추측하지 않는다.
+- 숫자를 수정하지 않는다.
+- 전화번호를 완성하지 않는다.
+- 주소를 자연스럽게 수정하지 않는다.
+- 맞춤법을 수정하지 않는다.
+- 원문의 표현과 구조를 가능한 유지한다.
+
+한글 사람 이름은 OCR 과정에서 글자 사이에 불필요한 공백이 생길 수 있다.
+실제 이름이 하나의 이름으로 명확하다면 글자 사이의 불필요한 공백을 제거하여
+입력한다. 단, 이름을 추측하여 글자를 추가하거나 삭제하지 않는다.
+
+---
+
+## 최종 검증
+
+JSON을 출력하기 전에 각 필드를 다시 확인한다.
+
+특히 다음을 확인한다.
+
+1. department가 실제 이미지에서 부서명으로 명확하게 표시되어 있는가?
+2. department가 회사명이나 주소에서 추출된 것은 아닌가?
+3. position이 실제 직책 또는 직급인가?
+4. phone과 mobile이 올바르게 구분되어 있는가?
+5. 이미지에 없는 정보를 추측해서 추가하지 않았는가?
+
+하나라도 확실하지 않으면 해당 필드를 빈 문자열("")로 변경한다.
+`
+                    },
+                    {
+                        type: "image_url",
+                        image_url: {
+                            url: `data:${contentType};base64,${base64Image}`
+                        }
+                    }
+                ]
+            }
+        ],
+        temperature: 0
+    });
+
+    const text = res.choices[0].message.content ?? "{}";
+    const result = JSON.parse(text);
+    const analyzedAt = new Date().toISOString();
+
+    console.log("[AI][Contact] raw result =>", JSON.stringify(result, null, 2));
+
+    const entity: ContactEntity = {
+        type: "contact",
+        name: normalizeContactName(result.name),
+        company: typeof result.company === "string" ? result.company.trim() : "",
+        department: typeof result.department === "string" ? result.department.trim() : "",
+        position: typeof result.position === "string" ? result.position.trim() : "",
+        phone: typeof result.phone === "string" ? result.phone.trim() : "",
+        mobile: typeof result.mobile === "string" ? result.mobile.trim() : "",
+        fax: typeof result.fax === "string" ? result.fax.trim() : "",
+        email: typeof result.email === "string" ? result.email.trim() : "",
+        address: typeof result.address === "string" ? result.address.trim() : "",
+        website: typeof result.website === "string" ? result.website.trim() : "",
+        ocrText: typeof result.ocrText === "string" ? result.ocrText.trim() : "",
+        analysis: {
+            status: "success",
+            analyzedAt
+        }
+    };
+
+    console.log("[AI][Contact] entity =>", JSON.stringify(entity, null, 2));
+
+    return entity;
+}
+
+const normalizeContactName = (value: unknown): string => {
+    if (typeof value !== "string") return "";
+
+    const name = value.trim();
+
+    if (/^[가-힣\s]+$/.test(name)) {
+        return name.replace(/\s+/g, "");
+    }
+
+    return name;
+};
+
+// async function prepareImageInput(userMessage: string, uid: string) {
+//     console.log("[PREPARE] start", { uid, userMessage });
+
+//     let fileName: string | undefined;
+
+//     try {
+//         console.log("[PREPARE] processKakaoImage start");
+
+//         const result = await processKakaoImage(userMessage, uid);
+//         fileName = result.fileName;
+
+//         console.log("[PREPARE] processKakaoImage success", {
+//             fileName,
+//             imageUrl: result.imageUrl.substring(0, 100)
+//         });
+
+//         console.log("[PREPARE] analyzeImageFromAI start");
+//         const { ocrText, objects, context, hint } = await analyzeImageFromAI(
+//             result.buffer,
+//             result.contentType
+//         );
+
+//         const entity: ImageEntity = {
+//             type: "image",
+//             url: result.imageUrl,
+//             imageUrl: result.imageUrl,
+//             ocrText,
+//             objects: Array.isArray(objects) ? objects : [],
+//             context,
+//             hint,
+//             analysis: {
+//                 status: "success",
+//                 analyzedAt: new Date().toISOString()
+//             }
+//         };
+
+//         const aiInput = `
+// [이미지 분석]
+// OCR: ${entity.ocrText || "없음"}
+// 객체: ${entity.objects.length > 0 ? entity.objects.join(", ") : "없음"}
+// 설명: ${entity.context || "없음"}
+// 힌트: ${entity.hint || "없음"}
+// `.trim();
+
+//         console.log("[PREPARE] analyzeImageFromAI success", {
+//             aiInput,
+//             ocrText,
+//             objects: entity.objects,
+//             context,
+//             hint,
+//             ocrLength: entity.ocrText?.length ?? 0
+//         });
+
+//         return {
+//             aiInput,
+//             entity,
+//             fileName
+//         };
+//     } catch (err) {
+//         console.error("[PREPARE] ERROR", err);
+//         throw err;
+//     }
+// }
+
+function isYoutubeUrl(url: string): boolean {
     try {
         const u = new URL(url.trim());
         const host = u.hostname.toLowerCase();
@@ -6842,41 +8452,154 @@ export function isYoutubeUrl(url: string): boolean {
     }
 }
 
+// export function isCoupangUrl(url: string): boolean {
+//     try {
+//         const u = new URL(url.trim());
+//         const host = u.hostname.toLowerCase();
+
+//         if (![
+//             "coupang.com",
+//             "www.coupang.com",
+//             "m.coupang.com"
+//         ].includes(host)) {
+//             return false;
+//         }
+
+//         return u.pathname.startsWith("/vp/products/");
+//     } catch {
+//         return false;
+//     }
+// }
+
+// export function isNaverShoppingUrl(url: string): boolean {
+//     try {
+//         const u = new URL(url.trim());
+//         const host = u.hostname.toLowerCase();
+
+//         if ([
+//             "smartstore.naver.com",
+//             "m.smartstore.naver.com"
+//         ].includes(host)) {
+//             return u.pathname.split("/").length >= 3;
+//         }
+
+//         if (host === "shopping.naver.com") {
+//             return (
+//                 u.pathname.startsWith("/catalog/") ||
+//                 u.pathname.startsWith("/window-products/")
+//             );
+//         }
+
+//         return false;
+//     } catch {
+//         return false;
+//     }
+// }
+
+function isUrl(url: string): boolean {
+    try {
+        const u = new URL(url.trim());
+
+        return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
+
 // #youtube
-async function prepareYoutubeInput(userMessage: string) {
+async function processYoutubeEntity(userMessage: string): Promise<YoutubeEntity> {
     console.log("[PREPARE] start", { userMessage });
 
     try {
         console.log("[PREPARE] analyzeYoutube start");
-        const { title, author, thumbnail, description } = await fetchYoutubeMetadata(userMessage);
 
-        const aiInput = `
-[유튜브 영상]
-제목: ${title || "없음"}
-채널: ${author || "없음"}
-설명: ${description || "없음"}
-`.trim();
+        const metadata = await fetchYoutubeMetadata(userMessage);
+        const analyzedAt = new Date().toISOString();
 
-        console.log("[PREPARE] analyzeYoutube success", { title, author, thumbnail });
-
-        return {
-            aiInput,
-            entity: {
-                type: "youtube",
-                url: userMessage.trim(),
-                title,
-                author,
-                thumbnail,
-                description
+        const entity: YoutubeEntity = {
+            type: "youtube",
+            url: userMessage.trim(),
+            title: metadata.title,
+            channelName: metadata.channelName,
+            channelId: metadata.channelId,
+            description: metadata.description,
+            imageUrl: metadata.thumbnailUrl,
+            publishedAt: metadata.publishedAt,
+            categoryId: metadata.categoryId,
+            tags: metadata.tags,
+            viewCount: metadata.viewCount,
+            likeCount: metadata.likeCount,
+            commentCount: metadata.commentCount,
+            duration: metadata.duration,
+            analysis: {
+                status: "success",
+                analyzedAt
             }
         };
+
+        console.log("[PREPARE] analyzeYoutube success", {
+            title: entity.title,
+            channelName: entity.channelName,
+            imageUrl: entity.imageUrl,
+            viewCount: entity.viewCount
+        });
+
+        return entity;
     } catch (err) {
         console.error("[PREPARE] ERROR", err);
         throw err;
     }
 }
 
-export async function fetchYoutubeMetadata(youtubeUrl: string): Promise<any> {
+// export async function fetchYoutubeMetadata(youtubeUrl: string): Promise<any> {
+//     const apiKey = process.env.YOUTUBE_API_KEY;
+//     const videoId = extractYoutubeVideoId(youtubeUrl);
+
+//     if (!videoId) {
+//         throw new Error(`Invalid YouTube URL: ${youtubeUrl}`);
+//     }
+
+//     const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet&key=${apiKey}`;
+//     const res = await fetch(url);
+
+//     if (!res.ok) {
+//         throw new Error(`YouTube API failed ${res.status}`);
+//     }
+
+//     const data = await res.json();
+//     const item = data.items?.[0];
+
+//     if (!item) {
+//         throw new Error(`YouTube video not found: ${videoId}`);
+//     }
+
+//     const snippet = item.snippet;
+//     const description = typeof snippet.description === "string" ? snippet.description.trim() : "";
+
+//     return {
+//         title: snippet.title,
+//         author: snippet.channelTitle,
+//         description: description.length > 1000 ? `${description.substring(0, 1000)}...` : description,
+//         thumbnail: snippet.thumbnails?.high?.url ?? ""
+//     };
+// }
+
+export interface YoutubeMetadata {
+    title: string;
+    channelName: string;
+    channelId: string;
+    description: string;
+    thumbnailUrl: string;
+    publishedAt: string;
+    categoryId: string;
+    tags: string[];
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
+    duration: string;
+}
+
+export async function fetchYoutubeMetadata(youtubeUrl: string): Promise<YoutubeMetadata> {
     const apiKey = process.env.YOUTUBE_API_KEY;
     const videoId = extractYoutubeVideoId(youtubeUrl);
 
@@ -6884,8 +8607,7 @@ export async function fetchYoutubeMetadata(youtubeUrl: string): Promise<any> {
         throw new Error(`Invalid YouTube URL: ${youtubeUrl}`);
     }
 
-    const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet&key=${apiKey}`;
-
+    const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,statistics,contentDetails&key=${apiKey}`;
     const res = await fetch(url);
 
     if (!res.ok) {
@@ -6899,14 +8621,28 @@ export async function fetchYoutubeMetadata(youtubeUrl: string): Promise<any> {
         throw new Error(`YouTube video not found: ${videoId}`);
     }
 
-    const snippet = item.snippet;
+    const snippet = item.snippet ?? {};
+    const statistics = item.statistics ?? {};
+    const contentDetails = item.contentDetails ?? {};
     const description = typeof snippet.description === "string" ? snippet.description.trim() : "";
 
     return {
-        title: snippet.title,
-        author: snippet.channelTitle,
-        description: description.length > 500 ? `${description.substring(0, 500)}...` : description,
-        thumbnail: snippet.thumbnails?.high?.url ?? ""
+        title: typeof snippet.title === "string" ? snippet.title : "",
+        channelName: typeof snippet.channelTitle === "string" ? snippet.channelTitle : "",
+        channelId: typeof snippet.channelId === "string" ? snippet.channelId : "",
+        description: description.length > 1000 ? `${description.substring(0, 1000)}...` : description,
+        thumbnailUrl: snippet.thumbnails?.maxres?.url
+            ?? snippet.thumbnails?.high?.url
+            ?? snippet.thumbnails?.medium?.url
+            ?? snippet.thumbnails?.default?.url
+            ?? "",
+        publishedAt: typeof snippet.publishedAt === "string" ? snippet.publishedAt : "",
+        categoryId: typeof snippet.categoryId === "string" ? snippet.categoryId : "",
+        tags: Array.isArray(snippet.tags) ? snippet.tags : [],
+        viewCount: Number(statistics.viewCount ?? 0),
+        likeCount: Number(statistics.likeCount ?? 0),
+        commentCount: Number(statistics.commentCount ?? 0),
+        duration: typeof contentDetails.duration === "string" ? contentDetails.duration : ""
     };
 }
 
@@ -6917,39 +8653,686 @@ function extractYoutubeVideoId(url: string): string | undefined {
 
     return match?.[1];
 }
-// export async function fetchYoutubeMetadata(url: string): Promise<{
-//     title?: string;
-//     author?: string;
-//     thumbnail?: string;
-//     description?: string;
-// }> {
-//     try {
-//         const endpoint = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-//         const res = await fetch(endpoint, {
-//             headers: {
-//                 "User-Agent": "Mozilla/5.0"
-//             }
-//         });
-//         if (!res.ok) {
-//             throw new Error(`YouTube oEmbed failed (${res.status})`);
+
+////////////////////////////////////////////////////////////////////////
+// 일반 URL 분석
+//
+
+async function processWebPageEntity(userMessage: string): Promise<AssistantEntity> {
+    console.log("[PREPARE] URL start", { userMessage });
+
+    try {
+        const webPageAnalyzer = new WebPageAnalyzer();
+        const url = userMessage.trim();
+        const entity = await webPageAnalyzer.analyze(url);
+
+        if (!entity) {
+            console.log("[PREPARE] URL analysis failed");
+
+            return { type: "text" };
+        }
+        console.log("[PREPARE] URL analysis success entity =>", entity);
+        return entity;
+    } catch (err) {
+        console.error("[PREPARE] URL ERROR", err);
+        return { type: "text" };
+    }
+}
+
+function buildAiMessageFromEntity(entity: AssistantEntity): string {
+    const truncate = (value?: string, maxLength = 1000): string => {
+        const text = value?.trim() || "";
+        return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+    };
+
+    const joinValues = (value?: string | string[]): string => {
+        if (Array.isArray(value)) {
+            return value.map(item => String(item).trim()).filter(Boolean).join(", ");
+        }
+
+        return typeof value === "string" ? value.trim() : "";
+    };
+
+    if (entity.type === "text") {
+        return "";
+    }
+
+    if (entity.type === "image") {
+        return `#이미지
+OCR: ${truncate(entity.ocrText, 1500) || "없음"}
+설명: ${truncate(entity.context, 500) || "없음"}
+객체: ${entity.objects?.slice(0, 20).join(", ") || "없음"}`.trim();
+    }
+
+    if (entity.type === "contact") {
+        return `#연락처
+이름: ${entity.name || "없음"}
+회사: ${entity.company || "없음"}
+부서: ${entity.department || "없음"}
+직책: ${entity.position || "없음"}
+전화번호: ${entity.phone || "없음"}
+휴대전화: ${entity.mobile || "없음"}
+FAX: ${entity.fax || "없음"}
+이메일: ${entity.email || "없음"}
+주소: ${entity.address || "없음"}
+웹사이트: ${entity.website || "없음"}`.trim();
+    }
+
+    if (entity.type === "youtube") {
+        return `#유튜브
+제목: ${entity.title || "없음"}
+채널: ${entity.channelName || "없음"}
+설명: ${truncate(entity.description, 1000) || "없음"}
+URL: ${entity.url || "없음"}`.trim();
+    }
+
+    if (entity.type === "product") {
+        return `#상품
+상품명: ${entity.title || "없음"}
+브랜드: ${entity.brand || "없음"}
+가격: ${entity.price ? `${entity.price}${entity.currency ? ` ${entity.currency}` : ""}` : "없음"}
+설명: ${truncate(entity.description, 700) || "없음"}
+URL: ${entity.url || "없음"}`.trim();
+    }
+
+    if (entity.type === "book") {
+        return `#책
+제목: ${entity.title || "없음"}
+저자: ${joinValues(entity.authors) || "없음"}
+출판사: ${entity.publisher || "없음"}
+출간일: ${entity.publishedAt || "없음"}
+설명: ${truncate(entity.description, 700) || "없음"}
+URL: ${entity.url || "없음"}`.trim();
+    }
+
+    if (entity.type === "map") {
+        return `#장소
+장소명: ${entity.title || "없음"}
+주소: ${entity.address || "없음"}
+설명: ${truncate(entity.description, 500) || "없음"}
+URL: ${entity.url || "없음"}`.trim();
+    }
+
+    if (entity.type === "webpage") {
+        return `#웹페이지
+제목: ${entity.title || "없음"}
+사이트: ${entity.siteName || "없음"}
+설명: ${truncate(entity.description, 500) || "없음"}
+URL: ${entity.url || "없음"}
+
+본문:
+${truncate(entity.content, 1500) || "본문을 추출하지 못했습니다."}`.trim();
+    }
+
+    return "";
+}
+
+// function extractRepresentativeImage($: cheerio.CheerioAPI, jsonLd: any[], baseUrl: string): string | undefined {
+//     const resolveUrl = (value: string | undefined): string | undefined => {
+//         if (!value?.trim()) {
+//             return undefined;
 //         }
 
-//         const json = await res.json();
+//         try {
+//             return new URL(value.trim(), baseUrl).href;
+//         } catch {
+//             return value.trim();
+//         }
+//     };
+
+//     const getJsonLdImage = (item: any): string | undefined => {
+//         if (!item) {
+//             return undefined;
+//         }
+
+//         const image = item.image;
+
+//         if (typeof image === "string") {
+//             return resolveUrl(image);
+//         }
+
+//         if (Array.isArray(image)) {
+//             for (const value of image) {
+//                 if (typeof value === "string") {
+//                     const result = resolveUrl(value);
+
+//                     if (result) {
+//                         return result;
+//                     }
+//                 }
+
+//                 if (value?.url && typeof value.url === "string") {
+//                     const result = resolveUrl(value.url);
+
+//                     if (result) {
+//                         return result;
+//                     }
+//                 }
+//             }
+//         }
+
+//         if (image?.url && typeof image.url === "string") {
+//             return resolveUrl(image.url);
+//         }
+
+//         return undefined;
+//     };
+
+//     const getMeta = (...names: string[]): string | undefined => {
+//         for (const name of names) {
+//             const propertyValue = $(`meta[property="${name}"]`).attr("content");
+//             const nameValue = $(`meta[name="${name}"]`).attr("content");
+//             const value = propertyValue ?? nameValue;
+
+//             if (value?.trim()) {
+//                 return value.trim();
+//             }
+//         }
+
+//         return undefined;
+//     };
+
+//     const isPreferredType = (item: any): boolean => {
+//         const type = item?.["@type"];
+
+//         if (typeof type === "string") {
+//             return ["Product", "Article", "NewsArticle", "BlogPosting"].includes(type);
+//         }
+
+//         if (Array.isArray(type)) {
+//             return type.some(value =>
+//                 ["Product", "Article", "NewsArticle", "BlogPosting"].includes(value)
+//             );
+//         }
+
+//         return false;
+//     };
+
+//     for (const item of jsonLd) {
+//         if (!isPreferredType(item)) {
+//             continue;
+//         }
+
+//         const image = getJsonLdImage(item);
+
+//         if (image) {
+//             console.log("[WEB] representative image = JSON-LD", {
+//                 type: item?.["@type"],
+//                 image
+//             });
+//             return image;
+//         }
+//     }
+
+//     const metaImage = getMeta(
+//         "og:image",
+//         "og:image:url",
+//         "og:image:secure_url",
+//         "twitter:image",
+//         "twitter:image:src"
+//     );
+
+//     if (metaImage) {
+//         const image = resolveUrl(metaImage);
+
+//         if (image) {
+//             console.log("[WEB] representative image = meta", { image });
+//             return image;
+//         }
+//     }
+
+//     return undefined;
+// }
+
+// function analyzeUrl(url: string): WebPageEntity {
+//     const parsed = new URL(url);
+//     const hostname = parsed.hostname.toLowerCase();
+//     const source = hostname.replace(/^www\./, "");
+//     const pathname = parsed.pathname;
+//     const segments = pathname.split("/").filter(Boolean);
+
+//     let type: WebPageEntity["type"] = "webpage";
+//     let siteName: string | undefined;
+//     const metadata: Record<string, any> = {};
+
+//     if (hostname === "brand.naver.com" && segments[1] === "products" && segments[2]) {
+//         type = "product";
+//         siteName = "브랜드스토어";
+//         metadata.storeName = segments[0];
+//         metadata.productId = segments[2];
+//         metadata.platform = "naver";
+//     } else if (hostname === "smartstore.naver.com" && segments[1] === "products" && segments[2]) {
+//         type = "product";
+//         siteName = "스마트스토어";
+//         metadata.storeName = segments[0];
+//         metadata.productId = segments[2];
+//         metadata.platform = "naver";
+//     } else if (hostname === "www.coupang.com" || hostname === "coupang.com") {
+//         if (segments[0] === "vp" && segments[1] === "products" && segments[2]) {
+//             type = "product";
+//             siteName = "쿠팡";
+//             metadata.platform = "coupang";
+//             metadata.productId = segments[2];
+
+//             const itemId = parsed.searchParams.get("itemId");
+//             const vendorItemId = parsed.searchParams.get("vendorItemId");
+
+//             if (itemId) {
+//                 metadata.itemId = itemId;
+//             }
+
+//             if (vendorItemId) {
+//                 metadata.vendorItemId = vendorItemId;
+//             }
+//         }
+//     }
+
+//     return {
+//         type,
+//         source,
+//         url,
+//         ...(siteName && { siteName }),
+//         ...(Object.keys(metadata).length > 0 && { metadata }),
+//         analysis: {
+//             status: "partial",
+//             analyzedAt: new Date().toISOString()
+//         }
+//     };
+// }
+
+// export async function analyzeWebPage(url: string): Promise<WebPageEntity | null> {
+//     console.log("[WEB ANALYSIS] start", { url });
+
+//     try {
+//         const urlResult = analyzeUrl(url);
+//         console.log("[WEB ANALYSIS] URL analysis", {
+//             type: urlResult.type,
+//             source: urlResult.source,
+//             siteName: urlResult.siteName
+//         });
+
+//         const fetchedResult = await analyzeWebPageWithFetch(url);
+
+//         if (fetchedResult) {
+//             const result = {
+//                 ...urlResult,
+//                 ...fetchedResult,
+//                 type: fetchedResult.type ?? urlResult.type,
+//                 source: fetchedResult.source ?? urlResult.source,
+//                 siteName: fetchedResult.siteName ?? urlResult.siteName,
+//                 url: fetchedResult.url ?? url
+//             };
+
+//             console.log("[WEB ANALYSIS] fetch success", {
+//                 type: result.type,
+//                 source: result.source,
+//                 siteName: result.siteName,
+//                 title: result.title
+//             });
+
+//             return result;
+//         }
+
+//         console.log("[WEB ANALYSIS] fetch failed, use URL analysis", { url });
+
+//         return urlResult;
+//     } catch (err) {
+//         console.error("[WEB ANALYSIS] ERROR", err);
+//         return null;
+//     }
+// }
+
+// function getUrlSource(url: string): string {
+//     try {
+//         return new URL(url).hostname.replace(/^www\./, "");
+//     } catch {
+//         return "";
+//     }
+// }
+
+// function normalizeUrl(url: string): string {
+//     try {
+//         const parsed = new URL(url);
+
+//         const trackingParams = [
+//             "utm_source",
+//             "utm_medium",
+//             "utm_campaign",
+//             "utm_term",
+//             "utm_content",
+//             "gclid",
+//             "fbclid",
+//             "sourceType",
+//             "campaignId",
+//             "categoryId",
+//             "traceId"
+//         ];
+
+//         trackingParams.forEach(param => parsed.searchParams.delete(param));
+
+//         return parsed.toString();
+//     } catch {
+//         return url;
+//     }
+// }
+
+// async function analyzeWebPageWithAI(url: string): Promise<WebPageEntity | null> {
+//     console.log("[WEB AI] start", { url });
+
+//     try {
+//         const instructionPrompt = `
+// 웹페이지 URL을 분석하여 자료관리용 정보를 추출하세요.
+
+// 반드시 JSON 하나만 반환하세요.
+
+// {
+//     "type": "text | youtube | shopping | book | sns | webpage",
+//     "source": "사이트 또는 도메인",
+//     "url": "원본 URL",
+//     "canonicalUrl": "추적 파라미터를 제거한 대표 URL",
+//     "siteName": "사이트 이름",
+//     "title": "페이지 또는 상품 제목",
+//     "description": "페이지 또는 상품 설명",
+//     "author": "작성자 또는 브랜드",
+//     "imageUrl": "대표 이미지 URL",
+//     "publishedAt": "게시일",
+//     "content": "핵심 내용",
+//     "metadata": {},
+//     "analysis": {
+//         "status": "success | partial | failed",
+//         "error": ""
+//     }
+// }
+
+// 규칙:
+// - 쿠팡, 네이버쇼핑 등 상품 페이지는 shopping으로 분류하세요.
+// - 유튜브는 youtube로 분류하세요.
+// - 책 관련 페이지는 book으로 분류하세요.
+// - Instagram, Facebook, X 등은 sns로 분류하세요.
+// - 그 외 일반 페이지는 webpage로 분류하세요.
+// - canonicalUrl에는 추적용 파라미터를 제거하세요.
+// - 쇼핑 상품은 상품명, 브랜드, 가격, 용량, 수량, 상품번호 등을
+//   metadata에 넣으세요.
+// - 확인할 수 없는 정보는 추측하지 마세요.
+// - content에는 자료관리용 핵심 내용을 넣으세요.
+// - 반드시 유효한 JSON만 반환하세요.
+// `.trim();
+
+//         const userPrompt = `분석할 URL:\n${url}`;
+
+//         const res = await clientAI.chat.completions.create({
+//             model: "gpt-4.1-mini",
+//             messages: [
+//                 {
+//                     role: "system",
+//                     content: instructionPrompt
+//                 },
+//                 {
+//                     role: "user",
+//                     content: userPrompt
+//                 }
+//             ],
+//             temperature: 0.2
+//         });
+
+//         const text = res.choices[0].message.content ?? "{}";
+//         const result = JSON.parse(text);
 
 //         return {
-//             title: json.title,
-//             author: json.author_name,
-//             thumbnail: json.thumbnail_url
+//             type: result.type ?? "webpage",
+//             source: result.source ?? getUrlSource(url),
+//             url: result.url ?? url,
+//             canonicalUrl: result.canonicalUrl ?? normalizeUrl(url),
+//             siteName: result.siteName ?? "",
+//             title: result.title ?? "",
+//             description: result.description ?? "",
+//             author: result.author ?? "",
+//             imageUrl: result.imageUrl ?? "",
+//             publishedAt: result.publishedAt ?? "",
+//             content: result.content ?? "",
+//             metadata: result.metadata ?? {},
+//             analysis: {
+//                 status: result.analysis?.status ?? "success",
+//                 analyzedAt: new Date().toISOString(),
+//                 error: result.analysis?.error
+//             }
 //         };
 //     } catch (err) {
-//         console.error("[YouTube] fetchYoutubeMetadata", err);
-
-//         return {};
+//         console.error("[WEB AI] ERROR", err);
+//         return null;
 //     }
 // }
 
 
-export async function analyzeImageFromAI(buffer: Buffer, contentType: string) {
+
+// async function analyzeWebPageWithFetch(url: string): Promise<WebPageEntity | null> {
+//     console.log("[WEB] analyze start", { url });
+
+//     try {
+//         const response = await fetch(url, {
+//             method: "GET",
+//             redirect: "follow",
+//             headers: {
+//                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+//                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+//                 "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8"
+//             }
+//         });
+
+//         if (!response.ok) {
+//             console.error("[WEB] HTTP error", {
+//                 status: response.status,
+//                 statusText: response.statusText,
+//                 url
+//             });
+//             return null;
+//         }
+
+//         const contentType = response.headers.get("content-type") || "";
+
+//         if (!contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+//             console.log("[WEB] unsupported content type", { contentType, url });
+//             return null;
+//         }
+
+//         const html = await response.text();
+
+//         if (!html.trim()) {
+//             console.log("[WEB] empty html", { url });
+//             return null;
+//         }
+
+//         const finalUrl = response.url || url;
+//         const $ = cheerio.load(html);
+
+//         const getMeta = (...names: string[]): string | undefined => {
+//             for (const name of names) {
+//                 const propertyValue = $(`meta[property="${name}"]`).attr("content");
+//                 const nameValue = $(`meta[name="${name}"]`).attr("content");
+//                 const value = propertyValue ?? nameValue;
+
+//                 if (value?.trim()) {
+//                     return value.trim();
+//                 }
+//             }
+
+//             return undefined;
+//         };
+
+//         const ogTitle = getMeta("og:title", "twitter:title");
+//         const ogDescription = getMeta(
+//             "og:description",
+//             "twitter:description",
+//             "description"
+//         );
+
+//         const canonicalUrl = $("link[rel='canonical']").attr("href")?.trim() ||
+//             getMeta("og:url") ||
+//             finalUrl;
+
+//         let canonical = finalUrl;
+
+//         try {
+//             canonical = new URL(canonicalUrl, finalUrl).href;
+//         } catch {
+//             canonical = finalUrl;
+//         }
+
+//         // JSON-LD 추출
+//         const jsonLd: any[] = [];
+
+//         $("script[type='application/ld+json']").each((_, element) => {
+//             const text = $(element).text().trim();
+
+//             if (!text) {
+//                 return;
+//             }
+
+//             try {
+//                 const data = JSON.parse(text);
+
+//                 if (Array.isArray(data)) {
+//                     jsonLd.push(...data);
+//                 } else if (Array.isArray(data?.["@graph"])) {
+//                     jsonLd.push(...data["@graph"]);
+//                 } else if (data) {
+//                     jsonLd.push(data);
+//                 }
+//             } catch {
+//                 // 잘못된 JSON-LD는 무시
+//             }
+//         });
+
+//         console.log("[WEB] JSON-LD", {
+//             count: jsonLd.length
+//         });
+
+//         const siteName = extractSiteName($, jsonLd, finalUrl);
+//         const book = extractBookData($, jsonLd);
+
+//         if (book) {
+//             const image = book.imageUrl ||
+//                 getMeta("og:image", "twitter:image") ||
+//                 "";
+
+//             const title = book.name ||
+//                 ogTitle ||
+//                 $("title").first().text().replace(/\s+/g, " ").trim();
+
+//             const description = book.description ||
+//                 ogDescription ||
+//                 "";
+
+//             const metadata: Record<string, any> = {
+//                 contentType,
+//                 statusCode: response.status,
+//                 book
+//             };
+
+//             const entity: WebPageEntity = {
+//                 type: "book",
+//                 source: new URL(finalUrl).hostname.replace(/^www\./, ""),
+//                 url,
+//                 canonicalUrl: canonical,
+//                 siteName,
+//                 title,
+//                 description,
+//                 imageUrl: image,
+//                 metadata,
+//                 analysis: {
+//                     status: "success",
+//                     analyzedAt: new Date().toISOString()
+//                 }
+//             };
+
+//             console.log("[WEB] book result", {
+//                 found: true,
+//                 name: book.name,
+//                 authors: book.authors,
+//                 translators: book.translators,
+//                 publisher: book.publisher,
+//                 publishedAt: book.publishedAt,
+//                 isbn: book.isbn,
+//                 price: book.price,
+//                 currency: book.currency,
+//                 imageUrl: book.imageUrl
+//             });
+
+//             return entity;
+//         }
+
+//         const product = extractProductData($, jsonLd);
+
+//         console.log("[WEB] product result", {
+//             found: !!product,
+//             name: product?.name,
+//             brand: product?.brand,
+//             price: product?.price,
+//             currency: product?.currency,
+//             imageUrl: product?.imageUrl
+//         });
+
+//         const image = product?.imageUrl ||
+//             getMeta("og:image", "twitter:image") ||
+//             "";
+
+//         const title = product?.name ||
+//             ogTitle ||
+//             $("title").first().text().replace(/\s+/g, " ").trim();
+
+//         const description = product?.description ||
+//             ogDescription ||
+//             "";
+
+//         const type = product ? "product" : "webpage";
+
+//         const metadata: Record<string, any> = {
+//             contentType,
+//             statusCode: response.status,
+//             product: product || undefined
+//         };
+
+//         const entity: WebPageEntity = {
+//             type,
+//             source: new URL(finalUrl).hostname.replace(/^www\./, ""),
+//             url,
+//             canonicalUrl: canonical,
+//             siteName,
+//             title,
+//             description,
+//             imageUrl: image,
+//             metadata,
+//             analysis: {
+//                 status: "success",
+//                 analyzedAt: new Date().toISOString()
+//             }
+//         };
+
+//         console.log("[WEB] analyze success", {
+//             type: entity.type,
+//             url,
+//             title: entity.title,
+//             description: entity.description,
+//             imageUrl: entity.imageUrl,
+//             product: entity.metadata?.product
+//         });
+
+//         return entity;
+//     } catch (err) {
+//         console.error("[WEB] analyze error", { url, err });
+//         return null;
+//     }
+// }
+
+// function getCanonicalUrl(html: string): string | undefined {
+//     const match = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
+
+//     return match?.[1];
+// }
+export async function analyzeImageFromAI(
+    buffer: Buffer,
+    contentType: string
+): Promise<ImageEntity> {
     const base64Image = buffer.toString("base64");
 
     const res = await clientAI.chat.completions.create({
@@ -6964,106 +9347,316 @@ export async function analyzeImageFromAI(buffer: Buffer, contentType: string) {
                     {
                         type: "text",
                         text: `
-다음 이미지를 분석하여 "의미 해석 데이터" JSON을 생성해라.
+이미지를 분석하여 이미지 Entity JSON을 생성해라.
 
-절대 행동 판단(task/memo/reference 등)은 하지 않는다.
-절대 실행/분류/의도 판단을 하지 않는다.
+이 단계의 목적은 이미지에서 텍스트를 정확하게 추출하고,
+이미지가 어떤 종류의 Entity로 전문 분석되어야 하는지만 판단하는 것이다.
 
-반드시 아래 JSON 형식으로만 출력한다.
-설명, 마크다운, 코드블록 금지.
+절대 contact, product, book 등의 상세 데이터를 추출하지 않는다.
+절대 이름, 회사, 가격, 저자, 상품명 등의 정보를 별도 필드로 만들지 않는다.
+그 정보는 OCR 원문에만 포함한다.
+
+절대 행동 판단(task/memo/reference 등)을 하지 않는다.
+절대 실행/저장/분류 의도를 판단하지 않는다.
+
+반드시 JSON만 출력한다.
+설명, 마크다운, 코드블록은 절대 출력하지 않는다.
+
+다음 형식으로 출력한다.
 
 {
+  "type": "image",
+  "entityType": "image",
   "ocrText": "",
   "objects": [],
   "context": "",
-  "hint": ""
+  "hint": "unknown"
 }
 
 ---
 
-## 1. OCR
+## ENTITY TYPE
 
-이미지 안의 텍스트를 가능한 정확히 추출한다.
+entityType은 다음 중 하나만 선택한다.
 
-규칙
+contact
+product
+book
+map
+youtube
+webpage
+image
 
-- OCR은 추출만 수행하며, 의미를 추론하거나 보정하지 않는다.
-- 읽을 수 있는 부분만 그대로 출력한다.
-- 잘 보이지 않거나 확신할 수 없는 글자는 추측하지 않는다.
-- 일부만 읽히는 경우에는 읽히는 부분만 출력한다.
-- 숫자, 주소, 전화번호, 이메일, 계정번호 등 식별 정보는 절대 추측하거나 수정하지 않는다.
-- 맞춤법, 띄어쓰기, 오탈자를 임의로 교정하지 않는다.
-- 의미상 자연스럽더라도 단어나 문장을 완성하지 않는다.
-- 전혀 읽을 수 없는 경우에는 빈 문자열("")을 출력한다.
+### contact
+
+명함, 연락처 목록, 사람의 연락처 정보 등 연락처 정보가 명확한 경우.
+
+### product
+
+상품 페이지, 쇼핑몰 상품 화면, 상품 정보가 명확한 경우.
+
+### book
+
+**책 표지 또는 온라인 서점의 책 상세 페이지처럼 책 자체를 식별할 수 있는
+정보가 명확한 경우에만 사용한다.**
+
+실제 책의 표지를 촬영한 이미지라면 book으로 판단한다.
+
+온라인 서점의 책 상세 페이지처럼 책의 제목, 저자, 출판사 등의
+도서 정보가 명확하게 표시된 화면도 book으로 판단한다.
+
+**중요: 실제 책의 내부 페이지, 본문, 판권 페이지, 목차 페이지,
+책 내용을 촬영한 사진은 book으로 판단하지 않는다.**
+
+책 내부 페이지에 책 제목이나 저자 이름이 보이더라도 book으로 판단하지 않는다.
+
+책의 본문 내용이 대부분 보이는 경우 반드시 image로 판단한다.
+
+책의 일부분만 보이거나 책이 배경에 있는 경우에도 book으로 판단하지 않는다.
+
+### map
+
+지도, 장소 검색 결과, 장소 상세 화면 등 특정 장소 정보가 명확한 경우.
+
+### youtube
+
+유튜브 영상 화면 또는 유튜브 영상 정보가 명확한 경우.
+
+### webpage
+
+특정 웹페이지의 기사, 문서, 게시물 등의 정보가 명확한 경우.
+
+단, 온라인 서점의 책 상세 페이지는 webpage가 아니라 book으로 판단한다.
+
+### image
+
+다음과 같은 경우 image로 판단한다.
+
+- 책 내부 페이지
+- 책 본문
+- 책의 한 페이지를 촬영한 사진
+- 책의 목차 페이지
+- 책의 판권 페이지
+- 책의 특정 문단이나 좋은 글을 촬영한 사진
+- 책의 일부분만 촬영한 사진
+- 책이 배경에 보이는 일반 사진
+- 책 표지인지 확실하지 않은 경우
+- 위 유형에 해당하지 않는 일반 이미지
+
+**책 내부 페이지를 book으로 판단하지 않는 것이 매우 중요하다.**
+
+책이라는 객체가 보인다는 이유만으로 book으로 판단하지 않는다.
+
+"책이 있다"와 "이 이미지가 책 Entity를 나타낸다"는 서로 다른 의미이다.
+
+Entity type은 이미지 전체의 성격을 기준으로 판단한다.
+
 ---
 
-## 2. OBJECTS
-이미지에 포함된 핵심 객체/요소를 배열로 출력한다.
+## BOOK 판정 기준
+
+book으로 판단하기 전에 다음을 확인한다.
+
+1. 실제 책의 표지인가?
+2. 또는 온라인 서점의 책 상세 정보 화면인가?
+3. 책 자체를 식별하기 위한 이미지인가?
+
+위 조건을 만족하는 경우에만 book으로 판단한다.
+
+다음은 반드시 image이다.
+
+- 책 내부 본문
+- 책의 문장이나 문단
+- 책 페이지
+- 책의 목차
+- 책의 판권 페이지
+- 책의 독서 기록용 사진
+- 책의 좋은 글을 찍은 사진
+
+예를 들어 다음과 같은 이미지가 있다면:
+
+"당신의 시간과 에너지는 한정적이다
+하루의 모든 시간이 똑같은 잠재력을..."
+
+이것은 책의 본문 페이지이므로 반드시:
+
+"entityType": "image"
+
+로 반환한다.
+
+OCR에 책 제목이나 저자 이름이 일부 포함되어 있어도
+본문 페이지라면 book으로 변경하지 않는다.
+
+책 표지인지 확실하지 않다면 image를 선택한다.
+
+**book보다 image를 우선한다.**
+
+---
+
+## OCR
+
+이미지 안의 텍스트를 가능한 정확하게 추출한다.
+
+중요:
+
+- OCR은 추출만 수행한다.
+- 의미를 추론하지 않는다.
+- 텍스트를 보정하지 않는다.
+- 맞춤법이나 띄어쓰기를 수정하지 않는다.
+- 자연스러운 문장으로 재작성하지 않는다.
+- 읽기 어려운 부분을 추측하지 않는다.
+- 숫자, 전화번호, 이메일, 주소, 상품번호 등은 절대 추측하거나 수정하지 않는다.
+- 이미지에 실제로 존재하는 텍스트만 출력한다.
+- 일부만 읽을 수 있다면 읽을 수 있는 부분만 출력한다.
+- 텍스트의 구조와 줄바꿈을 가능한 유지한다.
+- OCR 결과에서 정보를 의미별로 재구성하지 않는다.
+- 명함이라도 이름, 회사, 부서, 직책 등을 별도 필드로 만들지 않는다.
+- 상품 화면이라도 상품명, 가격, 브랜드 등을 별도 필드로 만들지 않는다.
+- 책 화면이라도 제목, 저자, 출판사 등을 별도 필드로 만들지 않는다.
+
+OCR 원문에는 이미지에서 실제로 읽은 내용을 가능한 그대로 넣는다.
+
+전혀 읽을 수 있는 텍스트가 없다면 빈 문자열("")을 출력한다.
+
+---
+
+## OBJECTS
+
+이미지에 실제로 보이는 핵심 객체 또는 핵심 내용을 배열로 출력한다.
+
+단순히 물리적인 객체만 판단하지 말고, 이미지에서 사용자가 보고 있는
+핵심 대상이 무엇인지 판단한다.
 
 예:
+
 [
+  "명함",
   "사람",
+  "상품",
   "책",
+  "책 내용",
   "영수증",
+  "문서",
   "웹페이지",
-  "로고",
-  "음식",
-  "장소",
-  "화면(UI)",
-  "문서"
+  "스마트폰 화면",
+  "컴퓨터 화면",
+  "지도",
+  "로고"
 ]
 
+### 책 관련 이미지
+
+책을 촬영한 경우 다음과 같이 구분한다.
+책의 외관을 촬영한 경우:
+
+[
+  "책"
+]
+
+책 표지, 책등, 책 전체 등 책 자체를 식별할 수 있는 외관이 보이면
+"책"으로 출력한다.
+책의 내부 페이지, 본문, 문단, 특정 문장 등을 촬영한 경우:
+
+[
+  "책 내용"
+]
+
+책의 목차나 판권 페이지처럼 책 내부의 내용을 촬영한 경우에도:
+[
+  "책 내용"
+]
+
+으로 출력한다.
+
+**책 내부 페이지에서 책이라는 물리적인 객체가 보인다고 해서
+"책"으로 출력하지 않는다.**
+
+핵심 대상이 책의 내용이라면 반드시 "책 내용"으로 출력한다.
+
+예를 들어:
+
+"당신의 시간과 에너지는 한정적이다
+하루의 모든 시간이 똑같은 잠재력을 지닌다고 생각할 때가 많다..."
+
+와 같은 이미지라면:
+
+"objects": ["책 내용"]
+
+으로 출력한다.
+
+반대로 책 표지나 책등 또는 책 전체를 촬영하여 책 자체를 보여주는 이미지라면:
+
+"objects": ["책"]
+
+으로 출력한다.
+
+### entityType과의 관계
+
+objects와 entityType은 동일한 의미가 아니다.
+
+책을 촬영했지만 내부 내용인 경우:
+
+{
+  "entityType": "image",
+  "objects": ["책 내용"]
+}
+
+책 자체를 촬영한 경우:
+
+{
+  "entityType": "book",
+  "objects": ["책"]
+}
+
+즉 다음 원칙을 따른다.
+
+- 책 외관 → "책"
+- 책 내부 내용 → "책 내용"
+- 책 목차 → "책 내용"
+- 책 판권 페이지 → "책 내용"
+- 책의 특정 문장이나 좋은 글 → "책 내용"
+
+이미지에서 명확하게 확인되는 대상만 출력한다.
+
 ---
 
-## 3. CONTEXT
-이미지가 어떤 상황인지 짧게 설명한다.
+## CONTEXT
+
+이미지가 어떤 형태의 자료인지 짧게 설명한다.
 
 예:
-- 쇼핑 관련 화면
-- 메모/아이디어 스크린샷
-- 웹 아티클 캡처
+
+- 명함 사진
+- 상품 페이지 캡처
+- 웹페이지 캡처
 - 영수증 사진
-- 일정/할일 메모
-- 광고/홍보 이미지
+- 책 표지
+- 책 본문 페이지
+- 책 내부 페이지
+- 지도 화면
+- 유튜브 화면
+- 문서 사진
+- 일반 사진
+
+구체적인 Entity 데이터를 context에 넣지 않는다.
+
+예를 들어 상품 페이지라면
+"상품 페이지 캡처" 정도로만 출력한다.
 
 ---
 
-## 4. HINT
-아래 값 중 하나만 선택한다.
+## HINT
+
+이미지 자체의 성격을 참고하여 다음 중 하나만 선택한다.
 
 task-like
 memo-like
 reference-like
 unknown
 
----
+사용자의 행동 의도나 저장 의도를 판단하지 않는다.
 
-## HINT 기준
-
-task-like:
-- 할일/구매/예약/방문/읽기/보기 의도가 보임
-
-memo-like:
-- 개인 기록
-- 아이디어
-- 메모
-- 연락처
-- 좋은 글
-
-reference-like:
-- 외부 콘텐츠
-- 웹
-- 뉴스
-- 책
-- PPT
-- 자료
-- 통계
-- 캡처
-
-unknown:
-- 분류 불가
-- 애매함
-- 정보 부족
+판단하기 어려우면 unknown을 사용한다.
 `
                     },
                     {
@@ -7079,16 +9672,292 @@ unknown:
     });
 
     const text = res.choices[0].message.content ?? "{}";
-
     const result = JSON.parse(text);
+    const analyzedAt = new Date().toISOString();
 
-    return {
-        ocrText: result.ocrText ?? "",
-        objects: Array.isArray(result.objects) ? result.objects : [],
-        context: result.context ?? "",
-        hint: result.hint ?? "unknown"
+    console.log("[AI][Image] raw result =>", JSON.stringify(result, null, 2));
+
+    const entityTypes: string[] = [
+        "contact",
+        "product",
+        "book",
+        "map",
+        "youtube",
+        "webpage",
+        "image"
+    ];
+
+    const entityType = entityTypes.includes(result.entityType)
+        ? result.entityType
+        : "image";
+
+    const entity: ImageEntity = {
+        type: "image",
+        entityType,
+        ocrText: typeof result.ocrText === "string" ? result.ocrText : "",
+        objects: Array.isArray(result.objects)
+            ? result.objects.filter((item: any) => typeof item === "string")
+            : [],
+        context: typeof result.context === "string" ? result.context : "",
+        hint: ["task-like", "memo-like", "reference-like", "unknown"].includes(result.hint)
+            ? result.hint
+            : "unknown",
+        analysis: {
+            status: "success",
+            analyzedAt
+        }
     };
+
+    console.log("[AI][Image] entityType =>", entity.entityType);
+    console.log("[AI][Image] context =>", entity.context);
+    console.log("[AI][Image] objects =>", entity.objects);
+    console.log("[AI][Image] OCR =>", entity.ocrText);
+    console.log("[AI][Image] entity =>", JSON.stringify(entity, null, 2));
+
+    return entity;
 }
+
+// export async function analyzeImageFromAI(
+//     buffer: Buffer,
+//     contentType: string
+// ): Promise<ImageEntity | ContactEntity> {
+//     const base64Image = buffer.toString("base64");
+
+//     const res = await clientAI.chat.completions.create({
+//         model: "gpt-4.1-mini",
+//         response_format: {
+//             type: "json_object"
+//         },
+//         messages: [
+//             {
+//                 role: "user",
+//                 content: [
+//                     {
+//                         type: "text",
+//                         text: `
+// 다음 이미지를 분석하여 의미 있는 Entity JSON을 생성해라.
+
+// 절대 행동 판단(task/memo/reference 등)은 하지 않는다.
+// 절대 실행/분류/의도 판단을 하지 않는다.
+
+// 이미지가 명함, 연락처 목록, 사람의 연락처 정보 등 연락처 정보를 명확하게 포함하는 경우 type은 반드시 "contact"로 한다.
+
+// 그 외 모든 이미지는 type을 "image"로 한다.
+
+// 반드시 JSON만 출력한다.
+// 설명, 마크다운, 코드블록은 절대 출력하지 않는다.
+
+// 연락처 Entity 형식:
+
+// {
+//   "type": "contact",
+//   "name": "",
+//   "company": "",
+//   "department": "",
+//   "position": "",
+//   "phone": "",
+//   "mobile": "",
+//   "email": "",
+//   "address": "",
+//   "website": "",
+//   "ocrText": ""
+// }
+
+// 일반 이미지 Entity 형식:
+
+// {
+//   "type": "image",
+//   "ocrText": "",
+//   "objects": [],
+//   "context": "",
+//   "hint": ""
+// }
+
+// ---
+
+// ## CONTACT 판단 기준
+
+// 다음과 같은 경우 type을 "contact"로 한다.
+
+// - 명함
+// - 이름과 전화번호가 함께 있는 연락처 정보
+// - 회사명과 이름, 전화번호, 이메일 등이 함께 있는 사람 정보
+// - 연락처 목록
+// - 사람이 아닌 회사 연락처 정보도 contact로 처리 가능
+
+// 단순히 전화번호나 이메일 하나만 이미지에 포함되어 있다고 contact로 판단하지 않는다.
+
+// 명확하게 연락처 정보로 보이는 구조가 있어야 한다.
+
+// ---
+
+// ## CONTACT 추출 규칙
+
+// - 이미지에서 읽을 수 있는 정보만 추출한다.
+// - 읽을 수 없는 정보는 추측하지 않는다.
+// - 존재하지 않는 정보는 빈 문자열("")로 한다.
+// - 이름, 전화번호, 이메일, 주소 등을 임의로 보정하거나 완성하지 않는다.
+// - 전화번호, 이메일, 주소 등 식별 정보는 원문을 최대한 그대로 유지한다.
+// - 명함에 없는 필드는 빈 문자열로 한다.
+// - OCR 원문은 가능한 그대로 ocrText에 넣는다.
+
+// ## 전화번호, 휴대폰 번호 구분 
+
+// 전화번호(phone): 일반 전화번호, 대표번호, 회사 전화번호
+// 휴대폰(mobile): 휴대전화, 모바일 번호
+
+// 전화번호와 휴대폰은 서로 다른 필드이다.
+// 명함에 두 번호가 모두 있으면 각각 분리해서 저장한다.
+// 전화번호가 없으면 빈 문자열로 둔다.
+// 휴대폰 번호가 없으면 빈 문자열로 둔다.
+// 휴대폰 번호를 전화번호 필드에 넣지 않는다.
+// ---
+
+// ## IMAGE 분석
+
+// ### OCR
+
+// 이미지 안의 텍스트를 가능한 정확히 추출한다.
+
+// 규칙:
+
+// - OCR은 추출만 수행하며, 의미를 추론하거나 보정하지 않는다.
+// - 읽을 수 있는 부분만 그대로 출력한다.
+// - 잘 보이지 않거나 확신할 수 없는 글자는 추측하지 않는다.
+// - 일부만 읽히는 경우에는 읽히는 부분만 출력한다.
+// - 숫자, 주소, 전화번호, 이메일 등은 절대 추측하거나 수정하지 않는다.
+// - 맞춤법, 띄어쓰기, 오탈자를 임의로 교정하지 않는다.
+// - 의미상 자연스럽더라도 단어나 문장을 완성하지 않는다.
+// - 전혀 읽을 수 없는 경우 빈 문자열("")을 출력한다.
+
+// ---
+
+// ### OBJECTS
+
+// 이미지에 포함된 핵심 객체/요소를 배열로 출력한다.
+
+// 예:
+
+// [
+//   "사람",
+//   "책",
+//   "영수증",
+//   "웹페이지",
+//   "로고",
+//   "음식",
+//   "장소",
+//   "화면(UI)",
+//   "문서"
+// ]
+
+// ---
+
+// ### CONTEXT
+
+// 이미지가 어떤 상황인지 짧게 설명한다.
+
+// 예:
+
+// - 쇼핑 관련 화면
+// - 메모/아이디어 스크린샷
+// - 웹 아티클 캡처
+// - 영수증 사진
+// - 일정/할일 메모
+// - 광고/홍보 이미지
+
+// ---
+
+// ### HINT
+
+// 아래 값 중 하나만 선택한다.
+
+// task-like
+// memo-like
+// reference-like
+// unknown
+
+// ---
+
+// ## HINT 기준
+
+// task-like:
+// - 할일/구매/예약/방문/읽기/보기 의도가 보임
+
+// memo-like:
+// - 개인 기록
+// - 아이디어
+// - 메모
+// - 좋은 글
+
+// reference-like:
+// - 외부 콘텐츠
+// - 웹
+// - 뉴스
+// - 책
+// - PPT
+// - 자료
+// - 통계
+// - 캡처
+
+// unknown:
+// - 분류 불가
+// - 애매함
+// - 정보 부족
+// `
+//                     },
+//                     {
+//                         type: "image_url",
+//                         image_url: {
+//                             url: `data:${contentType};base64,${base64Image}`
+//                         }
+//                     }
+//                 ]
+//             }
+//         ],
+//         temperature: 0
+//     });
+
+//     const text = res.choices[0].message.content ?? "{}";
+//     const result = JSON.parse(text);
+//     const analyzedAt = new Date().toISOString();
+
+//     if (result.type === "contact") {
+//         return {
+//             type: "contact",
+//             name: typeof result.name === "string" ? result.name : "",
+//             company: typeof result.company === "string" ? result.company : "",
+//             department: typeof result.department === "string" ? result.department : "",
+//             position: typeof result.position === "string" ? result.position : "",
+//             phone: typeof result.phone === "string" ? result.phone : "",
+//             mobile: typeof result.mobile === "string" ? result.mobile : "",
+//             email: typeof result.email === "string" ? result.email : "",
+//             address: typeof result.address === "string" ? result.address : "",
+//             website: typeof result.website === "string" ? result.website : "",
+//             ocrText: typeof result.ocrText === "string" ? result.ocrText : "",
+//             analysis: {
+//                 status: "success",
+//                 analyzedAt
+//             }
+//         };
+//     }
+
+//     return {
+//         type: "image",
+//         ocrText: typeof result.ocrText === "string" ? result.ocrText : "",
+//         objects: Array.isArray(result.objects)
+//             ? result.objects.filter((item: any) => typeof item === "string")
+//             : [],
+//         context: typeof result.context === "string" ? result.context : "",
+//         hint: ["task-like", "memo-like", "reference-like", "unknown"].includes(result.hint)
+//             ? result.hint
+//             : "unknown",
+//         analysis: {
+//             status: "success",
+//             analyzedAt
+//         }
+//     };
+// }
+
 // async function describeImage(imageUrl: string) {
 
 //     const response = await clientAI.chat.completions.create({
@@ -7126,8 +9995,18 @@ unknown:
 
 //     return response.choices[0].message.content ?? '';
 // }
+interface AssistantContext {
+    userMessage: string;
+    aiAssistantMessage?: string;
+    result: {
+        action: string;
+        [key: string]: any;
+    };
+    createdAt: FirebaseFirestore.Timestamp;
+    contextId?: string;
+}
 
-async function getLastAssistantContext(userId: string) {
+async function getLastAssistantContext(userId: string): Promise<AssistantContext | null> {
     const snapshot = await db
         .collection("users")
         .doc(userId)
@@ -7142,33 +10021,46 @@ async function getLastAssistantContext(userId: string) {
     }
 
     const doc = snapshot.docs[0];
-    const data = doc.data();
-
+    const data = doc.data() as Omit<AssistantContext, "contextId">;
     const createdAt = data.createdAt?.toDate?.();
 
     if (!createdAt) {
         console.log("[CONTEXT] invalid createdAt", {
             userId,
+            contextId: doc.id,
             data
         });
         return null;
     }
 
-    const expireMinutes = 30;
     const age = Date.now() - createdAt.getTime();
+    const expireMinutes = 30;
+    const expireMs = expireMinutes * 60 * 1000;
 
-    if (age > expireMinutes * 60 * 1000) {
+    if (age > expireMs) {
         console.log("[CONTEXT] expired", {
             userId,
+            contextId: doc.id,
             createdAt,
             ageMinutes: Math.floor(age / 60000)
         });
+        return null;
+    }
 
+    if (!data.userMessage || !data.result?.action) {
+        console.log("[CONTEXT] invalid data", {
+            userId,
+            contextId: doc.id,
+            hasUserMessage: !!data.userMessage,
+            action: data.result?.action
+        });
         return null;
     }
 
     console.log("[CONTEXT] valid", {
         userId,
+        contextId: doc.id,
+        action: data.result.action,
         ageMinutes: Math.floor(age / 60000)
     });
 
@@ -7178,28 +10070,37 @@ async function getLastAssistantContext(userId: string) {
     };
 }
 
-export async function saveAssistantContext(userId: string, payload: any): Promise<string> {
-    const collectionRef = db
-        .collection("users")
-        .doc(userId)
-        .collection("assistantContext");
 
-    const previous = await collectionRef
-        .orderBy("createdAt", "desc")
-        .limit(1)
-        .get();
-
-    // previousContextId
-    if (!previous.empty) {
-        payload.previousContextId = previous.docs[0].id;
+function removeUndefined<T>(obj: T): T {
+    if (Array.isArray(obj)) {
+        return obj.map(removeUndefined) as T;
     }
 
+    if (obj && typeof obj === "object") {
+        return Object.fromEntries(
+            Object.entries(obj)
+                .filter(([, value]) => value !== undefined)
+                .map(([key, value]) => [key, removeUndefined(value)])
+        ) as T;
+    }
+
+    return obj;
+}
+
+export async function saveAssistantContext(userId: string, payload: any): Promise<string> {
+    const collectionRef = db.collection("users").doc(userId).collection("assistantContext");
+    const previous = await collectionRef.orderBy("createdAt", "desc").limit(1).get();
     const docRef = collectionRef.doc();
 
-    // contextId
-    payload.contextId = docRef.id;
+    const data = removeUndefined({
+        ...payload,
+        previousContextId: previous.empty ? undefined : previous.docs[0].id,
+        contextId: docRef.id
+    });
 
-    await docRef.set(payload);
+    data.createdAt = admin.firestore.Timestamp.now();
+
+    await docRef.set(data);
 
     return docRef.id;
 }
