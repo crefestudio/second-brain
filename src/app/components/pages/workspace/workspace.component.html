@@ -2,7 +2,7 @@
     <div class="page-header">
 
         <h1>
-            ⚡ 라이프업 자동화 비서 (🚧 제작중입니다.)
+            ⚡ 라이프봇 데시보드 (🚧 제작중입니다. 조금만 기다려주세요.)
         </h1>
 
         <div class="hero-box">
@@ -14,9 +14,9 @@
                     안녕하세요. 라이프봇입니다. 🎉
                 </div>
                 <div class="hero-description">
-                    이곳은 라이프봇을 활용하여 <strong>라이프업 템플릿</strong>을 더욱 편리하게 만들어줄 <strong>자동화 공간</strong>입니다.<br>
-                    <strong>라이프업 봇</strong>을 템플릿과 연결하고, 각 <strong>자동화 기능</strong>을 설정하거나
-                    이용 현황을 확인할 수 있습니다.<br>
+                    이곳은 <strong>라이프봇</strong>을 통해 <strong>라이프업</strong>을 더욱 편리하게 활용할 수 있는 <strong>AI 자동화 서비스 공간</strong>입니다.<br>
+                    <strong>라이프업 노션 템플릿</strong>을 연결하고, <strong>Second Brain API</strong>, <strong>카카오톡 AI 비서</strong> 등
+                    다양한 <strong>AI 자동화 기능</strong>을 설정하고 이용 현황을 확인할 수 있습니다.<br>
                 </div>
                 @if(!(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId)) {
                 <div class="hero-action">
@@ -40,7 +40,7 @@
         <div class="dashboard-card">
 
             <div class="dashboard-title" routerLink="/workspace/connect" style="cursor: pointer;">
-                라이프업 비서 연결 상태
+                라이프봇 연결 상태
             </div>
 
             <div class="dashboard-content">
@@ -201,7 +201,7 @@
             <p>
                 자동화 비서는 사용자가 권한을 허용한 라이프업 템플릿만 접근합니다.<br>
                 작업을 위해 필요한 데이터는 처리 후 별도 저장하지 않습니다,
-                일부 기능의 캐시 데이터는 자동화 관리에서 확인할 수 있습니다.
+                일부 기능의 캐시 데이터는 자동화 비서 관리에서 확인할 수 있습니다.
             </p>
         </div>
 

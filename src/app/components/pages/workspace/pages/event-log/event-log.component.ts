@@ -2,6 +2,8 @@ import { _log } from '../../../../../lib/cf-common/cf-common';
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+
 import { ActivatedRoute, Router } from '@angular/router';
 import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
@@ -13,7 +15,7 @@ import { AuthService } from '../../../../../services/auth.service';
 @Component({
     selector: 'app-event-log',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, RouterLink],
     templateUrl: './event-log.component.html',
     styleUrls: ['./event-log.component.css']
 })

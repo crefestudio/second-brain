@@ -7,6 +7,16 @@ import { UserService } from '../../../../../services/user.service';
 import { ToastService } from '../../../../../services/toast.service';
 import { AuthService } from '../../../../../services/auth.service';
 
+
+/*
+연결 정보 
+
+userId              : 구매 확인
+hasLifeupPurchase   : 
+notionAccessToken   : 
+
+*/
+
 //import { APP_CONFIG, AppConfig } from '../../../../../config/app-config.token';
 import { NACommonService } from '../../../../../services/common.service';
 
@@ -63,6 +73,8 @@ export class AgentConnectComponentComponent implements OnInit {
 
     errorMessage = '';
     warnMessage = '';
+
+    isShowCannotFindPurcherInfo = false;
 
     // 템플릿 연결
     // private config = inject<AppConfig>(APP_CONFIG);
@@ -127,6 +139,8 @@ export class AgentConnectComponentComponent implements OnInit {
     async submitVerification() {
         if (!this.verifyValue) return;
 
+        this.isShowCannotFindPurcherInfo = false;
+
         this.isVerifying = true;
         const value = this.verifyValue.trim();
 
@@ -163,7 +177,8 @@ export class AgentConnectComponentComponent implements OnInit {
         try {
             const success = await this.userService.verifyPurchaser(TEMPLATE_KEY_LIFEUP, email, phone);
             if (!success) {
-                this.errorMessage = '구매정보를 찾을 수 없습니다.';
+                //this.errorMessage = '구매정보를 찾을 수 없습니다.';
+                this.isShowCannotFindPurcherInfo = true;
                 return;
             }
             // 만약에 이미 userId가 있다면 서버에 저장해야 함
