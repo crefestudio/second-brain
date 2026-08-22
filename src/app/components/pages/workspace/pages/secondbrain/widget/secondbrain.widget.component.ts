@@ -17,7 +17,6 @@ import { NACommonService } from '../../../../../../services/common.service';
 
 /*
 => 회원 가입 : notinable - user //특정 템플릿 구매자 확인 : notinable - user - (json - secondbrain - isPremiumMember / isCreatorCompanion) 
-=> 노션 연결 : notinable - user - secondbrain - noteDatabaseId
 
 // - localhost 겹치는 문제 / 같은브라우저에서 호출 되는 문제 => 임베디드 바꾸기 기능으로 해결 / userId
 // - email인증 : 프리미엄 구매자 확인을 위해 이메일 확인을 정확히 하기 위해 함 / 1회에 한함 / 이메일은 구매자 확인용    
@@ -74,6 +73,8 @@ const pageIcon = `data:image/svg+xml;utf8,
   <rect x='0' y='0' width='10' height='10' fill='%23ffff00'/>
 </svg>`;
 
+// accessToken          : 이미 있는 값
+// noteDatabaseId       : 이미 있는 값
 
 @Component({
     selector: 'app-secondbrain-widget',
@@ -88,12 +89,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     @ViewChild('emailInput') emailInput!: ElementRef<HTMLInputElement>;
     @ViewChildren('input') inputs!: QueryList<ElementRef>;
 
-    memberUid: string = '';
     userId: string | null = null;
-    kakaoUserId: string = '';
     notionAccessToken: string = '';
-
-    isEmbedInAppMode: boolean = false; // 홈페이지 / 마이앱에서 실행되서 연결 정보를 따로 가져오는 경우
 
     // event
     events: UserEvent[] = [];
@@ -141,27 +138,40 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         private authService: AuthService
     ) { }
 
-    async ngOnInit() {
-        // 1️⃣ snapshot 방식 (컴포넌트 생성 시 한 번만)
-        this.userId = this.route.snapshot.paramMap.get('userId');
-        _log('snapshot userId =>', this.userId);
+    get isWidgetMode(): boolean {
+        return window.location.pathname.startsWith("/widget/");
+    }
 
-        // 2️⃣ observable 방식 (URL 변경 시 자동 업데이트)
+    async ngOnInit() {
+        if (!this.isWidgetMode) {
+            return;
+        }
+
+        this.userId = this.route.snapshot.paramMap.get('userId');
+
         this.route.paramMap.subscribe(params => {
             this.userId = params.get('userId');
-            _log('subscribe userId =>', this.userId);
+            _log('widget route userId =>', this.userId);
         });
     }
-  
-    async updateSession() {
-        await this.authService.updateSession();
-        this.memberUid = this.authService.getMemberUid();
-        this.userId = this.authService.getUserId();
-        this.kakaoUserId = this.authService.getKakaoUserId();
-        this.notionAccessToken = this.authService.getNotionAccessToken();
-        _log('updateSession memberUid, userId, notionAccessToken =>', this.memberUid, this.userId, this.kakaoUserId, this.notionAccessToken);
+
+    ngAfterViewInit() {
+        setTimeout(() => {
+            this.init();
+        }, 1);
     }
 
+    async init() {
+        this.initStateData();
+        await this.stateProc();
+    }
+
+    async updateSession() {
+        await this.authService.updateSession();
+        this.userId = this.authService.getUserId();
+        this.notionAccessToken = this.authService.getNotionAccessToken();
+        _log('updateSession userId, notionAccessToken =>', this.userId, this.notionAccessToken);
+    }
 
     ngOnDestroy() {
         // 🔥 컴포넌트 제거 시 리스너 해제
@@ -176,22 +186,22 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         );
     }
 
-    ngAfterViewInit() {
-        setTimeout(() => {
-            this.init();
-        }, 1);
-    }
-
     onEvent(event: UserEvent) {
-        if (!this.userId) { return; }
-        const session: SecondBrainLocalSession | null = UserService.getLocalSession(this.userId);
-        if (!session || !session.accessKey) {
-            return;
+        if (!this.userId) return;
+
+        if (this.isWidgetMode) {
+            const session = UserService.getLocalSession(this.userId);
+
+            if (!session?.accessKey) {
+                return;
+            }
         }
 
         this.showEventToast(event);
-        if (event.eventType == 'generate-note-keyword' && event.status == 'completed') {
+
+        if (event.eventType === 'generate-note-keyword' && event.status === 'completed') {
             this.updateGraphData();
+
             setTimeout(() => {
                 this.showToast('키워드 추출작업이 완료되어 그래프를 다시 그립니다.');
             }, 1000);
@@ -231,11 +241,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         }, duration);
     }
 
-    async init() {
-        this.initStateData();
-        await this.updateSession();
-        this.stateProc();
-    }
 
     initStateData() {
         this.errorMessage = '';
@@ -268,66 +273,62 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // #main
     async stateProc(): Promise<boolean> {
-        _log('stateProc userId =>', this.userId);
+        _log('stateProc mode =>', {
+            isWidgetMode: this.isWidgetMode,
+            userId: this.userId
+        });
+
         this.showToast('세컨드브레인 위젯을 시작합니다.');
 
+        if (this.isWidgetMode) {
+            return await this.stateProcWidget();
+        }
+        return await this.stateProcWorkspace();
+    }
+
+    private async stateProcWidget(): Promise<boolean> {
         if (!this.userId) {
-            //this.showToast('연결정보가 확인되지 않아 재인증이 필요합니다.');
             this.state = 'connect-button';
             return false;
         }
 
-        // clientKey 체크
-        const session: SecondBrainLocalSession | null = UserService.getLocalSession(this.userId);
-        if (!session || !session.accessKey) {
+        const session = UserService.getLocalSession(this.userId);
+
+        if (!session?.accessKey) {
             this.showToast('이 장치의 인증 정보가 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.');
-            this.state = 'connect-button'; // 세션이 없는 상태
+            this.state = 'connect-button';
             UserService.clearLocalSession(this.userId);
             return false;
         }
 
-        let userId = this.userId;           // from url
-        let accessKey = session.accessKey;  // from localstorage
+        const user = await this.userService.checkUserAccessKey(this.userId, session.accessKey);
 
-        // user 체크 
-        // const user = await UserService.getUser(userId);
-        // _log('stateProc userId, user =>', userId, user);
-        // if (!user || !user.email || user.email.length == 0) {
-        //     this.state = 'connect-button';
-        //     this.errorMessage = '등록한 사용자정보를 확인 할 수 없어 연결을 초기화하였습니다.<br>문제가 지속될 경우 관리자(toto791@gmail.com)에 문의바랍니다.';
-        //     this.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
-        //     return false;
-        // }
+        _log('stateProcWidget user =>', user);
 
-        // user 체크 // accessKey 검증
-        const user = await this.userService.checkUserAccessKey(userId, accessKey);
-        _log('sesstionStateProc user =>', user);
-        if (!user || !user.userId) {
+        if (!user?.userId) {
             this.state = 'connect-button';
             this.errorMessage = '인증 정보가 만료되었거나 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.<br>(연결 유효기간: 1개월)';
-            UserService.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
+            UserService.clearLocalSession(this.userId);
             return false;
         }
 
-        this.initEvent(userId);
+        this.initEvent(this.userId);
 
-        // 노션 연결 체크 : 연결 정상인지? 연결 토큰, dbId등
-        const data = await UserService.getSecondBrainIntegration(userId);
-        _log('sesstionStateProc userId, data =>', userId, data);
-        if (!(data && data.accessToken && data.accessToken.length > 0 && data.noteDatabaseId && data.noteDatabaseId.length > 0)) {
-            // 연결창 띄우기
+        const data = await UserService.getSecondBrainIntegration(this.userId);
+        const hasIntegrationToken = !!data?.accessToken?.length;
+
+        _log('stateProcWidget notion check =>', {
+            userId: this.userId,
+            hasIntegrationToken
+        });
+
+        if (!hasIntegrationToken) {
             this.state = 'connect-notion';
-            // 노션 연결
-            const encryptedUserId = await NACommonService.encrypt(session.userId); // 암호화해서 userId를 넘긴다.
-            const baseUrl = window.location.origin;
-            const serviceName = 'secondbrain';
-            const setupPath = 'connect';
-            const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
-            window.open(url, '_blank');
             return false;
         }
 
         this.state = 'graph';
+
         setTimeout(() => {
             this.loadGraph();
         }, 1);
@@ -335,12 +336,115 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         return true;
     }
 
+    private async stateProcWorkspace(): Promise<boolean> {
+        await this.updateSession();
+
+        if (!this.userId) {
+            this.state = 'connect-button';
+            return false;
+        }
+
+        this.initEvent(this.userId);
+
+        if (!this.notionAccessToken) {
+            this.state = 'connect-notion';
+            return false;
+        }
+
+        this.state = 'graph';
+
+        setTimeout(() => {
+            this.loadGraph();
+        }, 1);
+
+        return true;
+    }
+
+
+    // async stateProc(): Promise<boolean> {
+    //     _log('stateProc userId =>', this.userId);
+    //     this.showToast('세컨드브레인 위젯을 시작합니다.');
+
+    //     if (!this.userId) {
+    //         //this.showToast('연결정보가 확인되지 않아 재인증이 필요합니다.');
+    //         this.state = 'connect-button';
+    //         return false;
+    //     }
+
+    //     // clientKey 체크
+    //     const session: SecondBrainLocalSession | null = UserService.getLocalSession(this.userId);
+    //     if (!session || !session.accessKey) {
+    //         this.showToast('이 장치의 인증 정보가 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.');
+    //         this.state = 'connect-button'; // 세션이 없는 상태
+    //         UserService.clearLocalSession(this.userId);
+    //         return false;
+    //     }
+
+    //     let userId = this.userId;           // from url
+    //     let accessKey = session.accessKey;  // from localstorage
+
+    //     // user 체크 
+    //     // const user = await UserService.getUser(userId);
+    //     // _log('stateProc userId, user =>', userId, user);
+    //     // if (!user || !user.email || user.email.length == 0) {
+    //     //     this.state = 'connect-button';
+    //     //     this.errorMessage = '등록한 사용자정보를 확인 할 수 없어 연결을 초기화하였습니다.<br>문제가 지속될 경우 관리자(toto791@gmail.com)에 문의바랍니다.';
+    //     //     this.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
+    //     //     return false;
+    //     // }
+
+    //     // user 체크 // accessKey 검증
+    //     const user = await this.userService.checkUserAccessKey(userId, accessKey);
+    //     _log('sesstionStateProc user =>', user);
+    //     if (!user || !user.userId) {
+    //         this.state = 'connect-button';
+    //         this.errorMessage = '인증 정보가 만료되었거나 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.<br>(연결 유효기간: 1개월)';
+    //         UserService.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
+    //         return false;
+    //     }
+
+    //     this.initEvent(userId);
+
+    //     // 노션 연결 체크 : 연결 정상인지? 연결 토큰, dbId등
+    //     const data = await UserService.getSecondBrainIntegration(userId);
+    //     _log('sesstionStateProc userId, data =>', userId, data);
+    //     if (!(data && data.accessToken && data.accessToken.length > 0)) {
+    //         // 연결창 띄우기
+    //         this.state = 'connect-notion';
+    //         // 노션 연결
+    //         const encryptedUserId = await NACommonService.encrypt(session.userId); // 암호화해서 userId를 넘긴다.
+    //         const baseUrl = window.location.origin;
+    //         const serviceName = 'secondbrain';
+    //         const setupPath = 'connect';
+    //         const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
+    //         window.open(url, '_blank');
+    //         return false;
+    //     }
+
+    //     this.state = 'graph';
+    //     setTimeout(() => {
+    //         this.loadGraph();
+    //     }, 1);
+
+    //     return true;
+    // }
+
     async onClickConnectBtn() {
         this.initStateData();
+        if (!this.isWidgetMode) {
+            this.openWorkspaceConnect();
+            return;
+        }
         this.state = 'email-input';
         setTimeout(() => {
             this.emailInput.nativeElement.focus();
         }, 100);
+    }
+
+    private openWorkspaceConnect() {
+        const baseUrl = window.location.origin;
+        const url = `${baseUrl}/workspace/connect`;
+        window.location.href = url;
     }
 
     focusFirstCodeInput() {
@@ -512,6 +616,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
 
 
+
     // // #graph
     // //userId: string, graphType: "note-keyword" | "keyword-only"
     graphData = {
@@ -520,306 +625,74 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     };
     currGraphType: string = "note-keyword";
 
-    // async loadGraph(graphType: string = "note-keyword") {
-    //     try {
-    //         let graphTypeName: string = '';
-    //         if (graphType == 'note-keyword') graphTypeName = '노트-키워드';
-    //         else if (graphType == 'keyword-only') graphTypeName = '키워드';
-    //         this.showToast(`<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`, 2000);
-
-    //         if (!this.userId) { return; }
-    //         let session = this.getLocalSession(this.userId)
-    //         if(!session || !session.userId) { return; }
-    //         let userId: string = session.userId;
-    //         // 1️⃣ API 호출
-    //         const response: any = await this.userService.getKeywordGraphData(userId, graphType);
-    //         _log('loadGraph response =>', response);
-    //         if (!response) { return; }
-    //         if (response.errorCode == 200) {
-    //             this.state = 'graph-nodata';                
-    //             return;
-    //         } else {
-    //             this.state = 'graph';
-    //         }
-    //         // if(response.message) {
-    //         //     this.warnMessage = response.message;
-    //         // }
-    //         const graphData: { nodes: Node[]; edges: Edge[] } = await response;
-
-    //         // // 2️⃣ vis-network용 DataSet 생성
-    //         // const nodesDS = new vis.DataSet(graphData.nodes);
-    //         // const edgesDS = new vis.DataSet(graphData.edges);
-
-    //         // const data = { nodes: nodesDS, edges: edgesDS };
-    //         //     nodes: new DataSet<Node>(graphData.nodes),
-    //         //     edges: new DataSet<Edge>(graphData.edges),
-    //         // };
-
-
-    //         // --- 옵션 설정 ---
-    //         const options = {
-    //             nodes: {
-    //                 shape: 'dot',
-    //                 size: 8,
-    //                 font: { size: 11, color: '#EEEEEE' },  // 다크모드 글자색
-    //                 color: {
-    //                     // background: '#00CFFF',   // 기본 노드 색상
-    //                     // border: '#00CFFF',
-    //                     highlight: '#007AFF',    // 클릭/선택 시 Apple 블루
-    //                     hover: '#393E46'         // 마우스 올렸을 때
-    //                 }
-    //             },
-    //             edges: {
-    //                 color: '#393E46',             // 다크톤 엣지
-    //                 smooth: {
-    //                     enabled: true,
-    //                     type: 'dynamic',
-    //                     roundness: 0.5
-    //                 }
-    //             },
-    //             groups: {
-    //                 // keyword: {
-    //                 //     color: {
-    //                 //         background: '#8B5DFF', // 배경색 유지
-    //                 //         border: '#8B5DFF'      // 배경보다 조금 밝은 정도
-    //                 //     }
-    //                 // },
-    //                 page: {
-    //                     shape: 'image',
-    //                     image: pageIcon,
-    //                     size: 8,
-    //                 }
-    //             }, 
-    //             physics: {
-    //                 enabled: true,
-    //                 stabilization: {
-    //                     iterations: 200
-    //                 },
-    //                 barnesHut: {
-    //                     gravitationalConstant: -2000,
-    //                     springLength: 120,
-    //                     springConstant: 0.04,
-    //                     damping: 0.9,
-    //                     centralGravity: 0.3
-    //                 }
-    //             },
-    //             // physics: {
-    //             //     enabled: true,  // physics 계속 켬
-    //             //     stabilization: true, // 초기 안정화는 끄거나 최소화
-    //             //     barnesHut: {
-    //             //         gravitationalConstant: -2000,
-    //             //         springLength: 150,
-    //             //         springConstant: 0.02, // 낮추면 느리고 부드럽게 움직임
-    //             //         damping: 0.8,          // 높으면 요동 감소, 낮으면 더 움직임
-    //             //         centralGravity: 0.5,   // 중심으로 모이는 힘
-    //             //     },
-    //             //     minVelocity: 0.1,          // 아주 작은 움직임도 유지
-    //             // },
-    //             interaction: {
-    //                 hover: true,
-    //                 tooltipDelay: 200
-    //             }
-    //         };
-
-    //         // --- 네트워크 생성 ---
-    //         const network = new Network(this.graphContainer.nativeElement, this.graphData, options);
-    //         //network.setData(graphData);
-    //         this.graphData.nodes.clear();
-    //         this.graphData.edges.clear();
-    //         this.graphData.nodes.add(graphData.nodes);
-    //         this.graphData.edges.add(graphData.edges);
-
-    //         // 🔥 hover 강조 적용
-    //         this.applyHoverHighlight(network, this.graphData.nodes, this.graphData.edges);
-
-
-    //         network.on("click", (params: any) => {
-    //             if (!params.nodes.length) return;
-
-    //             const nodeId = params.nodes[0];
-    //             const node: any = this.graphData.nodes.get(nodeId);
-
-    //             // page 노드이면서 notionPageId 있을 때만 실행
-    //             if (node?.group === "page" && node?.notionPageId) {
-    //                 const cleanPageId = node.notionPageId.replace(/-/g, "");
-    //                 const notionUrl = `https://www.notion.so/${cleanPageId}`;
-    //                 window.open(notionUrl, "_blank");
-    //             }
-    //         });
-
-    //         network.on("hoverNode", (params: any) => {
-    //             const node: any = this.graphData.nodes.get(params.node);
-
-    //             if (node?.group === "page") {
-    //                 this.graphContainer.nativeElement.style.cursor = "pointer";
-    //             }
-    //         });
-
-    //         network.on("blurNode", () => {
-    //             this.graphContainer.nativeElement.style.cursor = "default";
-    //         });
-    //     } catch (err) {
-    //         console.error("그래프 로드 중 오류 발생:", err);
-    //     }
-    // }
-
-    // private applyHoverHighlight(
-    //     network: Network,
-    //     nodes: DataSet<Node>,
-    //     edges: DataSet<Edge>
-    // ) {
-
-    //     let pinnedNodeId: string | null = null;
-
-    //     const highlightNode = (nodeId: string) => {
-    //         const connectedNodeIds = network.getConnectedNodes(nodeId) as string[];
-    //         const connectedEdgeIds = network.getConnectedEdges(nodeId);
-
-    //         const nodeUpdates: Node[] = [];
-    //         const edgeUpdates: Edge[] = [];
-
-    //         nodes.forEach((node) => {
-    //             if (!node || !node.id) return;
-
-    //             const nodeIdStr = node.id.toString();
-
-    //             const isActive =
-    //                 nodeIdStr === nodeId ||
-    //                 connectedNodeIds.includes(nodeIdStr);
-
-    //             nodeUpdates.push({
-    //                 id: node.id,
-    //                 hidden: !isActive
-    //             });
-    //         });
-
-    //         edges.forEach((edge) => {
-    //             const isActive = connectedEdgeIds.includes(edge.id as any);
-
-    //             edgeUpdates.push({
-    //                 id: edge.id,
-    //                 hidden: !isActive
-    //             });
-    //         });
-
-    //         nodes.update(nodeUpdates);
-    //         edges.update(edgeUpdates);
-    //     };
-
-    //     const resetGraph = () => {
-    //         const nodeReset: Node[] = [];
-    //         const edgeReset: Edge[] = [];
-
-    //         nodes.forEach((node) => {
-    //             nodeReset.push({
-    //                 id: node.id,
-    //                 hidden: false
-    //             });
-    //         });
-
-    //         edges.forEach((edge) => {
-    //             edgeReset.push({
-    //                 id: edge.id,
-    //                 hidden: false
-    //             });
-    //         });
-
-    //         nodes.update(nodeReset);
-    //         edges.update(edgeReset);
-    //     };
-
-    //     // hover highlight
-    //     network.on('hoverNode', (params) => {
-
-    //         if (pinnedNodeId) return; // 고정 상태면 hover 무시
-
-    //         highlightNode(params.node.toString());
-    //     });
-
-    //     // hover 해제
-    //     network.on('blurNode', () => {
-
-    //         if (pinnedNodeId) return; // 고정 상태면 blur 무시
-
-    //         resetGraph();
-    //     });
-
-    //     // 클릭 로직
-    //     network.on('click', (params) => {
-
-    //         if (params.nodes.length) {
-    //             const nodeId = params.nodes[0].toString();
-
-    //             pinnedNodeId = nodeId;
-
-    //             highlightNode(nodeId);
-    //         } else {
-    //             // 빈 공간 클릭
-    //             pinnedNodeId = null;
-    //             resetGraph();
-    //         }
-
-    //     });
-
-    // }
-
+    private network?: Network;
     async loadGraph(graphType: string = "note-keyword") {
         try {
-            let graphTypeName: string = '';
-            if (graphType == 'note-keyword') graphTypeName = '노트-키워드';
-            else if (graphType == 'keyword-only') graphTypeName = '키워드';
+            let graphTypeName = "";
+
+            if (graphType === "note-keyword") {
+                graphTypeName = "노트-키워드";
+            } else if (graphType === "keyword-only") {
+                graphTypeName = "키워드";
+            }
 
             this.showToast(
                 `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`,
                 2000
             );
 
-            if (!this.userId) return;
-
-            let session = UserService.getLocalSession(this.userId);
-            if (!session || !session.userId) return;
-
-            let userId: string = session.userId;
-
-            const response: any = await this.userService.getKeywordGraphData(userId, graphType);
-
-            if (!response) return;
-
-            if (response.errorCode == 200) {
-                this.state = 'graph-nodata';
+            if (!this.userId || !this.graphContainer?.nativeElement) {
                 return;
-            } else {
-                this.state = 'graph';
             }
 
-            const graphData: { nodes: Node[]; edges: Edge[] } = await response;
+            const session = UserService.getLocalSession(this.userId);
+            if (!session?.userId) {
+                return;
+            }
+
+            const userId = session.userId;
+            const response: any = await this.userService.getKeywordGraphData(userId, graphType);
+
+            if (!response) {
+                return;
+            }
+
+            if (response.errorCode === 200) {
+                this.state = "graph-nodata";
+                return;
+            }
+
+            this.state = "graph";
+
+            const graphData: { nodes: Node[]; edges: Edge[] } = response;
 
             const options = {
+                autoResize: true,
 
                 nodes: {
-                    shape: 'dot',
+                    shape: "dot",
                     size: 8,
-                    font: { size: 11, color: '#EEEEEE' },
+                    font: { size: 11, color: "#EEEEEE" },
                     color: {
-                        highlight: '#007AFF',
-                        hover: '#393E46'
+                        highlight: "#007AFF",
+                        hover: "#393E46"
                     }
                 },
 
                 edges: {
-                    color: '#393E46',
+                    color: "#393E46",
                     smooth: {
                         enabled: true,
-                        type: 'dynamic',
+                        type: "dynamic",
                         roundness: 0.5
                     }
                 },
 
                 groups: {
                     page: {
-                        shape: 'image',
+                        shape: "image",
                         image: pageIcon,
-                        size: 8,
+                        size: 8
                     }
                 },
 
@@ -843,59 +716,225 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                 }
             };
 
-            const network = new Network(
-                this.graphContainer.nativeElement,
-                this.graphData,
-                options
-            );
+            // 기존 그래프 제거
+            this.network?.destroy();
+            this.network = undefined;
 
+            // 기존 데이터 초기화
             this.graphData.nodes.clear();
             this.graphData.edges.clear();
 
+            // 새 데이터 추가
             this.graphData.nodes.add(graphData.nodes);
             this.graphData.edges.add(graphData.edges);
 
-            // highlight 기능 적용
-            this.applyHoverHighlight(network, this.graphData.nodes, this.graphData.edges);
-
-            // 클릭 → notion 페이지 이동
-            network.on("click", (params: any) => {
-
-                if (!params.nodes.length) return;
-
-                const nodeId = params.nodes[0];
-                const node: any = this.graphData.nodes.get(nodeId);
-
-                if (node?.group === "page" && node?.notionPageId) {
-
-                    const cleanPageId = node.notionPageId.replace(/-/g, "");
-                    const notionUrl = `https://www.notion.so/${cleanPageId}`;
-
-                    window.open(notionUrl, "_blank");
-                }
-            });
-
-            // page hover → pointer
-            network.on("hoverNode", (params: any) => {
-
-                const node: any = this.graphData.nodes.get(params.node);
-
-                if (node?.group === "page") {
-                    this.graphContainer.nativeElement.style.cursor = "pointer";
+            // Angular 화면 렌더링이 끝난 뒤 그래프 생성
+            requestAnimationFrame(() => {
+                if (!this.graphContainer?.nativeElement) {
+                    return;
                 }
 
-            });
+                const container = this.graphContainer.nativeElement;
+                const rect = container.getBoundingClientRect();
 
-            network.on("blurNode", () => {
-                this.graphContainer.nativeElement.style.cursor = "default";
-            });
+                _log("graph container size =>", {
+                    width: rect.width,
+                    height: rect.height
+                });
 
+                this.network = new Network(container, this.graphData, options);
+
+                requestAnimationFrame(() => {
+                    this.network?.setSize("100%", "100%");
+                    this.network?.redraw();
+                    this.network?.fit({
+                        animation: false
+                    });
+                });
+
+                // highlight 기능 적용
+                this.applyHoverHighlight(
+                    this.network,
+                    this.graphData.nodes,
+                    this.graphData.edges
+                );
+
+                // 클릭 → Notion 페이지 이동
+                this.network.on("click", (params: any) => {
+                    if (!params.nodes.length) {
+                        return;
+                    }
+
+                    const nodeId = params.nodes[0];
+                    const node: any = this.graphData.nodes.get(nodeId);
+
+                    if (node?.group === "page" && node?.notionPageId) {
+                        const cleanPageId = node.notionPageId.replace(/-/g, "");
+                        const notionUrl = `https://www.notion.so/${cleanPageId}`;
+
+                        window.open(notionUrl, "_blank");
+                    }
+                });
+
+                // page hover → pointer
+                this.network.on("hoverNode", (params: any) => {
+                    const node: any = this.graphData.nodes.get(params.node);
+
+                    if (node?.group === "page") {
+                        container.style.cursor = "pointer";
+                    }
+                });
+
+                this.network.on("blurNode", () => {
+                    container.style.cursor = "default";
+                });
+            });
         } catch (err) {
-
             console.error("그래프 로드 중 오류 발생:", err);
-
         }
     }
+
+    @HostListener('window:resize')
+    onWindowResize() {
+        requestAnimationFrame(() => {
+            this.network?.setSize('100%', '100%');
+            this.network?.redraw();
+        });
+    }
+
+    // async loadGraph(graphType: string = "note-keyword") {
+    //     try {
+    //         let graphTypeName: string = '';
+    //         if (graphType == 'note-keyword') graphTypeName = '노트-키워드';
+    //         else if (graphType == 'keyword-only') graphTypeName = '키워드';
+
+    //         this.showToast(
+    //             `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`,
+    //             2000
+    //         );
+
+    //         if (!this.userId) return;
+
+    //         let session = UserService.getLocalSession(this.userId);
+    //         if (!session || !session.userId) return;
+
+    //         let userId: string = session.userId;
+
+    //         const response: any = await this.userService.getKeywordGraphData(userId, graphType);
+
+    //         if (!response) return;
+
+    //         if (response.errorCode == 200) {
+    //             this.state = 'graph-nodata';
+    //             return;
+    //         } else {
+    //             this.state = 'graph';
+    //         }
+
+    //         const graphData: { nodes: Node[]; edges: Edge[] } = await response;
+
+    //         const options = {
+
+    //             nodes: {
+    //                 shape: 'dot',
+    //                 size: 8,
+    //                 font: { size: 11, color: '#EEEEEE' },
+    //                 color: {
+    //                     highlight: '#007AFF',
+    //                     hover: '#393E46'
+    //                 }
+    //             },
+
+    //             edges: {
+    //                 color: '#393E46',
+    //                 smooth: {
+    //                     enabled: true,
+    //                     type: 'dynamic',
+    //                     roundness: 0.5
+    //                 }
+    //             },
+
+    //             groups: {
+    //                 page: {
+    //                     shape: 'image',
+    //                     image: pageIcon,
+    //                     size: 8,
+    //                 }
+    //             },
+
+    //             physics: {
+    //                 enabled: true,
+    //                 stabilization: {
+    //                     iterations: 200
+    //                 },
+    //                 barnesHut: {
+    //                     gravitationalConstant: -2000,
+    //                     springLength: 120,
+    //                     springConstant: 0.04,
+    //                     damping: 0.9,
+    //                     centralGravity: 0.3
+    //                 }
+    //             },
+
+    //             interaction: {
+    //                 hover: true,
+    //                 tooltipDelay: 200
+    //             }
+    //         };
+
+    //         const network = new Network(
+    //             this.graphContainer.nativeElement,
+    //             this.graphData,
+    //             options
+    //         );
+
+    //         this.graphData.nodes.clear();
+    //         this.graphData.edges.clear();
+
+    //         this.graphData.nodes.add(graphData.nodes);
+    //         this.graphData.edges.add(graphData.edges);
+
+    //         // highlight 기능 적용
+    //         this.applyHoverHighlight(network, this.graphData.nodes, this.graphData.edges);
+
+    //         // 클릭 → notion 페이지 이동
+    //         network.on("click", (params: any) => {
+
+    //             if (!params.nodes.length) return;
+
+    //             const nodeId = params.nodes[0];
+    //             const node: any = this.graphData.nodes.get(nodeId);
+
+    //             if (node?.group === "page" && node?.notionPageId) {
+
+    //                 const cleanPageId = node.notionPageId.replace(/-/g, "");
+    //                 const notionUrl = `https://www.notion.so/${cleanPageId}`;
+
+    //                 window.open(notionUrl, "_blank");
+    //             }
+    //         });
+
+    //         // page hover → pointer
+    //         network.on("hoverNode", (params: any) => {
+
+    //             const node: any = this.graphData.nodes.get(params.node);
+
+    //             if (node?.group === "page") {
+    //                 this.graphContainer.nativeElement.style.cursor = "pointer";
+    //             }
+
+    //         });
+
+    //         network.on("blurNode", () => {
+    //             this.graphContainer.nativeElement.style.cursor = "default";
+    //         });
+
+    //     } catch (err) {
+
+    //         console.error("그래프 로드 중 오류 발생:", err);
+
+    //     }
+    // }
 
     private applyHoverHighlight(
         network: Network,
@@ -1102,17 +1141,17 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.state = 'graph';
 
         this.showToast('AI 키워드 추출 작업을 시작했습니다.', 3000);
+
         setTimeout(() => {
             this.showToast('키워드 추출이 진행 중입니다. 한 번에 최대 5개의 노트를 처리하며 약 5분 정도 소요됩니다.', 3000);
+
             setTimeout(() => {
                 this.showToast('키워드 추출이 완료되면 그래프가 자동으로 업데이트됩니다.', 3000);
             }, 4000);
         }, 4000);
 
-        if (!this.userId) { return; }
-        let session = UserService.getLocalSession(this.userId)
-        if (!session || !session.userId) { return; }
-        await this.userService.generateNotionNoteKMDataBatch(session.userId);
+        if (!this.userId) return;
+        await this.userService.generateNotionNoteKMDataBatch(this.userId);
     }
 
     onClickSelectGraphType(graphType: string) {
@@ -1148,18 +1187,18 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // 연결 끊기
     async confirmDisconnect() {
-        if (!this.userId) { return; }
+        if (!this.userId) return;
+
         this.isDisconnectConfirmOpen = false;
-        this.state = 'connect-button';
-        if (this.userId) {
-            this.email = '';
-            this.initStateData();
-            const session = UserService.getLocalSession(this.userId);
-            if (session && session.userId && session.accessKey) {
-                await UserService.removeSecondBrainIntegration(session.userId);
-                UserService.clearLocalSession(this.userId); // 어차피 user못가져오니까 초기화 함
-            }
+        this.email = '';
+        this.initStateData();
+
+        await UserService.removeSecondBrainIntegration(this.userId);
+
+        if (this.isWidgetMode) {
+            UserService.clearLocalSession(this.userId);
         }
+        this.state = 'connect-button';
     }
 
     // 이 장치에서만 나가기 
@@ -1169,15 +1208,16 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     confirmLogout() {
+        if (!this.isWidgetMode || !this.userId) return;
+
         this.isLogoutConfirmOpen = false;
         this.state = 'connect-button';
-        if (this.userId) {
-            this.email = '';
-            this.initStateData();
-            UserService.clearLocalSession(this.userId);
-        }
-    }
+        this.email = '';
+        this.initStateData();
 
+        UserService.clearLocalSession(this.userId);
+    }
+    
     cancelConfirm() {
         this.isDisconnectConfirmOpen = false;
         this.isLogoutConfirmOpen = false;
@@ -1205,171 +1245,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     ////////////////////////////////////////////////////////
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    // goToConnectPage() {
-    //     // Angular 라우터로 이동
-    //     this.router.navigate(['/secondbrain/connect']);
-    // }
-
-    // formatPhoneNumber() {
-    //     if (!this.phoneNumber) return;
-
-    //     // 숫자만 남김
-    //     let digits = this.phoneNumber.replace(/\D/g, '');
-
-    //     // 최대 11자리 제한
-    //     if (digits.length > 11) {
-    //         digits = digits.slice(0, 11);
-    //     }
-
-    //     if (digits.length <= 3) {
-    //         this.phoneNumber = digits;
-    //     } else if (digits.length <= 7) {
-    //         this.phoneNumber = `${digits.slice(0, 3)}-${digits.slice(3)}`;
-    //     } else {
-    //         this.phoneNumber = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
-    //     }
-    // }
-
-    // async onSubmitPhoneNumber() {
-    //     if (!this.phoneNumber) {
-    //         alert('휴대폰 번호를 입력해주세요.');
-    //         return;
-    //     }
-
-    //     // 1. 숫자만 추출
-    //     const normalized = this.phoneNumber.replace(/\D/g, '');
-
-    //     // 2. 전화번호 검증
-    //     const isValid = /^010\d{8}$/.test(normalized);
-    //     if (!isValid) {
-    //         alert('휴대폰 번호 형식이 올바르지 않습니다.');
-    //         return;
-    //     }
-
-    //     // 3. 암호화
-    //     const encrypted = await NACommonService.encrypt(normalized);
-
-    //     // 4. URL 이동
-    //     const baseUrl = window.location.origin;
-    //     const serviceName = 'secondbrain';
-    //     const setupPath = 'connect';
-
-    //     const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encrypted)}`;
-    //     window.open(url, '_blank');
-
-    //     this.state = 'connectKey'
-    // }   
-
-
-
-    // 최종 키 등록
-    // async onSubmitConnectKey() {
-    //     let isSuccess = await this.createConnect();
-    //     if (isSuccess) {
-    //         this.state = 'success';
-    //     }
-    // }
-
-    // 2f6eea79-fd8c-8175-887a-00272dc9bd80
-    // validateConnectKey(connectKey: string): {
-    //     valid: boolean;
-    //     reason?: string;
-    // } {
-    //     if (!connectKey || !connectKey.trim()) {
-    //         return { valid: false, reason: '연결키를 입력해주세요.' };
-    //     }
-
-    //     if (connectKey.length !== 36) {
-    //         return { valid: false, reason: '연결키 형식이 올바르지 않습니다.' };
-    //     }
-
-    //     const UUID_REGEX_LOOSE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    //     if (!UUID_REGEX_LOOSE.test(connectKey)) {
-    //         return { valid: false, reason: '유효하지 않은 연결키입니다.' };
-    //     }
-
-    //     const INVALID_KEYS = [
-    //         '00000000-0000-0000-0000-000000000000',
-    //     ];
-
-    //     if (INVALID_KEYS.includes(connectKey)) {
-    //         return { valid: false, reason: '사용할 수 없는 연결키입니다.' };
-    //     }
-
-    //     return { valid: true };
-    // }
-
-    // async createConnect(): Promise<boolean> {
-    //     _log('createConnect phoneNumber, connectKey =>', this.phoneNumber, this.connectKey);
-    //     if (!this.phoneNumber || this.phoneNumber.length == 0) { return false; }
-    //     if (!this.connectKey || !this.connectKey.trim()) {
-    //         this.state = 'connect';
-    //         return false;
-    //     }
-    //     const result = this.validateConnectKey(this.connectKey);
-    //     _log('createConnect result =>', result);
-
-    //     if (!result.valid) {
-    //         alert(result.reason);
-    //         return false;
-    //     }
-
-    //     let embedId: string = StaticCommonHelper.generateShortId();
-    //     let userId: string | null = await UserService.getUserIdByPhoneNumber(this.phoneNumber);
-    //     if (!userId) {
-    //         _log('createConnect userId =>', userId);
-    //         return false;
-    //     }
-    //     _log('createConnect userId =>', userId);
-
-    //     // 로컬에 session 저장
-    //     this.saveLocalSession({ userId: userId, embedId: embedId, connectKey: this.connectKey });
-
-    //     const result2: any = await UserService.createSecondBrainIntegrationData({
-    //         userId,
-    //         embedId,
-    //     });
-
-    //     _log('createConnect result =>', result2);
-
-    //     if (!result2.success) {
-    //         this.state = 'fail';
-    //         return false;
-    //     }
-    //     //////////////////////////////////////////
-    //     //  createSecondBrainIntegrationData      // userId, embedId
-
-    //     // // embedId저장
-    //     // await UserService.saveEmbedInfo({
-    //     //     userId,
-    //     //     embedId,
-    //     //     origin: window.location.origin,
-    //     //     userAgent: navigator.userAgent,
-    //     // });
-
-    //     // // note db id 등록 
-    //     // const data = await UserService.getSecondBrainIntegration(userId);
-    //     // _log('createConnect data =>', data);
-
-    //     // if (!data || !data.accessToken) {
-    //     //     this.state = 'fail';
-    //     //     return false;
-    //     // }
-    //     // // note db 등록
-    //     // let dbId = await NotionService.getDatabaseIdByDatabaseName(data.accessToken,'note');
-    //     // _log('createConnect dbId =>', dbId);
-    //     return true;
-    // }
-
-
 
 }
 

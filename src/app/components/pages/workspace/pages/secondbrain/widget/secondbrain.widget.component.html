@@ -1,4 +1,7 @@
-<div class="view-wrapper">
+<div class="view-wrapper"
+     [class.widget-mode]="isWidgetMode"
+     [class.app-mode]="!isWidgetMode">
+
   <div class="center-box">
     <!-- connect-button -->
     <div *ngIf="state=='connect-button'">
@@ -431,7 +434,7 @@
         </button>
 
         <!-- 로그 아웃 -->
-        <button class="menu-item" (click)="onClickLogout()">
+        <button *ngIf="isWidgetMode" class="menu-item" (click)="onClickLogout()">
           <span class="menu-icon size-lg">
             <svg style="width: 23px; height: 23px;" viewBox="0 0 36 36"  xmlns="http://www.w3.org/2000/svg">
               <path
@@ -446,7 +449,7 @@
         </button>
        
         <!-- 연결 끊기 -->
-        <button class="menu-item danger" (click)="onClickAPIDisconnect()">
+        <button *ngIf="isWidgetMode" class="menu-item danger" (click)="onClickAPIDisconnect()">
           <span class="menu-icon size-lg">
             <svg style="width: 23px; height: 23px;" viewBox="0 0 36 36"  xmlns="http://www.w3.org/2000/svg">
               <path

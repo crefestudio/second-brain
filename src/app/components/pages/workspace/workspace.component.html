@@ -36,15 +36,11 @@
     <div class="dashboard-grid">
 
         <!-- 연결 상태 -->
-
         <div class="dashboard-card">
-
             <div class="dashboard-title" routerLink="/workspace/connect" style="cursor: pointer;">
                 라이프봇 연결 상태
             </div>
-
             <div class="dashboard-content">
-
                 <div class="dashboard-item">
                     <span>라이프업 템플릿 연결</span>
 
@@ -58,7 +54,6 @@
                     </span>
                     }
                 </div>
-
                 <div class="dashboard-item">
                     <span>카카오톡 AI 비서 연결</span>
 
@@ -72,9 +67,7 @@
                     </span>
                     }
                 </div>
-
             </div>
-
             <div class="dashboard-footer">
                 <button class="verify-btn" routerLink="/workspace/connect">
                     @if(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId) {
@@ -84,7 +77,6 @@
                     }
                 </button>
             </div>
-
         </div>
 
         <!-- 자동화 비서 -->
