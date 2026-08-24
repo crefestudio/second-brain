@@ -7,7 +7,7 @@ import { ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../../../../../services/auth.service';
 import { EventListenerService, UserEvent } from '../../../../../../services/event-listener.service';
 
-import { NotionService } from '../../../../../../services/notion.service';
+// import { NotionService } from '../../../../../../services/notion.service';
 import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 
 import { UserService, SecondBrainLocalSession } from '../../../../../../services/user.service';
@@ -130,7 +130,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     pinnedNodeId: string | null = null;
 
     constructor(
-        private notionService: NotionService,
+        //private notionService: NotionService,
         private route: ActivatedRoute,
         private userService: UserService,
         private eventListenerService: EventListenerService,
@@ -143,16 +143,15 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     async ngOnInit() {
-        if (!this.isWidgetMode) {
-            return;
+        // 위젯 모드이면 주소로 userId를 가져온다. 없을 수도 있음
+        if (this.isWidgetMode) {
+            this.userId = this.route.snapshot.paramMap.get('userId');
+    
+            this.route.paramMap.subscribe(params => {
+                this.userId = params.get('userId');
+                _log('widget route userId =>', this.userId);
+            });
         }
-
-        this.userId = this.route.snapshot.paramMap.get('userId');
-
-        this.route.paramMap.subscribe(params => {
-            this.userId = params.get('userId');
-            _log('widget route userId =>', this.userId);
-        });
     }
 
     ngAfterViewInit() {
@@ -189,9 +188,9 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     onEvent(event: UserEvent) {
         if (!this.userId) return;
 
+        // 위젯모드라면 로컬 세션을 체크해서 이벤트 처리를 막는다.
         if (this.isWidgetMode) {
             const session = UserService.getLocalSession(this.userId);
-
             if (!session?.accessKey) {
                 return;
             }
@@ -201,7 +200,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
         if (event.eventType === 'generate-note-keyword' && event.status === 'completed') {
             this.updateGraphData();
-
             setTimeout(() => {
                 this.showToast('키워드 추출작업이 완료되어 그래프를 다시 그립니다.');
             }, 1000);
