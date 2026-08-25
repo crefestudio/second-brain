@@ -1,14 +1,15 @@
 <div class="success-wrapper">
   <div class="success-card">
-    <h1 class="title">⚠️연결 실패</h1>
+    <h1 class="title">⚠️ 연결이 완료되지 않았습니다</h1>
     <p class="desc">
-      라이프봇과 템플릿 연결에 실패하였습니다.<br>
-      다시 한 번 시도해 주세요.<br>
-      계속 문제가 발생하면
+      라이프봇과 템플릿이 정상적으로 연결되지 않았습니다.<br>
+      연결 후 바로 적용되지 않을 수 있으니<br>
+      <strong>1~2분 정도 기다린 후 다시 시도해 주세요.</strong><br>
+      잠시 후에도 연결되지 않으면
       <a href="http://pf.kakao.com/_tGkqX/chat" target="_blank" style="color:#e26b34; text-decoration:none;">
         카카오 채널톡
       </a>
-      으로 문의 바랍니다.
+      으로 문의해 주세요.
     </p>
 
     @if (errorMessage) {
@@ -17,8 +18,9 @@
       <div class="error-message">{{ errorMessage }}</div>
     </div>
     }
-    <div class="tab-content">
-      <button class="api-btn" (click)="connectNotion()">연결 재시도 하기</button>
-    </div>
 
+    <div class="tab-content">
+      <button class="api-btn" (click)="connectNotion()">연결 다시 시도하기</button>
+    </div>
   </div>
+</div>

@@ -75,7 +75,7 @@ export interface EventPayload {
 //admin.initializeApp();
 
 import * as functions from "firebase-functions";
-import { formatDate, formatDateTime, formatKoreanDate, formatKoreanDateTime, resolveDateExpr } from './services/date-service';
+import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime, resolveDateExpr } from './services/date-service';
 
 export const importPurchasers = functions.https.onRequest(
     async (req, res) => {
@@ -1532,346 +1532,6 @@ class NotionService {
         }
     }
 
-    // private static async moveNotionPage(
-    //     notion: Client,
-    //     accessToken: string,
-    //     userId: string,
-    //     sourcePage: any,
-    //     aiResult: any
-    // ): Promise<string | undefined> {
-    //     const sourceProperties = sourcePage.properties ?? {};
-
-    //     const extractTitle = (property: any) => {
-    //         return property?.title?.[0]?.text?.content ?? "";
-    //     };
-
-    //     const extractRelationIds = (property: any) => {
-    //         return property?.relation?.map((v: any) => v.id).filter(Boolean) ?? [];
-    //     };
-
-    //     const sourceTitle =
-    //         extractTitle(sourceProperties.할일) ||
-    //         extractTitle(sourceProperties.이름) ||
-    //         "";
-
-    //     const sourceTagIds = extractRelationIds(sourceProperties.태그);
-
-    //     console.log("[NotionMove] source", {
-    //         sourcePageId: sourcePage.id,
-    //         sourceTitle,
-    //         sourceTagIds,
-    //         targetDb: aiResult.db
-    //     });
-
-    //     const databaseId = await this.resolveDatabaseId(
-    //         accessToken,
-    //         userId,
-    //         aiResult.db
-    //     );
-
-    //     const dataSourceId = await this.resolveDataSourceId(
-    //         accessToken,
-    //         databaseId
-    //     );
-
-    //     const properties: any = {};
-
-    //     if (aiResult.db === "task") {
-    //         const typeMap: Record<string, string> = {
-    //             "할것": "할 것",
-    //             "살것": "살 것",
-    //             "읽을것": "읽을 것",
-    //             "볼것": "볼 것",
-    //             "갈곳": "갈 곳"
-    //         };
-
-    //         properties.할일 = {
-    //             title: [{
-    //                 text: {
-    //                     content: aiResult.title ?? sourceTitle
-    //                 }
-    //             }]
-    //         };
-
-    //         properties.유형 = {
-    //             status: {
-    //                 name: typeMap[aiResult.type] ?? aiResult.type ?? "할 것"
-    //             }
-    //         };
-
-    //         properties.분류 = {
-    //             select: {
-    //                 name: aiResult.kinds ?? "수집함"
-    //             }
-    //         };
-
-    //         if (aiResult.importance) {
-    //             properties.중요도 = {
-    //                 select: {
-    //                     name: aiResult.importance
-    //                 }
-    //             };
-    //         }
-
-    //         if (aiResult.urgency) {
-    //             properties.긴급도 = {
-    //                 select: {
-    //                     name: aiResult.urgency
-    //                 }
-    //             };
-    //         }
-    //     } else if (aiResult.db === "memo" || aiResult.db === "reference") {
-    //         const tagDbName = aiResult.db === "memo"
-    //             ? "memo tag"
-    //             : "reference tag";
-
-    //         const tagDbId = await this.resolveDatabaseId(
-    //             accessToken,
-    //             userId,
-    //             tagDbName
-    //         );
-
-    //         const tagIds = await this.resolveTagIds(
-    //             accessToken,
-    //             tagDbId,
-    //             aiResult.tags ?? []
-    //         );
-
-    //         properties.이름 = {
-    //             title: [{
-    //                 text: {
-    //                     content: aiResult.title ?? sourceTitle
-    //                 }
-    //             }]
-    //         };
-
-    //         properties.태그 = {
-    //             relation: tagIds.map(id => ({ id }))
-    //         };
-
-    //         if (aiResult.type) {
-    //             const typeDbName = aiResult.db === "memo"
-    //                 ? "memo type"
-    //                 : "reference type";
-
-    //             const typeDbId = await this.resolveDatabaseId(
-    //                 accessToken,
-    //                 userId,
-    //                 typeDbName
-    //             );
-
-    //             const typeIds = await this.resolveOrCreateRelationIds(
-    //                 accessToken,
-    //                 typeDbId,
-    //                 [aiResult.type]
-    //             );
-
-    //             if (typeIds.length > 0) {
-    //                 properties.유형 = {
-    //                     relation: typeIds.map(id => ({ id }))
-    //                 };
-    //             }
-
-    //             if (aiResult.db === "memo") {
-    //                 const colorMap: Record<string, string> = {
-    //                     "아이디어": "파란색",
-    //                     "연락처": "분홍색",
-    //                     "계정 정보": "초록색",
-    //                     "필기": "보라색",
-    //                     "개인 문서": "노란색",
-    //                     "독서 기록": "보라색"
-    //                 };
-
-    //                 const color = colorMap[aiResult.type];
-
-    //                 if (color) {
-    //                     properties.색상 = {
-    //                         select: {
-    //                             name: color
-    //                         }
-    //                     };
-    //                 }
-    //             }
-    //         }
-
-    //         if (aiResult.importance) {
-    //             properties.중요도 = {
-    //                 select: {
-    //                     name: aiResult.importance
-    //                 }
-    //             };
-    //         }
-    //     }
-
-    //     // 기존 페이지의 블록 가져오기
-    //     const response = await notion.blocks.children.list({
-    //         block_id: sourcePage.id
-    //     });
-
-    //     const sourceBlocks = response.results as any[];
-
-    //     console.log("[NotionMove] source blocks", {
-    //         count: sourceBlocks.length,
-    //         types: sourceBlocks.map(block => block.type)
-    //     });
-
-    //     // 기존 블록을 새 페이지에 넣을 수 있는 형태로 변환
-    //     const copiedBlocks: any[] = sourceBlocks
-    //         .map((block: any) => {
-    //             const type = block.type;
-    //             const content = block[type];
-
-    //             if (!content) {
-    //                 return null;
-    //             }
-
-    //             // 이미지
-    //             if (type === "image") {
-    //                 if (content.type === "external" && content.external?.url) {
-    //                     return {
-    //                         object: "block",
-    //                         type: "image",
-    //                         image: {
-    //                             type: "external",
-    //                             external: {
-    //                                 url: content.external.url
-    //                             }
-    //                         }
-    //                     };
-    //                 }
-
-    //                 if (content.type === "file" && content.file?.url) {
-    //                     return {
-    //                         object: "block",
-    //                         type: "image",
-    //                         image: {
-    //                             type: "external",
-    //                             external: {
-    //                                 url: content.file.url
-    //                             }
-    //                         }
-    //                     };
-    //                 }
-
-    //                 return null;
-    //             }
-
-    //             // 일반 블록
-    //             const allowedTypes = [
-    //                 "paragraph",
-    //                 "heading_1",
-    //                 "heading_2",
-    //                 "heading_3",
-    //                 "bulleted_list_item",
-    //                 "numbered_list_item",
-    //                 "to_do",
-    //                 "toggle",
-    //                 "quote",
-    //                 "callout",
-    //                 "code",
-    //                 "divider",
-    //                 "bookmark",
-    //                 "embed",
-    //                 "equation"
-    //             ];
-
-    //             if (!allowedTypes.includes(type)) {
-    //                 console.log("[NotionMove] unsupported block", {
-    //                     id: block.id,
-    //                     type
-    //                 });
-    //                 return null;
-    //             }
-
-    //             return {
-    //                 object: "block",
-    //                 type,
-    //                 [type]: content
-    //             };
-    //         })
-    //         .filter(Boolean);
-
-    //     console.log("[NotionMove] blocks prepared", {
-    //         count: copiedBlocks.length,
-    //         types: copiedBlocks.map((block: any) => block.type)
-    //     });
-
-    //     // 새 페이지 생성
-    //     const page: any = await notion.pages.create({
-    //         parent: {
-    //             data_source_id: dataSourceId
-    //         },
-    //         properties,
-    //         template: {
-    //             type: "default"
-    //         }
-    //     });
-
-    //     const newPageId = page.id;
-
-    //     console.log("[NotionMove] created", {
-    //         from: sourcePage.id,
-    //         to: newPageId,
-    //         db: aiResult.db
-    //     });
-
-    //     try {
-    //         // 기존 본문 복사
-    //         if (copiedBlocks.length > 0) {
-    //             await notion.blocks.children.append({
-    //                 block_id: newPageId,
-    //                 children: copiedBlocks
-    //             });
-
-    //             console.log("[NotionMove] existing content copied", {
-    //                 count: copiedBlocks.length
-    //             });
-    //         }
-
-    //         // AI 분석 결과 추가
-    //         if (aiResult.content?.trim()) {
-    //             await notion.blocks.children.append({
-    //                 block_id: newPageId,
-    //                 children: [{
-    //                     object: "block",
-    //                     type: "paragraph",
-    //                     paragraph: {
-    //                         rich_text: [{
-    //                             type: "text",
-    //                             text: {
-    //                                 content: aiResult.content.trim()
-    //                             }
-    //                         }]
-    //                     }
-    //                 }]
-    //             });
-
-    //             console.log("[NotionMove] ai content added");
-    //         }
-
-    //         // 모든 복사가 성공한 후 기존 페이지 archive
-    //         await notion.pages.update({
-    //             page_id: sourcePage.id,
-    //             archived: true
-    //         });
-
-    //         console.log("[NotionMove] archived", {
-    //             pageId: sourcePage.id
-    //         });
-    //     } catch (error) {
-    //         console.error("[NotionMove] copy failed", {
-    //             sourcePageId: sourcePage.id,
-    //             newPageId,
-    //             error
-    //         });
-
-    //         // 복사 실패 시 기존 페이지는 절대 삭제하지 않음
-    //         throw error;
-    //     }
-
-    //     return newPageId;
-    // }
-
     // #kakao notion
     static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any): Promise<string | undefined> {
         console.log("[createDbItemFromAiResult] called");
@@ -1961,14 +1621,23 @@ class NotionService {
         }
 
         //////////////////////////////////////////////////
-        // properties
+        // properties 
 
         let properties: any;
         let cover: any;
+        const normalizePropertyValue = (value?: string) => {
+            if (!value) return value;
+
+            const map: Record<string, string> = {
+                "매우중요": "매우 중요",
+                "매우긴급": "매우 긴급"
+            };
+
+            return map[value] ?? value;
+        };
+
         switch (aiResult.db) {
             case "task": {
-                const parsed = resolveDateExpr(aiResult.dateExpr);
-
                 const typeMap: Record<string, string> = {
                     "할것": "할 것",
                     "살것": "살 것",
@@ -1978,6 +1647,10 @@ class NotionService {
                 };
                 const normalizedType = typeMap[aiResult.type] ?? aiResult.type ?? "할 것";
 
+                const kinds = aiResult.dateData?.date
+                    ? "일정"
+                    : aiResult.kinds ?? "수집함";
+
                 properties = {
                     할일: {
                         title: [{ text: { content: aiResult.title ?? "" } }]
@@ -1986,29 +1659,25 @@ class NotionService {
                         status: { name: normalizedType }
                     },
                     분류: {
-                        select: { name: aiResult.kinds ?? "수집함" }
+                        select: { name: kinds }
                     }
                 };
 
-                if (aiResult.importance) {
-                    properties.중요도 = {
-                        select: { name: aiResult.importance }
-                    };
-                }
-
                 if (aiResult.urgency) {
                     properties.긴급도 = {
-                        select: { name: aiResult.urgency }
+                        select: { name: normalizePropertyValue(aiResult.urgency) }
                     };
                 }
 
-                if (parsed) {
+                if (aiResult.dateData?.date) {
                     properties.날짜 = {
                         date: {
-                            start: parsed.hasTime
-                                ? formatDateTime(parsed.date)
-                                : formatDate(parsed.date),
-                            ...(parsed.hasTime ? { time_zone: "Asia/Seoul" } : {})
+                            start: aiResult.dateData.time
+                                ? `${aiResult.dateData.date}T${aiResult.dateData.time}:00`
+                                : aiResult.dateData.date,
+                            ...(aiResult.dateData.time
+                                ? { time_zone: "Asia/Seoul" }
+                                : {})
                         }
                     };
                 }
@@ -2070,11 +1739,11 @@ class NotionService {
                     }
                 }
 
-                if (aiResult.importance) {
-                    properties.중요도 = {
-                        select: { name: aiResult.importance }
-                    };
-                }
+                // if (aiResult.importance) {
+                //     properties.중요도 = {
+                //         select: { name: aiResult.importance }
+                //     };
+                // }
 
                 console.log("[CREATE CHECK]", {
                     pageId,
@@ -2094,6 +1763,12 @@ class NotionService {
                         }]
                     }
                 };
+
+                // if (aiResult.importance) {
+                //     properties.중요도 = {
+                //         select: { name: aiResult.importance }
+                //     };
+                // }
 
                 if (contact.company) {
                     properties.회사명 = {
@@ -2175,6 +1850,15 @@ class NotionService {
                 throw new Error(`Unsupported db type: ${aiResult.db}`);
         }
 
+        ////////////////////////////////////////////////////////////////
+        // 공통 Property
+        if (aiResult.importance) {
+            properties.중요도 = {
+                select: { name: normalizePropertyValue(aiResult.importance) }
+            };
+        }
+        //////////////////////////////////////////////////////////////////
+
         if (pageId) {
             await notion.pages.update({
                 page_id: pageId,
@@ -2232,323 +1916,6 @@ class NotionService {
 
         return pageId;
     }
-
-
-    // static async createDbItemFromAiResult(
-    //     userId: string,
-    //     aiResult: any,
-    //     entity: any
-    // ): Promise<string | undefined> {
-    //     if (
-    //         !aiResult?.db ||
-    //         !["create", "correct"].includes(aiResult.action)
-    //     ) {
-    //         return undefined;
-    //     }
-
-    //     let pageId: string | undefined;
-
-    //     console.log(`[NotionCreate] start db = ${aiResult?.db} action = ${aiResult?.action} title = "${aiResult?.title ?? ""}" entity = ${entity?.type ?? "text"} `);
-
-    //     if (aiResult.action === "correct" && !aiResult.targetPageId) {
-    //         console.log(`[NotionCreate] correct but targetPageId missing`);
-    //         return undefined;
-    //     }
-    //     const targetPageId = aiResult.targetPageId;
-
-    //     // get Notion accessToken
-    //     const userDoc = await db.collection("users").doc(userId).get();
-    //     const accessToken = userDoc.data()?.notionAccessToken;
-    //     console.log(`[NotionCreate] accessToken = ${!!accessToken} `);
-    //     if (!accessToken) return undefined;
-
-    //     // get database
-    //     const notion = new Client({ auth: accessToken });
-    //     const databaseId = await this.resolveDatabaseId(
-    //         accessToken,
-    //         userId,
-    //         aiResult.db
-    //     );
-    //     console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
-
-    //     // create image
-    //     const children: any[] = [
-    //         ...this.buildEntityBlocks(entity)
-    //     ];
-
-    //     console.log(`[NotionCreate] entity blocks = ${children.length} `);
-
-    //     // content
-    //     if (aiResult.content) {
-    //         children.push({
-    //             object: "block",
-    //             type: "paragraph",
-    //             paragraph: {
-    //                 rich_text: [{
-    //                     type: "text",
-    //                     text: { content: aiResult.content }
-    //                 }]
-    //             }
-    //         });
-
-    //         console.log(`[NotionCreate] content added length = ${aiResult.content.length} `);
-    //     }
-
-    //     switch (aiResult.db) {
-    //         ////////////////////////////////////////////////////////////
-    //         case "task": {
-    //             console.log(
-    //                 `[NotionCreate][task] title = "${aiResult.title ?? ""}" type = ${aiResult.type ?? "-"} kinds = ${aiResult.kinds ?? "-"} importance = ${aiResult.importance ?? "-"} urgency = ${aiResult.urgency ?? "-"} date = ${aiResult.dateExpr ?? "-"} `
-    //             );
-
-    //             const importanceMap: Record<number, string> = {
-    //                 1: "중요",
-    //                 2: "매우 중요"
-    //             };
-
-    //             const urgencyMap: Record<number, string> = {
-    //                 1: "긴급",
-    //                 2: "매우 긴급"
-    //             };
-
-    //             const parsed = resolveDateExpr(aiResult.dateExpr);
-
-    //             console.log(`[NotionCreate][task] parsedDate = ${parsed ? parsed.date.toISOString() : "none"} hasTime = ${parsed?.hasTime ?? false} `);
-
-    //             const typeMap: Record<string, string> = {
-    //                 "할것": "할 것",
-    //                 "살것": "살 것",
-    //                 "읽을것": "읽을 것",
-    //                 "볼것": "볼 것",
-    //                 "갈곳": "갈 곳"
-    //             };
-
-    //             const normalizedType =
-    //                 typeMap[aiResult.type] ??
-    //                 aiResult.type ??
-    //                 "할 것";
-
-    //             const properties: any = {
-    //                 할일: {
-    //                     title: [{
-    //                         text: {
-    //                             content: aiResult.title ?? ""
-    //                         }
-    //                     }]
-    //                 },
-    //                 유형: {
-    //                     status: {
-    //                         name: normalizedType
-    //                     }
-    //                 },
-    //                 분류: {
-    //                     select: {
-    //                         name: aiResult.kinds ?? "수집함"
-    //                     }
-    //                 }
-    //             };
-
-    //             if (importanceMap[aiResult.importance]) {
-    //                 properties.중요도 = {
-    //                     select: {
-    //                         name: importanceMap[aiResult.importance]
-    //                     }
-    //                 };
-    //             }
-
-    //             if (urgencyMap[aiResult.urgency]) {
-    //                 properties.긴급도 = {
-    //                     select: {
-    //                         name: urgencyMap[aiResult.urgency]
-    //                     }
-    //                 };
-    //             }
-
-    //             if (parsed) {
-    //                 properties.날짜 = {
-    //                     date: {
-    //                         start: parsed.hasTime
-    //                             ? parsed.date.toISOString()
-    //                             : parsed.date.toISOString().slice(0, 10)
-    //                     }
-    //                 };
-    //             }
-
-    //             if (aiResult.action === "create") {
-    //                 console.log(
-    //                     `[NotionCreate][task] creating page`
-    //                 );
-
-    //                 const page: any = await notion.pages.create({
-    //                     parent: {
-    //                         database_id: databaseId
-    //                     },
-    //                     properties
-    //                 });
-
-    //                 pageId = page.id;
-    //                 console.log(`[NotionCreate][task] created pageId id = ${pageId} `);
-    //             } else {
-    //                 const targetPageId = aiResult.targetPageId;
-    //                 if (!targetPageId) {
-    //                     throw new Error("targetPageId required for correct");
-    //                 }
-
-    //                 await notion.pages.update({
-    //                     page_id: targetPageId,
-    //                     properties
-    //                 });
-
-    //                 pageId = targetPageId; 
-    //                 console.log(
-    //                     `[NotionCreate][task] updated targetPageId = ${targetPageId} `
-    //                 );
-    //             }
-
-    //             break;
-    //         }
-
-    //         ////////////////////////////////////////////////////////////
-    //         case "memo":
-    //         case "reference": {
-    //             console.log(
-    //                 `[NotionCreate][${aiResult.db}]title = "${aiResult.title ?? ""}" type = ${aiResult.type ?? "-"} tags = ${(aiResult.tags ?? []).join(",")} children = ${children.length} `
-    //             );
-
-    //             // get Tag db
-    //             const tagDbName = aiResult.db === "memo" ? "memo tag" : "reference tag";
-    //             const tagDbId = await this.resolveDatabaseId(
-    //                 accessToken,
-    //                 userId,
-    //                 tagDbName
-    //             );
-    //             console.log(`[NotionCreate][${aiResult.db}]tagDb = ${tagDbName} tagDbId = ${tagDbId} `);
-
-    //             // get tags
-    //             const tagIds = await this.resolveTagIds(
-    //                 accessToken,
-    //                 tagDbId,
-    //                 aiResult.tags ?? []
-    //             );
-    //             console.log(`[NotionCreate][${aiResult.db}]tagIds = ${tagIds.length} `);
-
-    //             const properties: any = {
-    //                 이름: {
-    //                     title: [{
-    //                         text: {
-    //                             content: aiResult.title ?? ""
-    //                         }
-    //                     }]
-    //                 },
-    //                 태그: {
-    //                     relation: tagIds.map(id => ({
-    //                         id
-    //                     }))
-    //                 }
-    //             };
-
-    //             if (aiResult.type) {
-    //                 // 유형 처리
-    //                 const typeDbName = aiResult.db === "memo" ? "memo type" : "reference type";
-    //                 const typeDbId = await this.resolveDatabaseId(
-    //                     accessToken,
-    //                     userId,
-    //                     typeDbName
-    //                 );
-
-    //                 const typeIds = await this.resolveRelationIds(
-    //                     accessToken,
-    //                     typeDbId,
-    //                     [aiResult.type]
-    //                 );
-
-    //                 if (typeIds.length > 0) {
-    //                     properties.유형 = {
-    //                         relation: typeIds.map(id => ({ id }))
-    //                     };
-    //                 }
-    //                 console.log(`[NotionCreate][${aiResult.db}] type="${aiResult.type}" relationCount=${typeIds.length}`);
-    //             }
-
-    //             if (aiResult.action === "create") {
-    //                 console.log(`[NotionCreate][${aiResult.db}] creating page`);
-    //                 const page: any = await notion.pages.create({
-    //                     parent: {
-    //                         database_id: databaseId
-    //                     },
-    //                     properties,
-    //                     children: children.length
-    //                         ? children
-    //                         : undefined
-    //                 });
-    //                 pageId = page.id;
-    //                 console.log(`[NotionCreate][${aiResult.db}] created id = ${targetPageId} `);
-    //             } else {
-    //                  const targetPageId = aiResult.targetPageId;
-    //                 if (!targetPageId) {
-    //                     throw new Error("targetPageId required for correct");
-    //                 }
-
-    //                 await notion.pages.update({
-    //                     page_id: targetPageId,
-    //                     properties
-    //                 });
-
-    //                 pageId = targetPageId; 
-    //                 console.log(`[NotionCreate][${aiResult.db}] updated id = ${targetPageId} `);
-    //             }
-    //             break;
-    //         }
-
-    //         default:
-    //             console.log(
-    //                 `[NotionCreate] unsupported db = ${aiResult.db} `
-    //             );
-    //             throw new Error(
-    //                 `Unsupported db type: ${aiResult.db} `
-    //             );
-    //     }
-
-    //     console.log(
-    //         `[NotionCreate] write event db = ${aiResult.db} action = ${aiResult.action} title = "${aiResult.title ?? ""}" targetPageId = ${targetPageId ?? "-"} `
-    //     );
-
-    //     await writeUserEvent(userId, {
-    //         agentId: AgentId.KAKAO_CAPTURE,
-    //         status: "completed",
-    //         eventTitle: `${aiResult.db} ${aiResult.action === "create"
-    //             ? "생성"
-    //             : "수정"
-    //             } `,
-    //         description: [
-    //             `action = ${aiResult.action} `,
-    //             `db = ${aiResult.db} `,
-    //             `targetPageId = ${targetPageId ?? "-"} `,
-    //             `title = ${aiResult.title ?? "-"} `,
-    //             `type = ${aiResult.type ?? "-"} `,
-    //             aiResult.kinds
-    //                 ? `kinds = ${aiResult.kinds} `
-    //                 : null,
-    //             aiResult.tags?.length
-    //                 ? `tags = ${aiResult.tags.join(",")} `
-    //                 : null,
-    //             aiResult.dateExpr
-    //                 ? `date = ${aiResult.dateExpr} `
-    //                 : null,
-    //             entity?.type
-    //                 ? `entity = ${entity.type} `
-    //                 : null,
-    //             `confidence = ${aiResult.confidence ?? "-"} `
-    //         ].filter(Boolean).join(" | ")
-    //     });
-
-    //     console.log(
-    //         `[NotionCreate] done db = ${aiResult.db} action = ${aiResult.action} targetPageId = ${targetPageId ?? "-"} `
-    //     );
-
-    //     return pageId;
-    // }
-
 
     static async resolveTagIds(
         accessToken: string,
@@ -4905,27 +4272,38 @@ async function updateTagCache(userId: string, tags: string[]): Promise<void> {
 
 
 const HELP_RESPONSE = `
-당신의 노셔너블 비서를 
-어떻게 활용하면 되는지 알려드릴게요. 😊
+라이프봇, 이렇게 활용해보세요 😊
 
-1. 할 일 등록하기
-할일이 떠오르면 바로 알려주세요.
-알아서 척척 분류해 드립니다.
+생각나는 대로 말하고, 보내주세요.
+정리는 라이프봇 비서가 해드립니다.
 
-분류: 할 것, 살 것, 읽을 것, 볼 것, 갈 곳
-유형: 오늘, 내일, 일정, 다음에, 나중에, 대기중
-중요도/긴급도: 중요, 매우 중요, 긴급, 매우 긴급 
-날짜 : 오늘, 내일, 몇일 후, 아니면 구체적인 날짜를 말씀해주세요.
-사진 첨부 가능: 책 표지, 영수증, 기억하고 싶은 사진을 툭 던져주셔도 다 기록해 드립니다.
+🔹할 일 등록하기
+할 일이 떠오르면 바로 알려주세요.
 
-2. 메모 보관하기
-아이디어, 계정 정보, 연락처, 필기, 개인 문서, 독서 메모
+할 것 · 살 것 · 읽을 것 · 볼 것 · 갈 곳
+오늘 · 내일 · 일정 · 다음에 · 나중에 · 대기중
+중요도 · 긴급도 · 날짜까지 알아서 정리해드립니다.
 
-3. 참고 자료 저장하기
-나중에 다시 보고 싶은 콘텐츠가 있다면 링크만 슥 보내주세요.
-유용한 웹사이트 링크, 인터넷 뉴스 기사, 유튜브 같은 영상까지 깔끔하게 수집해 둡니다.
+📷 사진도 OK!
+책 표지, 영수증 등 필요한 사진도 함께 기록하세요.
 
-4. 분류가 잘못되었다면 다시 요청해주시면 수정 가능합니다.
+🔹메모 보관
+
+아이디어, 연락처, 계정 정보, 필기, 독서 메모 등
+기억해두고 싶은 것은 그냥 보내주세요.
+
+🔹자료 저장
+
+웹사이트, 뉴스, 유튜브 등
+다시 보고 싶은 링크만 슥 보내주세요.
+
+🔹잘못 정리됐다면?
+
+“할일로, 메모로, 중요로” 처럼 바꿀 내용을 말해주세요.
+원하는 방식으로 바로 수정할 수 있습니다.
+
+생각나면 말하고,
+정리는 비서에게 맡기세요. 😊
 `;
 
 
@@ -5106,8 +4484,10 @@ Reference
 
 * 중요 관련 언급이 있을 때만 포함한다.
 * 언급이 없으면 필드를 출력하지 않는다.
+* 중요도는 사용자가 현재 메시지에서 중요도를 직접 표현한 경우에만 출력한다. 이전 대화, 일반적인 상식, AI의 판단, 일정의 성격 등을 근거로 임의로 "중요" 또는 "매우 중요"를 생성하지 않는다. 현재 메시지에 중요도 표현이 없으면 importance 필드를 반드시 생략한다.
 * "중요", "꼭", "반드시", "우선" → "중요"
 * "매우 중요", "최우선", "절대 잊지 말기" → "매우 중요"
+
 
 ---
 
@@ -5134,181 +4514,19 @@ Reference
 
 * 기본값: "수집함"
 * 날짜가 있는 경우 → "일정"
-* "다음", "다음에", "후속" → "다음"
-* 바로 진행할 수 없는 경우 → "대기중"
-* "나중에", "언젠가", "천천히" → "나중에"
-
+* 사용자가 다음 분류를 명시한 경우에만 해당 값을 사용한다.
+  - "다음", "다음에", "후속" → "다음"
+  - "대기", "대기중", "기다리는 중", "답변 대기" → "대기중"
+  - "나중에", "언젠가", "천천히" → "나중에"
+* 위 표현이 없으면 AI가 의미를 추론하여 "다음", "대기중", "나중에"로 변경하지 않는다.
+* 특히 "다음 주", "다음 달"의 "다음"은 "다음" 분류가 아니다.
+ 
 ---
 
 [task.dateExpr]
-사용자가 말한 날짜와 시간을 아래 형식으로 변환하여 출력합니다.
-
-실제 날짜나 시간을 계산하거나 추론하지 않습니다.
-사용자가 말하지 않은 연도, 월, 일, 시간, 오전/오후는 임의로 생성하지 않습니다.
-
-예)
-
-* 오늘 → "today"
-* 내일 → "tomorrow"
-* 모레 → "dayafter"
-* 15분 후 → "now+15m"
-* 3시간 후 → "now+3h"
-* 7일 후 → "now+7d"
-* 이번주 월요일 → "this:monday"
-* 다음주 월요일 → "next:monday"
-* 이번주 금요일 → "this:friday"
-* 오늘 오후 3시 → "today+15:00"
-* 오늘 오후 3시반 → "today+15:30"
-* 오전 8시반 → "today+08:30"
-* 내일 오전 9시 → "tomorrow+09:00"
-* 모레 오후 6시반 → "dayafter+18:30"
-* 다음주 월요일 오후 2시 → "next:monday+14:00"
-* 2026년 7월 3일 → "date:2026-07-03"
-* 8월 8일 → "date:08-08"
-* 8일 → "date:08"
-
-[시간 판단 순서 - 최우선]
-
-날짜와 시간 정보를 다음 순서로 판단한다.
-
-1. 사용자 입력에 실제 시간이 포함되어 있는지 확인한다.
-2. 시간이 없으면 오전/오후 판단을 하지 않는다.
-3. 시간만 있고 시간대 정보가 없으면 오전/오후를 확인하기 위해 ask한다.
-4. 시간과 시간대 정보가 함께 있으면 시간을 확정하여 create한다.
-
-시간 정보가 없는 경우에는 오전/오후를 확인하지 않는다.
-시간이 없다는 이유로 ask하지 않는다.
-
-예)
-
-"우유 사기"
-→ create
-→ dateExpr 없음
-
-"내일 우유 사기"
-→ create
-→ dateExpr: "tomorrow"
-
-"내일 버스 타기"
-→ create
-→ dateExpr: "tomorrow"
-
-[오전/오후 판단 규칙 - 절대 규칙]
-
-실제 시간이 입력된 경우에만 오전/오후 판단 규칙을 적용한다.
-다음 시간대 정보 중 하나라도 시간 표현과 함께 명시되어 있으면 시간이 확정된다.
-
-- 오전
-- 오후
-- AM
-- PM
-- am
-- pm
-- 아침
-- 저녁
-- 새벽
-- 정오
-- 밤
-
-시간대 표현은 시간 앞이나 뒤에 있어도 해당 시간 전체에 적용한다.
-
-예)
-
-- 오전 6시 → 06:00
-- 아침 6시 → 06:00
-- 오후 6시 → 18:00
-- 저녁 6시 → 18:00
-- 밤 10시 → 22:00
-- 정오 12시 → 12:00
-
-"오전 8시반", "오전 8시 30분", "오전 8시30분"은
-모두 동일한 시간 표현이며 08:30으로 확정한다.
-
-시간대 정보가 없는 1~12시 형태의 시간은
-오전과 오후가 모두 가능한 시간으로 판단한다.
-
-예)
-
-- 6시
-- 6시 20분
-- 6시반
-- 11시
-- 12시
-- 8/24 6시
-- 내일 6시 20분
-- 내일 버스 6시 20분
-
-위 표현은 모두 오전/오후를 임의로 결정할 수 없다.
-
-따라서 실제 시간이 입력되었지만 시간대 정보가 없는 경우에는
-반드시 action="ask"를 선택한다.
-
-예)
-
-입력:
-"내일 버스 6시 20분"
-
-출력:
-{
-  "action": "ask",
-  "response": "내일 오전 6시 20분인가요, 오후 6시 20분인가요?"
-}
-
-[오전/오후 절대 추론 금지]
-
-시간이 입력되었지만 시간대 정보가 없는 경우,
-다음 정보를 근거로 오전 또는 오후를 절대 추론하지 않는다.
-
-- 일정 내용
-- 장소
-- 이동수단
-- 교통수단
-- 약속 종류
-- 일반적인 생활 패턴
-- 자연스러운 시간대
-- 상식적인 시간
-- 문맥
-- 이전 대화
-- 일반적인 추정
-
-예를 들어 다음과 같은 판단은 모두 금지한다.
-
-"버스는 아침에 타는 경우가 많으므로 오전"
-"출근이므로 오전"
-"저녁 약속 같으므로 오후"
-"여행 일정이므로 오전"
-"문맥상 자연스러우므로 오전"
-
-따라서 시간대 정보가 없는 경우
-06:20 또는 18:20처럼 특정 시간을 임의로 생성하면 안 된다.
-
-잘못된 처리:
-
-입력:
-"내일 버스 6시 20분"
-
-"tomorrow+06:20"
-"tomorrow+18:20"
-
-위 두 결과는 모두 잘못된 처리이다.
-
-[출력 전 시간 검증 - 필수]
-
-사용자 입력에 실제 시간이 포함된 경우에만 다음 검증을 수행한다.
-
-1. 시간대 정보가 명시되어 있는가?
-2. 명시되어 있다면 해당 시간대를 정확히 적용했는가?
-3. 명시되어 있지 않다면 오전 또는 오후를 임의로 선택하지 않았는가?
-4. 일정 내용이나 문맥으로 시간을 추론하지 않았는가?
-
-시간이 포함되어 있지만 시간대 정보가 없는 경우에는
-정확한 HH:MM 시간을 생성하지 말고 반드시 action="ask"를 선택한다.
-
-시간 정보가 없는 경우에는 이 검증을 적용하지 않는다.
-시간이 없다는 이유만으로 ask하지 않는다.
-
-이 규칙은 모든 create 규칙보다 우선한다.
-
+날짜와 시간은 별도의 날짜 처리 과정에서 결정된다.
+입력에 [확정된 날짜/시간] 정보가 있으면 해당 dateExpr를 그대로 사용한다.
+dateExpr를 판단하거나 변경하지 않는다.
 
 2. memo
 사용자와 관계가 가까운 정보이다.
@@ -5445,6 +4663,7 @@ Contact인 경우 반드시 다음 형식으로 출력한다.
   "title": "",
   "content": "",
   "response": "",
+  "importance": "",
   "entity": {
     "type": "contact",
     "name": "",
@@ -5889,23 +5108,6 @@ DB가 변경되는 경우 기존 항목의 db와 type을 단순히 일부 수정
 
 직전:
 {
-  "title": "치과 예약",
-  "dateExpr": "tomorrow+15:00"
-}
-
-사용자:
-오전으로
-
-결과:
-{
-  "action": "correct",
-  "dateExpr": "tomorrow+03:00"
-}
-
----
-
-직전:
-{
   "db": "memo",
   "title": "라이프업 기본 프로젝트 노트 추가",
   "type": "필기"
@@ -5963,16 +5165,6 @@ DB가 변경되는 경우 기존 항목의 db와 type을 단순히 일부 수정
 
 → correct
 → db를 task로 변경
-
----
-
-직전:
-회의
-
-사용자:
-내일 오후 3시로 변경
-
-→ correct
 
 ---
 
@@ -6092,42 +5284,6 @@ correct는 직전 분류 결과를 기준으로 변경사항만 반환한다.
   "importance": "중요",
   "response": "중요도를 '중요'로 변경했습니다."
 }
-
----
-
-### 시간대 변경 규칙
-
-기존 dateExpr에 정확한 시간이 있는 경우
-
-- 오전으로
-- 오후로
-
-같은 시간대 변경 요청은 기존 hour를 유지한 채 오전/오후만 변경한다.
-
-예)
-
-previous:
-tomorrow+15:00
-
-사용자:
-오전으로
-
-결과:
-tomorrow+03:00
-
-previous:
-tomorrow+09:00
-
-사용자:
-오후로
-
-결과:
-tomorrow+21:00
-
-주의:
-
-임의로 09:00, 15:00 등의 기본 시간을 생성하지 않는다.
-
 
 ///////////////////////////////////////////////////////////////////
 # '[이미지 분석]' 처리 규칙 (절대 규칙)
@@ -6309,16 +5465,35 @@ title 생성 시 의미가 명확한 오타만 보정한다.
 async function requestKakaoAssistantActionFromAI(
     userId: string,
     userMessage: string,
-    aiAssistantMessage: string,
-    previousResult?: any
+    aiEntityMessage: string,
+    previousResult?: any,
+    dateResult?: DateProcessResult
 ): Promise<any> {
     const instructionPrompt = KakaoAgentPrompt;
     const tagCache = await getTagCache(userId);
 
     const currentInput = [
         userMessage?.trim(),
-        aiAssistantMessage?.trim()
+        aiEntityMessage?.trim()
     ].filter(Boolean).join("\n");
+
+    const hasResolvedDate =
+        (dateResult?.status === "resolved" || dateResult?.status === "correct") &&
+        !!dateResult.data?.date;
+
+    const dateContext = hasResolvedDate
+        ? `
+[확정된 날짜/시간]
+date: ${dateResult.data!.date}${dateResult.data!.time
+            ? `\ntime: ${dateResult.data!.time}`
+            : ""}
+
+중요:
+- 위 날짜와 시간은 날짜 처리 전용 AI에서 이미 확정한 최종 값이다.
+- 날짜와 시간을 다시 판단하거나 변경하지 않는다.
+- 위 값이 존재하면 반드시 결과의 data.date와 data.time에 그대로 사용한다.
+`
+        : "";
 
     let userPrompt: string;
 
@@ -6330,10 +5505,12 @@ ${previousResult.userMessage}
 [사용자 추가 입력]
 ${userMessage}
 
-${aiAssistantMessage ? `
+${aiEntityMessage ? `
 [추가 분석 정보]
-${aiAssistantMessage}
+${aiEntityMessage}
 ` : ""}
+
+${dateContext}
 
 [기존 태그]
 ${tagCache.join(", ") || "(없음)"}
@@ -6356,6 +5533,8 @@ ${previousResult.userMessage}
 ${JSON.stringify(previousResult.result, null, 2)}
 ` : ""}
 
+${dateContext}
+
 [기존 태그]
 ${tagCache.join(", ") || "(없음)"}
 
@@ -6366,9 +5545,11 @@ ${currentInput}
 
     console.log("requestKakaoAssistantActionFromAI", {
         userMessage,
-        aiAssistantMessage,
+        aiEntityMessage,
+        dateResult,
         previousResult: previousResult?.result
     });
+
     console.log("requestKakaoAssistantActionFromAI userPrompt =>", userPrompt);
 
     const response = await clientAI.chat.completions.create({
@@ -6392,6 +5573,13 @@ ${currentInput}
     try {
         const result = safeParseAssistantJson(text);
 
+        if (hasResolvedDate && dateResult?.data?.date) {
+            result.dateData = {
+                date: dateResult.data.date,
+                ...(dateResult.data.time ? { time: dateResult.data.time } : {})
+            };
+        }
+
         console.log("[TagCache] check", {
             action: result?.action,
             tags: result?.tags,
@@ -6399,10 +5587,11 @@ ${currentInput}
             isArray: Array.isArray(result?.tags)
         });
 
-        if (result?.action === "create" &&
+        if (
+            result?.action === "create" &&
             Array.isArray(result?.tags) &&
-            result.tags.length > 0) {
-
+            result.tags.length > 0
+        ) {
             const newTags = result.tags
                 .filter((tag: any) => typeof tag === "string" && tag.trim())
                 .map((tag: string) => tag.trim());
@@ -7350,6 +6539,7 @@ async function processKakaoAgent(
 
     let entity: AssistantEntity;
     let enrichedResult: any;
+    let dateData: DateProcessData | undefined;
 
     const locked = await acquireKakaoProcessingLock(userId, jobId);
     if (!locked) {
@@ -7364,8 +6554,19 @@ async function processKakaoAgent(
     try {
         let t = Date.now();
 
+        console.log("[KAKAO] processAssistantEntity START", {
+            userId,
+            userMessage
+        });
+
         entity = await processAssistantEntity(userMessage, userId);
-        const currentAiAssistantMessage = buildAiMessageFromEntity(entity);
+        const aiEntityMessage = buildAiEntityMessage(entity);
+
+        console.log("[KAKAO] processAssistantEntity RESULT", {
+            entity,
+            aiEntityMessage
+        });
+
         logTime("processAssistantEntity", t);
 
         ////////////////////////////////////////////////////////////////////////////////////
@@ -7373,67 +6574,117 @@ async function processKakaoAgent(
         t = Date.now();
 
         const previousContext: AssistantContext | null = await getLastAssistantContext(userId);
-        console.log("[processKakaoAgent] previousContext =>", previousContext);
+
+        console.log("[KAKAO] previousContext", {
+            exists: !!previousContext,
+            action: previousContext?.result?.action,
+            contextId: previousContext?.contextId
+        });
+
         logTime("getLastAssistantContext", t);
 
         ////////////////////////////////////////////////////////////////////////////////////
 
-        const aiAssistantMessage =
-            previousContext?.result?.action === "ask"
-                ? [
-                    previousContext.aiAssistantMessage,
-                    currentAiAssistantMessage
-                ].filter(Boolean).join("\n")
-                : currentAiAssistantMessage;
-
-        ////////////////////////////////////////////////////////////////////////////////////
-
         t = Date.now();
+
+        console.log("[DATE] processDateExpression START", {
+            userMessage,
+            hasPreviousContext: !!previousContext
+        });
 
         const dateResult = await processDateExpression(
             userMessage,
-            aiAssistantMessage,
-            entity
-        );
-
-        logTime("processDateExpression", t);
-
-        if (dateResult.status === "ask") {
-            // 날짜 관련 질문을 먼저 반환
-        }
-
-        ////////////////////////////////////////////////////////////////////////////////////
-
-        t = Date.now();
-
-        const result = await requestKakaoAssistantActionFromAI(
-            userId,
-            userMessage,
-            aiAssistantMessage,
             previousContext
         );
 
-        logTime("requestKakaoAssistantActionFromAI", t);
+        dateData = dateResult.data;
 
-        enrichedResult = enrichKakaoAssistantResult(result, previousContext);
+        console.log("[DATE] processDateExpression RESULT", {
+            status: dateResult.status,
+            data: dateResult.data,
+            question: dateResult.question
+        });
+
+        logTime("processDateExpression", t);
+
+        // 추가적인 질문이 필요함
+        if (dateResult.status === "dateAsk") {
+            console.log("[DATE] dateAsk", {
+                question: dateResult.question,
+                dateData
+            });
+
+            enrichedResult = {
+                action: "dateAsk",
+                message: dateResult.question
+            };
+        } else {
+            console.log("[DATE] dateData", {
+                dateData
+            });
+
+            t = Date.now();
+
+            console.log("[AI] requestKakaoAssistantActionFromAI START", {
+                userId,
+                userMessage,
+                aiEntityMessage,
+                dateResult
+            });
+
+            const result = await requestKakaoAssistantActionFromAI(
+                userId,
+                userMessage,
+                aiEntityMessage,
+                previousContext,
+                dateResult
+            );
+
+            logTime("requestKakaoAssistantActionFromAI", t);
+
+            console.log("[AI] requestKakaoAssistantActionFromAI RESULT", {
+                result
+            });
+
+            enrichedResult = enrichKakaoAssistantResult(
+                result,
+                previousContext
+            );
+
+            console.log("[AI] enrichedResult", {
+                enrichedResult
+            });
+        }
 
         ////////////////////////////////////////////////////////////////////////////////////
 
         const payload: any = {
             userMessage,
-            aiAssistantMessage,
+            aiEntityMessage,
             entity,
             result: enrichedResult,
+            dateData,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
-        console.log("[TIME] saveAssistantContext START");
+        console.log("[CONTEXT] saveAssistantContext START", {
+            action: enrichedResult?.action,
+            dateData
+        });
 
         t = Date.now();
 
-        enrichedResult.contextId = await saveAssistantContext(userId, payload);
+        enrichedResult.contextId = await saveAssistantContext(
+            userId,
+            payload
+        );
 
-        console.log(`[TIME] saveAssistantContext: ${Date.now() - t}ms`);
+        console.log("[CONTEXT] saveAssistantContext RESULT", {
+            contextId: enrichedResult.contextId,
+            dateData
+        });
+
+        logTime("saveAssistantContext", t);
     } finally {
         await releaseKakaoProcessingLock(userId, jobId);
     }
@@ -7441,10 +6692,21 @@ async function processKakaoAgent(
     try {
         let t = Date.now();
 
-        // 사용자 응답 
         console.log("[TIME] sendKakaoCallback START");
-        await resposeKakaoMessageByCallbackUrl(enrichedResult.response, callbackUrl);
+
+        await resposeKakaoMessageByCallbackUrl(
+            enrichedResult.action === "dateAsk"
+                ? enrichedResult.message
+                : enrichedResult.response,
+            callbackUrl
+        );
+
         logTime("sendKakaoCallback", t);
+
+        if (enrichedResult.action === "dateAsk") {
+            logTime("TOTAL", totalStart);
+            return;
+        }
 
         t = Date.now();
 
@@ -7456,7 +6718,6 @@ async function processKakaoAgent(
 
         logTime("processAfterResponse", t);
         logTime("TOTAL", totalStart);
-
     } catch (e) {
         console.error("[KAKAO ERROR - processKakaoAgent]", e);
 
@@ -7470,67 +6731,206 @@ async function processKakaoAgent(
 }
 
 ///////////////////////////////////////////////////////////
-export type DateProcessStatus = "skip" | "none" | "resolved" | "ask";
+export type DateProcessStatus = "none" | "resolved" | "correct" | "dateAsk";
 
-export interface DateProcessResult {
+interface DateAIResult {
     status: DateProcessStatus;
     dateExpr?: string;
     question?: string;
 }
 
+interface DateProcessData {
+    date?: string;
+    time?: string;
+}
+
+interface DateProcessResult {
+    status: DateProcessStatus;
+    data?: DateProcessData;
+    question?: string;
+}
+
+///////////////////////////////////////////////////////////
 const DATE_CANDIDATE_PATTERNS = [
     /오늘|내일|모레|글피|어제|그제/,
     /이번|다음|다다음|지난/,
     /년|월|주|달|요일/,
     /\d+\s*(일|시간|분|주|개월|달|년)/,
-    /\d{1,2}시/,
-    /오전|오후|새벽|아침|점심|저녁|밤/,
-    /후|뒤|전/
+    /\d{1,2}\s*시/,
+    /오전|오후|새벽|아침|점심|저녁|밤|정오/,
+    /후|뒤|전/,
+    /변경|바꿔|바꿔줘|수정|수정해|수정해줘|미뤄|미루|당겨|당기|연기|앞당겨/
 ];
 
+///////////////////////////////////////////////////////////
 export async function processDateExpression(
     userMessage: string,
-    aiAssistantMessage: string,
     previousContext?: AssistantContext | null
 ): Promise<DateProcessResult> {
-    if (!shouldProcessDate(userMessage, previousContext)) {
+    const isDateAsk = previousContext?.result?.action === "dateAsk";
+    const hasCandidate = hasDateCandidate(userMessage);
+
+    console.log("[DATE] processDateExpression START", {
+        userMessage,
+        isDateAsk,
+        hasCandidate
+    });
+
+    if (!isDateAsk && !hasCandidate) {
+        console.log("[DATE] no date candidate");
         return {
-            status: "skip"
+            status: "none"
         };
     }
 
-    return requestDateExpressionFromAI(
+    const aiResult = await requestDateExpressionFromAI(
         userMessage,
-        aiAssistantMessage,
         previousContext
     );
-}
 
-function shouldProcessDate(
-    userMessage: string,
-    previousContext?: AssistantContext | null
-): boolean {
-    if (previousContext?.result?.action === "ask") {
-        return true;
+    console.log("[DATE] requestDateExpressionFromAI RESULT", {
+        aiResult
+    });
+
+    if (aiResult.status === "none") {
+        console.log("[DATE] AI returned none");
+        return {
+            status: "none"
+        };
     }
 
-    return hasDateCandidate(userMessage);
+    if (aiResult.status === "dateAsk") {
+        if (!aiResult.dateExpr) {
+            console.log("[DATE] dateAsk without dateExpr");
+
+            return {
+                status: "dateAsk",
+                question: aiResult.question
+            };
+        }
+
+        const candidate = resolveDateResult({
+            status: "resolved",
+            dateExpr: aiResult.dateExpr
+        });
+
+        return {
+            status: "dateAsk",
+            data: candidate.data,
+            question: aiResult.question
+        };
+    }
+
+    if (!aiResult.dateExpr) {
+        console.log("[DATE] no dateExpr");
+        return {
+            status: "none"
+        };
+    }
+
+    const previousData = getPreviousDateData(previousContext);
+
+    console.log("[DATE] resolveDateResult INPUT", {
+        dateExpr: aiResult.dateExpr,
+        previousData
+    });
+
+    const result = resolveDateResult(
+        aiResult,
+        previousData
+    );
+
+    console.log("[DATE] resolveDateResult RESULT", {
+        result
+    });
+
+    return result;
 }
 
+///////////////////////////////////////////////////////////
+function getPreviousDateData(
+    previousContext?: AssistantContext | null
+): DateProcessData | undefined {
+    const data = previousContext?.dateData;
+
+    if (!data?.date) {
+        return undefined;
+    }
+
+    return {
+        date: data.date,
+        ...(data.time ? { time: data.time } : {})
+    };
+}
+
+///////////////////////////////////////////////////////////
+function resolveDateResult(
+    result: DateAIResult,
+    previousData?: DateProcessData
+): DateProcessResult {
+    if (!result.dateExpr) {
+        return {
+            status: "none"
+        };
+    }
+
+    const parsed = resolveDateExpr(
+        result.dateExpr,
+        previousData
+    );
+
+    if (!parsed) {
+        return {
+            status: "none"
+        };
+    }
+
+    return {
+        status: result.status,
+        data: {
+            date: formatDateExpr(parsed.date),
+            ...(parsed.hasTime
+                ? { time: formatTimeExpr(parsed.date) }
+                : {})
+        }
+    };
+}
+
+///////////////////////////////////////////////////////////
+// function createDateFromData(data: DateProcessData): Date {
+//     const [year, month, day] = data.date!.split("-").map(Number);
+//     const [hour = 0, minute = 0] = data.time
+//         ? data.time.split(":").map(Number)
+//         : [];
+
+//     return new Date(
+//         year,
+//         month - 1,
+//         day,
+//         hour,
+//         minute,
+//         0,
+//         0
+//     );
+// }
+
+
+///////////////////////////////////////////////////////////
 function hasDateCandidate(message: string): boolean {
     return DATE_CANDIDATE_PATTERNS.some(pattern => pattern.test(message));
 }
 
-
-// #ai
+// #dateai
 async function requestDateExpressionFromAI(
     userMessage: string,
-    aiAssistantMessage: string,
     previousContext?: AssistantContext | null
-): Promise<DateProcessResult> {
+): Promise<DateAIResult> {
     const previousDateContext =
-        previousContext?.result?.action === "ask"
-            ? previousContext.result
+        previousContext?.result?.action === "dateAsk"
+            ? {
+                result: previousContext.result,
+                dateData: previousContext.dateData
+            }
             : null;
 
     const res = await clientAI.chat.completions.create({
@@ -7542,35 +6942,190 @@ async function requestDateExpressionFromAI(
             {
                 role: "system",
                 content: `
-너는 사용자 입력에서 날짜와 시간만 분석하는 Date Analyzer다.
+# 날짜·시간 처리
 
-반드시 다음 중 하나로 판단한다.
+응답은 반드시 JSON 객체만 반환한다.
 
-1. resolved
-- 날짜와 시간이 충분히 확정됨
-- dateExpr를 생성한다
+사용자 입력에서 날짜와 시간 표현만 찾아 dateExpr로 변환한다.
+날짜나 시간 외의 내용은 분석하지 않는다.
 
-2. ask
-- 날짜 또는 시간 정보가 있어 추가 확인이 반드시 필요함
-- question을 생성한다
+실제 날짜와 시간은 계산하지 않는다.
+사용자가 말하지 않은 날짜나 시간을 생성하지 않는다.
+기존 날짜와 새로운 날짜를 AI가 병합하지 않는다.
 
-3. none
-- 날짜나 시간과 관련된 정보가 없음
+# 출력
 
-중요 규칙:
-- 할 일, 메모, 태그, 제목, 중요도 등은 판단하지 않는다.
-- 오전/오후가 명확하면 절대 질문하지 않는다.
-- 24시간 표기면 절대 질문하지 않는다.
-- 시간이 없으면 오전/오후를 질문하지 않는다.
-- 12시간제 시간이 있고 오전/오후가 없으면 질문이 필요한지 판단한다.
-- dateExpr는 확실한 경우에만 생성한다.
+날짜·시간 표현 없음:
+
+{
+  "status": "none"
+}
+
+확정:
+
+{
+  "status": "resolved",
+  "dateExpr": "..."
+}
+
+기존 날짜·시간 수정:
+
+{
+  "status": "correct",
+  "dateExpr": "..."
+}
+
+추가 확인 필요:
+
+{
+  "status": "dateAsk",
+  "dateExpr": "time:11:00",
+  "question": "11시가 오전인가요, 오후인가요?"
+}
+
+# dateExpr
+
+오늘            => today
+내일            => tomorrow
+모레            => dayafter
+
+이번주 월요일    => this:monday
+다음주 월요일    => next:monday
+
+2026년 7월 3일   => date:2026-07-03
+8월 8일          => date:08-08
+8일              => date:08
+
+15분 후          => now+15m
+3시간 후         => now+3h
+7일 후           => now+7d
+
+오전 3시         => time:03:00
+오후 3시         => time:15:00
+18시             => time:18:00
+오전 8시반       => time:08:30
+오후 6시반       => time:18:30
+
+날짜와 시간이 함께 있으면 "+"로 연결한다.
+
+내일 오후 3시                => tomorrow+15:00
+다음주 월요일 오전 10시       => next:monday+10:00
+
+# 시간 처리
+
+실제 시간이 없는 경우:
+
+오늘
+내일
+모레
+다음주
+8월 8일
+8일
+
+=> dateAsk 하지 않는다.
+=> 날짜 표현만 resolved 한다.
+
+실제 시간이 있는 경우 다음 순서로 처리한다.
+
+1. "오전", "오후", "AM", "PM", "am", "pm",
+   "아침", "저녁", "새벽", "정오", "밤"이 있으면:
+
+   => resolved
+
+2. 위 단어가 없고 시간이 13시~23시면:
+
+   => resolved
+
+3. 위 단어가 없고 시간이 1시~12시면:
+
+   => dateAsk
+
+즉:
+
+오전 3시             => resolved / time:03:00
+오후 3시             => resolved / time:15:00
+다음주 월요일 오전 10시
+                    => resolved / next:monday+10:00
+
+3시                 => dateAsk
+내일 5시            => dateAsk
+다음주 월요일 10시   => dateAsk
+
+18시                => resolved / time:18:00
+
+"오전" 또는 "오후"가 있으면 dateAsk를 절대로 반환하지 않는다.
+
+# 수정
+
+기존 날짜·시간을 명시적으로 변경하는 경우:
+
+=> correct
+
+예:
+
+내일로             => correct / tomorrow
+7일로              => correct / date:07
+오후로             => correct / pm
+오전으로           => correct / am
+오후 3시로         => correct / time:15:00
+내일 오후 3시로    => correct / tomorrow+15:00
+
+기존 날짜와 시간의 병합은 AI가 하지 않는다.
+서버에서 처리한다.
+
+# 상대적인 기존 날짜 수정
+
+하루 뒤로          => prev+1d
+3일 뒤로           => prev+3d
+3시간 뒤로         => prev+3h
+하루 앞으로        => prev-1d
+2일 당겨줘         => prev-2d
+
+# 이전 dateAsk 응답
+
+이전 결과가 dateAsk이고 현재 입력이 이전 질문의 답변이면:
+
+이전:
+"내일 오전 3시인가요, 오후 3시인가요?"
+
+현재:
+"오후"
+
+결과:
+
+{
+  "status": "resolved",
+  "dateExpr": "tomorrow+15:00"
+}
+
+현재 입력이 이전 질문의 답변이 아닌 새로운 날짜·시간 표현이면
+현재 입력을 새로 처리한다.
+
+# 최종 결정 순서
+
+if 날짜·시간 표현이 없음:
+    none
+
+else if 기존 날짜·시간을 명시적으로 수정:
+    correct
+
+else if 실제 시간이 없음:
+    resolved
+
+else if 오전/오후 등의 시간 단어가 있음:
+    resolved
+
+else if 시간이 13시~23시:
+    resolved
+
+else:
+    dateAsk
                 `.trim()
             },
             {
                 role: "user",
                 content: JSON.stringify({
                     userMessage,
-                    aiAssistantMessage,
                     previousContext: previousDateContext
                 })
             }
@@ -7584,10 +7139,8 @@ async function requestDateExpressionFromAI(
             status: "none"
         };
     }
-
     return JSON.parse(content);
 }
-
 ////////////////////////////////////////////////////////////////////////////////
 
 function enrichKakaoAssistantResult(result: any, previousResult: any) {
@@ -7622,7 +7175,7 @@ function enrichKakaoAssistantResult(result: any, previousResult: any) {
     }
 
     if (["create", "correct"].includes(enrichedResult.action)) {
-        enrichedResult.response = buildAssistantResponse(enrichedResult);
+        enrichedResult.response = buildAssistantResponse(enrichedResult, previousResult);
     }
 
     console.log("[enrich] final =", JSON.stringify(enrichedResult, null, 2));
@@ -7635,82 +7188,116 @@ function enrichKakaoAssistantResult(result: any, previousResult: any) {
 //   "response": "내일 오후 7시 약속으로 수정했습니다."
 // }
 
-export function buildAssistantResponse(result: any): string {
+export function buildAssistantResponse(result: any, previousResult?: any): string {
     const lines: string[] = [];
 
     // 날짜
-    if (result.dateExpr) {
-        const parsed = resolveDateExpr(result.dateExpr);
-
-        if (parsed) {
-            const dateText = parsed.hasTime
-                ? formatKoreanDateTime(parsed.date)
-                : formatKoreanDate(parsed.date);
-
-            lines.push(`🗓️ ${dateText}`);
-            lines.push("");
-        }
+    if (result.dateData?.date) {
+        const date = new Date(`${result.dateData.date}T${result.dateData.time ?? "00:00"}:00`);
+        const dateText = result.dateData.time ? formatKoreanDateTime(date) : formatKoreanDate(date);
+        lines.push(`🗓️ ${dateText}`);
+        lines.push("");
     }
 
     // 제목
     if (result.title) {
-        lines.push(`📌 ${result.title}`);
+        lines.push(`📝제목 : ${result.title}`);
     }
 
-    // 할일 · 할 것
-    const categoryMap: Record<string, string> = {
-        task: "할일",
-        memo: "메모",
-        reference: "참고자료",
-        contact: "연락처"
+    // 카테고리
+    const categoryMap: Record<string, { icon: string; name: string }> = {
+        task: { icon: "✅", name: "할일 관리" },
+        memo: { icon: "🗒️", name: "메모장" },
+        reference: { icon: "📌", name: "스크랩북" },
+        contact: { icon: "👤", name: "연락처" }
     };
 
     const category = categoryMap[result.db];
     if (category) {
         lines.push(result.type
-            ? `📥 ${category} · ${result.type}`
-            : `📥 ${category}`);
+            ? `📥저장 위치 : ${category.icon} ${category.name} · ${result.type}`
+            : `📥저장 위치 : ${category.icon} ${category.name}`);
     }
 
     // 중요도
     if (result.importance) {
-        lines.push(`⭐ ${result.importance}`);
+        lines.push(`⭐중요도 : ${result.importance}`);
     }
 
     // 긴급도
     if (result.urgency) {
-        lines.push(`🚨 ${result.urgency}`);
+        lines.push(`🚨긴급도 : ${result.urgency}`);
     }
 
-    // 분류
+    // 보관함
     if (result.kinds) {
-        lines.push(`📂 ${result.kinds}`);
+        lines.push(`🗃️할일 분류 : ${result.kinds}`);
     }
 
     // 태그
     if (result.tags?.length) {
-        lines.push(`🏷️ ${result.tags.map((tag: string) => `#${tag}`).join(" ")}`);
+        lines.push(`🏷️태그 : ${result.tags.map((tag: string) => `#${tag}`).join(" ")}`);
     }
 
     if (lines.length > 0) {
         lines.push("");
     }
 
-    // 안내 문구
     switch (result.action) {
         case "create":
-            lines.push(`'${result.title}'을 ${result.type ?? category}으로 등록했습니다.`);
+            lines.push(`'${result.title}'을 ${result.type ?? category?.name}으로 등록했습니다.`);
             break;
 
-        case "correct":
+        case "correct": {
+            const previous = previousResult?.result ?? previousResult;
+            const modifiedFields: string[] = [];
+
+            if (result.title !== undefined && result.title !== previous?.title) {
+                modifiedFields.push("제목");
+            }
+
+            if (result.type !== undefined && result.type !== previous?.type) {
+                modifiedFields.push("유형");
+            }
+
+            if (result.importance !== undefined && result.importance !== previous?.importance) {
+                modifiedFields.push("중요도");
+            }
+
+            if (result.urgency !== undefined && result.urgency !== previous?.urgency) {
+                modifiedFields.push("긴급도");
+            }
+
+            if (result.kinds !== undefined && result.kinds !== previous?.kinds) {
+                modifiedFields.push("보관함");
+            }
+
+            const previousDate = previous?.dateData
+                ? `${previous.dateData.date ?? ""}T${previous.dateData.time ?? ""}`
+                : "";
+            const currentDate = result.dateData
+                ? `${result.dateData.date ?? ""}T${result.dateData.time ?? ""}`
+                : "";
+
+            if (result.dateData !== undefined && currentDate !== previousDate) {
+                modifiedFields.push("날짜");
+            }
+
+            if (result.tags !== undefined && JSON.stringify(result.tags) !== JSON.stringify(previous?.tags)) {
+                modifiedFields.push("태그");
+            }
+
             if (result.title) {
-                lines.push(`'${result.title}'을 수정했습니다.`);
+                lines.push(modifiedFields.length
+                    ? `'${result.title}'의 ${modifiedFields.join(", ")}을 수정했습니다.`
+                    : `'${result.title}'을 수정했습니다.`);
             } else if (result.dateExpr) {
                 lines.push("일정을 수정했습니다.");
             } else {
                 lines.push(result.response ?? "수정했습니다.");
             }
             break;
+        }
 
         case "delete":
             lines.push(`'${result.title}'을 삭제했습니다.`);
@@ -7765,7 +7352,7 @@ async function resposeKakaoMessage(text: string, res: any) {
 async function processAfterResponse(
     userId: string,
     entity: AssistantEntity,
-    aiResult: any,
+    aiResult: any
 ) {
     const start = Date.now();
 
@@ -9016,7 +8603,7 @@ async function processWebPageEntity(userMessage: string): Promise<AssistantEntit
     }
 }
 
-function buildAiMessageFromEntity(entity: AssistantEntity): string {
+function buildAiEntityMessage(entity: AssistantEntity): string {
     const truncate = (value?: string, maxLength = 1000): string => {
         const text = value?.trim() || "";
         return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
@@ -10332,15 +9919,15 @@ unknown
 
 //     return response.choices[0].message.content ?? '';
 // }
+
 interface AssistantContext {
+    contextId: string;
     userMessage: string;
-    aiAssistantMessage?: string;
-    result: {
-        action: string;
-        [key: string]: any;
-    };
-    createdAt: FirebaseFirestore.Timestamp;
-    contextId?: string;
+    aiEntityMessage: string;
+    entity: AssistantEntity;
+    result: any;
+    dateData?: DateProcessData;
+    createdAt?: FirebaseFirestore.Timestamp;
 }
 
 async function getLastAssistantContext(userId: string): Promise<AssistantContext | null> {

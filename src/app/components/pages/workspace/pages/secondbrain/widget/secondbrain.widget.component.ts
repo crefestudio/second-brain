@@ -139,14 +139,14 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     ) { }
 
     get isWidgetMode(): boolean {
-        return window.location.pathname.startsWith("/widget/");
+        return window.location.pathname.includes("/widget/")
     }
 
     async ngOnInit() {
         // 위젯 모드이면 주소로 userId를 가져온다. 없을 수도 있음
         if (this.isWidgetMode) {
             this.userId = this.route.snapshot.paramMap.get('userId');
-    
+
             this.route.paramMap.subscribe(params => {
                 this.userId = params.get('userId');
                 _log('widget route userId =>', this.userId);
@@ -635,7 +635,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             }
 
             this.showToast(
-                `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리는 중입니다. 잠시만 기다려주세요.`,
+                `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프 데이터를 불러오는 중입니다.`,
                 2000
             );
 
@@ -660,13 +660,17 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                 return;
             }
 
+            this.showToast(
+                `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프 데이터를 분석하는 중입니다.`,
+                2000
+            );
+
             this.state = "graph";
 
             const graphData: { nodes: Node[]; edges: Edge[] } = response;
 
             const options = {
                 autoResize: true,
-
                 nodes: {
                     shape: "dot",
                     size: 8,
@@ -676,7 +680,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                         hover: "#393E46"
                     }
                 },
-
                 edges: {
                     color: "#393E46",
                     smooth: {
@@ -685,7 +688,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                         roundness: 0.5
                     }
                 },
-
                 groups: {
                     page: {
                         shape: "image",
@@ -693,7 +695,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                         size: 8
                     }
                 },
-
                 physics: {
                     enabled: true,
                     stabilization: {
@@ -707,26 +708,26 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                         centralGravity: 0.3
                     }
                 },
-
                 interaction: {
                     hover: true,
                     tooltipDelay: 200
                 }
             };
 
-            // 기존 그래프 제거
             this.network?.destroy();
             this.network = undefined;
 
-            // 기존 데이터 초기화
             this.graphData.nodes.clear();
             this.graphData.edges.clear();
 
-            // 새 데이터 추가
             this.graphData.nodes.add(graphData.nodes);
             this.graphData.edges.add(graphData.edges);
 
-            // Angular 화면 렌더링이 끝난 뒤 그래프 생성
+            this.showToast(
+                `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 구성하는 중입니다.`,
+                2000
+            );
+
             requestAnimationFrame(() => {
                 if (!this.graphContainer?.nativeElement) {
                     return;
@@ -740,24 +741,32 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                     height: rect.height
                 });
 
+                this.showToast(
+                    `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프를 그리고 있습니다.`,
+                    2000
+                );
+
                 this.network = new Network(container, this.graphData, options);
 
                 requestAnimationFrame(() => {
                     this.network?.setSize("100%", "100%");
                     this.network?.redraw();
-                    this.network?.fit({
-                        animation: false
-                    });
+                    this.network?.fit({ animation: false });
                 });
 
-                // highlight 기능 적용
+                this.network.once("stabilized", () => {
+                    this.showToast(
+                        `<span style="color:#7fb7ff">${graphTypeName}</span> 그래프 생성이 완료되었습니다.`,
+                        2000
+                    );
+                });
+
                 this.applyHoverHighlight(
                     this.network,
                     this.graphData.nodes,
                     this.graphData.edges
                 );
 
-                // 클릭 → Notion 페이지 이동
                 this.network.on("click", (params: any) => {
                     if (!params.nodes.length) {
                         return;
@@ -774,7 +783,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                     }
                 });
 
-                // page hover → pointer
                 this.network.on("hoverNode", (params: any) => {
                     const node: any = this.graphData.nodes.get(params.node);
 
@@ -789,6 +797,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             });
         } catch (err) {
             console.error("그래프 로드 중 오류 발생:", err);
+            this.showToast("그래프를 불러오는 중 오류가 발생했습니다.", 3000);
         }
     }
 
@@ -1215,7 +1224,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
         UserService.clearLocalSession(this.userId);
     }
-    
+
     cancelConfirm() {
         this.isDisconnectConfirmOpen = false;
         this.isLogoutConfirmOpen = false;

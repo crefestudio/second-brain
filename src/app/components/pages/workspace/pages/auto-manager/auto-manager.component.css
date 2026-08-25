@@ -37,11 +37,9 @@
 
 .table-card {
   background: #1b1b1b;
-
   border: 1px solid #2d2d2d;
   border-radius: 16px;
-
-  overflow: visible;
+  overflow: hidden;
 }
 
 .service-table {
@@ -64,7 +62,6 @@
   font-weight: 600;
 
   border-bottom: 1px solid #333;
-  border-radius: 16px;
 }
 
 .service-table td {
