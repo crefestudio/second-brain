@@ -6,7 +6,6 @@ import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
 import { _log } from '../../../../../lib/cf-common/cf-common';
 
-const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-subscription',
@@ -50,21 +49,15 @@ export class SubscriptionComponent implements OnInit {
     ];
 
 
-    ngOnInit() {
-        this.updateSession();
-        this.updatePurchaseInfo();
-
+    async ngOnInit() {
+        await this.updateSession();
+        await this.updatePurchaseInfo();
     }
 
     async updatePurchaseInfo() {
-        if (this.userId) {
-            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, TEMPLATE_KEY_LIFEUP);
-        } else {
-            this.purchaseInfo = await UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
-        }
-        _log('updatePurchaseInfo userId, purchaseInfo =>', this.userId, this.purchaseInfo);
-
-        this.hasLifeupPurchase = this.purchaseInfo != null;
+        const result = await UserService.updatePurchaseInfo(this.userId);
+        this.purchaseInfo = result.purchaseInfo;
+        this.hasLifeupPurchase = result.isPurchaser;
     }
 
 

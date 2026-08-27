@@ -12,7 +12,6 @@ import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 
 import { UserService, SecondBrainLocalSession } from '../../../../../../services/user.service';
 import { _log } from '../../../../../../lib/cf-common/cf-common';
-import { NACommonService } from '../../../../../../services/common.service';
 
 
 /*
@@ -139,10 +138,11 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     ) { }
 
     get isWidgetMode(): boolean {
-        return window.location.pathname.includes("/widget/")
+        return window.location.pathname.includes("/widget")
     }
 
     async ngOnInit() {
+        document.body.classList.add('secondbrain-widget-page');
         // 위젯 모드이면 주소로 userId를 가져온다. 없을 수도 있음
         if (this.isWidgetMode) {
             this.userId = this.route.snapshot.paramMap.get('userId');
@@ -170,11 +170,24 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.userId = this.authService.getUserId();
         this.notionAccessToken = this.authService.getNotionAccessToken();
         _log('updateSession userId, notionAccessToken =>', this.userId, this.notionAccessToken);
+        this.updatePurchaseInfo()
     }
+
+    hasLifeupPurchase: boolean = false;
+    purchaseInfo: any = null;
+    async updatePurchaseInfo() {
+        if (!this.userId) { return; }
+        const result = await UserService.updatePurchaseInfo(this.userId);
+        this.purchaseInfo = result.purchaseInfo;
+        this.hasLifeupPurchase = result.isPurchaser;
+    }
+
 
     ngOnDestroy() {
         // 🔥 컴포넌트 제거 시 리스너 해제
         this.unsubscribe?.();
+        document.body.classList.remove('secondbrain-widget-page');
+
     }
 
     initEvent(userId: string) {
@@ -337,7 +350,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     private async stateProcWorkspace(): Promise<boolean> {
         await this.updateSession();
 
-        if (!this.userId) {
+        if (!this.userId || !this.hasLifeupPurchase) {
             this.state = 'connect-button';
             return false;
         }
@@ -698,7 +711,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                 physics: {
                     enabled: true,
                     stabilization: {
-                        iterations: 200
+                        iterations: 100
                     },
                     barnesHut: {
                         gravitationalConstant: -2000,

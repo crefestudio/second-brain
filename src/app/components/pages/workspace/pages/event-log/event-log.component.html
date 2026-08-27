@@ -1,6 +1,6 @@
 <div class="page-container">
   <!-- 연결되지 않은 경우 -->
-  <div class="empty-state" *ngIf="!userId">
+  <div class="empty-state" *ngIf="!userId || !hasLifeupPurchase">
     <h2>라이프봇 이용 권한이 없습니다.</h2>
 
     <p>
@@ -12,7 +12,7 @@
     </button>
   </div>
 
-  <div class="page-header" *ngIf="userId">
+  <div class="page-header" *ngIf="userId && hasLifeupPurchase">
     <div class="breadcrumb">
       <span>워크스페이스</span>
       <span>›</span>
@@ -25,7 +25,7 @@
   </div>
 
   <!-- 에이전트 필터 -->
-  <div class="agent-filter-card" *ngIf="userId">
+  <div class="agent-filter-card" *ngIf="userId && hasLifeupPurchase">
     <div class="agent-filter-list">
       <button class="agent-chip" [class.active]="selectedAgentId === ''" (click)="selectAgent('')">
         전체
@@ -60,7 +60,7 @@
   </div>
 
   <!-- 검색 -->
-  <div class="filter-card" *ngIf="userId">
+  <div class="filter-card" *ngIf="userId && hasLifeupPurchase">
     <input type="date" [(ngModel)]="startDate">
     <span>~</span>
     <input type="date" [(ngModel)]="endDate">
@@ -70,7 +70,7 @@
   </div>
 
   <!-- 테이블 -->
-  <div class="table-card" *ngIf="userId">
+  <div class="table-card" *ngIf="userId && hasLifeupPurchase">
     <table class="service-table">
       <thead>
         <tr>
@@ -149,7 +149,7 @@
       </tbody>
     </table>
   </div>
-  <div class="load-more" *ngIf="hasMore && userId" >
+  <div class="load-more" *ngIf="hasMore && userId && hasLifeupPurchase" >
     <button class="load-more-btn" (click)="loadMore()">
       더 불러오기
       <span class="arrow">▾</span>

@@ -88,6 +88,8 @@ export class AutoManagerComponent {
         this.kakaoUserId = this.authService.getKakaoUserId();
         this.notionAccessToken = this.authService.getNotionAccessToken();
 
+        this.updatePurchaseInfo()
+
         _log('updateSession memberUid, userId, notionAccessToken =>', this.memberUid, this.userId, this.kakaoUserId, this.notionAccessToken);
 
         if (!this.userId) {
@@ -96,6 +98,15 @@ export class AutoManagerComponent {
             return;
         }
     }
+
+    hasLifeupPurchase: boolean = false;
+    purchaseInfo: any = null;
+    async updatePurchaseInfo() {
+        const result = await UserService.updatePurchaseInfo(this.userId);
+        this.purchaseInfo = result.purchaseInfo;
+        this.hasLifeupPurchase = result.isPurchaser;
+    }
+
 
     async onChangeAgentEnabled(agent: any) {
         const oldValue = !agent.enabled;

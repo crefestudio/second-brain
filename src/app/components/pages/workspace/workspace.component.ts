@@ -98,14 +98,9 @@ export class WorkspaceComponent implements OnInit {
     }
 
     async updatePurchaseInfo() {
-        if (this.userId) {
-            this.purchaseInfo = await UserService.getPurchaseInfo(this.userId, TEMPLATE_KEY_LIFEUP);
-        } else {
-            this.purchaseInfo = await UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
-        }
-        _log('updatePurchaseInfo userId, purchaseInfo =>', this.userId, this.purchaseInfo);
-
-        this.hasLifeupPurchase = this.purchaseInfo != null;
+        const result = await UserService.updatePurchaseInfo(this.userId);
+        this.purchaseInfo = result.purchaseInfo;
+        this.hasLifeupPurchase = result.isPurchaser;
     }
 
 

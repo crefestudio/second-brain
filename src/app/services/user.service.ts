@@ -41,6 +41,11 @@ export interface SecondBrainLocalSession {
     accessKey: string;
 }
 
+function isWidgetMode(): boolean {
+    return window.location.pathname.includes("/widget")
+}
+
+const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 @Injectable({
@@ -56,9 +61,19 @@ export class UserService {
     private notionConnectUnsubscribe?: () => void;
 
     constructor(private http: HttpClient) { }
-    /////////////////////////////////////////////////////////////////////////////////////
-    //  firebase 직접 호출
 
+    static async updatePurchaseInfo(userId: string) {
+        let purchaseInfo: any;
+        if (isWidgetMode()) {
+            purchaseInfo = await UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
+        } else {
+            if (userId) {
+                purchaseInfo = await UserService.getPurchaseInfo(userId, TEMPLATE_KEY_LIFEUP);
+            }
+        }
+        _log('updatePurchaseInfo userId, purchaseInfo, isWidgetMode =>', userId, purchaseInfo, isWidgetMode());
+        return { purchaseInfo, isPurchaser:  purchaseInfo != null };
+    }
 
     /////////////////////////////////////////////////////////////////////////////////////
     // userId로 integration/secondbrain 연결 정보 가져오기

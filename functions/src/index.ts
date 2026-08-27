@@ -6358,7 +6358,7 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
 
 // minInstances:1 => 콜드 스타트 방지, 사용비용 발생
 // #kakao
-export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB" }, withCors(async (req, res) => {
+export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", minInstances:1 }, withCors(async (req, res) => {
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
     const user = payload?.userRequest?.user;
@@ -6828,17 +6828,22 @@ export async function processDateExpression(
         };
     }
 
-    const previousData = getPreviousDateData(previousContext);
+    const shouldUsePreviousData =
+        aiResult.status === "correct" ||
+        (isDateAsk && aiResult.status === "resolved");
+
+    const previousData = shouldUsePreviousData
+        ? getPreviousDateData(previousContext)
+        : undefined;
 
     console.log("[DATE] resolveDateResult INPUT", {
+        status: aiResult.status,
+        isDateAsk,
         dateExpr: aiResult.dateExpr,
         previousData
     });
 
-    const result = resolveDateResult(
-        aiResult,
-        previousData
-    );
+    const result = resolveDateResult(aiResult, previousData);
 
     console.log("[DATE] resolveDateResult RESULT", {
         result

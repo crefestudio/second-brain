@@ -70,12 +70,23 @@ export class EventLogComponent {
         this.memberUid = this.authService.getMemberUid();
         this.userId = this.authService.getUserId();
 
+        this.updatePurchaseInfo();
+
         if (!this.userId) {
             console.error('워크스페이스 로그인에 실패하였습니다.');
             this.errorMessage = '워크스페이스 로그인에 실패하였습니다.';
             return;
         }
     }
+
+    hasLifeupPurchase: boolean = false;
+    purchaseInfo: any = null;
+    async updatePurchaseInfo() {
+        const result = await UserService.updatePurchaseInfo(this.userId);
+        this.purchaseInfo = result.purchaseInfo;
+        this.hasLifeupPurchase = result.isPurchaser;
+    }
+
 
     onClickRefreahBtn() {
         this.logs = [];
