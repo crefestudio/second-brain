@@ -41,6 +41,20 @@ export interface SecondBrainLocalSession {
     accessKey: string;
 }
 
+export interface UserHabit {
+    id?: string;
+    icon: string;
+    name: string;
+    categories: string[];
+    days: string[];
+    time: string;
+    duration: number;
+    status: '진행중' | '멈춤';
+    notify: boolean;
+    createdAt?: Timestamp;
+    updatedAt?: Timestamp;
+}
+
 function isWidgetMode(): boolean {
     return window.location.pathname.includes("/widget")
 }
@@ -72,7 +86,7 @@ export class UserService {
             }
         }
         _log('updatePurchaseInfo userId, purchaseInfo, isWidgetMode =>', userId, purchaseInfo, isWidgetMode());
-        return { purchaseInfo, isPurchaser:  purchaseInfo != null };
+        return { purchaseInfo, isPurchaser: purchaseInfo != null };
     }
 
     /////////////////////////////////////////////////////////////////////////////////////
@@ -250,6 +264,24 @@ export class UserService {
         } catch (error) {
             console.error('sendVerificationEmail failed', error);
             return false;
+        }
+    }
+
+    async getNotionGoals(userId: string): Promise<any[]> {
+        if (!userId) return [];
+
+        try {
+            const response = await firstValueFrom(
+                this.http.get<{ success: boolean; goals: any[] }>(
+                    `${this.functionsBaseUrl}/getNotionGoals`,
+                    { params: { userId } }
+                )
+            );
+
+            return response?.success ? response.goals ?? [] : [];
+        } catch (error) {
+            console.error('getNotionGoals failed', error);
+            return [];
         }
     }
 
@@ -862,6 +894,192 @@ export class UserService {
             return false;
         }
     }
+
+    ///////////////////////////////////////////////////////////
+    // routine
+
+    static async addUserHabit(userId: string, habit: UserHabit): Promise<{ success: boolean; duplicate?: boolean; message?: string; id?: string }> {
+        if (!userId || !habit?.name || !habit?.time) {
+            return { success: false };
+        }
+
+        try {
+            const habitsRef = collection(firestore, 'users', userId, 'integrations', 'routine', 'habits');
+            const snapshot = await getDocs(habitsRef);
+
+            const [hour, minute] = habit.time.split(':').map(Number);
+            const newStart = hour * 60 + minute;
+            const newEnd = newStart + Math.max(5, habit.duration || 5);
+
+            const newDays = habit.days ?? [];
+
+            for (const doc of snapshot.docs) {
+                const existing = doc.data() as UserHabit;
+
+                if (!existing.time || !existing.days?.length) {
+                    continue;
+                }
+
+                const sameDay = newDays.some(day => existing.days.includes(day));
+                if (!sameDay) {
+                    continue;
+                }
+
+                const [existingHour, existingMinute] = existing.time.split(':').map(Number);
+                const existingStart = existingHour * 60 + existingMinute;
+                const existingEnd = existingStart + Math.max(5, existing.duration || 5);
+
+                if (newStart < existingEnd && newEnd > existingStart) {
+                    const nextTime = this.formatTime(existingEnd);
+
+                    return {
+                        success: false,
+                        duplicate: true,
+                        message: `${existing.name}과 시간이 겹칩니다. ${nextTime} 이후로 설정해주세요.`
+                    };
+                }
+            }
+
+            const name = `${habit.icon ?? ''} ${habit.name.trim()}`.trim();
+            const categories = (habit.categories ?? []).filter(category => category !== '추천');
+            const habitRef = doc(habitsRef);
+
+            await setDoc(habitRef, {
+                icon: habit.icon ?? '',
+                name,
+                categories,
+                days: habit.days ?? [],
+                time: habit.time,
+                duration: Math.max(5, habit.duration || 5),
+                status: '진행중',
+                notify: habit.notify ?? true,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+
+            return {
+                success: true,
+                id: habitRef.id
+            };
+
+        } catch (error) {
+            console.error('addUserHabit error:', error);
+            return { success: false };
+        }
+    }
+
+    private static formatTime(minutes: number): string {
+        const hour = Math.floor(minutes / 60);
+        const minute = minutes % 60;
+        const period = hour < 12 ? '오전' : '오후';
+        const displayHour = hour % 12 || 12;
+
+        return `${period} ${displayHour}시 ${minute.toString().padStart(2, '0')}분`;
+    }
+
+    static async getUserHabits(userId: string): Promise<UserHabit[]> {
+        if (!userId) return [];
+
+        try {
+            const habitsRef = collection(firestore, 'users', userId, 'integrations', 'routine', 'habits');
+            const q = query(habitsRef, orderBy('time', 'asc'));
+            const snapshot = await getDocs(q);
+
+            return snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            } as UserHabit));
+        } catch (error) {
+            console.error('getUserHabits error:', error);
+            return [];
+        }
+    }
+
+    static async updateUserHabit(userId: string, habit: UserHabit): Promise<{ success: boolean; duplicate?: boolean; message?: string }> {
+        if (!userId || !habit?.id || !habit.name || !habit.time) {
+            return { success: false };
+        }
+
+        try {
+            const habitsRef = collection(firestore, 'users', userId, 'integrations', 'routine', 'habits');
+            const snapshot = await getDocs(habitsRef);
+
+            const [hour, minute] = habit.time.split(':').map(Number);
+            const newStart = hour * 60 + minute;
+            const newEnd = newStart + Math.max(5, habit.duration || 5);
+            const newDays = habit.days ?? [];
+
+            for (const habitDoc of snapshot.docs) {
+                if (habitDoc.id === habit.id) continue;
+
+                const existing = habitDoc.data() as UserHabit;
+
+                if (!existing.time || !existing.days?.length) continue;
+
+                const sameDay = newDays.some(day => existing.days.includes(day));
+                if (!sameDay) continue;
+
+                const [existingHour, existingMinute] = existing.time.split(':').map(Number);
+                const existingStart = existingHour * 60 + existingMinute;
+                const existingEnd = existingStart + Math.max(5, existing.duration || 5);
+
+                if (newStart < existingEnd && newEnd > existingStart) {
+                    const nextTime = this.formatTime(existingEnd);
+
+                    return {
+                        success: false,
+                        duplicate: true,
+                        message: `${existing.name}과 시간이 겹칩니다. ${nextTime} 이후로 설정해주세요.`
+                    };
+                }
+            }
+
+            const name = `${habit.icon ?? ''} ${habit.name.trim()}`.trim();
+            const categories = (habit.categories ?? []).filter(category => category !== '추천');
+
+            const habitRef = doc(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                'routine',
+                'habits',
+                habit.id
+            );
+
+            await updateDoc(habitRef, {
+                icon: habit.icon ?? '',
+                name,
+                categories,
+                days: habit.days ?? [],
+                time: habit.time,
+                duration: Math.max(5, habit.duration || 5),
+                status: habit.status || '진행중',
+                notify: habit.notify ?? true,
+                updatedAt: serverTimestamp()
+            });
+
+            return { success: true };
+
+        } catch (error) {
+            console.error('updateUserHabit error:', error);
+            return { success: false };
+        }
+    }
+
+    static async deleteUserHabit(userId: string, habitId: string): Promise<boolean> {
+        if (!userId || !habitId) return false;
+
+        try {
+            const habitRef = doc(firestore, 'users', userId, 'integrations', 'routine', 'habits', habitId);
+            await deleteDoc(habitRef);
+            return true;
+        } catch (error) {
+            console.error('deleteUserHabit error:', error);
+            return false;
+        }
+    }
+
 }
 
 /**

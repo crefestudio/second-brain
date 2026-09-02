@@ -100,18 +100,17 @@
           </td>
 
           <td>
-            @if (hasLifeupPurchase && purchaseInfo.email) {
-
+            @if ( userId && hasLifeupPurchase && kakaoUserId && notionAccessToken) {
+            <span class="badge success">
+              연결됨
+            </span>
+            } @else {
+              <span class="badge pending">
+              미연결
+              </span>
             <button class="verify-btn" (click)="router.navigate(['/workspace/connect'])">
               연결 하기
             </button>
-
-            } @else {
-
-            <span class="badge pending">
-              미확인
-            </span>
-
             }
           </td>
         </tr>

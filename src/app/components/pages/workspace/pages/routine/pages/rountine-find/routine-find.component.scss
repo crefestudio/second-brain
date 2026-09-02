@@ -1,4 +1,4 @@
-.routine-page {
+.habit-page {
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -41,13 +41,13 @@
 
 /* 카드 */
 
-.routine-grid {
+.habit-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 20px;
 }
 
-.routine-card {
+.habit-card {
   background: #1b1b1b;
   border: 1px solid #2a2a2a;
   border-radius: 18px;
@@ -56,11 +56,11 @@
   transition: all 0.2s ease;
 }
 
-.routine-card:hover {
+.habit-card:hover {
   border-color: #383838;
 }
 
-.routine-header {
+.habit-header {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -68,11 +68,11 @@
   margin-bottom: 18px;
 }
 
-.routine-icon {
+.habit-icon {
   font-size: 26px;
 }
 
-.routine-name {
+.habit-name {
   font-size: 17px;
   font-weight: 600;
   color: white;
@@ -200,26 +200,26 @@
   opacity: 0.9;
 }
 
-.routine-header {
+.habit-header {
   display: flex;
   align-items: flex-start;
   gap: 10px;
 }
 
-.routine-title {
+.habit-title {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.routine-name {
+.habit-name {
   font-weight: 600;
   font-size: 20px;
   color: #f5f5f5;
 }
 
 /* 🔶 키워드 (주황) */
-.routine-tag {
+.habit-tag {
 
   display: inline-flex;
   align-items: center;

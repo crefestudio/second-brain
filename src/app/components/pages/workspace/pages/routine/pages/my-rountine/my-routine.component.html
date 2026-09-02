@@ -1,0 +1,212 @@
+<div class="Habit-page" [style.--hour-height.px]="hourHeight">
+
+    <div class="Habit-header">
+        <div>
+            <h1># 내 루틴</h1>
+            <p>매일 반복하는 습관을 한눈에 관리하세요.<br>목표를 선택하고, 목표별로 루틴을 관리해보세요.</p>
+            
+        </div>
+
+        <div class="Habit-header-actions">
+            <button type="button" class="zoom-btn" (click)="toggleCalendarZoom()"
+                [title]="'시간 높이 ' + hourHeight + 'px'">
+
+                🔍
+            </button>
+
+            <button type="button" class="add-Habit-btn" (click)="openAddHabit()">
+
+                + 습관 추가하기
+            </button>
+        </div>
+    </div>
+
+    <!-- 내 목표 -->
+    <div class="goal-section">
+        <!-- <div class="goal-title">🎯 내 목표</div> -->
+
+        <div class="goal-list">
+            <div class="goal-chip goal-all">
+                전체
+            </div>
+
+            @for(goal of goals; track goal.id) {
+            <div class="goal-chip" [class.goal-progress]="goal.status === '진행 중'"
+                [class.goal-before]="goal.status === '시작 전'">
+
+                <span class="goal-name">{{ goal.name }}</span>
+
+            </div>
+            }
+        </div>
+    </div>
+
+    <div *ngIf="isLoading" class="loading">
+        루틴을 불러오는 중입니다...
+    </div>
+
+    <div *ngIf="!isLoading" class="calendar">
+
+        <!-- 요일 헤더 -->
+        <div class="calendar-header">
+
+            <div class="time-header"></div>
+
+            <div *ngFor="let day of days" class="day-header">
+                {{ day }}
+            </div>
+
+        </div>
+
+        <!-- 캘린더 -->
+        <div class="calendar-body">
+
+            <!-- 시간 영역 -->
+            <div class="time-column">
+
+                <div *ngFor="let hour of getHours()" class="time-row">
+                    {{ getDisplayHour(hour) }}
+                </div>
+
+            </div>
+
+            <!-- 요일별 영역 -->
+            <div *ngFor="let day of days" class="day-column">
+
+                <!-- 시간선 -->
+                <div *ngFor="let hour of getHours()" class="hour-line">
+                </div>
+
+                <!-- 루틴 -->
+                <div *ngFor="let habit of getDayHabits(day)" class="Habit-card"
+                    [ngClass]="[getCategoryClass(habit), habit.status === '멈춤' ? 'Habit-paused' : '']"
+                    [style.top.px]="getHabitTop(habit)" [style.height.px]="getHabitHeight(habit)">
+
+                    <div class="Habit-content">
+
+                        <div class="Habit-title">
+                            <!-- <span class="Habit-icon">
+                                {{ Habit.icon }}
+                            </span> -->
+
+                            <span class="Habit-name">
+                                <span *ngIf="habit.notify" class="Habit-notify">⏰</span>
+                                {{ habit.name }}
+                            </span>
+                        </div>
+
+                        <!-- <div class="Habit-time">
+                            {{ habit.time }}
+                            · {{ habit.duration }}분
+                        </div> -->
+
+                    </div>
+
+                    <div class="Habit-actions">
+                        <button type="button" class="Habit-action edit" title="수정"
+                            (click)="editHabit(habit); $event.stopPropagation()">
+                            ✎
+                        </button>
+                        <button type="button" class="Habit-action delete" title="삭제"
+                            (click)="deleteHabit(habit); $event.stopPropagation()">
+                            ×
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- 수정/추가 팝업 -->
+    <div *ngIf="editingHabit" class="Habit-modal-backdrop">
+        <div class="Habit-modal">
+
+            <button type="button" class="modal-close" (click)="closeEditHabit()">×</button>
+
+            <div class="modal-header">
+                <span class="modal-icon">{{ editingHabit.icon }}</span>
+
+                <input class="modal-name" type="text" placeholder="루틴 이름을 입력하세요" [(ngModel)]="editingHabit.name">
+            </div>
+
+            <div class="days-row">
+                @for(day of days; track day) {
+                <button type="button" class="day-btn" [class.active]="isSelected(editingHabit, day)"
+                    (click)="toggleDay(editingHabit, day)">
+                    {{ day }}
+                </button>
+                }
+            </div>
+
+            <div class="input-row">
+                <div class="field">
+                    <label>시간</label>
+                    <input type="time" [(ngModel)]="editingHabit.time">
+                </div>
+
+                <div class="field">
+                    <label>소요시간</label>
+                    <select [(ngModel)]="editingHabit.duration">
+                        <option [ngValue]="5">5분</option>
+                        <option [ngValue]="10">10분</option>
+                        <option [ngValue]="15">15분</option>
+                        <option [ngValue]="30">30분</option>
+                        <option [ngValue]="60">1시간</option>
+                        <option [ngValue]="120">2시간</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="input-row">
+                <div class="field">
+                    <label>상태</label>
+                    <select [(ngModel)]="editingHabit.status">
+                        <option value="진행중">진행중</option>
+                        <option value="멈춤">멈춤</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>알림</label>
+                    <select [(ngModel)]="editingHabit.notify">
+                        <option [ngValue]="true">알림 받기</option>
+                        <option [ngValue]="false">알림 안 받기</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="button" class="save-btn" (click)="saveHabit()">
+
+                {{ editingHabit.id ? '저장하기' : '습관 추가하기' }}
+
+            </button>
+
+        </div>
+    </div>
+
+</div>
+
+
+<div class="delete-confirm-backdrop" *ngIf="isDeleteConfirmOpen" (click)="$event.stopPropagation()">
+
+    <div class="delete-confirm-box" (click)="$event.stopPropagation()">
+
+        <div class="confirm-text">
+            <strong>이 습관을 삭제하시겠습니까?</strong>
+        </div>
+
+        <div class="confirm-actions">
+            <button class="confirm-btn yes" (click)="confirmDeleteHabit()">
+                예
+            </button>
+
+            <button class="confirm-btn no" (click)="cancelDeleteHabit()">
+                아니요
+            </button>
+        </div>
+
+    </div>
+</div>

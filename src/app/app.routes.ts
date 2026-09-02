@@ -19,7 +19,6 @@ import { ServiceManagerComponent } from './components/pages/workspace/pages/serv
 import { RoutineComponent } from './components/pages/workspace/pages/routine/routine.component';
 import { RoutineFindComponent } from './components/pages/workspace/pages/routine/pages/rountine-find/routine-find.component';
 import { MyRoutineComponent } from './components/pages/workspace/pages/routine/pages/my-rountine/my-routine.component';
-import { RoutineCreateComponent } from './components/pages/workspace/pages/routine/pages/rountine-create/rountine-create.component';
 import { AutoManagerComponent } from './components/pages/workspace/pages/auto-manager/auto-manager.component';
 
 import { MyPageComponent } from './components/pages/myPage/myPage.component';
@@ -92,10 +91,6 @@ export const routes: Routes = [
           {
             path: 'myroutine',
             component: MyRoutineComponent
-          },
-          {
-            path: 'create',
-            component: RoutineCreateComponent
           }
         ]
       },

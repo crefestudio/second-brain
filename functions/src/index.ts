@@ -1,5 +1,8 @@
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { logger } from 'firebase-functions';
+
 import { Resend } from "resend";
 import * as admin from "firebase-admin";
 import "dotenv/config";
@@ -64,6 +67,12 @@ export interface EventPayload {
     description?: string;
 }
 
+
+interface NotionGoal {
+    id: string;
+    name: string;
+    status: string;
+}
 // export interface PreparedAssistantInput {
 //     aiInput: string;
 //     entity: AssistantEntity;
@@ -309,7 +318,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
                 notionToken.duplicated_template_id
         });
 
-        const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag"];
+        const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact"];
         const dbMap = await NotionService.updateTemplateDbs(
             notionToken.access_token,
             dbNames
@@ -548,6 +557,7 @@ class UserService {
             expiresAt: expiresAt.toDate().toISOString(),
         };
     }
+
 }
 
 export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
@@ -1586,6 +1596,7 @@ class NotionService {
                     targetDatabaseId
                 );
 
+                // db변경
                 if (sourceDatabaseId !== targetDatabaseId) {
                     await notion.pages.move({
                         page_id: pageId,
@@ -1723,8 +1734,8 @@ class NotionService {
                             "연락처": "분홍색",
                             "계정 정보": "초록색",
                             "필기": "보라색",
-                            "개인 문서": "노란색",
-                            "독서 기록": "보라색"
+                            "개인 문서": "분홍색",
+                            "사진 메모": "보라색"
                         };
 
                         const color = colorMap[aiResult.type];
@@ -2780,6 +2791,129 @@ class NotionService {
 
     //     return children;
     // }
+
+    /////////////////////////////////////
+    // #routine
+
+    // static async createNotionHabit(
+    //     userId: string,
+    //     habitId: string,
+    //     habit: any,
+    //     now: Date
+    // ) {
+    //     const notionToken = await getNotionAccessToken(userId);
+
+    //     if (!notionToken) {
+    //         logger.warn(`[Habit] Notion 연결 없음: ${userId}`);
+    //         return;
+    //     }
+
+    //     const scheduledAt = createKoreaDate(now, habit.time);
+
+    //     const exists = await findExistingNotionHabit(
+    //         notionToken,
+    //         habitId,
+    //         scheduledAt
+    //     );
+
+    //     if (exists) {
+    //         logger.info(`[Habit] 이미 생성됨: ${habitId}`);
+    //         return;
+    //     }
+
+    //     await createNotionHabitPage(notionToken, {
+    //         name: habit.name,
+    //         date: scheduledAt,
+    //         habitId,
+    //         duration: habit.duration ?? 5,
+    //         categories: habit.categories ?? []
+    //     });
+
+    //     logger.info(`[Habit] 생성 완료: ${habit.name}`);
+    // }
+
+    static async getNotionGoals(userId: string): Promise<NotionGoal[]> {
+        if (!userId) {
+            throw new Error('Missing userId');
+        }
+
+        const userDoc = await db.collection('users').doc(userId).get();
+        const accessToken = userDoc.data()?.notionAccessToken;
+
+        if (!accessToken) {
+            throw new Error('NOTION_NOT_CONNECTED');
+        }
+
+        const notion = new Client({ auth: accessToken });
+
+        const databaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            'goal'
+        );
+
+        const dataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            databaseId
+        );
+
+        console.log(`[NotionGoal] databaseId=${databaseId}`);
+        console.log(`[NotionGoal] dataSourceId=${dataSourceId}`);
+
+        const response = await notion.dataSources.query({
+            data_source_id: dataSourceId
+        });
+
+        const goals: NotionGoal[] = [];
+
+        for (const page of response.results) {
+            if (!('properties' in page)) {
+                continue;
+            }
+
+            const properties = page.properties;
+
+            const nameProperty = Object.values(properties).find(
+                property => property.type === 'title'
+            );
+
+            const statusProperty = Object.values(properties).find(
+                property => property.type === 'status' || property.type === 'select'
+            );
+
+            if (!nameProperty || !('title' in nameProperty)) {
+                continue;
+            }
+
+            const name = nameProperty.title
+                .map((item: any) => item.plain_text)
+                .join('')
+                .trim();
+
+            let status = '';
+
+            if (statusProperty?.type === 'status') {
+                status = statusProperty.status?.name ?? '';
+            }
+
+            if (statusProperty?.type === 'select') {
+                status = statusProperty.select?.name ?? '';
+            }
+
+            if (!name || status === '완료') {
+                continue;
+            }
+
+            goals.push({
+                id: page.id,
+                name,
+                status
+            });
+        }
+
+        return goals;
+    }
+    
 }
 
 
@@ -4326,7 +4460,7 @@ export const KakaoAgentPrompt = `
 
 1. 사용자의 목적을 이해합니다.
 2. action(create / correct / delete / help / ask)을 우선 결정합니다.
-3. action이 create인 경우에만 저장 유형(Task / Memo / Reference/ contact)을 판단합니다.
+3. action이 create인 경우에만 저장 유형(Task / Memo / Reference/ Contact)을 판단합니다.
 4. action=create가 아니라면 create 관련 규칙은 무시합니다.
 5. 선택된 유형의 세부 규칙을 적용합니다.
 6. JSON 객체를 생성합니다.
@@ -4383,7 +4517,7 @@ export const KakaoAgentPrompt = `
 
 action=create인 경우에만 아래 규칙을 적용합니다.
 
-1. 저장 유형(Task / Memo / Reference)을 결정합니다.
+1. 저장 유형(Task / Memo / Reference/ Contact)을 결정합니다.
 2. 해당 유형의 세부 규칙을 적용합니다.
 3. title, response 등 공통 규칙을 적용합니다.
 
@@ -4403,11 +4537,11 @@ Task에는 하나의 행동뿐 아니라 준비물, 체크리스트, 구매 목�
 
 Memo
 사용자가 직접 생성하거나 관리하는 정보
-예) 내 생각, 내 기록, 내 아이디어, 내 계정 정보
+예) 내 생각, 내 기록, 내 아이디어, 내 계정 정보, 내 필기, 내 개인문서
 
 Reference
 나중에 참고하기 위해 저장하는 정보
-예) 링크, 기사, 논문, 연락처
+예) 링크, 기사, 논문
 
 먼저 저장 목적을 판단한 후 저장 유형을 결정합니다.
 
@@ -4483,8 +4617,9 @@ Reference
 규칙:
 
 * 중요 관련 언급이 있을 때만 포함한다.
-* 언급이 없으면 필드를 출력하지 않는다.
-* 중요도는 사용자가 현재 메시지에서 중요도를 직접 표현한 경우에만 출력한다. 이전 대화, 일반적인 상식, AI의 판단, 일정의 성격 등을 근거로 임의로 "중요" 또는 "매우 중요"를 생성하지 않는다. 현재 메시지에 중요도 표현이 없으면 importance 필드를 반드시 생략한다.
+* 현재 사용자 입력에 중요도 표현이 없으면 importance 필드를 출력하지 않는다.
+* action이 correct가 아닌 경우, 직전 분류 결과의 importance를 참고하거나 상속하지 않는다.
+* 현재 사용자 입력의 내용, 일정의 성격, AI의 판단을 근거로 중요도를 추론하지 않는다.
 * "중요", "꼭", "반드시", "우선" → "중요"
 * "매우 중요", "최우선", "절대 잊지 말기" → "매우 중요"
 
@@ -4532,14 +4667,13 @@ dateExpr를 판단하거나 변경하지 않는다.
 사용자와 관계가 가까운 정보이다.
 사용자가 직접 생성했거나, 관리하거나, 기억해야 하는 정보를 저장한다.
 
-a.type: 아이디어, 계정 정보, 연락처, 필기, 개인 문서, 독서 메모
+a.type: 아이디어, 계정 정보, 필기, 개인 문서, 사진 메모
 
 아이디어: 사용자가 직접 만든 생각, 계획, 발상, 의견, 감상, 회고 등 개인적인 지식과 생각을 저장하는 메모
 계정 정보 : 서비스 계정, 로그인 정보, 인증 정보
-연락처 : 명함, 전화번호, 주소, 사람과의 연락 정보
 필기 : 사용자가 직접 작성하거나 참여하여 생성한 필기, 화이트보드, 강의 노트, 회의 메모
 개인 문서 : 사용자와 직접 관련된 문서, 예: 영수증, 병원 기록, 계약서, 고지서 등
-독서 메모 : 사용자가 읽고 있는 책의 발췌, 메모, 감상
+사진 메모 : 내가 찍은 내 사진, 일상 사진, 참고로 캡쳐한 사진이 아닌 경우, 대중적으로 알려진 얼굴이 아닌 내 얼굴, 지인 얼굴의 사진
 
 * 중요 규칙
 - 위 메모의 type이 명확할 때만 memo로 분류하고 모호하면 reference로 분류한다.
@@ -4562,15 +4696,14 @@ a.type: 아이디어, 계정 정보, 연락처, 필기, 개인 문서, 독서 �
  "넷플릭스 해지" → Task
  "카카오톡 탈퇴" → Task
  "노션 요금제 변경" → Task
- "타입캐스트 계정 이메일은 abc@example.com" → Memo - 계정 정보
- "넷플릭스 로그인 아이디는 abc@example.com" → Memo - 계정 정보
+ "타입캐스트 계정 이메일 abc@example.com" → Memo - 계정 정보
+ "넷플릭스 로그인 아이디 abc@example.com" → Memo - 계정 정보
 
 - type은 1개 필수
 - type 중에 해당하는 경우 1개 이상을 경우 예외적으로 2개까지만 가능
 
 c.importance: 중요, 매우 중요
-- 중요 관련 언급이 있을 때만 포함한다.
-- 언급이 없으면 필드를 출력하지 않는다.
+- importance는 task.importance의 판단 규칙과 동일하게 적용한다.
 
 d.tags: 반드시 tags 규칙에 따라 판단한다.
 
@@ -4593,8 +4726,7 @@ d.tags: 반드시 tags 규칙에 따라 판단한다.
 
 b.type: 이미지, 동영상, 글, 북마크
 c.importance: 중요, 매우 중요
-- 중요 관련 언급이 있을 때만 포함한다.
-- 언급이 없으면 필드를 출력하지 않는다.importance: 중요, 매우 중요
+- importance는 task.importance의 판단 규칙과 동일하게 적용한다.
 d.tags: 반드시 tags 규칙에 따라 판단한다.
 
 출력 예시:
@@ -5301,11 +5433,11 @@ correct는 직전 분류 결과를 기준으로 변경사항만 반환한다.
 
 ## 저장 유형 판단
 
-이미지 여부가 아니라 저장 목적을 기준으로 Task / Memo / Reference를 판단한다.
+이미지 여부가 아니라 저장 목적을 기준으로 Task / Memo / Reference/ contact를 판단한다.
 
 예)
 
-명함 → Memo - 연락처
+명함 → contact - 연락처
 
 영수증 → Memo - 개인 문서
 
@@ -5488,7 +5620,7 @@ date: ${dateResult.data!.date}${dateResult.data!.time
             ? `\ntime: ${dateResult.data!.time}`
             : ""}
 
-중요:
+규칙:
 - 위 날짜와 시간은 날짜 처리 전용 AI에서 이미 확정한 최종 값이다.
 - 날짜와 시간을 다시 판단하거나 변경하지 않는다.
 - 위 값이 존재하면 반드시 결과의 data.date와 data.time에 그대로 사용한다.
@@ -5496,7 +5628,6 @@ date: ${dateResult.data!.date}${dateResult.data!.time
         : "";
 
     let userPrompt: string;
-
     if (previousResult?.result?.action === "ask") {
         userPrompt = `
 [이전 요청]
@@ -5511,9 +5642,6 @@ ${aiEntityMessage}
 ` : ""}
 
 ${dateContext}
-
-[기존 태그]
-${tagCache.join(", ") || "(없음)"}
 
 현재 입력은 이전 요청에 대한 추가 답변이다.
 이전 요청과 현재 입력을 함께 판단하여 요청을 완성한다.
@@ -5530,18 +5658,23 @@ ${previousResult ? `
 ${previousResult.userMessage}
 
 [직전 분류 결과]
+※ correct인 경우에만 참고한다. create인 경우 무시한다.
+
 ${JSON.stringify(previousResult.result, null, 2)}
 ` : ""}
 
 ${dateContext}
 
-[기존 태그]
-${tagCache.join(", ") || "(없음)"}
-
 [현재 사용자 입력]
 ${currentInput}
 `;
     }
+
+    userPrompt += `
+
+[기존 태그]
+아이디어, 계정정보, 필기, 개인 문서, ${tagCache.join(", ") || "(없음)"}
+`;
 
     console.log("requestKakaoAssistantActionFromAI", {
         userMessage,
@@ -6358,7 +6491,7 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
 
 // minInstances:1 => 콜드 스타트 방지, 사용비용 발생
 // #kakao
-export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", minInstances:1 }, withCors(async (req, res) => {
+export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", minInstances: 1 }, withCors(async (req, res) => {
     const payload = req.body;
     const utterance = payload?.userRequest?.utterance?.trim() ?? '';
     const user = payload?.userRequest?.user;
@@ -6451,46 +6584,49 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
 })
 );
 
-export const handleKakaoWebhookQueue = onDocumentCreated(
-    "users/{userId}/integrations/kakao-capture/webhook_queue/{jobId}",
-    async (event) => {
-        const snapshot = event.data;
-        if (!snapshot) return;
 
-        const data = snapshot.data();
-        const { userId, jobId } = event.params;
+export const handleKakaoWebhookQueue = onDocumentCreated({
+    document: "users/{userId}/integrations/kakao-capture/webhook_queue/{jobId}",
+    minInstances: 1,
+    memory: "512MiB"
+}, async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
 
-        console.log("[KAKAO QUEUE] start", { userId, jobId });
+    const data = snapshot.data();
+    const { userId, jobId } = event.params;
 
-        try {
-            await processKakaoAgent(
-                userId,
-                data.utterance,
-                data.callbackUrl,
-                jobId
-            );
+    console.log("[KAKAO QUEUE] start", { userId, jobId });
 
-            await snapshot.ref.delete();
+    try {
+        await processKakaoAgent(
+            userId,
+            data.utterance,
+            data.callbackUrl,
+            jobId
+        );
 
-            console.log("[KAKAO QUEUE] success", {
-                userId,
-                jobId
-            });
+        await snapshot.ref.delete();
 
-        } catch (error) {
-            console.error("[KAKAO QUEUE] ERROR", {
-                userId,
-                jobId,
-                error
-            });
+        console.log("[KAKAO QUEUE] success", {
+            userId,
+            jobId
+        });
 
-            await snapshot.ref.update({
-                status: "error",
-                error: String(error),
-                updatedAt: Date.now()
-            });
-        }
+    } catch (error) {
+        console.error("[KAKAO QUEUE] ERROR", {
+            userId,
+            jobId,
+            error
+        });
+
+        await snapshot.ref.update({
+            status: "error",
+            error: String(error),
+            updatedAt: Date.now()
+        });
     }
+}
 );
 
 function logKakaoRequest(
@@ -9285,7 +9421,7 @@ export async function analyzeImageFromAI(
 절대 이름, 회사, 가격, 저자, 상품명 등의 정보를 별도 필드로 만들지 않는다.
 그 정보는 OCR 원문에만 포함한다.
 
-절대 행동 판단(task/memo/reference 등)을 하지 않는다.
+절대 행동 판단(task/memo/reference/contact 등)을 하지 않는다.
 절대 실행/저장/분류 의도를 판단하지 않는다.
 
 반드시 JSON만 출력한다.
@@ -9581,6 +9717,7 @@ objects와 entityType은 동일한 의미가 아니다.
 task-like
 memo-like
 reference-like
+contact-like
 unknown
 
 사용자의 행동 의도나 저장 의도를 판단하지 않는다.
@@ -9628,7 +9765,7 @@ unknown
             ? result.objects.filter((item: any) => typeof item === "string")
             : [],
         context: typeof result.context === "string" ? result.context : "",
-        hint: ["task-like", "memo-like", "reference-like", "unknown"].includes(result.hint)
+        hint: ["task-like", "memo-like", "reference-like", "contact-like", "unknown"].includes(result.hint)
             ? result.hint
             : "unknown",
         analysis: {
@@ -10678,3 +10815,143 @@ async function releaseKakaoProcessingLock(userId: string, jobId: string) {
         });
     });
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+
+export const createDailyHabits = onSchedule({
+    schedule: '0 4 * * *',
+    timeZone: 'Asia/Seoul',
+    region: 'asia-northeast3'
+}, async () => {
+    const now = new Date();
+
+    const koreaNow = new Date(
+        now.toLocaleString('en-US', {
+            timeZone: 'Asia/Seoul'
+        })
+    );
+
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    const today = days[koreaNow.getDay()];
+
+    const usersSnapshot = await db.collection('users').get();
+
+    for (const userDoc of usersSnapshot.docs) {
+        try {
+            await RoutineService.createDailyHabits(
+                userDoc.id,
+                today
+            );
+        } catch (error) {
+            console.error(
+                `[Habit] ${userDoc.id} 처리 실패`,
+                error
+            );
+        }
+    }
+});
+
+export const testCreateDailyHabits = onRequest(withCors(async (req, res) => {
+    try {
+        const now = new Date();
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const today = days[now.getDay()];
+
+        const usersSnapshot = await db.collection('users').get();
+
+        for (const userDoc of usersSnapshot.docs) {
+            await RoutineService.createDailyHabits(userDoc.id, today);
+        }
+
+        res.json({
+            success: true,
+            today
+        });
+    } catch (error) {
+        logger.error(error);
+        res.status(500).json({
+            success: false
+        });
+    }
+}));
+
+
+// #rountine
+class RoutineService {
+    static async createDailyHabits(userId: string, today: string) {
+        if (!userId) {
+            throw new Error('Missing userId');
+        }
+
+        const habitsRef = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('routine')
+            .collection('habits');
+
+        const snapshot = await habitsRef
+            .where('status', '==', '진행중')
+            .get();
+
+        for (const habitDoc of snapshot.docs) {
+            const habit = habitDoc.data();
+
+            if (!habit.days?.includes(today)) {
+                continue;
+            }
+
+            console.log('[Habit] 생성 대상:', habit.name);
+
+            // 여기서 Notion Habit 생성
+        }
+    }
+}
+
+//   await writeUserEvent(userId, {
+//             agentId: AgentId.KAKAO_CAPTURE,
+//             status: "completed",
+//             eventTitle: `${aiResult.db} ${aiResult.action === "create" ? "생성" : "수정"}`,
+//             description: [
+//                 `action = ${aiResult.action}`,
+//                 `db = ${aiResult.db}`,
+//                 `pageId = ${pageId ?? "-"}`,
+//                 `title = ${aiResult.title ?? "-"}`,
+//                 `type = ${aiResult.type ?? "-"}`,
+//                 aiResult.kinds ? `kinds = ${aiResult.kinds}` : null,
+//                 aiResult.tags?.length ? `tags = ${aiResult.tags.join(", ")}` : null,
+//                 aiResult.dateExpr ? `date = ${aiResult.dateExpr}` : null,
+//                 entity?.type ? `entity = ${entity.type}` : null
+//             ]
+//                 .filter(Boolean)
+//                 .join("\n")
+//         });
+
+export const getNotionGoals = onRequest(withCors(async (req, res) => {
+    try {
+        const userId = req.query.userId as string;
+
+        if (!userId) {
+            res.status(400).json({
+                success: false,
+                message: 'Missing userId'
+            });
+            return;
+        }
+
+        const goals = await NotionService.getNotionGoals(userId);
+
+        res.json({
+            success: true,
+            goals
+        });
+
+    } catch (error) {
+        console.error('[getNotionGoals] error:', error);
+
+        res.status(500).json({
+            success: false
+        });
+    }
+}));

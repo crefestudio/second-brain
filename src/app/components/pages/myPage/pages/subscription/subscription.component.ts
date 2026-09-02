@@ -20,6 +20,8 @@ export class SubscriptionComponent implements OnInit {
 
     memberUid: string = '';
     userId: string = '';
+    kakaoUserId: string = '';
+    notionAccessToken: string = '';
 
     showPurchaseDetail = false;
     showDownload = false;
@@ -65,6 +67,8 @@ export class SubscriptionComponent implements OnInit {
         await this.authService.updateSession();
         this.memberUid = this.authService.getMemberUid();
         this.userId = this.authService.getUserId();
+        this.kakaoUserId = this.authService.getKakaoUserId();
+        this.notionAccessToken = this.authService.getNotionAccessToken();
 
         if (!this.userId) {
             console.error('사용자를 찾을 수 없습니다.');

@@ -3,7 +3,22 @@ import { Component } from '@angular/core';
 @Component({
     selector: 'app-unauthorized',
     template: `
-        <div class="unauthorized-container">
+    <div class="unauthorized-container">
+
+            <div class="icon">
+                🚧
+            </div>
+
+            <h2>
+                공사중
+            </h2>
+
+            <p>
+                Notionable App은 제작중입니다. 조금만 기다려주세요.
+            </p>
+
+        </div>
+        <!-- <div class="unauthorized-container">
 
             <div class="icon">
                 🔒
@@ -17,7 +32,7 @@ import { Component } from '@angular/core';
                 Notionable App은 회원 전용 서비스입니다.
             </p>
 
-        </div>
+        </div> -->
     `,
     styles: [`
         :host {

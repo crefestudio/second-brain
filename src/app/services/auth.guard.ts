@@ -8,27 +8,17 @@ export const memberGuard: CanActivateFn = () => {
         return true;
     }
 
+    const testIds = [
+        'toto791@gmail.com',
+        'crefestudio@gmail.com',
+        'mnmlogg@gmail.com'
+    ];
+
     const memberUid = localStorage.getItem('member_uid')?.trim();
 
-    if (memberUid) {
+    if (memberUid /*&& testIds.includes(memberUid)*/) {
         return true;
     }
 
     return router.createUrlTree(['/unauthorized']);
 };
-
-// import { AuthService } from './auth.service';
-// export const workspaceGuard: CanActivateFn = () => {
-//     const router = inject(Router);
-//     const auth = inject(AuthService);
-
-//     if (window.location.hostname !== 'app.notionable.net') {
-//         return true;
-//     }
-
-//     if (auth.getUserId()) {
-//         return true;
-//     }
-
-//     return router.createUrlTree(['/unauthorized']);
-// };
