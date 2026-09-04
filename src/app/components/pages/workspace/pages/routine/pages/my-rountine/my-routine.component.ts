@@ -6,6 +6,7 @@ import { _log } from '../../../../../../../lib/cf-common/cf-common';
 import { AuthService } from '../../../../../../../services/auth.service';
 import { ToastService } from '../../../../../../../services/toast.service';
 import { UserService, UserHabit } from '../../../../../../../services/user.service';
+import { RouterLink } from '@angular/router';
 
 interface NotionGoal {
     id: string;
@@ -16,13 +17,18 @@ interface NotionGoal {
 @Component({
     selector: 'app-my-routine',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, RouterLink
+],
     templateUrl: './my-routine.component.html',
     styleUrls: ['./my-routine.component.scss']
 })
 export class MyRoutineComponent implements OnInit {
 
     isLoading = true;
+
+    habits: UserHabit[] = [];
+    filteredHabits: UserHabit[] = [];
+    selectedGoal = '';
 
     isDeleteConfirmOpen = false;
     deleteTargetHabit: UserHabit | null = null;
@@ -32,7 +38,6 @@ export class MyRoutineComponent implements OnInit {
     kakaoUserId: string = '';
     notionAccessToken: string = '';
 
-    habits: UserHabit[] = [];
 
     days = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -83,12 +88,19 @@ export class MyRoutineComponent implements OnInit {
             await this.updateSession();
 
             if (this.userId) {
-                await this.loadHabits();
                 await this.loadGoals();
+                await this.loadHabits();
             }
         } finally {
             this.isLoading = false;
         }
+    }
+
+    async loadHabits() {
+        this.habits = await UserService.getUserHabits(this.userId);
+        this.refreshFilteredHabits();
+
+        _log('loadHabits =>', this.habits);
     }
 
     async loadGoals() {
@@ -108,6 +120,17 @@ export class MyRoutineComponent implements OnInit {
         }
     }
 
+    selectGoal(goalId: string): void {
+        this.selectedGoal = goalId;
+        this.refreshFilteredHabits();
+    }
+
+    private refreshFilteredHabits(): void {
+        this.filteredHabits = this.selectedGoal
+            ? this.habits.filter(habit => habit.goalId === this.selectedGoal)
+            : this.habits;
+    }
+
     async updateSession() {
         await this.authService.updateSession();
 
@@ -125,11 +148,6 @@ export class MyRoutineComponent implements OnInit {
         );
     }
 
-    async loadHabits() {
-        this.habits = await UserService.getUserHabits(this.userId);
-
-        _log('loadHabits =>', this.habits);
-    }
 
     getHours(): number[] {
         const hours: number[] = [];
@@ -148,7 +166,7 @@ export class MyRoutineComponent implements OnInit {
 
 
     getDayHabits(day: string): UserHabit[] {
-        return this.habits.filter(habit =>
+        return this.filteredHabits.filter(habit =>
             habit.days?.includes(day) &&
             this.isValidTime(habit.time)
         );
@@ -170,23 +188,24 @@ export class MyRoutineComponent implements OnInit {
         return Math.max(24, duration * this.hourHeight / 60);
     }
 
-    getCategoryClass(habit: UserHabit): string {
-        const category = this.categories.find(category =>
-            habit.categories?.includes(category)
-        );
+    // getCategoryClass(habit: UserHabit): string {
+    //     const category = this.categories.find(category =>
+    //         habit.categories?.includes(category)
+    //     );
 
-        if (!category) {
-            return 'category-default';
-        }
+    //     if (!category) {
+    //         return 'category-default';
+    //     }
 
-        return 'category-' + category
-            .replace(/\s/g, '-')
-            .toLowerCase();
-    }
+    //     return 'category-' + category
+    //         .replace(/\s/g, '-')
+    //         .toLowerCase();
+    // }
 
     editHabit(habit: UserHabit) {
         this.editingHabit = {
             ...habit,
+            goalId: habit.goalId ?? '',
             name: habit.name.replace(`${habit.icon ?? ''} `, '')
         };
     }
@@ -266,13 +285,14 @@ export class MyRoutineComponent implements OnInit {
 
     openAddHabit() {
         this.editingHabit = {
-            icon: '🔄',
+            goalId: '',
+            icon: '',
             name: '',
             categories: [],
-            days: [...this.days],
-            time: '09:00',
-            duration: 5,
-            status: '진행중',
+            days: [],
+            time: '07:00',
+            duration: 30,
+            status: '진행 중',
             notify: true
         };
     }
@@ -335,4 +355,69 @@ export class MyRoutineComponent implements OnInit {
         }
     }
 
+    getHabitGoalClass(habit: UserHabit): string {
+        if (!habit.goalId) {
+            return 'Habit-goal-default';
+        }
+
+        const index = this.goals.findIndex(goal => goal.id === habit.goalId);
+
+        return index >= 0 ? `Habit-goal-${index % this.goalColors.length}` : 'Habit-goal-default';
+    }
+
+    goalColors = [
+        '#60a5fa',
+        '#4ade80',
+        '#fbbf24',
+        '#c084fc',
+        '#fb7185',
+        '#38bdf8',
+        '#f97316',
+        '#818cf8',
+        '#2dd4bf',
+        '#e879f9',
+        '#a3e635',
+        '#f87171'
+    ];
+
+    getGoalColor(index: number): string {
+        return this.goalColors[index % this.goalColors.length];
+    }
+
+    async onCreateDailyHabits(): Promise<void> {
+        if (!this.userId) {
+            return;
+        }
+
+        const result = await this.userService.createMyDailyHabitsWithUserId(this.userId);
+
+        if (!result.success) {
+            ToastService.error('습관 추가에 실패했습니다.');
+            return;
+        }
+
+        if (result.createdCount > 0 && result.existingCount > 0) {
+            ToastService.show(
+                `새 습관 ${result.createdCount}개가 추가되었습니다.\n` +
+                `동일한 습관 ${result.existingCount}개는 이미 있어 새로 추가하지 않았습니다.`
+            );
+
+        } else if (result.createdCount > 0) {
+            ToastService.show(
+                `새 습관 ${result.createdCount}개가 추가되었습니다.`
+            );
+
+        } else if (result.existingCount > 0) {
+            ToastService.show(
+                `이미 동일한 ${result.existingCount}개 습관이 있어 새로 추가하지 않았습니다.`
+            );
+
+        } else {
+            ToastService.show(
+                '추가할 습관이 없습니다.'
+            );
+        }
+    }
 }
+
+

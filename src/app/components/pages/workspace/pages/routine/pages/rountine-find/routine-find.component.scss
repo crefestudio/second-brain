@@ -22,7 +22,7 @@
 
   border-radius: 999px;
 
-  padding: 10px 16px;
+  padding: 6px 12px;
 
   cursor: pointer;
 
@@ -92,7 +92,7 @@
   width: 34px;
   height: 34px;
 
-  border-radius: 50%;
+  border-radius: 30%;
 
   border: 1px solid #333;
 
@@ -103,16 +103,22 @@
 }
 
 
-.day-btn.active {
-  background: #2dd4bf;
-  color: #0b0f14;
-  border-color: #2dd4bf;
-}
+// .day-btn.active {
+//   background: #2dd4bf;
+//   color: #0b0f14;
+//   border-color: #2dd4bf;
+// }
+
+// .day-btn.active {
+//   background: #0f766e;
+//   color: #ffffff;
+//   border-color: #0f766e;
+// }
 
 .day-btn.active {
-  background: #0f766e;
-  color: #ffffff;
-  border-color: #0f766e;
+    background: rgba(45, 212, 191, 0.12);
+    color: #5eead4;
+    border-color: rgba(45, 212, 191, 0.3);
 }
 
 

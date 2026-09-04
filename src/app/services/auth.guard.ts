@@ -16,7 +16,7 @@ export const memberGuard: CanActivateFn = () => {
 
     const memberUid = localStorage.getItem('member_uid')?.trim();
 
-    if (memberUid /*&& testIds.includes(memberUid)*/) {
+    if (memberUid && testIds.includes(memberUid)) {
         return true;
     }
 

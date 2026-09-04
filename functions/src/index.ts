@@ -15,6 +15,7 @@ import { customAlphabet } from 'nanoid';
 
 import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 
 import { AssistantEntity, TextEntity, WebPageEntity, ImageEntity, ContactEntity, YoutubeEntity, ProductEntity, BookEntity } from './services/assistant-entity';
 import { WebPageAnalyzer } from './services/web-page-analyzer';
@@ -50,7 +51,8 @@ const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "http
 
 export enum AgentId {
     SECOND_BRAIN = 'secondbrain',
-    KAKAO_CAPTURE = 'kakao-capture'
+    KAKAO_CAPTURE = 'kakao-capture',
+    ROUTINE = 'routine'
 }
 
 export type EventStatus =
@@ -2794,43 +2796,209 @@ class NotionService {
 
     /////////////////////////////////////
     // #routine
+    static async createNotionHabit(
+        userId: string,
+        habit: UserHabit,
+        todayDate: string
+    ): Promise<{
+        created: boolean;
+        pageId: string;
+    }> {
+        logger.info('[NotionHabit] ===== 시작 =====', {
+            userId,
+            habitId: habit.id,
+            name: habit.name,
+            goalId: habit.goalId,
+            time: habit.time,
+            duration: habit.duration,
+            days: habit.days,
+            status: habit.status,
+            notify: habit.notify
+        });
 
-    // static async createNotionHabit(
-    //     userId: string,
-    //     habitId: string,
-    //     habit: any,
-    //     now: Date
-    // ) {
-    //     const notionToken = await getNotionAccessToken(userId);
+        const userDoc = await db
+            .collection('users')
+            .doc(userId)
+            .get();
 
-    //     if (!notionToken) {
-    //         logger.warn(`[Habit] Notion 연결 없음: ${userId}`);
-    //         return;
-    //     }
+        logger.info('[NotionHabit] 사용자 조회 완료', {
+            userId,
+            exists: userDoc.exists
+        });
 
-    //     const scheduledAt = createKoreaDate(now, habit.time);
+        const accessToken = userDoc.data()?.notionAccessToken;
 
-    //     const exists = await findExistingNotionHabit(
-    //         notionToken,
-    //         habitId,
-    //         scheduledAt
-    //     );
+        logger.info('[NotionHabit] accessToken 확인', {
+            exists: !!accessToken
+        });
 
-    //     if (exists) {
-    //         logger.info(`[Habit] 이미 생성됨: ${habitId}`);
-    //         return;
-    //     }
+        if (!accessToken) {
+            logger.error('[NotionHabit] Notion 연결 없음', {
+                userId
+            });
 
-    //     await createNotionHabitPage(notionToken, {
-    //         name: habit.name,
-    //         date: scheduledAt,
-    //         habitId,
-    //         duration: habit.duration ?? 5,
-    //         categories: habit.categories ?? []
-    //     });
+            throw new Error('NOTION_NOT_CONNECTED');
+        }
 
-    //     logger.info(`[Habit] 생성 완료: ${habit.name}`);
-    // }
+        const notion = new Client({
+            auth: accessToken
+        });
+
+        const databaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            'habit'
+        );
+
+        const dataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            databaseId
+        );
+
+        // 중복 확인
+        if (habit.id) {
+
+            logger.info('[NotionHabit] 중복 확인 시작', {
+                habitId: habit.id
+            });
+
+            const existing = await notion.dataSources.query({
+                data_source_id: dataSourceId,
+                filter: {
+                    property: 'habitId',
+                    rich_text: {
+                        equals: habit.id
+                    }
+                }
+            });
+
+            logger.info('[NotionHabit] 중복 확인 완료', {
+                habitId: habit.id,
+                count: existing.results.length
+            });
+
+            if (existing.results.length > 0) {
+
+                const pageId = existing.results[0].id;
+
+                logger.info('[NotionHabit] 이미 존재하는 습관', {
+                    habitId: habit.id,
+                    pageId
+                });
+
+                return {
+                    created: false,
+                    pageId
+                };
+            }
+        }
+
+        logger.info('[NotionHabit] Notion properties 생성');
+
+        const properties: any = {
+            '이름': {
+                title: [
+                    {
+                        text: {
+                            content: habit.name ?? ''
+                        }
+                    }
+                ]
+            },
+
+            'habitId': {
+                rich_text: [
+                    {
+                        text: {
+                            content: habit.id ?? ''
+                        }
+                    }
+                ]
+            },
+
+            '알림 여부': {
+                checkbox: habit.notify ?? false
+            },
+
+            '시작 시간': {
+                date: habit.time
+                    ? {
+                        start: `${todayDate}T${habit.time}:00+09:00`
+                    }
+                    : null
+            },
+
+            '소요 시간(분)': {
+                number: habit.duration ?? 5
+            },
+
+            '반복 주기': {
+                multi_select: (habit.days ?? []).map((day: string) => ({
+                    name: day
+                }))
+            },
+
+            '진행 상태': {
+                status: {
+                    name: habit.status ?? '시작 전'
+                }
+            }
+        };
+
+        if (habit.goalId) {
+            logger.info('[NotionHabit] 목표 Relation 설정', {
+                goalId: habit.goalId
+            });
+
+            properties['목표'] = {
+                relation: [
+                    {
+                        id: habit.goalId
+                    }
+                ]
+            };
+        }
+
+        logger.info('[NotionHabit] Notion 페이지 생성 시작', {
+            habitId: habit.id,
+            name: habit.name
+        });
+
+        try {
+            const page = await notion.pages.create({
+                parent: {
+                    database_id: databaseId
+                },
+                properties: properties as any
+            });
+
+            logger.info('[NotionHabit] ===== Notion 생성 완료 =====', {
+                userId,
+                habitId: habit.id,
+                name: habit.name,
+                pageId: page.id
+            });
+
+            return {
+                created: true,
+                pageId: page.id
+            };
+
+        } catch (error) {
+            logger.error('[NotionHabit] ===== Notion 생성 실패 =====', {
+                userId,
+                habitId: habit.id,
+                name: habit.name,
+                databaseId,
+                dataSourceId,
+                error: error instanceof Error
+                    ? error.message
+                    : String(error)
+            });
+
+            throw error;
+        }
+    }
 
     static async getNotionGoals(userId: string): Promise<NotionGoal[]> {
         if (!userId) {
@@ -2913,7 +3081,7 @@ class NotionService {
 
         return goals;
     }
-    
+
 }
 
 
@@ -10817,13 +10985,114 @@ async function releaseKakaoProcessingLock(userId: string, jobId: string) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
+// routine
 
 export const createDailyHabits = onSchedule({
-    schedule: '0 4 * * *',
+    schedule: '50 23 * * *',
     timeZone: 'Asia/Seoul',
-    region: 'asia-northeast3'
+    region: 'asia-northeast3',
+    timeoutSeconds: 540,
+    memory: '512MiB'
 }, async () => {
+
+    const { targetDate, targetDay } = getNextHabitDate();
+
+    const usersSnapshot = await db
+        .collection('users')
+        .where('notionAccessToken', '!=', null)
+        .get();
+
+    const users = usersSnapshot.docs;
+    const BATCH_SIZE = 10;
+
+    for (let i = 0; i < users.length; i += BATCH_SIZE) {
+
+        const batch = users.slice(i, i + BATCH_SIZE);
+
+        await Promise.all(
+            batch.map(async (userDoc) => {
+                try {
+                    await RoutineService.createDailyHabits(
+                        userDoc.id,
+                        targetDate,
+                        targetDay
+                    );
+
+                } catch (error) {
+                    console.error(
+                        `[Habit] ${userDoc.id} 처리 실패`,
+                        error
+                    );
+                }
+            })
+        );
+    }
+});
+
+export const createMyDailyHabitsWithUserId = onRequest(withCors(async (req, res) => {
+    try {
+        logger.info('[HabitTest] ===== 시작 =====');
+
+        const userId = req.body?.userId || req.query?.userId;
+
+        if (!userId || typeof userId !== 'string') {
+            res.status(400).json({
+                success: false,
+                message: 'userId가 필요합니다.'
+            });
+            return;
+        }
+
+        const { targetDate, targetDay } = getNextHabitDate();
+
+        logger.info('[HabitTest] 생성 대상', {
+            userId,
+            targetDate,
+            targetDay
+        });
+
+        const result = await RoutineService.createDailyHabits(
+            userId,
+            targetDate,
+            targetDay
+        );
+
+        logger.info('[HabitTest] 사용자 처리 완료', {
+            userId,
+            targetDate,
+            targetDay,
+            ...result
+        });
+
+        res.json({
+            success: true,
+            userId,
+            targetDate,
+            targetDay,
+            createdCount: result.createdCount,
+            existingCount: result.existingCount
+        });
+
+    } catch (error) {
+        logger.error('[HabitTest] 실행 실패', {
+            error: error instanceof Error
+                ? error.message
+                : String(error)
+        });
+
+        res.status(500).json({
+            success: false,
+            message: '습관 생성 중 오류가 발생했습니다.'
+        });
+    }
+}));
+
+interface HabitTargetDate {
+    targetDate: string;
+    targetDay: string;
+}
+
+function getNextHabitDate(): HabitTargetDate {
     const now = new Date();
 
     const koreaNow = new Date(
@@ -10832,57 +11101,60 @@ export const createDailyHabits = onSchedule({
         })
     );
 
+    const targetDateObj = new Date(koreaNow);
+    targetDateObj.setDate(targetDateObj.getDate() + 1);
+
     const days = ['일', '월', '화', '수', '목', '금', '토'];
-    const today = days[koreaNow.getDay()];
 
-    const usersSnapshot = await db.collection('users').get();
+    const targetDay = days[targetDateObj.getDay()];
 
-    for (const userDoc of usersSnapshot.docs) {
-        try {
-            await RoutineService.createDailyHabits(
-                userDoc.id,
-                today
-            );
-        } catch (error) {
-            console.error(
-                `[Habit] ${userDoc.id} 처리 실패`,
-                error
-            );
-        }
-    }
-});
+    const targetDate =
+        `${targetDateObj.getFullYear()}-${String(targetDateObj.getMonth() + 1).padStart(2, '0')}-${String(targetDateObj.getDate()).padStart(2, '0')}`;
 
-export const testCreateDailyHabits = onRequest(withCors(async (req, res) => {
-    try {
-        const now = new Date();
-        const days = ['일', '월', '화', '수', '목', '금', '토'];
-        const today = days[now.getDay()];
+    return {
+        targetDate,
+        targetDay
+    };
+}
 
-        const usersSnapshot = await db.collection('users').get();
+// #routine
 
-        for (const userDoc of usersSnapshot.docs) {
-            await RoutineService.createDailyHabits(userDoc.id, today);
-        }
+export interface UserHabit {
+    id?: string;
+    goalId?: string;
+    icon: string;
+    name: string;
+    categories: string[];
+    days: string[];
+    time: string;
+    duration: number;
+    status: '시작 전' | '진행 중' | '완료' | '일시 정지';
+    notify: boolean;
+    createdAt?: Timestamp;
+    updatedAt?: Timestamp;
+}
 
-        res.json({
-            success: true,
-            today
-        });
-    } catch (error) {
-        logger.error(error);
-        res.status(500).json({
-            success: false
-        });
-    }
-}));
-
-
-// #rountine
 class RoutineService {
-    static async createDailyHabits(userId: string, today: string) {
+    static async createDailyHabits(
+        userId: string,
+        targetDate: string,
+        targetDay: string
+    ): Promise<{
+        createdCount: number;
+        existingCount: number;
+    }> {
         if (!userId) {
             throw new Error('Missing userId');
         }
+
+        let createdCount = 0;
+        let existingCount = 0;
+
+        logger.info('[Habit] 시작', {
+            userId,
+            targetDate,
+            targetDay
+        });
 
         const habitsRef = db
             .collection('users')
@@ -10892,41 +11164,150 @@ class RoutineService {
             .collection('habits');
 
         const snapshot = await habitsRef
-            .where('status', '==', '진행중')
+            .where('status', '==', '진행 중')
             .get();
 
-        for (const habitDoc of snapshot.docs) {
-            const habit = habitDoc.data();
+        logger.info('[Habit] 습관 조회 완료', {
+            userId,
+            targetDate,
+            targetDay,
+            count: snapshot.size
+        });
 
-            if (!habit.days?.includes(today)) {
+        for (const habitDoc of snapshot.docs) {
+
+            const habit = {
+                id: habitDoc.id,
+                ...habitDoc.data()
+            } as UserHabit;
+
+            logger.info('[Habit] 습관 확인', {
+                userId,
+                habitId: habit.id,
+                name: habit.name,
+                days: habit.days,
+                targetDate,
+                targetDay,
+                time: habit.time,
+                status: habit.status
+            });
+
+            if (!habit.days?.includes(targetDay)) {
+                logger.info('[Habit] 실행 대상 아님', {
+                    userId,
+                    habitId: habit.id,
+                    name: habit.name,
+                    days: habit.days,
+                    targetDay
+                });
+
                 continue;
             }
 
-            console.log('[Habit] 생성 대상:', habit.name);
+            try {
+                const result = await NotionService.createNotionHabit(
+                    userId,
+                    habit,
+                    targetDate
+                );
 
-            // 여기서 Notion Habit 생성
+                const pageId = result.pageId;
+
+                if (result.created) {
+                    createdCount++;
+
+                    logger.info('[Habit] 새 습관 생성', {
+                        userId,
+                        habitId: habit.id,
+                        name: habit.name,
+                        pageId,
+                        targetDate
+                    });
+
+                    await writeUserEvent(userId, {
+                        agentId: AgentId.ROUTINE,
+                        status: 'completed',
+                        eventTitle: '습관 생성',
+                        description: [
+                            `습관 = ${habit.name}`,
+                            `habitId = ${habit.id}`,
+                            `pageId = ${pageId ?? '-'}`,
+                            `실행 날짜 = ${targetDate}`,
+                            `실행 요일 = ${targetDay}`,
+                            `실행 시간 = ${habit.time}`,
+                            `반복주기 = ${habit.days.join(', ')}`
+                        ].join('\n')
+                    });
+
+                } else {
+                    existingCount++;
+
+                    logger.info('[Habit] 이미 추가된 습관', {
+                        userId,
+                        habitId: habit.id,
+                        name: habit.name,
+                        pageId,
+                        targetDate
+                    });
+                }
+
+            } catch (error) {
+
+                logger.error('[Habit] 생성 실패', {
+                    userId,
+                    habitId: habit.id,
+                    name: habit.name,
+                    targetDate,
+                    targetDay,
+                    error: error instanceof Error
+                        ? error.message
+                        : String(error)
+                });
+
+                try {
+                    await writeUserEvent(userId, {
+                        agentId: AgentId.ROUTINE,
+                        status: 'failed',
+                        eventTitle: '습관 생성 실패',
+                        description: [
+                            `습관 = ${habit.name}`,
+                            `habitId = ${habit.id}`,
+                            `실행 날짜 = ${targetDate}`,
+                            `실행 요일 = ${targetDay}`,
+                            `error = ${error instanceof Error
+                                ? error.message
+                                : String(error)}`
+                        ].join('\n')
+                    });
+
+                } catch (eventError) {
+                    logger.error('[Habit] 실패 Event 기록도 실패', {
+                        userId,
+                        habitId: habit.id,
+                        error: eventError instanceof Error
+                            ? eventError.message
+                            : String(eventError)
+                    });
+                }
+            }
         }
+
+        logger.info('[Habit] 사용자 처리 종료', {
+            userId,
+            targetDate,
+            targetDay,
+            createdCount,
+            existingCount
+        });
+
+        return {
+            createdCount,
+            existingCount
+        };
     }
 }
 
-//   await writeUserEvent(userId, {
-//             agentId: AgentId.KAKAO_CAPTURE,
-//             status: "completed",
-//             eventTitle: `${aiResult.db} ${aiResult.action === "create" ? "생성" : "수정"}`,
-//             description: [
-//                 `action = ${aiResult.action}`,
-//                 `db = ${aiResult.db}`,
-//                 `pageId = ${pageId ?? "-"}`,
-//                 `title = ${aiResult.title ?? "-"}`,
-//                 `type = ${aiResult.type ?? "-"}`,
-//                 aiResult.kinds ? `kinds = ${aiResult.kinds}` : null,
-//                 aiResult.tags?.length ? `tags = ${aiResult.tags.join(", ")}` : null,
-//                 aiResult.dateExpr ? `date = ${aiResult.dateExpr}` : null,
-//                 entity?.type ? `entity = ${entity.type}` : null
-//             ]
-//                 .filter(Boolean)
-//                 .join("\n")
-//         });
+
 
 export const getNotionGoals = onRequest(withCors(async (req, res) => {
     try {

@@ -43,13 +43,14 @@ export interface SecondBrainLocalSession {
 
 export interface UserHabit {
     id?: string;
+    goalId?: string;
     icon: string;
     name: string;
     categories: string[];
     days: string[];
     time: string;
     duration: number;
-    status: '진행중' | '멈춤';
+    status: '시작 전' | '진행 중' | '완료' | '일시 정지'
     notify: boolean;
     createdAt?: Timestamp;
     updatedAt?: Timestamp;
@@ -898,6 +899,39 @@ export class UserService {
     ///////////////////////////////////////////////////////////
     // routine
 
+    async createMyDailyHabitsWithUserId(userId: string): Promise<{
+        success: boolean;
+        createdCount: number;
+        existingCount: number;
+    }> {
+        try {
+            const result = await firstValueFrom(
+                this.http.post<{
+                    success: boolean;
+                    createdCount: number;
+                    existingCount: number;
+                }>(
+                    `${this.functionsBaseUrl}/createMyDailyHabitsWithUserId`,
+                    { userId }
+                )
+            );
+
+            return result;
+
+        } catch (error) {
+            console.error(
+                'createMyDailyHabitsWithUserId failed',
+                error
+            );
+
+            return {
+                success: false,
+                createdCount: 0,
+                existingCount: 0
+            };
+        }
+    }
+
     static async addUserHabit(userId: string, habit: UserHabit): Promise<{ success: boolean; duplicate?: boolean; message?: string; id?: string }> {
         if (!userId || !habit?.name || !habit?.time) {
             return { success: false };
@@ -951,8 +985,9 @@ export class UserService {
                 days: habit.days ?? [],
                 time: habit.time,
                 duration: Math.max(5, habit.duration || 5),
-                status: '진행중',
+                status: '진행 중',
                 notify: habit.notify ?? true,
+                goalId: habit.goalId ?? '',
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
             });
@@ -977,12 +1012,16 @@ export class UserService {
         return `${period} ${displayHour}시 ${minute.toString().padStart(2, '0')}분`;
     }
 
-    static async getUserHabits(userId: string): Promise<UserHabit[]> {
+    static async getUserHabits(userId: string, goalId?: string): Promise<UserHabit[]> {
         if (!userId) return [];
 
         try {
             const habitsRef = collection(firestore, 'users', userId, 'integrations', 'routine', 'habits');
-            const q = query(habitsRef, orderBy('time', 'asc'));
+
+            const q = goalId
+                ? query(habitsRef, where('goalId', '==', goalId), orderBy('time', 'asc'))
+                : query(habitsRef, orderBy('time', 'asc'));
+
             const snapshot = await getDocs(q);
 
             return snapshot.docs.map(doc => ({
@@ -1054,8 +1093,9 @@ export class UserService {
                 days: habit.days ?? [],
                 time: habit.time,
                 duration: Math.max(5, habit.duration || 5),
-                status: habit.status || '진행중',
+                status: habit.status || '진행 중',
                 notify: habit.notify ?? true,
+                goalId: habit.goalId ?? '',
                 updatedAt: serverTimestamp()
             });
 
@@ -1241,3 +1281,6 @@ export class UserService {
 //     const docSnap = querySnap.docs[0];
 //     return docSnap.id; // 문서 ID(userId) 반환
 // }
+
+
+
