@@ -2865,10 +2865,26 @@ class NotionService {
             const existing = await notion.dataSources.query({
                 data_source_id: dataSourceId,
                 filter: {
-                    property: 'habitId',
-                    rich_text: {
-                        equals: habit.id
-                    }
+                    and: [
+                        {
+                            property: 'habitId',
+                            rich_text: {
+                                equals: habit.id
+                            }
+                        },
+                        {
+                            property: '시작 시간',
+                            date: {
+                                on_or_after: `${todayDate}T00:00:00+09:00`
+                            }
+                        },
+                        {
+                            property: '시작 시간',
+                            date: {
+                                before: `${todayDate}T23:59:59+09:00`
+                            }
+                        }
+                    ]
                 }
             });
 
@@ -10994,8 +11010,7 @@ export const createDailyHabits = onSchedule({
     timeoutSeconds: 540,
     memory: '512MiB'
 }, async () => {
-
-    const { targetDate, targetDay } = getNextHabitDate();
+    const { targetDate, targetDay } = getHabitDate(1);
 
     const usersSnapshot = await db
         .collection('users')
@@ -11006,7 +11021,6 @@ export const createDailyHabits = onSchedule({
     const BATCH_SIZE = 10;
 
     for (let i = 0; i < users.length; i += BATCH_SIZE) {
-
         const batch = users.slice(i, i + BATCH_SIZE);
 
         await Promise.all(
@@ -11017,12 +11031,8 @@ export const createDailyHabits = onSchedule({
                         targetDate,
                         targetDay
                     );
-
                 } catch (error) {
-                    console.error(
-                        `[Habit] ${userDoc.id} 처리 실패`,
-                        error
-                    );
+                    console.error(`[Habit] ${userDoc.id} 처리 실패`, error);
                 }
             })
         );
@@ -11043,7 +11053,7 @@ export const createMyDailyHabitsWithUserId = onRequest(withCors(async (req, res)
             return;
         }
 
-        const { targetDate, targetDay } = getNextHabitDate();
+        const { targetDate, targetDay } = getHabitDate(0);
 
         logger.info('[HabitTest] 생성 대상', {
             userId,
@@ -11072,12 +11082,9 @@ export const createMyDailyHabitsWithUserId = onRequest(withCors(async (req, res)
             createdCount: result.createdCount,
             existingCount: result.existingCount
         });
-
     } catch (error) {
         logger.error('[HabitTest] 실행 실패', {
-            error: error instanceof Error
-                ? error.message
-                : String(error)
+            error: error instanceof Error ? error.message : String(error)
         });
 
         res.status(500).json({
@@ -11092,7 +11099,7 @@ interface HabitTargetDate {
     targetDay: string;
 }
 
-function getNextHabitDate(): HabitTargetDate {
+function getHabitDate(addDays: number): HabitTargetDate {
     const now = new Date();
 
     const koreaNow = new Date(
@@ -11102,10 +11109,9 @@ function getNextHabitDate(): HabitTargetDate {
     );
 
     const targetDateObj = new Date(koreaNow);
-    targetDateObj.setDate(targetDateObj.getDate() + 1);
+    targetDateObj.setDate(targetDateObj.getDate() + addDays);
 
     const days = ['일', '월', '화', '수', '목', '금', '토'];
-
     const targetDay = days[targetDateObj.getDay()];
 
     const targetDate =
@@ -11115,6 +11121,11 @@ function getNextHabitDate(): HabitTargetDate {
         targetDate,
         targetDay
     };
+}
+
+interface HabitTargetDate {
+    targetDate: string;
+    targetDay: string;
 }
 
 // #routine
