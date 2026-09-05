@@ -20,13 +20,16 @@
 <div *ngIf="notionAccessToken">
     <div class="page-header">
         <div class="page-header-content">
-            <h1>내 루틴</h1>
+            <h1>내 루틴</h1>            
             <p>
-                매일 반복하는 습관을 한눈에 관리하세요. 목표를 선택하고, 목표별로 루틴을 관리해보세요.<br>
-                루틴은 매일 오전 11:50에 자동으로 내 라이프업 템플릿에 추가됩니다. 지금 추가하려면
-                <button type="button" class="inline-action-btn" (click)="onCreateDailyHabits()">
-                    오늘 루틴 지금 추가하기
-                </button> 를 눌러주세요.
+                매일 반복하는 습관을 한눈에 관리하세요. 목표를 선택하고, 목표별로 루틴을 관리해보세요.<br><br>
+                ▪ 습관 일정은 매일 오전 11:50에 자동으로 내 라이프업 템플릿에 추가됩니다. 지금 습관 일정을 추가하려면
+                <button type="button" class="inline-action-btn" (click)="onCreateDailyHabitLogs()">
+                    오늘 습관 일정 추가하기
+                </button> 를 눌러주세요.<br>
+                ▪ 처음 템플릿을 연결하셨다면 <button type="button" class="inline-action-btn" (click)="onSyncHabits()">
+                    내 루틴 동기화
+                </button> 를 한 번 진행해주세요. 현재 라이프업에서 관리하고 있는 루틴 정보가 내 라이프업 노션 템플릿에 추가됩니다.
                 <!-- (ⓘ 수정정보는 새로 추가부터 반영됩니다.) -->
             </p>
         </div>

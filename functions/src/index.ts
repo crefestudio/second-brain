@@ -1111,7 +1111,15 @@ class NotionService {
         });
 
         console.log(
-            `[Notion] 검색 결과 (${databaseType}):`,
+            `[Notion] 전체 검색 결과 (${databaseType}):`,
+            data.results.map((db: any) => ({
+                id: db.id,
+                title: getTitle(db),
+            }))
+        );
+
+        console.log(
+            `[Notion] 매칭 결과 (${databaseType}):`,
             matched.map((db: any) => ({
                 id: db.id,
                 title: getTitle(db),
@@ -2798,8 +2806,7 @@ class NotionService {
     // #routine
     static async createNotionHabit(
         userId: string,
-        habit: UserHabit,
-        todayDate: string
+        habit: UserHabit
     ): Promise<{
         created: boolean;
         pageId: string;
@@ -2821,22 +2828,15 @@ class NotionService {
             .doc(userId)
             .get();
 
-        logger.info('[NotionHabit] 사용자 조회 완료', {
-            userId,
-            exists: userDoc.exists
-        });
+        if (!userDoc.exists) {
+            logger.error('[NotionHabit] 사용자 없음', { userId });
+            throw new Error('USER_NOT_FOUND');
+        }
 
         const accessToken = userDoc.data()?.notionAccessToken;
 
-        logger.info('[NotionHabit] accessToken 확인', {
-            exists: !!accessToken
-        });
-
         if (!accessToken) {
-            logger.error('[NotionHabit] Notion 연결 없음', {
-                userId
-            });
-
+            logger.error('[NotionHabit] Notion 연결 없음', { userId });
             throw new Error('NOTION_NOT_CONNECTED');
         }
 
@@ -2857,7 +2857,6 @@ class NotionService {
 
         // 중복 확인
         if (habit.id) {
-
             logger.info('[NotionHabit] 중복 확인 시작', {
                 habitId: habit.id
             });
@@ -2865,26 +2864,10 @@ class NotionService {
             const existing = await notion.dataSources.query({
                 data_source_id: dataSourceId,
                 filter: {
-                    and: [
-                        {
-                            property: 'habitId',
-                            rich_text: {
-                                equals: habit.id
-                            }
-                        },
-                        {
-                            property: '시작 시간',
-                            date: {
-                                on_or_after: `${todayDate}T00:00:00+09:00`
-                            }
-                        },
-                        {
-                            property: '시작 시간',
-                            date: {
-                                before: `${todayDate}T23:59:59+09:00`
-                            }
-                        }
-                    ]
+                    property: 'habitId',
+                    rich_text: {
+                        equals: habit.id
+                    }
                 }
             });
 
@@ -2894,7 +2877,6 @@ class NotionService {
             });
 
             if (existing.results.length > 0) {
-
                 const pageId = existing.results[0].id;
 
                 logger.info('[NotionHabit] 이미 존재하는 습관', {
@@ -2908,8 +2890,6 @@ class NotionService {
                 };
             }
         }
-
-        logger.info('[NotionHabit] Notion properties 생성');
 
         const properties: any = {
             '이름': {
@@ -2937,11 +2917,13 @@ class NotionService {
             },
 
             '시작 시간': {
-                date: habit.time
-                    ? {
-                        start: `${todayDate}T${habit.time}:00+09:00`
+                rich_text: [
+                    {
+                        text: {
+                            content: habit.time ?? ''
+                        }
                     }
-                    : null
+                ]
             },
 
             '소요 시간(분)': {
@@ -2962,10 +2944,6 @@ class NotionService {
         };
 
         if (habit.goalId) {
-            logger.info('[NotionHabit] 목표 Relation 설정', {
-                goalId: habit.goalId
-            });
-
             properties['목표'] = {
                 relation: [
                     {
@@ -2975,23 +2953,20 @@ class NotionService {
             };
         }
 
-        logger.info('[NotionHabit] Notion 페이지 생성 시작', {
-            habitId: habit.id,
-            name: habit.name
-        });
-
         try {
             const page = await notion.pages.create({
                 parent: {
-                    database_id: databaseId
+                    data_source_id: dataSourceId
                 },
-                properties: properties as any
+                properties: properties as any,
+                template: {
+                    type: 'default'
+                }
             });
 
-            logger.info('[NotionHabit] ===== Notion 생성 완료 =====', {
+            logger.info('[NotionHabit] ===== 생성 완료 =====', {
                 userId,
                 habitId: habit.id,
-                name: habit.name,
                 pageId: page.id
             });
 
@@ -3001,10 +2976,513 @@ class NotionService {
             };
 
         } catch (error) {
-            logger.error('[NotionHabit] ===== Notion 생성 실패 =====', {
+            logger.error('[NotionHabit] ===== 생성 실패 =====', {
                 userId,
                 habitId: habit.id,
-                name: habit.name,
+                databaseId,
+                dataSourceId,
+                error: error instanceof Error
+                    ? error.message
+                    : String(error)
+            });
+
+            throw error;
+        }
+    }
+
+    /////////////////////////////////////
+    // #routine
+    static async updateNotionHabit(
+        userId: string,
+        habit: UserHabit
+    ): Promise<{
+        updated: boolean;
+        pageId: string;
+    }> {
+        logger.info('[NotionHabit] ===== 수정 시작 =====', {
+            userId,
+            habitId: habit.id,
+            name: habit.name,
+            goalId: habit.goalId,
+            time: habit.time,
+            duration: habit.duration,
+            days: habit.days,
+            status: habit.status,
+            notify: habit.notify
+        });
+
+        const userDoc = await db
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        if (!userDoc.exists) {
+            logger.error('[NotionHabit] 사용자 없음', { userId });
+            throw new Error('USER_NOT_FOUND');
+        }
+
+        const accessToken = userDoc.data()?.notionAccessToken;
+
+        if (!accessToken) {
+            logger.error('[NotionHabit] Notion 연결 없음', { userId });
+            throw new Error('NOTION_NOT_CONNECTED');
+        }
+
+        if (!habit.id) {
+            logger.error('[NotionHabit] habitId 없음', { userId });
+            throw new Error('HABIT_ID_REQUIRED');
+        }
+
+        const notion = new Client({
+            auth: accessToken
+        });
+
+        const databaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            'habit'
+        );
+
+        const dataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            databaseId
+        );
+
+        // 기존 Habit 조회
+        logger.info('[NotionHabit] 수정 대상 조회', {
+            habitId: habit.id
+        });
+
+        const existing = await notion.dataSources.query({
+            data_source_id: dataSourceId,
+            filter: {
+                property: 'habitId',
+                rich_text: {
+                    equals: habit.id
+                }
+            }
+        });
+
+        if (existing.results.length === 0) {
+            logger.error('[NotionHabit] 수정할 루틴 없음', {
+                userId,
+                habitId: habit.id
+            });
+
+            throw new Error('NOTION_HABIT_NOT_FOUND');
+        }
+
+        const pageId = existing.results[0].id;
+
+        const properties: any = {
+            '이름': {
+                title: [
+                    {
+                        text: {
+                            content: habit.name ?? ''
+                        }
+                    }
+                ]
+            },
+
+            '반복 주기': {
+                multi_select: (habit.days ?? []).map((day: string) => ({
+                    name: day
+                }))
+            },
+
+            '시작 시간': {
+                date: habit.time
+                    ? {
+                        start: `1970-01-01T${habit.time}:00+09:00`
+                    }
+                    : null
+            },
+
+            '소요 시간(분)': {
+                number: habit.duration ?? 5
+            },
+
+            '진행 상태': {
+                status: {
+                    name: habit.status ?? '시작 전'
+                }
+            },
+
+            '알림 여부': {
+                checkbox: habit.notify ?? false
+            }
+        };
+
+        // 목표
+        if (habit.goalId) {
+            properties['목표'] = {
+                relation: [
+                    {
+                        id: habit.goalId
+                    }
+                ]
+            };
+        } else {
+            properties['목표'] = {
+                relation: []
+            };
+        }
+
+        try {
+            await notion.pages.update({
+                page_id: pageId,
+                properties: properties as any
+            });
+
+            logger.info('[NotionHabit] ===== 수정 완료 =====', {
+                userId,
+                habitId: habit.id,
+                pageId
+            });
+
+            return {
+                updated: true,
+                pageId
+            };
+
+        } catch (error) {
+            logger.error('[NotionHabit] ===== 수정 실패 =====', {
+                userId,
+                habitId: habit.id,
+                pageId,
+                databaseId,
+                dataSourceId,
+                error: error instanceof Error
+                    ? error.message
+                    : String(error)
+            });
+
+            throw error;
+        }
+    }
+
+    /////////////////////////////////////
+    // #routine
+    static async createNotionHabitLog(
+        userId: string,
+        habit: UserHabit,
+        todayDate: string
+    ): Promise<{
+        created: boolean;
+        pageId: string;
+    }> {
+        logger.info('[NotionHabitLog] ===== 시작 =====', {
+            userId,
+            habitId: habit.id,
+            name: habit.name,
+            date: todayDate,
+            time: habit.time,
+            duration: habit.duration
+        });
+
+        const userDoc = await db
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        if (!userDoc.exists) {
+            logger.error('[NotionHabitLog] 사용자 없음', { userId });
+            throw new Error('USER_NOT_FOUND');
+        }
+
+        const accessToken = userDoc.data()?.notionAccessToken;
+
+        if (!accessToken) {
+            logger.error('[NotionHabitLog] Notion 연결 없음', { userId });
+            throw new Error('NOTION_NOT_CONNECTED');
+        }
+
+        if (!habit.id) {
+            throw new Error('HABIT_ID_REQUIRED');
+        }
+
+        const notion = new Client({
+            auth: accessToken
+        });
+
+        // Habit Log DB
+        const logDatabaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            'habit log'
+        );
+
+        const logDataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            logDatabaseId
+        );
+
+        // Habit DB
+        const habitDatabaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            'habit'
+        );
+
+        const habitDataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            habitDatabaseId
+        );
+
+        // Habit ID로 Habit Page 조회
+        logger.info('[NotionHabitLog] Habit 조회 시작', {
+            habitId: habit.id
+        });
+
+        const habitResult = await notion.dataSources.query({
+            data_source_id: habitDataSourceId,
+            filter: {
+                property: 'habitId',
+                rich_text: {
+                    equals: habit.id
+                }
+            }
+        });
+
+        if (habitResult.results.length === 0) {
+            logger.error('[NotionHabitLog] 연결할 Habit 없음', {
+                habitId: habit.id
+            });
+
+            throw new Error('NOTION_HABIT_NOT_FOUND');
+        }
+
+        const habitPageId = habitResult.results[0].id;
+
+        logger.info('[NotionHabitLog] Habit 조회 완료', {
+            habitId: habit.id,
+            habitPageId
+        });
+
+        // 같은 날짜의 Habit Log 중복 확인
+        const existing = await notion.dataSources.query({
+            data_source_id: logDataSourceId,
+            filter: {
+                and: [
+                    {
+                        property: 'habitId',
+                        rich_text: {
+                            equals: habit.id
+                        }
+                    },
+                    {
+                        property: '날짜',
+                        date: {
+                            on_or_after: `${todayDate}T00:00:00+09:00`
+                        }
+                    },
+                    {
+                        property: '날짜',
+                        date: {
+                            before: `${todayDate}T23:59:59+09:00`
+                        }
+                    }
+                ]
+            }
+        });
+
+        if (existing.results.length > 0) {
+            const pageId = existing.results[0].id;
+
+            logger.info('[NotionHabitLog] 이미 존재하는 Habit Log', {
+                habitId: habit.id,
+                date: todayDate,
+                pageId
+            });
+
+            return {
+                created: false,
+                pageId
+            };
+        }
+
+        const properties: any = {
+            '이름': {
+                title: [
+                    {
+                        text: {
+                            content: habit.name ?? ''
+                        }
+                    }
+                ]
+            },
+
+            '날짜': {
+                date: {
+                    start: `${todayDate}T${habit.time}:00+09:00`
+                }
+            },
+
+            '완료': {
+                checkbox: false
+            },
+
+            '습관': {
+                relation: [
+                    {
+                        id: habitPageId
+                    }
+                ]
+            },
+
+            'habitId': {
+                rich_text: [
+                    {
+                        text: {
+                            content: habit.id
+                        }
+                    }
+                ]
+            },
+
+            '기록 값 제목': {
+                rich_text: []
+            },
+
+            '기록 값(숫자)': {
+                number: null
+            },
+
+            '기록 값(텍스트)': {
+                rich_text: []
+            }
+        };
+
+        logger.info('[NotionHabitLog] Notion 페이지 생성 시작', {
+            habitId: habit.id,
+            date: todayDate
+        });
+
+        try {
+            const page = await notion.pages.create({
+                parent: {
+                    data_source_id: logDataSourceId
+                },
+                properties: properties as any,
+                template: {
+                    type: 'default'
+                }
+            });
+
+            logger.info('[NotionHabitLog] ===== 생성 완료 =====', {
+                userId,
+                habitId: habit.id,
+                date: todayDate,
+                pageId: page.id
+            });
+
+            return {
+                created: true,
+                pageId: page.id
+            };
+
+        } catch (error) {
+            logger.error('[NotionHabitLog] ===== 생성 실패 =====', {
+                userId,
+                habitId: habit.id,
+                date: todayDate,
+                databaseId: logDatabaseId,
+                dataSourceId: logDataSourceId,
+                error: error instanceof Error
+                    ? error.message
+                    : String(error)
+            });
+
+            throw error;
+        }
+    }
+
+    /////////////////////////////////////
+    // #routine
+    static async findNotionHabit(
+        userId: string,
+        habitId: string
+    ): Promise<string | null> {
+        logger.info('[NotionHabit] 기존 루틴 조회 시작', {
+            userId,
+            habitId
+        });
+
+        if (!userId) {
+            throw new Error('Missing userId');
+        }
+
+        if (!habitId) {
+            throw new Error('HABIT_ID_REQUIRED');
+        }
+
+        const userDoc = await db
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        if (!userDoc.exists) {
+            logger.error('[NotionHabit] 사용자 없음', { userId });
+            throw new Error('USER_NOT_FOUND');
+        }
+
+        const accessToken = userDoc.data()?.notionAccessToken;
+
+        if (!accessToken) {
+            logger.error('[NotionHabit] Notion 연결 없음', { userId });
+            throw new Error('NOTION_NOT_CONNECTED');
+        }
+
+        const notion = new Client({
+            auth: accessToken
+        });
+
+        const databaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            'habit'
+        );
+
+        const dataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            databaseId
+        );
+
+        try {
+            const result = await notion.dataSources.query({
+                data_source_id: dataSourceId,
+                filter: {
+                    property: 'habitId',
+                    rich_text: {
+                        equals: habitId
+                    }
+                }
+            });
+
+            if (result.results.length === 0) {
+                logger.info('[NotionHabit] 루틴 없음', {
+                    userId,
+                    habitId
+                });
+
+                return null;
+            }
+
+            const pageId = result.results[0].id;
+
+            logger.info('[NotionHabit] 루틴 조회 완료', {
+                userId,
+                habitId,
+                pageId
+            });
+
+            return pageId;
+
+        } catch (error) {
+            logger.error('[NotionHabit] 루틴 조회 실패', {
+                userId,
+                habitId,
                 databaseId,
                 dataSourceId,
                 error: error instanceof Error
@@ -11003,7 +11481,8 @@ async function releaseKakaoProcessingLock(userId: string, jobId: string) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // routine
 
-export const createDailyHabits = onSchedule({
+// #routine
+export const createDailyHabitLogs = onSchedule({
     schedule: '50 23 * * *',
     timeZone: 'Asia/Seoul',
     region: 'asia-northeast3',
@@ -11026,7 +11505,7 @@ export const createDailyHabits = onSchedule({
         await Promise.all(
             batch.map(async (userDoc) => {
                 try {
-                    await RoutineService.createDailyHabits(
+                    await RoutineService.createDailyHabitLogs(
                         userDoc.id,
                         targetDate,
                         targetDay
@@ -11039,7 +11518,7 @@ export const createDailyHabits = onSchedule({
     }
 });
 
-export const createMyDailyHabitsWithUserId = onRequest(withCors(async (req, res) => {
+export const createMyDailyHabitLogsWithUserId = onRequest(withCors(async (req, res) => {
     try {
         logger.info('[HabitTest] ===== 시작 =====');
 
@@ -11061,7 +11540,7 @@ export const createMyDailyHabitsWithUserId = onRequest(withCors(async (req, res)
             targetDay
         });
 
-        const result = await RoutineService.createDailyHabits(
+        const result = await RoutineService.createDailyHabitLogs(
             userId,
             targetDate,
             targetDay
@@ -11090,6 +11569,50 @@ export const createMyDailyHabitsWithUserId = onRequest(withCors(async (req, res)
         res.status(500).json({
             success: false,
             message: '습관 생성 중 오류가 발생했습니다.'
+        });
+    }
+}));
+
+export const syncMyHabitsWithUserId = onRequest(withCors(async (req, res) => {
+    try {
+        logger.info('[HabitSync] ===== 시작 =====');
+
+        const userId = req.body?.userId || req.query?.userId;
+
+        if (!userId || typeof userId !== 'string') {
+            res.status(400).json({
+                success: false,
+                message: 'userId가 필요합니다.'
+            });
+            return;
+        }
+
+        logger.info('[HabitSync] 동기화 대상', {
+            userId
+        });
+
+        const result = await RoutineService.syncMyHabits(userId);
+
+        logger.info('[HabitSync] 사용자 처리 완료', {
+            userId,
+            ...result
+        });
+
+        res.json({
+            success: true,
+            userId,
+            createdCount: result.createdCount,
+            updatedCount: result.updatedCount
+        });
+
+    } catch (error) {
+        logger.error('[HabitSync] 실행 실패', {
+            error: error instanceof Error ? error.message : String(error)
+        });
+
+        res.status(500).json({
+            success: false,
+            message: '내 루틴 동기화 중 오류가 발생했습니다.'
         });
     }
 }));
@@ -11146,7 +11669,7 @@ export interface UserHabit {
 }
 
 class RoutineService {
-    static async createDailyHabits(
+    static async createDailyHabitLogs(
         userId: string,
         targetDate: string,
         targetDay: string
@@ -11216,7 +11739,7 @@ class RoutineService {
             }
 
             try {
-                const result = await NotionService.createNotionHabit(
+                const result = await NotionService.createNotionHabitLog(
                     userId,
                     habit,
                     targetDate
@@ -11316,6 +11839,90 @@ class RoutineService {
             existingCount
         };
     }
+
+    static async syncMyHabits(userId: string): Promise<{
+        createdCount: number;
+        updatedCount: number;
+    }> {
+        if (!userId) {
+            throw new Error('Missing userId');
+        }
+
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        logger.info('[HabitSync] 시작', {
+            userId
+        });
+
+        const habitsRef = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('routine')
+            .collection('habits');
+
+        const snapshot = await habitsRef.get();
+
+        logger.info('[HabitSync] 루틴 조회 완료', {
+            userId,
+            count: snapshot.size
+        });
+
+        for (const habitDoc of snapshot.docs) {
+            const habit = {
+                id: habitDoc.id,
+                ...habitDoc.data()
+            } as UserHabit;
+
+            try {
+                const result = await NotionService.findNotionHabit(
+                    userId,
+                    habit.id!
+                );
+
+                if (result) {
+                    await NotionService.updateNotionHabit(
+                        userId,
+                        habit
+                    );
+
+                    updatedCount++;
+
+                } else {
+                    await NotionService.createNotionHabit(
+                        userId,
+                        habit
+                    );
+
+                    createdCount++;
+                }
+
+            } catch (error) {
+                logger.error('[HabitSync] 루틴 동기화 실패', {
+                    userId,
+                    habitId: habit.id,
+                    name: habit.name,
+                    error: error instanceof Error
+                        ? error.message
+                        : String(error)
+                });
+            }
+        }
+
+        logger.info('[HabitSync] 완료', {
+            userId,
+            createdCount,
+            updatedCount
+        });
+
+        return {
+            createdCount,
+            updatedCount
+        };
+    }
+
+
 }
 
 

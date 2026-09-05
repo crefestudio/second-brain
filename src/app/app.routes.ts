@@ -81,7 +81,7 @@ export const routes: Routes = [
         children: [
           {
             path: '',
-            redirectTo: 'find',
+            redirectTo: 'myroutine',
             pathMatch: 'full'
           },
           {

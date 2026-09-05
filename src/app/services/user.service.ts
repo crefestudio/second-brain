@@ -899,7 +899,7 @@ export class UserService {
     ///////////////////////////////////////////////////////////
     // routine
 
-    async createMyDailyHabitsWithUserId(userId: string): Promise<{
+    async createMyDailyHabitLogsWithUserId(userId: string): Promise<{
         success: boolean;
         createdCount: number;
         existingCount: number;
@@ -911,7 +911,7 @@ export class UserService {
                     createdCount: number;
                     existingCount: number;
                 }>(
-                    `${this.functionsBaseUrl}/createMyDailyHabitsWithUserId`,
+                    `${this.functionsBaseUrl}/createMyDailyHabitLogsWithUserId`,
                     { userId }
                 )
             );
@@ -920,7 +920,7 @@ export class UserService {
 
         } catch (error) {
             console.error(
-                'createMyDailyHabitsWithUserId failed',
+                'createMyDailyHabitLogsWithUserId failed',
                 error
             );
 
@@ -928,6 +928,39 @@ export class UserService {
                 success: false,
                 createdCount: 0,
                 existingCount: 0
+            };
+        }
+    }
+
+    async syncMyHabitsWithUserId(userId: string): Promise<{
+        success: boolean;
+        createdCount: number;
+        updatedCount: number;
+    }> {
+        try {
+            const result = await firstValueFrom(
+                this.http.post<{
+                    success: boolean;
+                    createdCount: number;
+                    updatedCount: number;
+                }>(
+                    `${this.functionsBaseUrl}/syncMyHabitsWithUserId`,
+                    { userId }
+                )
+            );
+
+            return result;
+
+        } catch (error) {
+            console.error(
+                'syncMyHabitsWithUserId failed',
+                error
+            );
+
+            return {
+                success: false,
+                createdCount: 0,
+                updatedCount: 0
             };
         }
     }

@@ -18,7 +18,7 @@ interface NotionGoal {
     selector: 'app-my-routine',
     standalone: true,
     imports: [CommonModule, FormsModule, RouterLink
-],
+    ],
     templateUrl: './my-routine.component.html',
     styleUrls: ['./my-routine.component.scss']
 })
@@ -384,12 +384,12 @@ export class MyRoutineComponent implements OnInit {
         return this.goalColors[index % this.goalColors.length];
     }
 
-    async onCreateDailyHabits(): Promise<void> {
+    async onCreateDailyHabitLogs(): Promise<void> {
         if (!this.userId) {
             return;
         }
 
-        const result = await this.userService.createMyDailyHabitsWithUserId(this.userId);
+        const result = await this.userService.createMyDailyHabitLogsWithUserId(this.userId);
 
         if (!result.success) {
             ToastService.error('습관 추가에 실패했습니다.');
@@ -415,6 +415,41 @@ export class MyRoutineComponent implements OnInit {
         } else {
             ToastService.show(
                 '추가할 습관이 없습니다.'
+            );
+        }
+    }
+
+    async onSyncHabits(): Promise<void> {
+        if (!this.userId) {
+            return;
+        }
+
+        const result = await this.userService.syncMyHabitsWithUserId(this.userId);
+
+        if (!result.success) {
+            ToastService.error('내 루틴 동기화에 실패했습니다.');
+            return;
+        }
+
+        if (result.createdCount > 0 && result.updatedCount > 0) {
+            ToastService.show(
+                `새 루틴 ${result.createdCount}개가 추가되고\n` +
+                `기존 루틴 ${result.updatedCount}개가 업데이트되었습니다.`
+            );
+
+        } else if (result.createdCount > 0) {
+            ToastService.show(
+                `새 루틴 ${result.createdCount}개가 추가되었습니다.`
+            );
+
+        } else if (result.updatedCount > 0) {
+            ToastService.show(
+                `모든 루틴이 이미 동기화되어 있습니다.`
+            );
+
+        } else {
+            ToastService.show(
+                '동기화할 루틴이 없습니다.'
             );
         }
     }
