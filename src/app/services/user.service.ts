@@ -1153,6 +1153,55 @@ export class UserService {
         }
     }
 
+    async recordMyDailyHabitStatsWithUserId(userId: string): Promise<{
+        success: boolean;
+        targetDate?: string;
+        total: number;
+        completed: number;
+        completionRate: number;
+        goalStats?: Record<string, {
+            total: number;
+            completed: number;
+            completionRate: number;
+        }>;
+    }> {
+        try {
+            const result = await firstValueFrom(
+                this.http.post<{
+                    success: boolean;
+                    targetDate?: string;
+                    total: number;
+                    completed: number;
+                    completionRate: number;
+                    goalStats?: Record<string, {
+                        total: number;
+                        completed: number;
+                        completionRate: number;
+                    }>;
+                }>(
+                    `${this.functionsBaseUrl}/recordMyDailyHabitStatsWithUserId`,
+                    { userId }
+                )
+            );
+
+            return result;
+
+        } catch (error) {
+            console.error(
+                'recordMyDailyHabitStatsWithUserId failed',
+                error
+            );
+
+            return {
+                success: false,
+                total: 0,
+                completed: 0,
+                completionRate: 0,
+                goalStats: {}
+            };
+        }
+    }
+
 }
 
 /**

@@ -1,3 +1,11 @@
+@if(isLoading) {
+<div class="page-loading">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">
+    로그 정보를 불러오는 중입니다...
+  </div>
+</div>
+} @else {
 <div class="page-container">
   <!-- 연결되지 않은 경우 -->
   <div class="empty-state" *ngIf="!userId || !hasLifeupPurchase">
@@ -156,3 +164,4 @@
     </button>
   </div>
 </div>
+}

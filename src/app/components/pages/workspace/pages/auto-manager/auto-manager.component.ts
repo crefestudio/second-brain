@@ -62,6 +62,7 @@ export class AutoManagerComponent {
     }
 
     async ngOnInit() {
+        this.isLoading = true;
         try {
             await this.initData();
         } finally {

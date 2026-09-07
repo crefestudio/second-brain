@@ -42,17 +42,15 @@ interface CalendarMonth {
     position: number;
 }
 
-
-
 @Component({
-    selector: 'app-my-routine',
+    selector: 'app-routine-dashboard',
     standalone: true,
     imports: [CommonModule, FormsModule, RouterLink
     ],
-    templateUrl: './my-routine.component.html',
-    styleUrls: ['./my-routine.component.scss']
+    templateUrl: './routine-dashboard.component.html',
+    styleUrls: ['./routine-dashboard.component.scss']
 })
-export class MyRoutineComponent implements OnInit {
+export class RoutineDashboardComponent implements OnInit {
 
     isLoading = true;
 
@@ -68,6 +66,7 @@ export class MyRoutineComponent implements OnInit {
     kakaoUserId: string = '';
     notionAccessToken: string = '';
 
+    currentYear = new Date().getFullYear();
 
     days = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -136,6 +135,8 @@ export class MyRoutineComponent implements OnInit {
     async ngOnInit() {
         this.isLoading = true;
         try {
+            this.generateCalendarWeeks(2026);
+            this.generateMonthLabels(2026);
             await this.updateSession();
 
             if (this.userId) {
@@ -170,6 +171,84 @@ export class MyRoutineComponent implements OnInit {
             this.goals = [];
         }
     }
+
+    private generateMonthLabels(year: number): void {
+        const labels: CalendarMonth[] = [];
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+            'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const totalWeeks = this.calendarWeeks.length;
+
+        for (let month = 0; month < 12; month++) {
+            const date = new Date(year, month, 1);
+            const dayOfYear = Math.floor((date.getTime() - new Date(year, 0, 1).getTime()) / 86400000);
+            const weekIndex = Math.floor((dayOfYear + 3) / 7);
+
+            labels.push({
+                label: months[month],
+                position: (weekIndex / totalWeeks) * 100
+            });
+        }
+
+        this.monthLabels = labels;
+    }
+
+    private generateCalendarWeeks(year: number): void {
+        const weeks: CalendarDay[][] = [];
+        const startDate = new Date(year, 0, 1);
+        const endDate = new Date(year, 11, 31);
+        const firstDay = (startDate.getDay() + 6) % 7;
+        let week: CalendarDay[] = [];
+
+        for (let i = 0; i < firstDay; i++) {
+            week.push({
+                date: null,
+                completed: 0,
+                total: 0,
+                completionRate: 0,
+                level: 0,
+                future: false
+            });
+        }
+
+        for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+            week.push({
+                date: this.formatDate(date),
+                completed: 0,
+                total: 0,
+                completionRate: 0,
+                level: 0,
+                future: date > new Date()
+            });
+
+            if (week.length === 7) {
+                weeks.push(week);
+                week = [];
+            }
+        }
+
+        if (week.length > 0) {
+            while (week.length < 7) {
+                week.push({
+                    date: null,
+                    completed: 0,
+                    total: 0,
+                    completionRate: 0,
+                    level: 0,
+                    future: false
+                });
+            }
+            weeks.push(week);
+        }
+
+        this.calendarWeeks = weeks;
+    }
+
+    // private formatDate(date: Date): string {
+    //     const year = date.getFullYear();
+    //     const month = String(date.getMonth() + 1).padStart(2, '0');
+    //     const day = String(date.getDate()).padStart(2, '0');
+    //     return `${year}-${month}-${day}`;
+    // }
 
     selectGoal(goalId: string): void {
         this.selectedGoal = goalId;
@@ -511,125 +590,66 @@ export class MyRoutineComponent implements OnInit {
         // onRecordMyDailyHabitStatsWithUserId
     }
 
-    buildCalendar(
-        stats: GoalDailyStat[]
-    ): void {
-
+    buildCalendar(stats: GoalDailyStat[]): void {
         this.statsMap.clear();
 
         for (const stat of stats) {
-            this.statsMap.set(
-                stat.date,
-                stat
-            );
+            this.statsMap.set(stat.date, stat);
         }
 
-
         const today = new Date();
-
         today.setHours(0, 0, 0, 0);
 
-
         const startDate = new Date(today);
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        startDate.setDate(startDate.getDate() + 1);
 
-        startDate.setFullYear(
-            startDate.getFullYear() - 1
-        );
-
-        startDate.setDate(
-            startDate.getDate() + 1
-        );
-
-
-        /*
-         * 월요일 시작으로 맞춤
-         */
-
-        const dayOfWeek =
-            (startDate.getDay() + 6) % 7;
-
-        startDate.setDate(
-            startDate.getDate() - dayOfWeek
-        );
-
+        // 월요일 시작
+        const dayOfWeek = (startDate.getDay() + 6) % 7;
+        startDate.setDate(startDate.getDate() - dayOfWeek);
 
         this.calendarWeeks = [];
 
-
         let current = new Date(startDate);
-
         let week: CalendarDay[] = [];
 
-
         while (current <= today || week.length > 0) {
-
-            const dateString =
-                this.formatDate(current);
-
-            const isFuture =
-                current > today;
-
-            const stat =
-                this.statsMap.get(dateString);
-
+            const dateString = this.formatDate(current);
+            const isFuture = current > today;
+            const stat = this.statsMap.get(dateString);
 
             week.push({
-
-                date: isFuture
-                    ? dateString
-                    : dateString,
-
-                completed:
-                    stat?.completed ?? 0,
-
-                total:
-                    stat?.total ?? 0,
-
-                completionRate:
-                    stat?.completionRate ?? 0,
-
-                level:
-                    this.getActivityLevel(
-                        stat
-                    ),
-
-                future:
-                    isFuture
-
+                date: dateString,
+                completed: stat?.completed ?? 0,
+                total: stat?.total ?? 0,
+                completionRate: stat?.completionRate ?? 0,
+                level: this.getActivityLevel(stat?.completionRate ?? 0),
+                future: isFuture
             });
 
-
             if (week.length === 7) {
-
-                this.calendarWeeks.push(
-                    week
-                );
-
+                this.calendarWeeks.push(week);
                 week = [];
             }
 
+            current.setDate(current.getDate() + 1);
 
-            current.setDate(
-                current.getDate() + 1
-            );
-
-
-            /*
-             * 1년 + 마지막 주까지만
-             */
-
-            if (
-                current > today &&
-                week.length === 0
-            ) {
+            if (current > today && week.length === 0) {
                 break;
             }
         }
 
-
         this.buildMonthLabels();
-
         this.calculateStats();
+    }
+
+    getActivityLevel(progress: number): number {
+        if (progress <= 0) return 0;
+        if (progress <= 20) return 1;
+        if (progress <= 40) return 2;
+        if (progress <= 60) return 3;
+        if (progress <= 80) return 4;
+        return 4;
     }
 
     private formatDate(
@@ -645,29 +665,6 @@ export class MyRoutineComponent implements OnInit {
                 date.getDate()
             ).padStart(2, '0')
         ].join('-');
-    }
-
-    private getActivityLevel(
-        stat?: GoalDailyStat
-    ): number {
-
-        if (!stat || stat.completed <= 0) {
-            return 0;
-        }
-
-        if (stat.completionRate < 25) {
-            return 1;
-        }
-
-        if (stat.completionRate < 50) {
-            return 2;
-        }
-
-        if (stat.completionRate < 100) {
-            return 3;
-        }
-
-        return 4;
     }
 
     private buildMonthLabels(): void {

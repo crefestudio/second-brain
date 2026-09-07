@@ -1,0 +1,220 @@
+@if(isLoading) {
+<div class="page-loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">
+        루틴 정보를 불러오는 중입니다...
+    </div>
+</div>
+} @else {
+<!-- Notion 연결 안 됨 -->
+<div *ngIf="!notionAccessToken" class="notion-connect-box">
+    <div class="notion-connect-icon">🔗</div>
+    <h2>라이프업 템플릿 연결이 필요합니다</h2>
+    <p>
+        루틴을 사용하려면 라이프업 템플릿과<br>
+        Notion을 먼저 연결해주세요.
+    </p>
+    <button type="button" class="notion-connect-btn" routerLink="/workspace/connect">
+        연결 설정하기
+    </button>
+</div>
+
+<!-- Notion 연결됨 -->
+<div *ngIf="notionAccessToken">
+    <!-- 헤더 -->
+    <!-- <div class="dashboard-header">
+        <select class="goal-select" [(ngModel)]="selectedGoalId" (change)="onGoalChange()">
+            <option value="all">전체 습관</option>
+            <option *ngFor="let goal of goals" [value]="goal.id">
+                {{ goal.name }}
+            </option>
+        </select>
+    </div> -->
+
+    <div class="Habit-page" [style.--hour-height.px]="hourHeight">
+        <div class="habit-dashboard">
+            <div>
+                <h1>습관 기록</h1>
+                <p>지난 1년간의 꾸준함을 한눈에 확인하세요.</p>
+            </div>
+
+            <!-- 내 목표 -->
+            <div class="goal-section">
+                <div class="goal-title">🎯 내 목표</div>
+                <div class="goal-list">
+                    <button type="button" class="goal-chip goal-all" [class.goal-selected]="selectedGoal === ''"
+                        (click)="selectGoal('')">
+                        전체
+                    </button>
+                    @for(goal of goals; track goal.id; let i = $index) {
+                    <button type="button" class="goal-chip" [style.--goal-color]="getGoalColor(i)"
+                        [class.goal-selected]="selectedGoal === goal.id" (click)="selectGoal(goal.id)">
+                        {{ goal.name }}
+                    </button>
+                    }
+                </div>
+            </div>
+
+
+            <!-- 대표 통계 -->
+            <div class="stats-grid">
+
+                <!-- 현재 꾸준히 -->
+                <div class="stat-card streak-card">
+
+                    <div class="stat-icon flame">
+                        🔥
+                    </div>
+
+                    <div class="stat-content">
+                        <div class="stat-label">
+                            꾸준히
+                        </div>
+
+                        <div class="stat-value">
+                            {{ currentStreak }}<span>일째</span>
+                        </div>
+
+                        <div class="stat-description">
+                            현재 연속 기록
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <!-- 가장 긴 꾸준히 -->
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        🏆
+                    </div>
+
+                    <div class="stat-content">
+                        <div class="stat-label">
+                            가장 긴 꾸준히
+                        </div>
+
+                        <div class="stat-value">
+                            {{ longestStreak }}<span>일</span>
+                        </div>
+
+                        <div class="stat-description">
+                            역대 최장 연속 기록
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <!-- 완료율 -->
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        ✓
+                    </div>
+
+                    <div class="stat-content">
+                        <div class="stat-label">
+                            완료율
+                        </div>
+
+                        <div class="stat-value">
+                            {{ completionRate }}<span>%</span>
+                        </div>
+
+                        <div class="stat-description">
+                            최근 1년 기준
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <!-- 총 실행 -->
+                <div class="stat-card">
+
+                    <div class="stat-icon">
+                        ◎
+                    </div>
+
+                    <div class="stat-content">
+                        <div class="stat-label">
+                            총 실행
+                        </div>
+
+                        <div class="stat-value">
+                            {{ totalCompleted }}<span>회</span>
+                        </div>
+
+                        <div class="stat-description">
+                            최근 1년 기준
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- 1년 기록 -->
+            <div class="activity-card">
+                <div class="activity-header">
+                    <div>
+                        <h2>{{ currentYear }}</h2>
+                        <p>
+                            매일의 습관 실행 기록입니다.
+                        </p>
+                    </div>
+                    <div class="activity-summary">
+                        {{ totalCompleted }}회 완료
+                    </div>
+                </div>
+
+                <!-- GitHub 스타일 -->
+                <div class="activity-wrapper">
+                    <div class="weekday-labels">
+                        <span></span>
+                        <span>MON</span>
+                        <span>TUE</span>
+                        <span>WED</span>
+                        <span>THU</span>
+                        <span>FRI</span>
+                        <span>SAT</span>
+                        <span>SUN</span>
+                    </div>
+                    <div class="calendar-area">
+                        <div class="month-labels">
+                            <span *ngFor="let month of monthLabels" [style.left.%]="month.position">
+                                {{ month.label }}
+                            </span>
+                        </div>
+
+                        <div class="calendar-grid">
+                            <div class="week-column" *ngFor="let week of calendarWeeks">
+                                <div class="day-cell" *ngFor="let day of week" [class.empty]="!day.date"
+                                    [class.future]="day.future" [class.level-0]="day.level === 0"
+                                    [class.level-1]="day.level === 1" [class.level-2]="day.level === 2"
+                                    [class.level-3]="day.level === 3" [class.level-4]="day.level === 4"
+                                    [style.--goal-color]="goalColor" [title]="getDayTitle(day)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="activity-footer">
+                    <span>적음</span>
+                    <div class="legend">
+                        <span class="legend-cell level-0"></span>
+                        <span class="legend-cell level-1"></span>
+                        <span class="legend-cell level-2"></span>
+                        <span class="legend-cell level-3"></span>
+                        <span class="legend-cell level-4"></span>
+                    </div>
+                    <span>많음</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+}

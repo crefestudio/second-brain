@@ -19,6 +19,51 @@
     }
 }
 
+.page-loading {
+
+    min-height: 70vh;
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: center;
+    justify-content: center;
+
+    gap: 20px;
+}
+
+.loading-spinner {
+
+    width: 44px;
+    height: 44px;
+
+    border: 4px solid #2d2d2d;
+    border-top: 4px solid #007aff;
+
+    border-radius: 50%;
+
+    animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+
+    color: #a1a1a6;
+
+    font-size: 14px;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+
 .Habit-header-actions {
     display: flex;
     align-items: center;
@@ -993,4 +1038,489 @@
 
 .notion-connect-btn:hover {
     background: #1d4ed8;
+}
+
+
+.habit-dashboard {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 24px 60px;
+    color: #f1f5f9;
+}
+
+
+/* ================================
+   Header
+================================ */
+
+.dashboard-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 24px;
+
+    h1 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+
+    p {
+        margin: 7px 0 0;
+        color: #94a3b8;
+        font-size: 14px;
+    }
+}
+
+
+.goal-select {
+    min-width: 150px;
+    height: 40px;
+    padding: 0 34px 0 13px;
+
+    border: 1px solid #334155;
+    border-radius: 8px;
+
+    background: #111827;
+    color: #e2e8f0;
+
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+
+    &:focus {
+        border-color: #64748b;
+    }
+}
+
+
+/* ================================
+   Stats
+================================ */
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    min-height: 112px;
+    padding: 20px;
+
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+
+    transition:
+        border-color .2s ease,
+        transform .2s ease;
+
+    &:hover {
+        border-color: #334155;
+        transform: translateY(-1px);
+    }
+}
+
+
+.stat-icon {
+    width: 42px;
+    height: 42px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    border-radius: 10px;
+
+    background: #1e293b;
+
+    font-size: 20px;
+}
+
+
+.stat-icon.flame {
+    background: rgba(249, 115, 22, .12);
+}
+
+
+.stat-content {
+    min-width: 0;
+}
+
+
+.stat-label {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 3px;
+}
+
+
+.stat-value {
+    font-size: 28px;
+    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+
+    span {
+        margin-left: 3px;
+        color: #94a3b8;
+        font-size: 14px;
+        font-weight: 500;
+    }
+}
+
+
+.stat-description {
+    margin-top: 5px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+
+/* 현재 연속 기록 */
+
+.streak-card {
+    border-color: rgba(249, 115, 22, .25);
+
+    .stat-value {
+        color: #fb923c;
+    }
+}
+
+
+/* ================================
+   Activity
+================================ */
+
+.activity-card {
+    padding: 24px;
+
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+}
+
+
+.activity-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-bottom: 26px;
+
+    h2 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 650;
+    }
+
+    p {
+        margin: 5px 0 0;
+        color: #64748b;
+        font-size: 12px;
+    }
+}
+
+
+.activity-summary {
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+
+/* ================================
+   Calendar
+================================ */
+
+.activity-wrapper {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+
+.weekday-labels {
+    width: 38px;
+    flex-shrink: 0;
+
+    display: grid;
+    grid-template-rows: 18px repeat(7, 13px);
+    row-gap: 4px;
+
+    margin-top: 22px;
+
+    span {
+        display: flex;
+        align-items: center;
+
+        color: #64748b;
+        font-size: 9px;
+        font-weight: 600;
+    }
+
+    span:first-child {
+        visibility: hidden;
+    }
+}
+
+
+.calendar-area {
+    position: relative;
+    flex: 1;
+    min-width: 760px;
+}
+
+
+.month-labels {
+    position: relative;
+    height: 18px;
+
+    span {
+        position: absolute;
+        top: 0;
+
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+}
+
+
+.calendar-grid {
+    display: flex;
+    gap: 4px;
+}
+
+
+.week-column {
+    display: grid;
+    grid-template-rows: repeat(7, 13px);
+    gap: 4px;
+
+    flex: 1;
+}
+
+
+.day-cell {
+    width: 100%;
+    min-width: 8px;
+    height: 13px;
+
+    border-radius: 2px;
+
+    background: #1e293b;
+
+    transition:
+        transform .1s ease,
+        filter .1s ease;
+
+    &:hover {
+        transform: scale(1.25);
+        filter: brightness(1.2);
+        z-index: 2;
+    }
+}
+
+
+/* 빈 공간 */
+
+.day-cell.empty {
+    background: transparent;
+    pointer-events: none;
+}
+
+
+/* 미래 */
+
+.day-cell.future {
+    background: #0f172a;
+}
+
+
+/* ================================
+   Activity levels
+================================ */
+
+/*
+ * --goal-color
+ * 목표 색상을 CSS 변수로 전달
+ */
+
+.day-cell.level-0 {
+    background: #1e293b;
+}
+
+.day-cell.level-1 {
+    background: color-mix(
+        in srgb,
+        var(--goal-color) 25%,
+        #111827
+    );
+}
+
+.day-cell.level-2 {
+    background: color-mix(
+        in srgb,
+        var(--goal-color) 45%,
+        #111827
+    );
+}
+
+.day-cell.level-3 {
+    background: color-mix(
+        in srgb,
+        var(--goal-color) 70%,
+        #111827
+    );
+}
+
+.day-cell.level-4 {
+    background: var(--goal-color);
+}
+
+
+/* ================================
+   Footer / Legend
+================================ */
+
+.activity-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+
+    margin-top: 18px;
+
+    color: #64748b;
+    font-size: 10px;
+}
+
+
+.legend {
+    display: flex;
+    gap: 3px;
+}
+
+
+.legend-cell {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+}
+
+
+.legend-cell.level-0 {
+    background: #1e293b;
+}
+
+.legend-cell.level-1 {
+    background: color-mix(
+        in srgb,
+        var(--goal-color) 25%,
+        #111827
+    );
+}
+
+.legend-cell.level-2 {
+    background: color-mix(
+        in srgb,
+        var(--goal-color) 45%,
+        #111827
+    );
+}
+
+.legend-cell.level-3 {
+    background: color-mix(
+        in srgb,
+        var(--goal-color) 70%,
+        #111827
+    );
+}
+
+.legend-cell.level-4 {
+    background: var(--goal-color);
+}
+
+
+/* ================================
+   Mobile
+================================ */
+
+@media (max-width: 800px) {
+
+    .habit-dashboard {
+        padding: 20px 14px 40px;
+    }
+
+    .dashboard-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .goal-select {
+        width: 100%;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stat-card {
+        min-height: 100px;
+        padding: 16px;
+    }
+
+    .stat-value {
+        font-size: 24px;
+    }
+
+    .activity-card {
+        padding: 18px 14px;
+    }
+}
+
+
+@media (max-width: 480px) {
+
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .stat-card {
+        gap: 10px;
+        padding: 14px;
+    }
+
+    .stat-icon {
+        width: 34px;
+        height: 34px;
+        font-size: 16px;
+    }
+
+    .stat-value {
+        font-size: 22px;
+    }
+
+    .stat-label {
+        font-size: 12px;
+    }
+
+    .stat-description {
+        font-size: 10px;
+    }
 }

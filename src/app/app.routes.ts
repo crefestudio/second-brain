@@ -19,6 +19,7 @@ import { ServiceManagerComponent } from './components/pages/workspace/pages/serv
 import { RoutineComponent } from './components/pages/workspace/pages/routine/routine.component';
 import { RoutineFindComponent } from './components/pages/workspace/pages/routine/pages/rountine-find/routine-find.component';
 import { MyRoutineComponent } from './components/pages/workspace/pages/routine/pages/my-rountine/my-routine.component';
+import { RoutineDashboardComponent } from './components/pages/workspace/pages/routine/pages/routine-dashboard/routine-dashboard.component';
 import { AutoManagerComponent } from './components/pages/workspace/pages/auto-manager/auto-manager.component';
 
 import { MyPageComponent } from './components/pages/myPage/myPage.component';
@@ -81,8 +82,12 @@ export const routes: Routes = [
         children: [
           {
             path: '',
-            redirectTo: 'myroutine',
+            redirectTo: 'dashboard',
             pathMatch: 'full'
+          },
+           {
+            path: 'dashboard',
+            component: RoutineDashboardComponent
           },
           {
             path: 'find',

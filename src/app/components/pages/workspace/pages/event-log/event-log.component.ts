@@ -20,13 +20,14 @@ import { AuthService } from '../../../../../services/auth.service';
     styleUrls: ['./event-log.component.css']
 })
 export class EventLogComponent {
+    isLoading = true;
+
     logs: any[] = [];
 
     memberUid: string = '';
     userId: string = '';
 
     hasMore = true;
-    isLoading = false;
 
     errorMessage = '';
     warnMessage = '';
@@ -94,7 +95,7 @@ export class EventLogComponent {
     }
 
     async loadLogs() {
-        if (this.isLoading || !this.hasMore) return;
+        if (!this.hasMore) return;
         this.isLoading = true;
 
         try {

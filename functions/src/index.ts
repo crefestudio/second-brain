@@ -3330,7 +3330,11 @@ class NotionService {
                     }
                 ]
             },
-
+            '목표': {
+                relation: habit.goalId
+                    ? [{ id: habit.goalId }]
+                    : []
+            },
             'habitId': {
                 rich_text: [
                     {
@@ -3574,6 +3578,219 @@ class NotionService {
         }
 
         return goals;
+    }
+
+    // Notion Habit Log에서 일일 통계 조회
+    static async getDailyHabitStats(
+        userId: string,
+        targetDate: string
+    ): Promise<{
+        total: number;
+        completed: number;
+        completionRate: number;
+        goalStats: Record<string, {
+            total: number;
+            completed: number;
+        }>;
+    }> {
+
+        if (!userId) { throw new Error('Missing userId'); }
+
+        logger.info('[NotionHabitStats] 시작', {
+            userId,
+            targetDate
+        });
+
+
+        // --------------------------------
+        // Notion 인증
+        // --------------------------------
+
+        const userDoc = await db
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        const userData = userDoc.data();
+
+        const accessToken = userData?.notionAccessToken;
+        if (!accessToken) {
+            throw new Error(
+                'Notion accessToken이 없습니다.'
+            );
+        }
+
+        const notion = new Client({ auth: accessToken });
+
+        // --------------------------------
+        // Habit Log DB 조회
+        // --------------------------------
+
+        const databaseId =
+            await this.resolveDatabaseId(
+                accessToken,
+                userId,
+                'habit log'
+            );
+
+        const dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
+
+        logger.info('[NotionHabitStats] Notion DB resolved',
+            {
+                userId,
+                databaseId,
+                dataSourceId,
+                targetDate
+            }
+        );
+
+
+        // --------------------------------
+        // 날짜 범위
+        // --------------------------------
+        const startDate = new Date(`${targetDate}T00:00:00+09:00`);
+        const nextDate = new Date(startDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+
+        // --------------------------------
+        // Habit Log 조회
+        // --------------------------------
+        const habitLogs: any[] = [];
+        let startCursor: string | undefined = undefined;
+
+        do {
+            const response: any =
+                await notion.dataSources.query({
+                    data_source_id: dataSourceId,
+                    start_cursor: startCursor,
+                    page_size: 100,
+                    filter: {
+                        and: [
+                            {
+                                property: '날짜',
+                                date: {
+                                    on_or_after:
+                                        startDate.toISOString()
+                                }
+                            },
+                            {
+                                property: '날짜',
+                                date: {
+                                    before:
+                                        nextDate.toISOString()
+                                }
+                            }
+                        ]
+                    }
+                });
+
+            habitLogs.push(
+                ...response.results
+            );
+
+            startCursor = response.has_more
+                ? response.next_cursor ?? undefined
+                : undefined;
+
+        } while (startCursor);
+
+
+        logger.info(
+            '[NotionHabitStats] Habit Log 조회 완료',
+            {
+                userId,
+                targetDate,
+                count: habitLogs.length
+            }
+        );
+
+
+        // --------------------------------
+        // 전체 통계
+        // --------------------------------
+        const total = habitLogs.length;
+
+        const completed = habitLogs.filter(page => {
+            const properties = (page as any).properties;
+            return (
+                properties?.완료?.checkbox === true
+            );
+        }).length;
+
+        const completionRate =
+            total > 0
+                ? Math.round(
+                    (completed / total) * 100
+                )
+                : 0;
+
+
+        // --------------------------------
+        // 목표별 통계
+        // --------------------------------
+
+        const goalStats: Record<string, {
+            total: number;
+            completed: number;
+        }> = {};
+
+        habitLogs.forEach(page => {
+            const properties = (page as any).properties;
+            const goalRelation = properties?.목표?.relation;
+
+            if (!Array.isArray(goalRelation)) {
+                return;
+            }
+
+            const isCompleted = properties?.완료?.checkbox === true;
+            goalRelation.forEach(
+                (goal: { id?: string }) => {
+
+                    const goalId = goal.id;
+
+                    if (!goalId) {
+                        return;
+                    }
+
+                    if (!goalStats[goalId]) {
+                        goalStats[goalId] = {
+                            total: 0,
+                            completed: 0
+                        };
+                    }
+
+                    goalStats[goalId].total++;
+
+                    if (isCompleted) {
+                        goalStats[goalId].completed++;
+                    }
+                }
+            );
+        });
+
+
+        // --------------------------------
+        // 완료
+        // --------------------------------
+        logger.info(
+            '[NotionHabitStats] 완료',
+            {
+                userId,
+                targetDate,
+                total,
+                completed,
+                completionRate,
+                goalCount:
+                    Object.keys(goalStats).length
+            }
+        );
+
+        return {
+            total,
+            completed,
+            completionRate,
+            goalStats
+        };
     }
 
 }
@@ -11483,13 +11700,13 @@ async function releaseKakaoProcessingLock(userId: string, jobId: string) {
 
 // #routine
 export const createDailyHabitLogs = onSchedule({
-    schedule: '50 23 * * *',
+    schedule: '40 23 * * *',
     timeZone: 'Asia/Seoul',
     region: 'asia-northeast3',
     timeoutSeconds: 540,
     memory: '512MiB'
 }, async () => {
-    const { targetDate, targetDay } = getHabitDate(1);
+    const { targetDate, targetDay } = getTargetDay(1);
 
     const usersSnapshot = await db
         .collection('users')
@@ -11518,6 +11735,105 @@ export const createDailyHabitLogs = onSchedule({
     }
 });
 
+// #routine
+export const recordDailyHabitStats = onSchedule({
+    schedule: '10 0 * * *',
+    timeZone: 'Asia/Seoul',
+    region: 'asia-northeast3',
+    timeoutSeconds: 540,
+    memory: '512MiB'
+}, async () => {
+    const { targetDate } = getTargetDay(-24); // 어제 habit log 를 기록한다.
+
+    const usersSnapshot = await db
+        .collection('users')
+        .where('notionAccessToken', '!=', null)
+        .get();
+
+    const users = usersSnapshot.docs;
+    const BATCH_SIZE = 10;
+
+    for (let i = 0; i < users.length; i += BATCH_SIZE) {
+        const batch = users.slice(i, i + BATCH_SIZE);
+
+        await Promise.all(
+            batch.map(async (userDoc) => {
+                try {
+                    await RoutineService.recordDailyHabitStats(
+                        userDoc.id,
+                        targetDate
+                    );
+                } catch (error) {
+                    console.error(
+                        `[HabitStats] ${userDoc.id} 처리 실패`,
+                        error
+                    );
+                }
+            })
+        );
+    }
+});
+
+// #routine
+// 습관 통계 기록 테스트
+export const recordMyDailyHabitStatsWithUserId = onRequest(
+    withCors(async (req, res) => {
+        try {
+            logger.info('[HabitStatsTest] ===== 시작 =====');
+
+            const userId = req.body?.userId || req.query?.userId;
+
+            if (!userId || typeof userId !== 'string') {
+                res.status(400).json({
+                    success: false,
+                    message: 'userId가 필요합니다.'
+                });
+                return;
+            }
+
+            const { targetDate } = getTargetDay(-24); 
+
+            logger.info('[HabitStatsTest] 기록 대상', {
+                userId,
+                targetDate
+            });
+
+            const result =
+                await RoutineService.recordDailyHabitStats(
+                    userId,
+                    targetDate
+                );
+
+            logger.info('[HabitStatsTest] 처리 완료', {
+                userId,
+                ...result
+            });
+
+            res.json({
+                success: true,
+                userId,
+                ...result
+            });
+
+        } catch (error) {
+
+            logger.error('[HabitStatsTest] 실행 실패', {
+                error: error instanceof Error
+                    ? error.message
+                    : String(error)
+            });
+
+            res.status(500).json({
+                success: false,
+                message: '습관 통계 기록 중 오류가 발생했습니다.',
+                error: error instanceof Error
+                    ? error.message
+                    : String(error)
+            });
+        }
+    })
+);
+
 export const createMyDailyHabitLogsWithUserId = onRequest(withCors(async (req, res) => {
     try {
         logger.info('[HabitTest] ===== 시작 =====');
@@ -11532,7 +11848,7 @@ export const createMyDailyHabitLogsWithUserId = onRequest(withCors(async (req, r
             return;
         }
 
-        const { targetDate, targetDay } = getHabitDate(0);
+        const { targetDate, targetDay } = getTargetDay();
 
         logger.info('[HabitTest] 생성 대상', {
             userId,
@@ -11617,12 +11933,13 @@ export const syncMyHabitsWithUserId = onRequest(withCors(async (req, res) => {
     }
 }));
 
+
 interface HabitTargetDate {
     targetDate: string;
     targetDay: string;
 }
 
-function getHabitDate(addDays: number): HabitTargetDate {
+function getTargetDay(offsetHours = 0): HabitTargetDate {
     const now = new Date();
 
     const koreaNow = new Date(
@@ -11631,14 +11948,17 @@ function getHabitDate(addDays: number): HabitTargetDate {
         })
     );
 
-    const targetDateObj = new Date(koreaNow);
-    targetDateObj.setDate(targetDateObj.getDate() + addDays);
+    // 현재 시각 전체에 보정 시간을 더함
+    koreaNow.setTime(
+        koreaNow.getTime() + offsetHours * 60 * 60 * 1000
+    );
 
     const days = ['일', '월', '화', '수', '목', '금', '토'];
-    const targetDay = days[targetDateObj.getDay()];
 
     const targetDate =
-        `${targetDateObj.getFullYear()}-${String(targetDateObj.getMonth() + 1).padStart(2, '0')}-${String(targetDateObj.getDate()).padStart(2, '0')}`;
+        `${koreaNow.getFullYear()}-${String(koreaNow.getMonth() + 1).padStart(2, '0')}-${String(koreaNow.getDate()).padStart(2, '0')}`;
+
+    const targetDay = days[koreaNow.getDay()];
 
     return {
         targetDate,
@@ -11667,6 +11987,15 @@ export interface UserHabit {
     createdAt?: Timestamp;
     updatedAt?: Timestamp;
 }
+
+// interface HabitDailyStats {
+//     date: string;
+//     total: number;
+//     completed: number;
+//     completionRate: number;
+//     createdAt: FirebaseFirestore.FieldValue;
+// }
+
 
 class RoutineService {
     static async createDailyHabitLogs(
@@ -11922,10 +12251,126 @@ class RoutineService {
         };
     }
 
+    // 습관 통계 기록
+    static async recordDailyHabitStats(
+        userId: string,
+        targetDate: string
+    ) {
+        if (!userId) {
+            throw new Error('Missing userId');
+        }
 
+        logger.info('[HabitStats] 시작', {
+            userId,
+            targetDate
+        });
+
+        // --------------------------------
+        // Notion에서 습관 통계 조회
+        // --------------------------------
+
+        const result =
+            await NotionService.getDailyHabitStats(
+                userId,
+                targetDate
+            );
+
+        const {
+            total,
+            completed,
+            completionRate,
+            goalStats
+        } = result;
+
+
+        // --------------------------------
+        // 전체 통계 저장
+        // --------------------------------
+        const statsRef = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('routine')
+            .collection('dailyStats')
+            .doc(targetDate);
+
+        await statsRef.set({
+            date: targetDate,
+            total,
+            completed,
+            completionRate,
+            updatedAt:
+                admin.firestore.FieldValue.serverTimestamp()
+        }, {
+            merge: true
+        });
+
+
+        // --------------------------------
+        // 목표별 통계 저장
+        // --------------------------------
+
+        const goalDailyStatsCollection = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('routine')
+            .collection('goalDailyStats');
+
+        const batch = db.batch();
+
+        for (const [goalId, stat] of Object.entries(goalStats)) {
+
+            const goalCompletionRate = stat.total > 0
+                ? Math.round(
+                    (stat.completed / stat.total) * 100
+                )
+                : 0;
+
+            const statsId =
+                `${targetDate}_${goalId}`;
+
+            const statsDoc =
+                goalDailyStatsCollection.doc(statsId);
+
+            batch.set(statsDoc, {
+                date: targetDate,
+                goalId,
+                total: stat.total,
+                completed: stat.completed,
+                completionRate: goalCompletionRate,
+                updatedAt:
+                    admin.firestore.FieldValue.serverTimestamp()
+            }, {
+                merge: true
+            });
+        }
+
+        await batch.commit();
+
+
+        // --------------------------------
+        // 완료
+        // --------------------------------
+
+        logger.info('[HabitStats] 완료', {
+            userId,
+            targetDate,
+            total,
+            completed,
+            completionRate,
+            goalCount: Object.keys(goalStats).length
+        });
+
+        return {
+            targetDate,
+            total,
+            completed,
+            completionRate,
+            goalStats
+        };
+    }
 }
-
-
 
 export const getNotionGoals = onRequest(withCors(async (req, res) => {
     try {
