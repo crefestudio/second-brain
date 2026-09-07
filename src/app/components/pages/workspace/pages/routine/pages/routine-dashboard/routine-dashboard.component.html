@@ -34,21 +34,63 @@
     <div class="Habit-page" [style.--hour-height.px]="hourHeight">
         <div class="habit-dashboard">
             <div>
-                <h1>습관 기록</h1>
-                <p>지난 1년간의 꾸준함을 한눈에 확인하세요.</p>
+                <h1>루틴 대시보드</h1>
+                <p>지난 1년간의 꾸준함을 한눈에 확인하세요.<br>
+                    <span class="guide-gap"></span>
+                    ▪ 습관 기록은 매일 오전 12시 10분에 자동으로 업데이트됩니다. 자동 업데이트에서는 전날의 기록을 반영합니다.<br>
+                    ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다.
+                    <button type="button" class="inline-action-btn" (click)="onRecordMyDailyHabitStatsWithUserId()">
+                        내 기록 업데이트 하기
+                    </button>
+                </p>
             </div>
 
+            @if (newAchievements.length > 0) {
+            <div class="achievement-notifications">
+                @for (achievement of newAchievements; track achievement.code) {
+                <div class="achievement-notice">
+                    <div class="achievement-notice-icon">
+                        🔔
+                    </div>
+
+                    <div class="achievement-notice-content">
+                        <div class="achievement-notice-title">
+                            새로운 {{ achievement.type === 'trophy' ? '트로피' : '배지' }}를 획득했어요!
+                        </div>
+
+                        <div class="achievement-notice-achievement">
+                            <span class="achievement-icon">
+                                {{ achievement.icon }}
+                            </span>
+                            <strong>{{ achievement.name }}</strong>
+                        </div>
+
+                        <div class="achievement-notice-message">
+                            {{ achievement.message }}
+                        </div>
+                    </div>
+
+                    <button type="button" class="achievement-notice-close" (click)="dismissAchievement(achievement)"
+                        aria-label="닫기">
+                        ×
+                    </button>
+                </div>
+                }
+            </div>
+            }
+
+            <h2 class="section-title">루틴 기록</h2>
             <!-- 내 목표 -->
             <div class="goal-section">
                 <div class="goal-title">🎯 내 목표</div>
                 <div class="goal-list">
-                    <button type="button" class="goal-chip goal-all" [class.goal-selected]="selectedGoal === ''"
+                    <button type="button" class="goal-chip goal-all" [class.goal-selected]="selectedGoalId === ''"
                         (click)="selectGoal('')">
                         전체
                     </button>
                     @for(goal of goals; track goal.id; let i = $index) {
                     <button type="button" class="goal-chip" [style.--goal-color]="getGoalColor(i)"
-                        [class.goal-selected]="selectedGoal === goal.id" (click)="selectGoal(goal.id)">
+                        [class.goal-selected]="selectedGoalId === goal.id" (click)="selectGoal(goal.id)">
                         {{ goal.name }}
                     </button>
                     }
@@ -58,23 +100,18 @@
 
             <!-- 대표 통계 -->
             <div class="stats-grid">
-
                 <!-- 현재 꾸준히 -->
                 <div class="stat-card streak-card">
-
                     <div class="stat-icon flame">
                         🔥
                     </div>
-
                     <div class="stat-content">
                         <div class="stat-label">
                             꾸준히
                         </div>
-
                         <div class="stat-value">
                             {{ currentStreak }}<span>일째</span>
                         </div>
-
                         <div class="stat-description">
                             현재 연속 기록
                         </div>
@@ -203,7 +240,7 @@
                     </div>
                 </div>
                 <div class="activity-footer">
-                    <span>적음</span>
+                    <span>조금</span>
                     <div class="legend">
                         <span class="legend-cell level-0"></span>
                         <span class="legend-cell level-1"></span>
@@ -211,9 +248,81 @@
                         <span class="legend-cell level-3"></span>
                         <span class="legend-cell level-4"></span>
                     </div>
-                    <span>많음</span>
+                    <span>많이</span>
                 </div>
             </div>
+
+            <!-- 나의 성취 -->
+            <div class="achievement-area">
+                <h2 class="section-title">나의 성취</h2>
+                <div class="achievement-panel">
+                    <!-- 휴식권 -->
+                    <div class="achievement-section rest-section">
+
+                        <div class="achievement-header">
+                            <div class="achievement-title">
+                                <span class="achievement-icon">🏝️</span>
+                                <span>휴식권</span>
+                            </div>
+
+                            <button type="button" class="achievement-more">
+                                내역 →
+                            </button>
+                        </div>
+
+                        <div class="rest-content">
+                            <div class="rest-count">
+                                0<span>개</span>
+                            </div>
+
+                            <div class="achievement-description">
+                                현재 보유한 휴식권
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 배지 -->
+                    <div class="achievement-section">
+                        <div class="achievement-header">
+                            <div class="achievement-title">
+                                <span class="achievement-icon">🏅</span>
+                                <span>배지</span>
+                            </div>
+                            <!-- <button type="button" class="achievement-more">
+                                내역 →
+                            </button> -->
+                        </div>
+                        <div class="badge-list">
+                            @for (badge of badges; track badge.code) {
+                            <div class="badge-item" [title]="badge.name">
+                                {{ badge.icon }}
+                            </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- 트로피 -->
+                    <div class="achievement-section">
+                        <div class="achievement-header">
+                            <div class="achievement-title">
+                                <span class="achievement-icon">🏆</span>
+                                <span>트로피</span>
+                            </div>
+                            <!-- <button type="button" class="achievement-more">
+                                내역 →
+                            </button> -->
+                        </div>
+                        <div class="trophy-list">
+                            @for (trophy of trophies; track trophy.code) {
+                            <div class="trophy-item" [title]="trophy.name">
+                                {{ trophy.icon }}
+                            </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>

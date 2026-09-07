@@ -56,8 +56,46 @@ export interface UserHabit {
     updatedAt?: Timestamp;
 }
 
+export interface DailyHabitStatsResult {
+    targetDate: string;
+    total: number;
+    completed: number;
+    status: 'created' | 'updated' | 'unchanged';
+}
+
+export interface RecordMyDailyHabitStatsResult {
+    success: boolean;
+    yesterday?: DailyHabitStatsResult;
+    today?: DailyHabitStatsResult;
+}
+
+interface DailyHabitStat {
+    date: string;
+    total: number;
+    completed: number;
+}
+
+interface GoalDailyStat {
+    date: string;
+    goalId: string;
+    total: number;
+    completed: number;
+}
+
 function isWidgetMode(): boolean {
     return window.location.pathname.includes("/widget")
+}
+
+export interface NewAchievement {
+    id: string;
+    type: 'badge' | 'trophy';
+    code: string;
+    name: string;
+    icon: string;
+    value: number;
+    message: string;
+    achievedAt: any;
+    dismissedAt?: any;
 }
 
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
@@ -1153,32 +1191,12 @@ export class UserService {
         }
     }
 
-    async recordMyDailyHabitStatsWithUserId(userId: string): Promise<{
-        success: boolean;
-        targetDate?: string;
-        total: number;
-        completed: number;
-        completionRate: number;
-        goalStats?: Record<string, {
-            total: number;
-            completed: number;
-            completionRate: number;
-        }>;
-    }> {
+    async recordMyDailyHabitStatsWithUserId(
+        userId: string
+    ): Promise<RecordMyDailyHabitStatsResult> {
         try {
             const result = await firstValueFrom(
-                this.http.post<{
-                    success: boolean;
-                    targetDate?: string;
-                    total: number;
-                    completed: number;
-                    completionRate: number;
-                    goalStats?: Record<string, {
-                        total: number;
-                        completed: number;
-                        completionRate: number;
-                    }>;
-                }>(
+                this.http.post<RecordMyDailyHabitStatsResult>(
                     `${this.functionsBaseUrl}/recordMyDailyHabitStatsWithUserId`,
                     { userId }
                 )
@@ -1193,14 +1211,274 @@ export class UserService {
             );
 
             return {
-                success: false,
-                total: 0,
-                completed: 0,
-                completionRate: 0,
-                goalStats: {}
+                success: false
             };
         }
     }
+
+    async getDailyHabitStats(
+        userId: string,
+        startDate: string,
+        endDate: string
+    ): Promise<DailyHabitStat[]> {
+        if (!userId) {
+            return [];
+        }
+
+        try {
+            const habitsRef = collection(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                'routine',
+                'dailyStats'
+            );
+
+            const q = query(
+                habitsRef,
+                where('date', '>=', startDate),
+                where('date', '<=', endDate),
+                orderBy('date', 'asc')
+            );
+
+            const snapshot = await getDocs(q);
+
+            return snapshot.docs.map(doc => {
+                const data = doc.data();
+
+                return {
+                    date: data['date'],
+                    total: data['total'] ?? 0,
+                    completed: data['completed'] ?? 0
+                };
+            });
+
+        } catch (error) {
+            console.error(
+                '[HabitStats] 전체 일일 통계 조회 실패',
+                error
+            );
+
+            return [];
+        }
+    }
+
+    async getGoalDailyStats(
+        userId: string,
+        goalId: string,
+        startDate: string,
+        endDate: string
+    ): Promise<GoalDailyStat[]> {
+        if (!userId || !goalId) {
+            return [];
+        }
+
+        try {
+            const goalStatsRef = collection(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                'routine',
+                'goalDailyStats'
+            );
+
+            const q = query(
+                goalStatsRef,
+                where('goalId', '==', goalId),
+                where('date', '>=', startDate),
+                where('date', '<=', endDate),
+                orderBy('date', 'asc')
+            );
+
+            const snapshot = await getDocs(q);
+
+            return snapshot.docs.map(doc => {
+                const data = doc.data();
+
+                return {
+                    date: data['date'],
+                    goalId: data['goalId'],
+                    total: data['total'] ?? 0,
+                    completed: data['completed'] ?? 0
+                };
+            });
+
+        } catch (error) {
+            console.error(
+                '[HabitStats] 목표 일일 통계 조회 실패',
+                error
+            );
+
+            return [];
+        }
+    }
+
+    //////////////////////////////////////////////
+    // 배지, 트로피
+
+    async getHabitAchievements(
+        userId: string
+    ): Promise<{
+        badges: NewAchievement[];
+        trophies: NewAchievement[];
+    }> {
+        if (!userId) {
+            return {
+                badges: [],
+                trophies: []
+            };
+        }
+
+        try {
+            const result = {
+                badges: [] as NewAchievement[],
+                trophies: [] as NewAchievement[]
+            };
+
+            for (const type of ['badges', 'trophies'] as const) {
+                const achievementsRef = collection(
+                    firestore,
+                    'users',
+                    userId,
+                    'integrations',
+                    'routine',
+                    type
+                );
+
+                const snapshot = await getDocs(achievementsRef);
+
+                snapshot.docs.forEach(docSnapshot => {
+                    const data = docSnapshot.data();
+
+                    const achievement: NewAchievement = {
+                        id: `${type}_${docSnapshot.id}`,
+                        type: type === 'badges'
+                            ? 'badge'
+                            : 'trophy',
+                        code: data['code'],
+                        name: data['name'],
+                        icon: data['icon'],
+                        value: data['value'] ?? 0,
+                        message: data['message'] ?? '',
+                        achievedAt: data['achievedAt'],
+                        dismissedAt: data['dismissedAt'] ?? null
+                    };
+
+                    if (type === 'badges') {
+                        result.badges.push(achievement);
+                    } else {
+                        result.trophies.push(achievement);
+                    }
+                });
+            }
+            return result;
+        } catch (error) {
+            console.error(
+                '[HabitAchievement] 성취 조회 실패',
+                error
+            );
+
+            return {
+                badges: [],
+                trophies: []
+            };
+        }
+    }
+
+    async getNewHabitAchievements(userId: string): Promise<NewAchievement[]> {
+        if (!userId) { return []; }
+
+        try {
+            const results: NewAchievement[] = [];
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
+
+            for (const type of ['badges', 'trophies'] as const) {
+                const achievementsRef = collection(
+                    firestore,
+                    'users',
+                    userId,
+                    'integrations',
+                    'routine',
+                    type
+                );
+
+                const snapshot = await getDocs(achievementsRef);
+
+                snapshot.docs.forEach(docSnapshot => {
+                    const data = docSnapshot.data();
+
+                    // 이미 닫은 알림은 표시하지 않음
+                    if (data['dismissedAt']) { return; }
+
+                    const achievedAt = data['achievedAt'];
+                    if (!achievedAt) { return; }
+
+                    results.push({
+                        id: `${type}_${docSnapshot.id}`,
+                        type: type === 'badges'
+                            ? 'badge'
+                            : 'trophy',
+                        code: data['code'],
+                        name: data['name'],
+                        icon: data['icon'],
+                        value: data['value'] ?? 0,
+                        message: data['message'] ?? '',
+                        achievedAt,
+                        dismissedAt: data['dismissedAt'] ?? null
+                    });
+                });
+            }
+            return results;
+        } catch (error) {
+            console.error(
+                '[HabitAchievement] 새 성취 조회 실패',
+                error
+            );
+            return [];
+        }
+    }
+
+    async dismissHabitAchievement(
+        userId: string,
+        type: 'badge' | 'trophy',
+        code: string
+    ): Promise<boolean> {
+        if (!userId || !code) {
+            return false;
+        }
+
+        try {
+            const collectionName =
+                type === 'badge'
+                    ? 'badges'
+                    : 'trophies';
+
+            const achievementRef = doc(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                'routine',
+                collectionName,
+                code
+            );
+
+            await updateDoc(achievementRef, {
+                dismissedAt: new Date()
+            });
+            return true;
+
+        } catch (error) {
+            console.error(
+                '[HabitAchievement] 성취 알림 닫기 실패',
+                error
+            );
+            return false;
+        }
+    }
+
 
 }
 

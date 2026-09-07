@@ -53,7 +53,7 @@
 
 .habit-dashboard h1 {
     margin: 0;
-    font-size: 28px;
+    font-size: 30px;
     font-weight: 700;
     letter-spacing: -0.5px;
 }
@@ -225,7 +225,7 @@
 
 .activity-header h2 {
     margin: 0;
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 650;
 }
 
@@ -324,23 +324,23 @@
 }
 
 .day-cell.level-1 {
-    background: #2563a8;
+    background: #1d4f85;
 }
 
 .day-cell.level-2 {
-    background: #3182ce;
+    background: #2670b5;
 }
 
 .day-cell.level-3 {
-    background: #3b9be8;
+    background: #3595df;
 }
 
 .day-cell.level-4 {
-    background: #60a5fa;
+    background: #60b5ff;
 }
 
 .day-cell.future {
-    background: #1f3049;
+    background: #1e2c41;
 }
 
 .day-cell.empty {
@@ -377,21 +377,20 @@
 }
 
 .legend-cell.level-1 {
-    background: #2563a8;
+    background: #1d4f85;
 }
 
 .legend-cell.level-2 {
-    background: #3182ce;
+    background: #2670b5;
 }
 
 .legend-cell.level-3 {
-    background: #3b9be8;
+    background: #3595df;
 }
 
 .legend-cell.level-4 {
-    background: #60a5fa;
+    background: #60b5ff;
 }
-
 /* Notion 연결 */
 
 .notion-connect-box {
@@ -561,5 +560,305 @@
 @media (max-width: 600px) {
     .weekday-labels {
         display: none !important;
+    }
+}
+
+.inline-action-btn {
+    margin-left: 4px;
+    padding: 2px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: transparent;
+    color: #abb0b9;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    vertical-align: middle;
+    transition: all 0.15s ease;
+}
+
+.inline-action-btn:hover {
+    background: transparent;
+    color: #c5c8cc;
+}
+
+
+/* 나의 성취 */
+
+.achievement-panel {
+    display: grid;
+    grid-template-columns: 0.8fr 1.2fr 1.5fr;
+    gap: 0;
+    margin-bottom: 20px;
+    padding: 6px;
+    background: #0d1524;
+    border: 1px solid #1c2a3d;
+    border-radius: 14px;
+    box-sizing: border-box;
+}
+
+.achievement-section {
+    min-width: 0;
+    padding: 18px 20px;
+    box-sizing: border-box;
+}
+
+.achievement-section + .achievement-section {
+    border-left: 1px solid #1c2a3d;
+}
+
+.achievement-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.achievement-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.achievement-icon {
+    font-size: 19px;
+    line-height: 1;
+}
+
+.achievement-more {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.achievement-more:hover {
+    color: #94a3b8;
+}
+
+
+/* 휴식권 */
+
+.rest-content {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.rest-count {
+    color: #e2e8f0;
+    font-size: 27px;
+    line-height: 1;
+    font-weight: 700;
+}
+
+.rest-count span {
+    margin-left: 3px;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.achievement-description {
+    color: #64748b;
+    font-size: 11px;
+}
+
+
+/* 배지 */
+
+.badge-list,
+.trophy-list {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.badge-list::-webkit-scrollbar,
+.trophy-list::-webkit-scrollbar {
+    display: none;
+}
+
+.badge-item {
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 38px;
+    background: #172235;
+    border: 1px solid #24344b;
+    border-radius: 10px;
+    font-size: 19px;
+}
+
+.trophy-item {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 42px;
+    background: #172235;
+    border: 1px solid #24344b;
+    border-radius: 10px;
+    font-size: 21px;
+}
+
+
+/* 모바일 */
+
+@media (max-width: 700px) {
+
+    .achievement-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .achievement-section + .achievement-section {
+        border-left: none;
+        border-top: 1px solid #1c2a3d;
+    }
+
+}
+
+.achievement-area {
+    margin-top: 40px;
+}
+
+.section-title {
+    margin: 0 2px 14px;
+    color: #e2e8f0;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+
+
+.guide-gap {
+    display: block;
+    height: 8px;
+}
+
+.achievement-notifications {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.achievement-notice {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 48px 12px 18px;
+    background: rgba(245, 158, 11, 0.10);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-radius: 10px;
+    box-sizing: border-box;
+}
+
+.achievement-notice-icon {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    border-radius: 50%;
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.achievement-notice-content {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.achievement-notice-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fbbf24;
+}
+
+.achievement-notice-achievement {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 15px;
+    color: #f5f5f5;
+}
+
+.achievement-icon {
+    font-size: 19px;
+}
+
+.achievement-notice-message {
+    flex: 1 1 100%;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #b8bec9;
+}
+
+.achievement-notice-close {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #8b93a1;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.achievement-notice-close:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+}
+
+@media (max-width: 768px) {
+    .achievement-notice {
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 42px 14px 14px;
+    }
+
+    .achievement-notice-icon {
+        width: 34px;
+        height: 34px;
+        font-size: 18px;
+    }
+
+    .achievement-notice-content {
+        display: block;
+    }
+
+    .achievement-notice-title {
+        margin-bottom: 5px;
+    }
+
+    .achievement-notice-achievement {
+        margin-bottom: 6px;
+    }
+
+    .achievement-notice-message {
+        font-size: 12px;
     }
 }

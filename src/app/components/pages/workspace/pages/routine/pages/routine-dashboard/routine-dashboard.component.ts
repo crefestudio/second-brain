@@ -5,7 +5,7 @@ import { _log } from '../../../../../../../lib/cf-common/cf-common';
 
 import { AuthService } from '../../../../../../../services/auth.service';
 import { ToastService } from '../../../../../../../services/toast.service';
-import { UserService, UserHabit } from '../../../../../../../services/user.service';
+import { UserService, UserHabit, NewAchievement } from '../../../../../../../services/user.service';
 import { RouterLink } from '@angular/router';
 
 interface NotionGoal {
@@ -14,18 +14,23 @@ interface NotionGoal {
     status: string;
 }
 
-interface Goal {
-    id: string;
-    name: string;
-    color: string;
-}
+// interface Goal {
+//     id: string;
+//     name: string;
+//     color: string;
+// }
 
-interface GoalDailyStat {
+export interface DailyStat {
     date: string;
-    goalId: string;
     total: number;
     completed: number;
-    completionRate: number;
+}
+
+export interface DailyHabitStat extends DailyStat {
+}
+
+export interface GoalDailyStat extends DailyStat {
+    goalId: string;
 }
 
 interface CalendarDay {
@@ -54,34 +59,13 @@ export class RoutineDashboardComponent implements OnInit {
 
     isLoading = true;
 
-    habits: UserHabit[] = [];
-    filteredHabits: UserHabit[] = [];
-    selectedGoal = '';
-
-    isDeleteConfirmOpen = false;
-    deleteTargetHabit: UserHabit | null = null;
-
     memberUid: string = '';
     userId: string = '';
     kakaoUserId: string = '';
     notionAccessToken: string = '';
 
     currentYear = new Date().getFullYear();
-
     days = ['월', '화', '수', '목', '금', '토', '일'];
-
-    categories = [
-        // '추천',
-        '건강',
-        '생활',
-        '다이어트',
-        '성장',
-        '아침 루틴',
-        '저녁 루틴',
-        '학습',
-        '독서',
-        '운동'
-    ];
 
     // 캘린더 시작/종료 시간
     startHour = 5;
@@ -100,10 +84,7 @@ export class RoutineDashboardComponent implements OnInit {
     calendarWeeks: CalendarDay[][] = [];
     monthLabels: CalendarMonth[] = [];
 
-    selectedGoalId = 'all';
-
-    _goals: Goal[] = [];
-
+    selectedGoalId = '';
     goalColor = '#2dd4bf';
 
     currentStreak = 0;
@@ -111,19 +92,13 @@ export class RoutineDashboardComponent implements OnInit {
     completionRate = 0;
     totalCompleted = 0;
 
-    private statsMap = new Map<string, GoalDailyStat>();
+    statsMap = new Map<string, DailyStat>();
 
     ///////////////////////////////////////////////////
-
-    toggleCalendarZoom() {
-        this.hourHeightIndex =
-            (this.hourHeightIndex + 1) % this.hourHeightLevels.length;
-
-        this.hourHeight = this.hourHeightLevels[this.hourHeightIndex];
-    }
-    /////////////////////////
-
-    editingHabit: UserHabit | null = null;
+    // 배지, 트로피
+    badges: NewAchievement[] = [];
+    trophies: NewAchievement[] = [];
+    newAchievements: NewAchievement[] = [];
 
     constructor(
         private authService: AuthService,
@@ -140,19 +115,18 @@ export class RoutineDashboardComponent implements OnInit {
             await this.updateSession();
 
             if (this.userId) {
-                await this.loadGoals();
-                await this.loadHabits();
+                this.reloadAllData();
             }
         } finally {
             this.isLoading = false;
         }
     }
 
-    async loadHabits() {
-        this.habits = await UserService.getUserHabits(this.userId);
-        this.refreshFilteredHabits();
-
-        _log('loadHabits =>', this.habits);
+    async reloadAllData() {
+        this.loadGoals();
+        this.loadDailyStats();
+        this.loadNewAchievements();
+        this.loadHabitAchievements();
     }
 
     async loadGoals() {
@@ -243,22 +217,21 @@ export class RoutineDashboardComponent implements OnInit {
         this.calendarWeeks = weeks;
     }
 
-    // private formatDate(date: Date): string {
-    //     const year = date.getFullYear();
-    //     const month = String(date.getMonth() + 1).padStart(2, '0');
-    //     const day = String(date.getDate()).padStart(2, '0');
-    //     return `${year}-${month}-${day}`;
-    // }
-
     selectGoal(goalId: string): void {
-        this.selectedGoal = goalId;
-        this.refreshFilteredHabits();
-    }
+        this.selectedGoalId = goalId;
 
-    private refreshFilteredHabits(): void {
-        this.filteredHabits = this.selectedGoal
-            ? this.habits.filter(habit => habit.goalId === this.selectedGoal)
-            : this.habits;
+
+        // if (goalId === 'all') {
+        //     this.goalColor = '#2dd4bf';
+        // } else {
+        //     const goal = this.goals.find(
+        //         goal => goal.id === goalId
+        //     );
+
+        //     this.goalColor = goal?.color ?? '#2dd4bf';
+        // }
+
+        this.loadDailyStats();
     }
 
     async updateSession() {
@@ -276,213 +249,6 @@ export class RoutineDashboardComponent implements OnInit {
             this.kakaoUserId,
             this.notionAccessToken
         );
-    }
-
-
-    getHours(): number[] {
-        const hours: number[] = [];
-
-        for (let hour = this.startHour; hour < this.endHour; hour++) {
-            hours.push(hour);
-        }
-
-        return hours;
-    }
-
-    getDisplayHour(hour: number): string {
-        const displayHour = hour >= 24 ? hour - 24 : hour;
-        return `${displayHour}:00`;
-    }
-
-
-    getDayHabits(day: string): UserHabit[] {
-        return this.filteredHabits.filter(habit =>
-            habit.days?.includes(day) &&
-            this.isValidTime(habit.time)
-        );
-    }
-
-    isValidTime(time: string): boolean {
-        return /^\d{2}:\d{2}$/.test(time);
-    }
-
-    getHabitTop(habit: UserHabit): number {
-        const [hour, minute] = habit.time.split(':').map(Number);
-
-        return ((hour - this.startHour) * 60 + minute) * this.hourHeight / 60;
-    }
-
-    getHabitHeight(habit: UserHabit): number {
-        const duration = Math.max(5, habit.duration || 5);
-
-        return Math.max(24, duration * this.hourHeight / 60);
-    }
-
-    // getCategoryClass(habit: UserHabit): string {
-    //     const category = this.categories.find(category =>
-    //         habit.categories?.includes(category)
-    //     );
-
-    //     if (!category) {
-    //         return 'category-default';
-    //     }
-
-    //     return 'category-' + category
-    //         .replace(/\s/g, '-')
-    //         .toLowerCase();
-    // }
-
-    editHabit(habit: UserHabit) {
-        this.editingHabit = {
-            ...habit,
-            goalId: habit.goalId ?? '',
-            name: habit.name.replace(`${habit.icon ?? ''} `, '')
-        };
-    }
-
-    closeEditHabit() {
-        this.editingHabit = null;
-    }
-
-    async saveHabit() {
-        if (!this.editingHabit) {
-            return;
-        }
-
-        if (!this.editingHabit.name.trim()) {
-            ToastService.warning('습관 이름을 입력해주세요.');
-            return;
-        }
-
-        if (!this.editingHabit.days?.length) {
-            ToastService.warning('반복할 요일을 선택해주세요.');
-            return;
-        }
-
-        if (this.editingHabit.id) {
-            await this.updateHabit();
-        } else {
-            await this.createHabit();
-        }
-    }
-
-    deleteHabit(habit: UserHabit) {
-        this.deleteTargetHabit = habit;
-        this.isDeleteConfirmOpen = true;
-    }
-
-    cancelDeleteHabit() {
-        this.isDeleteConfirmOpen = false;
-        this.deleteTargetHabit = null;
-    }
-
-    async confirmDeleteHabit() {
-        if (!this.deleteTargetHabit?.id) return;
-
-        const success = await UserService.deleteUserHabit(
-            this.userId,
-            this.deleteTargetHabit.id
-        );
-
-        if (!success) {
-            ToastService.show('습관 삭제에 실패했습니다.');
-            return;
-        }
-
-        this.habits = this.habits.filter(
-            item => item.id !== this.deleteTargetHabit!.id
-        );
-
-        this.isDeleteConfirmOpen = false;
-        this.deleteTargetHabit = null;
-
-        ToastService.show('습관이 삭제되었습니다.');
-    }
-
-    toggleDay(habit: any, day: string) {
-        const index = habit.days.indexOf(day);
-
-        if (index === -1) {
-            habit.days.push(day);
-        } else {
-            habit.days.splice(index, 1);
-        }
-    }
-
-    isSelected(habit: any, day: string) {
-        return habit.days.includes(day);
-    }
-
-    openAddHabit() {
-        this.editingHabit = {
-            goalId: '',
-            icon: '',
-            name: '',
-            categories: [],
-            days: [],
-            time: '07:00',
-            duration: 30,
-            status: '진행 중',
-            notify: true
-        };
-    }
-
-    async updateHabit() {
-        const result = await UserService.updateUserHabit(
-            this.userId,
-            this.editingHabit!
-        );
-
-        if (!result.success) {
-            if (result.duplicate) {
-                ToastService.warning(
-                    result.message || '기존 습관과 시간이 겹칩니다.'
-                );
-            } else {
-                ToastService.error('습관 수정에 실패했습니다.');
-            }
-
-            return;
-        }
-
-        this.editingHabit = null;
-        await this.loadHabits();
-
-        ToastService.show('습관이 수정되었습니다.');
-    }
-
-    async createHabit() {
-        if (!this.memberUid) {
-            ToastService.show('로그인이 필요합니다.');
-            return;
-        }
-
-        if (!this.userId) {
-            ToastService.show('먼저 연결관리에서 라이프봇 연결을 진행해주세요.');
-            return;
-        }
-
-        if (!this.notionAccessToken) {
-            ToastService.show('라이프업 노션 템플릿과 연결을 완료해주세요.');
-            return;
-        }
-
-        const result = await UserService.addUserHabit(
-            this.userId,
-            this.editingHabit!
-        );
-
-        if (result.success) {
-            this.editingHabit = null;
-            await this.loadHabits();
-            ToastService.show('내 루틴에 습관이 추가되었습니다.');
-        } else if (result.duplicate) {
-            ToastService.warning(
-                result.message || '기존 습관과 시간이 겹칩니다.'
-            );
-        } else {
-            ToastService.error('습관 추가에 실패했습니다.');
-        }
     }
 
     getHabitGoalClass(habit: UserHabit): string {
@@ -514,95 +280,61 @@ export class RoutineDashboardComponent implements OnInit {
         return this.goalColors[index % this.goalColors.length];
     }
 
-    async onCreateDailyHabitLogs(): Promise<void> {
+    async onRecordMyDailyHabitStatsWithUserId(): Promise<void> {
         if (!this.userId) {
             return;
         }
 
-        const result = await this.userService.createMyDailyHabitLogsWithUserId(this.userId);
+        const result =
+            await this.userService.recordMyDailyHabitStatsWithUserId(this.userId);
 
         if (!result.success) {
-            ToastService.error('습관 추가에 실패했습니다.');
+            ToastService.error('습관 기록 동기화에 실패했습니다.');
             return;
         }
 
-        if (result.createdCount > 0 && result.existingCount > 0) {
-            ToastService.show(
-                `새 습관 ${result.createdCount}개가 추가되었습니다.\n` +
-                `동일한 습관 ${result.existingCount}개는 이미 있어 새로 추가하지 않았습니다.`
-            );
+        const messages: string[] = [];
 
-        } else if (result.createdCount > 0) {
-            ToastService.show(
-                `새 습관 ${result.createdCount}개가 추가되었습니다.`
-            );
+        if (result.yesterday) {
+            const { status } = result.yesterday;
 
-        } else if (result.existingCount > 0) {
-            ToastService.show(
-                `이미 동일한 ${result.existingCount}개 습관이 있어 새로 추가하지 않았습니다.`
-            );
+            if (status === 'created') {
+                messages.push('어제 기록이 새로 추가되었습니다.');
+            } else if (status === 'updated') {
+                messages.push('어제 기록이 업데이트되었습니다.');
+            }
+        }
 
+        if (result.today) {
+            const { status } = result.today;
+
+            if (status === 'created') {
+                messages.push('오늘 기록이 새로 추가되었습니다.');
+            } else if (status === 'updated') {
+                messages.push('오늘 기록이 업데이트되었습니다.');
+            }
+        }
+
+        if (messages.length > 0) {
+            ToastService.show(messages.join('\n'));
         } else {
-            ToastService.show(
-                '추가할 습관이 없습니다.'
-            );
+            ToastService.show('어제와 오늘 기록이 모두 최신 상태입니다.');
         }
+
+        this.loadDailyStats();
+        this.loadNewAchievements();
+        this.loadHabitAchievements();
     }
 
-    async onSyncHabits(): Promise<void> {
-        if (!this.userId) {
-            return;
-        }
-
-        const result = await this.userService.syncMyHabitsWithUserId(this.userId);
-
-        if (!result.success) {
-            ToastService.error('내 루틴 동기화에 실패했습니다.');
-            return;
-        }
-
-        if (result.createdCount > 0 && result.updatedCount > 0) {
-            ToastService.show(
-                `새 루틴 ${result.createdCount}개가 추가되고\n` +
-                `기존 루틴 ${result.updatedCount}개가 업데이트되었습니다.`
-            );
-
-        } else if (result.createdCount > 0) {
-            ToastService.show(
-                `새 루틴 ${result.createdCount}개가 추가되었습니다.`
-            );
-
-        } else if (result.updatedCount > 0) {
-            ToastService.show(
-                `모든 루틴이 이미 동기화되어 있습니다.`
-            );
-
-        } else {
-            ToastService.show(
-                '동기화할 루틴이 없습니다.'
-            );
-        }
-    }
-
-    async onRecordMyDailyHabitStatsWithUserId() {
-        alert('onRecordMyDailyHabitStatsWithUserId');
-        const result = await this.userService.recordMyDailyHabitStatsWithUserId(this.userId);
-        // onRecordMyDailyHabitStatsWithUserId
-    }
-
-    buildCalendar(stats: GoalDailyStat[]): void {
+    buildCalendar(stats: DailyStat[]): void {
         this.statsMap.clear();
 
         for (const stat of stats) {
             this.statsMap.set(stat.date, stat);
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const startDate = new Date(today);
-        startDate.setFullYear(startDate.getFullYear() - 1);
-        startDate.setDate(startDate.getDate() + 1);
+        const startDate = new Date(this.currentYear, 0, 1);
+        const endDate = new Date(this.currentYear, 11, 31);
 
         // 월요일 시작
         const dayOfWeek = (startDate.getDay() + 6) % 7;
@@ -613,17 +345,26 @@ export class RoutineDashboardComponent implements OnInit {
         let current = new Date(startDate);
         let week: CalendarDay[] = [];
 
-        while (current <= today || week.length > 0) {
+        while (current <= endDate || week.length > 0) {
             const dateString = this.formatDate(current);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
             const isFuture = current > today;
             const stat = this.statsMap.get(dateString);
 
+            const completed = stat?.completed ?? 0;
+            const total = stat?.total ?? 0;
+            const completionRate = total > 0
+                ? Math.round((completed / total) * 100)
+                : 0;
+
             week.push({
                 date: dateString,
-                completed: stat?.completed ?? 0,
-                total: stat?.total ?? 0,
-                completionRate: stat?.completionRate ?? 0,
-                level: this.getActivityLevel(stat?.completionRate ?? 0),
+                completed,
+                total,
+                completionRate,
+                level: this.getActivityLevel(completionRate),
                 future: isFuture
             });
 
@@ -634,7 +375,7 @@ export class RoutineDashboardComponent implements OnInit {
 
             current.setDate(current.getDate() + 1);
 
-            if (current > today && week.length === 0) {
+            if (current > endDate && week.length === 0) {
                 break;
             }
         }
@@ -712,7 +453,6 @@ export class RoutineDashboardComponent implements OnInit {
     }
 
     private calculateStats(): void {
-
         const stats =
             Array.from(
                 this.statsMap.values()
@@ -742,50 +482,30 @@ export class RoutineDashboardComponent implements OnInit {
                 )
                 : 0;
 
-
-        this.currentStreak =
-            this.calculateCurrentStreak();
-
-
-        this.longestStreak =
-            this.calculateLongestStreak();
+        this.currentStreak = this.calculateCurrentStreak();
+        this.longestStreak = this.calculateLongestStreak();
     }
 
     private calculateCurrentStreak(): number {
-
         let streak = 0;
-
         const today = new Date();
-
         today.setHours(0, 0, 0, 0);
 
-
         for (let i = 0; i < 365; i++) {
-
             const date = new Date(today);
 
             date.setDate(
                 today.getDate() - i
             );
+            const dateString = this.formatDate(date);
+            const stat = this.statsMap.get(dateString);
 
-
-            const dateString =
-                this.formatDate(date);
-
-            const stat =
-                this.statsMap.get(dateString);
-
-
-            if (
-                stat &&
-                stat.completed > 0
-            ) {
+            if (stat && stat.completed > 0) {
                 streak++;
             } else {
                 break;
             }
         }
-
         return streak;
     }
 
@@ -832,127 +552,127 @@ ${day.completed}/${day.total} 완료
 완료율 ${day.completionRate}%`;
     }
 
-    onGoalChange(): void {
-        if (this.selectedGoalId === 'all') {
-            this.goalColor = '#2dd4bf';
-        } else {
-            const goal =
-                this._goals.find(
-                    g =>
-                        g.id === this.selectedGoalId
+    async loadDailyStats(): Promise<void> {
+        try {
+            const startDateString = `${this.currentYear}-01-01`;
+            const endDateString = `${this.currentYear}-12-31`;
+
+            if (this.selectedGoalId === '') {
+                const stats = await this.userService.getDailyHabitStats(
+                    this.userId,
+                    startDateString,
+                    endDateString
                 );
 
-            this.goalColor =
-                goal?.color ?? '#2dd4bf';
+                this.buildCalendar(stats);
+                return;
+            }
+
+            // 목표 로드
+            const stats = await this.userService.getGoalDailyStats(
+                this.userId,
+                this.selectedGoalId,
+                startDateString,
+                endDateString
+            );
+
+            _log('loadDailyStats stats =>', stats)
+
+            this.buildCalendar(stats);
+
+        } catch (error) {
+            console.error(
+                '[HabitDashboard] 일일 통계 조회 실패',
+                error
+            );
+
+            this.calendarWeeks = [];
+            this.monthLabels = [];
+            this.currentStreak = 0;
+            this.longestStreak = 0;
+            this.completionRate = 0;
+            this.totalCompleted = 0;
         }
-        //this.loadDailyStats();
     }
 
-    // async loadDailyStats(): Promise<void> {
-    //     try {
-    //         const today = new Date();
-    //         today.setHours(0, 0, 0, 0);
+    //////////////////////////////////////////////////
+    // #badge 배지, 트로피
 
-    //         const startDate = new Date(today);
-    //         startDate.setFullYear(
-    //             startDate.getFullYear() - 1
-    //         );
-    //         startDate.setDate(
-    //             startDate.getDate() + 1
-    //         );
+    async loadHabitAchievements(): Promise<void> {
+        if (!this.userId) {
+            return;
+        }
 
-    //         const startDateString =
-    //             this.formatDate(startDate);
+        try {
+            const result =
+                await this.userService.getHabitAchievements(
+                    this.userId
+                );
 
-    //         const endDateString =
-    //             this.formatDate(today);
+            this.badges = result.badges;
+            this.trophies = result.trophies;
 
+            this.newAchievements = [
+                ...result.badges,
+                ...result.trophies
+            ].filter(
+                achievement => !achievement.dismissedAt
+            );
 
-    //         // ========================================
-    //         // 전체 습관
-    //         // ========================================
+        } catch (error) {
+            console.error(
+                '[HabitDashboard] 성취 조회 실패',
+                error
+            );
 
-    //         if (this.selectedGoalId === 'all') {
+            this.badges = [];
+            this.trophies = [];
+            this.newAchievements = [];
+        }
+    }
 
-    //             const snapshot = await this.firestore
-    //                 .collection(
-    //                     `users/${this.userId}/integrations/routine/dailyStats`
-    //                 )
-    //                 .where(
-    //                     'date',
-    //                     '>=',
-    //                     startDateString
-    //                 )
-    //                 .where(
-    //                     'date',
-    //                     '<=',
-    //                     endDateString
-    //                 )
-    //                 .orderBy('date', 'asc')
-    //                 .get();
+    async loadNewAchievements(): Promise<void> {
+        if (!this.userId) { return; }
 
-    //             const stats: GoalDailyStat[] =
-    //                 snapshot.docs.map(doc => ({
-    //                     ...(doc.data() as GoalDailyStat)
-    //                 }));
+        try {
+            const achievements = await this.userService.getNewHabitAchievements(this.userId);
+            this.newAchievements = achievements;
+        } catch (error) {
+            console.error(
+                '[HabitDashboard] 새 성취 조회 실패',
+                error
+            );
+            this.newAchievements = [];
+        }
+    }
 
-    //             this.buildCalendar(stats);
+    async dismissAchievement(achievement: NewAchievement): Promise<void> {
+        if (!this.userId) {
+            return;
+        }
 
-    //             return;
-    //         }
+        try {
+            await this.userService.dismissHabitAchievement(
+                this.userId,
+                achievement.type,
+                achievement.code
+            );
 
+            this.newAchievements =
+                this.newAchievements.filter(
+                    item => item.id !== achievement.id
+                );
+        } catch (error) {
+            console.error(
+                '[HabitDashboard] 성취 알림 닫기 실패',
+                error
+            );
 
-    //         // ========================================
-    //         // 특정 목표
-    //         // ========================================
-
-    //         const snapshot = await this.firestore
-    //             .collection(
-    //                 `users/${this.userId}/integrations/routine/goalDailyStats`
-    //             )
-    //             .where(
-    //                 'goalId',
-    //                 '==',
-    //                 this.selectedGoalId
-    //             )
-    //             .where(
-    //                 'date',
-    //                 '>=',
-    //                 startDateString
-    //             )
-    //             .where(
-    //                 'date',
-    //                 '<=',
-    //                 endDateString
-    //             )
-    //             .orderBy('date', 'asc')
-    //             .get();
-
-
-    //         const stats: GoalDailyStat[] =
-    //             snapshot.docs.map(doc => ({
-    //                 ...(doc.data() as GoalDailyStat)
-    //             }));
-
-
-    //         this.buildCalendar(stats);
-
-    //     } catch (error) {
-
-    //         console.error(
-    //             '[HabitDashboard] 일일 통계 조회 실패',
-    //             error
-    //         );
-
-    //         this.calendarWeeks = [];
-    //         this.monthLabels = [];
-
-    //         this.currentStreak = 0;
-    //         this.longestStreak = 0;
-    //         this.completionRate = 0;
-    //         this.totalCompleted = 0;
-    //     }
-    // }
+            ToastService.error(
+                '알림을 닫지 못했습니다.'
+            );
+        }
+    }
 }
 
 

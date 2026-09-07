@@ -3587,7 +3587,6 @@ class NotionService {
     ): Promise<{
         total: number;
         completed: number;
-        completionRate: number;
         goalStats: Record<string, {
             total: number;
             completed: number;
@@ -3709,21 +3708,12 @@ class NotionService {
         // 전체 통계
         // --------------------------------
         const total = habitLogs.length;
-
         const completed = habitLogs.filter(page => {
             const properties = (page as any).properties;
             return (
                 properties?.완료?.checkbox === true
             );
         }).length;
-
-        const completionRate =
-            total > 0
-                ? Math.round(
-                    (completed / total) * 100
-                )
-                : 0;
-
 
         // --------------------------------
         // 목표별 통계
@@ -3779,7 +3769,6 @@ class NotionService {
                 targetDate,
                 total,
                 completed,
-                completionRate,
                 goalCount:
                     Object.keys(goalStats).length
             }
@@ -3788,7 +3777,6 @@ class NotionService {
         return {
             total,
             completed,
-            completionRate,
             goalStats
         };
     }
@@ -11698,6 +11686,19 @@ async function releaseKakaoProcessingLock(userId: string, jobId: string) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 // routine
 
+export interface DailyHabitStatsResult {
+    targetDate: string;
+    total: number;
+    completed: number;
+    status: 'created' | 'updated' | 'unchanged';
+}
+
+export interface RecordMyDailyHabitStatsResult {
+    success: boolean;
+    yesterday?: DailyHabitStatsResult;
+    today?: DailyHabitStatsResult;
+}
+
 // #routine
 export const createDailyHabitLogs = onSchedule({
     schedule: '40 23 * * *',
@@ -11763,6 +11764,10 @@ export const recordDailyHabitStats = onSchedule({
                         userDoc.id,
                         targetDate
                     );
+                    await RoutineService.processHabitAchievements(
+                        userDoc.id
+                    );
+
                 } catch (error) {
                     console.error(
                         `[HabitStats] ${userDoc.id} 처리 실패`,
@@ -11791,32 +11796,42 @@ export const recordMyDailyHabitStatsWithUserId = onRequest(
                 return;
             }
 
-            const { targetDate } = getTargetDay(-24); 
+            const { targetDate: yesterday } = getTargetDay(-24);
+            const { targetDate: today } = getTargetDay(0);
 
             logger.info('[HabitStatsTest] 기록 대상', {
                 userId,
-                targetDate
+                yesterday,
+                today
             });
 
-            const result =
+            const yesterdayResult =
                 await RoutineService.recordDailyHabitStats(
                     userId,
-                    targetDate
+                    yesterday
                 );
+
+            const todayResult =
+                await RoutineService.recordDailyHabitStats(
+                    userId,
+                    today
+                );
+
+            await RoutineService.processHabitAchievements(userId);
 
             logger.info('[HabitStatsTest] 처리 완료', {
                 userId,
-                ...result
+                yesterday: yesterdayResult,
+                today: todayResult
             });
 
             res.json({
                 success: true,
-                userId,
-                ...result
+                yesterday: yesterdayResult,
+                today: todayResult
             });
 
         } catch (error) {
-
             logger.error('[HabitStatsTest] 실행 실패', {
                 error: error instanceof Error
                     ? error.message
@@ -11988,13 +12003,14 @@ export interface UserHabit {
     updatedAt?: Timestamp;
 }
 
-// interface HabitDailyStats {
-//     date: string;
-//     total: number;
-//     completed: number;
-//     completionRate: number;
-//     createdAt: FirebaseFirestore.FieldValue;
-// }
+
+interface HabitAchievement {
+    code: string;
+    name: string;
+    icon: string;
+    value: number;
+    message: string;
+}
 
 
 class RoutineService {
@@ -12255,37 +12271,16 @@ class RoutineService {
     static async recordDailyHabitStats(
         userId: string,
         targetDate: string
-    ) {
+    ): Promise<DailyHabitStatsResult> {
         if (!userId) {
             throw new Error('Missing userId');
         }
 
-        logger.info('[HabitStats] 시작', {
-            userId,
-            targetDate
-        });
+        logger.info('[HabitStats] 시작', { userId, targetDate });
 
-        // --------------------------------
-        // Notion에서 습관 통계 조회
-        // --------------------------------
+        const result = await NotionService.getDailyHabitStats(userId, targetDate);
+        const { total, completed, goalStats } = result;
 
-        const result =
-            await NotionService.getDailyHabitStats(
-                userId,
-                targetDate
-            );
-
-        const {
-            total,
-            completed,
-            completionRate,
-            goalStats
-        } = result;
-
-
-        // --------------------------------
-        // 전체 통계 저장
-        // --------------------------------
         const statsRef = db
             .collection('users')
             .doc(userId)
@@ -12294,21 +12289,27 @@ class RoutineService {
             .collection('dailyStats')
             .doc(targetDate);
 
+        const existingDoc = await statsRef.get();
+        const existingData = existingDoc.data();
+
+        const isChanged = !existingDoc.exists ||
+            existingData?.total !== total ||
+            existingData?.completed !== completed
+
+        const status: DailyHabitStatsResult['status'] = !existingDoc.exists
+            ? 'created'
+            : isChanged
+                ? 'updated'
+                : 'unchanged';
+
         await statsRef.set({
             date: targetDate,
             total,
             completed,
-            completionRate,
-            updatedAt:
-                admin.firestore.FieldValue.serverTimestamp()
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, {
             merge: true
         });
-
-
-        // --------------------------------
-        // 목표별 통계 저장
-        // --------------------------------
 
         const goalDailyStatsCollection = db
             .collection('users')
@@ -12320,55 +12321,275 @@ class RoutineService {
         const batch = db.batch();
 
         for (const [goalId, stat] of Object.entries(goalStats)) {
-
-            const goalCompletionRate = stat.total > 0
-                ? Math.round(
-                    (stat.completed / stat.total) * 100
-                )
-                : 0;
-
-            const statsId =
-                `${targetDate}_${goalId}`;
-
-            const statsDoc =
-                goalDailyStatsCollection.doc(statsId);
-
-            batch.set(statsDoc, {
-                date: targetDate,
-                goalId,
-                total: stat.total,
-                completed: stat.completed,
-                completionRate: goalCompletionRate,
-                updatedAt:
-                    admin.firestore.FieldValue.serverTimestamp()
-            }, {
-                merge: true
-            });
+            batch.set(
+                goalDailyStatsCollection.doc(`${targetDate}_${goalId}`),
+                {
+                    date: targetDate,
+                    goalId,
+                    total: stat.total,
+                    completed: stat.completed,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                },
+                { merge: true }
+            );
         }
 
         await batch.commit();
 
-
-        // --------------------------------
-        // 완료
-        // --------------------------------
-
         logger.info('[HabitStats] 완료', {
             userId,
             targetDate,
+            status,
             total,
-            completed,
-            completionRate,
-            goalCount: Object.keys(goalStats).length
+            completed
         });
 
         return {
             targetDate,
             total,
             completed,
-            completionRate,
-            goalStats
+            status
         };
+    }
+
+    private static readonly BADGE_THRESHOLDS: HabitAchievement[] = [
+        {
+            code: 'first',
+            name: '첫 기록',
+            icon: '🌱',
+            value: 1,
+            message: '첫 루틴을 완료하셨군요! 축하합니다. 시작이 반입니다. 앞으로도 작은 실천을 하나씩 이어가 보세요.'
+        },
+        {
+            code: 'sprout',
+            name: '새싹',
+            icon: '🌿',
+            value: 10,
+            message: '벌써 10번이나 루틴을 실천하셨군요! 작은 실천이 조금씩 습관으로 자라고 있습니다. 지금처럼 꾸준히 이어가 보세요.'
+        },
+        {
+            code: 'growth',
+            name: '성장',
+            icon: '🌳',
+            value: 30,
+            message: '루틴을 30번 완료하셨습니다! 이제 단순한 시작을 넘어 꾸준한 실천이 만들어지고 있습니다. 계속해서 한 걸음씩 나아가 보세요.'
+        },
+        {
+            code: 'harvest',
+            name: '결실',
+            icon: '🌾',
+            value: 50,
+            message: '루틴을 50번 완료하셨습니다! 꾸준히 쌓아온 실천이 멋진 결실을 맺고 있습니다. 지금의 흐름을 계속 이어가 보세요.'
+        },
+        {
+            code: 'hundred',
+            name: '100회',
+            icon: '💯',
+            value: 100,
+            message: '루틴 100회를 달성하셨습니다! 100번의 작은 실천이 모여 지금의 기록을 만들었습니다. 정말 대단합니다!'
+        }
+    ];
+
+    private static readonly TROPHY_THRESHOLDS: HabitAchievement[] = [
+        {
+            code: 'seven_days',
+            name: '7일 연속',
+            icon: '🏅',
+            value: 7,
+            message: '일주일 동안 하루도 빠지지 않고 루틴을 이어가셨군요! 꾸준함의 첫 번째 벽을 멋지게 넘었습니다.'
+        },
+        {
+            code: 'thirty_days',
+            name: '30일 연속',
+            icon: '🥉',
+            value: 30,
+            message: '한 달 동안 꾸준히 루틴을 이어가셨습니다! 이제 습관이 조금씩 일상의 일부가 되고 있습니다. 정말 잘하고 계세요.'
+        },
+        {
+            code: 'sixty_days',
+            name: '60일 연속',
+            icon: '🥈',
+            value: 60,
+            message: '두 달 동안 꾸준함을 이어가셨군요! 반복되는 작은 실천이 확실한 변화로 이어지고 있습니다. 지금의 흐름을 계속 이어가 보세요.'
+        },
+        {
+            code: 'hundred_days',
+            name: '100일 연속',
+            icon: '🥇',
+            value: 100,
+            message: '100일 동안 루틴을 이어가셨습니다! 100번의 하루를 스스로 지켜낸 기록입니다. 정말 멋진 꾸준함입니다.'
+        },
+        {
+            code: 'year',
+            name: '365일 연속',
+            icon: '🏆',
+            value: 365,
+            message: '1년 동안 하루도 빠짐없이 루틴을 이어가셨습니다! 이제 꾸준함 자체가 당신의 습관이 되었습니다. 정말 멋진 기록입니다.'
+        }
+    ];
+
+    static async processHabitAchievements(
+        userId: string
+    ): Promise<void> {
+        if (!userId) {
+            throw new Error('Missing userId');
+        }
+
+        const dailyStatsRef = db
+            .collection('users')
+            .doc(userId)
+            .collection('integrations')
+            .doc('routine')
+            .collection('dailyStats');
+
+        const [statsSnapshot, badgesSnapshot, trophiesSnapshot] =
+            await Promise.all([
+                dailyStatsRef
+                    .orderBy('date', 'asc')
+                    .get(),
+
+                db
+                    .collection('users')
+                    .doc(userId)
+                    .collection('integrations')
+                    .doc('routine')
+                    .collection('badges')
+                    .get(),
+
+                db
+                    .collection('users')
+                    .doc(userId)
+                    .collection('integrations')
+                    .doc('routine')
+                    .collection('trophies')
+                    .get()
+            ]);
+
+        const stats = statsSnapshot.docs.map(doc => doc.data());
+
+        // 총 습관 기록 횟수
+        const totalCompleted = stats.reduce(
+            (sum, stat) => sum + (stat.completed ?? 0),
+            0
+        );
+
+        // 가장 긴 연속 완료 일수
+        let longestStreak = 0;
+        let currentStreak = 0;
+        let previousDate: string | null = null;
+
+        for (const stat of stats) {
+            const date = stat.date;
+            const completed = stat.completed ?? 0;
+
+            if (completed <= 0) {
+                currentStreak = 0;
+                previousDate = date;
+                continue;
+            }
+
+            if (previousDate && this.isNextDay(previousDate, date)) {
+                currentStreak++;
+            } else {
+                currentStreak = 1;
+            }
+
+            longestStreak = Math.max(longestStreak, currentStreak);
+            previousDate = date;
+        }
+
+        const existingBadges = new Set(
+            badgesSnapshot.docs.map(doc => doc.id)
+        );
+
+        const existingTrophies = new Set(
+            trophiesSnapshot.docs.map(doc => doc.id)
+        );
+
+        const batch = db.batch();
+
+        // 배지
+        for (const badge of this.BADGE_THRESHOLDS) {
+            if (
+                totalCompleted >= badge.value &&
+                !existingBadges.has(badge.code)
+            ) {
+                const ref = db
+                    .collection('users')
+                    .doc(userId)
+                    .collection('integrations')
+                    .doc('routine')
+                    .collection('badges')
+                    .doc(badge.code);
+
+                batch.set(ref, {
+                    code: badge.code,
+                    name: badge.name,
+                    icon: badge.icon,
+                    value: badge.value,
+                    message: badge.message,
+                    achievedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        }
+
+        // 트로피
+        for (const trophy of this.TROPHY_THRESHOLDS) {
+            if (
+                longestStreak >= trophy.value &&
+                !existingTrophies.has(trophy.code)
+            ) {
+                const ref = db
+                    .collection('users')
+                    .doc(userId)
+                    .collection('integrations')
+                    .doc('routine')
+                    .collection('trophies')
+                    .doc(trophy.code);
+
+                batch.set(ref, {
+                    code: trophy.code,
+                    name: trophy.name,
+                    icon: trophy.icon,
+                    value: trophy.value,
+                    message: trophy.message,
+                    achievedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        }
+
+        await batch.commit();
+
+        logger.info('[HabitAchievement] 완료', {
+            userId,
+            totalCompleted,
+            longestStreak
+        });
+    }
+
+    private static isNextDay(
+        previousDate: string,
+        currentDate: string
+    ): boolean {
+        const [prevYear, prevMonth, prevDay] =
+            previousDate.split('-').map(Number);
+
+        const [currYear, currMonth, currDay] =
+            currentDate.split('-').map(Number);
+
+        const previous = Date.UTC(
+            prevYear,
+            prevMonth - 1,
+            prevDay
+        );
+
+        const current = Date.UTC(
+            currYear,
+            currMonth - 1,
+            currDay
+        );
+
+        return current - previous === 24 * 60 * 60 * 1000;
     }
 }
 
