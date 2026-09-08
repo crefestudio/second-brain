@@ -1,3 +1,4 @@
+
 .page-loading {
     min-height: 70vh;
     display: flex;
@@ -313,29 +314,40 @@
     transition: transform .1s ease, filter .1s ease;
 }
 
+.day-cell.today {
+    outline: 2px solid #3595df;
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+
 .day-cell:hover {
     transform: scale(1.25);
     filter: brightness(1.2);
     z-index: 2;
 }
 
-.day-cell.level-0 {
+.day-cell.level-0,
+.legend-cell.level-0 {
     background: #172033;
 }
 
-.day-cell.level-1 {
+.day-cell.level-1,
+.legend-cell.level-1 {
     background: color-mix(in srgb, var(--goal-color) 35%, #172033);
 }
 
-.day-cell.level-2 {
+.day-cell.level-2,
+.legend-cell.level-2 {
     background: color-mix(in srgb, var(--goal-color) 55%, #172033);
 }
 
-.day-cell.level-3 {
+.day-cell.level-3,
+.legend-cell.level-3 {
     background: color-mix(in srgb, var(--goal-color) 75%, #172033);
 }
 
-.day-cell.level-4 {
+.day-cell.level-4,
+.legend-cell.level-4 {
     background: var(--goal-color);
 }
 
@@ -349,14 +361,9 @@
     pointer-events: none;
 }
 
-.day-cell.future {
-    background: #1e2c41;
-}
-
-.day-cell.empty {
-    background: transparent !important;
-    border: none !important;
-    pointer-events: none;
+.day-cell.rest-day {
+    background: color-mix(in srgb, var(--goal-color) 35%, #475569);
+    border: 1px dashed color-mix(in srgb, var(--goal-color) 70%, #94a3b8);
 }
 
 /* 범례 */
@@ -382,24 +389,18 @@
     border-radius: 2px;
 }
 
-.legend-cell.level-0 {
-    background: #172033;
+.rest-legend {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 10px;
+    color: #94a3b8;
+    font-size: 11px;
 }
 
-.legend-cell.level-1 {
-    background: color-mix(in srgb, var(--goal-color) 35%, #172033);
-}
-
-.legend-cell.level-2 {
-    background: color-mix(in srgb, var(--goal-color) 55%, #172033);
-}
-
-.legend-cell.level-3 {
-    background: color-mix(in srgb, var(--goal-color) 75%, #172033);
-}
-
-.legend-cell.level-4 {
-    background: var(--goal-color);
+.legend-cell.rest-day {
+    background: color-mix(in srgb, var(--goal-color) 35%, #475569);
+    border: 1px dashed color-mix(in srgb, var(--goal-color) 70%, #94a3b8);
 }
 
 /* Notion 연결 */
@@ -593,7 +594,6 @@
     color: #c5c8cc;
 }
 
-
 /* 나의 성취 */
 
 .achievement-panel {
@@ -653,13 +653,13 @@
     color: #94a3b8;
 }
 
-
 /* 휴식권 */
 
 .rest-content {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
+    height: 40px;
 }
 
 .rest-count {
@@ -677,10 +677,11 @@
 }
 
 .achievement-description {
+    height: 0;
     color: #64748b;
     font-size: 11px;
+    line-height: 1;
 }
-
 
 /* 배지 */
 
@@ -724,11 +725,9 @@
     font-size: 21px;
 }
 
-
-/* 모바일 */
+/* 성취 모바일 */
 
 @media (max-width: 700px) {
-
     .achievement-panel {
         grid-template-columns: 1fr;
     }
@@ -737,7 +736,6 @@
         border-left: none;
         border-top: 1px solid #1c2a3d;
     }
-
 }
 
 .achievement-area {
@@ -751,7 +749,6 @@
     font-weight: 700;
     letter-spacing: -0.3px;
 }
-
 
 .guide-gap {
     display: block;
@@ -809,10 +806,6 @@
     gap: 5px;
     font-size: 15px;
     color: #f5f5f5;
-}
-
-.achievement-icon {
-    font-size: 19px;
 }
 
 .achievement-notice-message {
@@ -874,9 +867,7 @@
     }
 }
 
-/*
-    badge
-*/
+/* 배지 모달 */
 
 .badge-modal-backdrop {
     position: fixed;
@@ -1004,8 +995,3 @@
     font-size: 12px;
     line-height: 1.5;
 }
-
-/*
-
-
-*/

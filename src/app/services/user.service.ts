@@ -11,6 +11,7 @@ import { firstValueFrom, Subject, Subscription } from 'rxjs';
 const SB_USER_ID_KEY = 'sb_user_id';
 
 
+
 import { _log } from '../lib/cf-common/cf-common';
 
 export interface SecondBrainUser {
@@ -73,6 +74,7 @@ interface DailyHabitStat {
     date: string;
     total: number;
     completed: number;
+    useRest: boolean;
 }
 
 interface GoalDailyStat {
@@ -80,13 +82,14 @@ interface GoalDailyStat {
     goalId: string;
     total: number;
     completed: number;
+    useRest: boolean;
 }
 
 function isWidgetMode(): boolean {
     return window.location.pathname.includes("/widget")
 }
 
-export interface NewAchievement {
+export interface HabitAchievement {
     id: string;
     type: 'badge' | 'trophy';
     code: string;
@@ -95,8 +98,32 @@ export interface NewAchievement {
     value: number;
     message: string;
     achievedAt: any;
-    dismissedAt?: any;
+    dismissedAt: any | null;
 }
+
+export interface RestHistory {
+    id: string;
+    date: string;
+    type: 'reward' | 'use';
+    amount: number;
+    streak?: number | null;
+    message: string;
+    createdAt: any;
+    dismissedAt?: any | null;
+}
+
+export interface NewRestAndAchievement {
+    id: string;
+    type: 'badge' | 'trophy' | 'rest';
+    code: string;
+    name: string;
+    icon: string;
+    value: number;
+    message: string;
+    achievedAt: any;
+    dismissedAt: any | null;
+}
+
 
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
@@ -1216,6 +1243,62 @@ export class UserService {
         }
     }
 
+    async getHabitSummary(
+        userId: string,
+        goalId?: string
+    ): Promise<{
+        currentStreak: number;
+        longestStreak: number;
+        totalCompleted: number;
+        completionRate: number;
+    }> {
+        const emptySummary = {
+            currentStreak: 0,
+            longestStreak: 0,
+            totalCompleted: 0,
+            completionRate: 0
+        };
+
+        if (!userId) {
+            return emptySummary;
+        }
+
+        try {
+            const summaryId = goalId || 'all';
+
+            const summaryRef = doc(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                'routine',
+                'summary',
+                summaryId
+            );
+
+            const snapshot = await getDoc(summaryRef);
+
+            if (!snapshot.exists()) {
+                return emptySummary;
+            }
+
+            const data = snapshot.data();
+
+            return {
+                currentStreak: data['currentStreak'] ?? 0,
+                longestStreak: data['longestStreak'] ?? 0,
+                totalCompleted: data['totalCompleted'] ?? 0,
+                completionRate: data['completionRate'] ?? 0
+            };
+        } catch (error) {
+            console.error(
+                '[HabitStats] 통계 summary 조회 실패',
+                error
+            );
+            return emptySummary;
+        }
+    }
+
     async getDailyHabitStats(
         userId: string,
         startDate: string,
@@ -1250,7 +1333,8 @@ export class UserService {
                 return {
                     date: data['date'],
                     total: data['total'] ?? 0,
-                    completed: data['completed'] ?? 0
+                    completed: data['completed'] ?? 0,
+                    useRest: data['useRest'] === true
                 };
             });
 
@@ -1301,7 +1385,8 @@ export class UserService {
                     date: data['date'],
                     goalId: data['goalId'],
                     total: data['total'] ?? 0,
-                    completed: data['completed'] ?? 0
+                    completed: data['completed'] ?? 0,
+                    useRest: data['useRest'] === true
                 };
             });
 
@@ -1314,27 +1399,27 @@ export class UserService {
             return [];
         }
     }
-
     //////////////////////////////////////////////
     // 배지, 트로피
 
-    async getHabitAchievements(
-        userId: string
-    ): Promise<{
-        badges: NewAchievement[];
-        trophies: NewAchievement[];
+    async getHabitRestAndAchievements(userId: string): Promise<{
+        badges: HabitAchievement[];
+        trophies: HabitAchievement[];
+        restHistory: RestHistory[];
     }> {
         if (!userId) {
             return {
                 badges: [],
-                trophies: []
+                trophies: [],
+                restHistory: []
             };
         }
 
         try {
             const result = {
-                badges: [] as NewAchievement[],
-                trophies: [] as NewAchievement[]
+                badges: [] as HabitAchievement[],
+                trophies: [] as HabitAchievement[],
+                restHistory: [] as RestHistory[]
             };
 
             for (const type of ['badges', 'trophies'] as const) {
@@ -1352,11 +1437,9 @@ export class UserService {
                 snapshot.docs.forEach(docSnapshot => {
                     const data = docSnapshot.data();
 
-                    const achievement: NewAchievement = {
+                    const achievement: HabitAchievement = {
                         id: `${type}_${docSnapshot.id}`,
-                        type: type === 'badges'
-                            ? 'badge'
-                            : 'trophy',
+                        type: type === 'badges' ? 'badge' : 'trophy',
                         code: data['code'],
                         name: data['name'],
                         icon: data['icon'],
@@ -1373,25 +1456,53 @@ export class UserService {
                     }
                 });
             }
+
+            const restHistoryRef = collection(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                'routine',
+                'restHistory'
+            );
+
+            const restSnapshot = await getDocs(restHistoryRef);
+
+            restSnapshot.docs.forEach(docSnapshot => {
+                const data = docSnapshot.data();
+
+                result.restHistory.push({
+                    id: docSnapshot.id,
+                    date: data['date'],
+                    type: data['type'],
+                    amount: data['amount'] ?? 0,
+                    streak: data['streak'] ?? null,
+                    message: data['message'] ?? '',
+                    createdAt: data['createdAt'],
+                    dismissedAt: data['dismissedAt'] ?? null
+                });
+            });
+
             return result;
         } catch (error) {
             console.error(
-                '[HabitAchievement] 성취 조회 실패',
+                '[HabitRestAndAchievement] 성취 및 휴식권 조회 실패',
                 error
             );
 
             return {
                 badges: [],
-                trophies: []
+                trophies: [],
+                restHistory: []
             };
         }
     }
 
-    async getNewHabitAchievements(userId: string): Promise<NewAchievement[]> {
+    async getNewHabitAchievements(userId: string): Promise<NewRestAndAchievement[]> {
         if (!userId) { return []; }
 
         try {
-            const results: NewAchievement[] = [];
+            const results: NewRestAndAchievement[] = [];
             const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
 
             for (const type of ['badges', 'trophies'] as const) {
@@ -1440,20 +1551,63 @@ export class UserService {
         }
     }
 
-    async dismissHabitAchievement(
-        userId: string,
-        type: 'badge' | 'trophy',
-        code: string
-    ): Promise<boolean> {
-        if (!userId || !code) {
-            return false;
-        }
+    async getNewHabitRestTokens(userId: string): Promise<NewRestAndAchievement[]> {
+        if (!userId) { return []; }
 
         try {
-            const collectionName =
-                type === 'badge'
-                    ? 'badges'
-                    : 'trophies';
+            const results: NewRestAndAchievement[] = [];
+            const restHistoryRef = collection(
+                firestore,
+                'users',
+                userId,
+                'integrations',
+                'routine',
+                'restHistory'
+            );
+
+            const snapshot = await getDocs(restHistoryRef);
+
+            snapshot.docs.forEach(docSnapshot => {
+                const data = docSnapshot.data();
+
+                if (data['type'] !== 'reward') { return; }
+                if (data['dismissedAt']) { return; }
+
+                const createdAt = data['createdAt'];
+                if (!createdAt) { return; }
+
+                results.push({
+                    id: `rest_${docSnapshot.id}`,
+                    type: 'rest',
+                    code: docSnapshot.id,
+                    name: '휴식권',
+                    icon: '🎫',
+                    value: data['amount'] ?? 1,
+                    message: data['message'] ?? '휴식권을 획득했습니다.',
+                    achievedAt: createdAt,
+                    dismissedAt: data['dismissedAt'] ?? null
+                });
+            });
+
+            return results;
+        } catch (error) {
+            console.error(
+                '[HabitRestToken] 새 휴식권 조회 실패',
+                error
+            );
+            return [];
+        }
+    }
+
+    async dismissHabitAchievement(userId: string, type: 'badge' | 'trophy' | 'rest', code: string): Promise<boolean> {
+        if (!userId || !code) { return false; }
+
+        try {
+            const collectionName = type === 'badge'
+                ? 'badges'
+                : type === 'trophy'
+                    ? 'trophies'
+                    : 'restHistory';
 
             const achievementRef = doc(
                 firestore,
@@ -1468,8 +1622,8 @@ export class UserService {
             await updateDoc(achievementRef, {
                 dismissedAt: new Date()
             });
-            return true;
 
+            return true;
         } catch (error) {
             console.error(
                 '[HabitAchievement] 성취 알림 닫기 실패',
@@ -1478,7 +1632,6 @@ export class UserService {
             return false;
         }
     }
-
 
 }
 

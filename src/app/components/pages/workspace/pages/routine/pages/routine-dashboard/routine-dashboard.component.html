@@ -41,14 +41,14 @@
                     ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다.<br>
                     ▪ 어제 이전의 기록은 통계에 반영되지 않습니다.
                     <button type="button" class="inline-action-btn" (click)="onRecordMyDailyHabitStatsWithUserId()">
-                        내 오늘 기록 업데이트 하기
+                        오늘 기록 업데이트 하기
                     </button>
                 </p>
             </div>
 
-            @if (newAchievements.length > 0) {
+            @if (newRestAndAchievements.length > 0) {
             <div class="achievement-notifications">
-                @for (achievement of newAchievements; track achievement.code) {
+                @for (achievement of newRestAndAchievements; track achievement.code) {
                 <div class="achievement-notice">
                     <div class="achievement-notice-icon">
                         🔔
@@ -56,7 +56,13 @@
 
                     <div class="achievement-notice-content">
                         <div class="achievement-notice-title">
-                            새로운 {{ achievement.type === 'trophy' ? '트로피' : '배지' }}를 획득했어요!
+                            새로운 {{
+                            achievement.type === 'trophy'
+                            ? '트로피'
+                            : achievement.type === 'badge'
+                            ? '배지'
+                            : '휴식권'
+                            }}을 획득했어요!
                         </div>
 
                         <div class="achievement-notice-achievement">
@@ -107,24 +113,20 @@
                     <div class="stat-icon flame">
                         🔥
                     </div>
+
                     <div class="stat-content">
                         <div class="stat-label">
                             꾸준히
                         </div>
+
                         <div class="stat-value">
                             {{ currentStreak }}<span>일째</span>
                         </div>
-                        <div class="stat-description">
-                            현재 연속 기록
-                        </div>
                     </div>
-
                 </div>
-
 
                 <!-- 가장 긴 꾸준히 -->
                 <div class="stat-card">
-
                     <div class="stat-icon">
                         🏆
                     </div>
@@ -137,18 +139,11 @@
                         <div class="stat-value">
                             {{ longestStreak }}<span>일</span>
                         </div>
-
-                        <div class="stat-description">
-                            역대 최장 연속 기록
-                        </div>
                     </div>
-
                 </div>
-
 
                 <!-- 완료율 -->
                 <div class="stat-card">
-
                     <div class="stat-icon">
                         ✓
                     </div>
@@ -161,18 +156,11 @@
                         <div class="stat-value">
                             {{ completionRate }}<span>%</span>
                         </div>
-
-                        <div class="stat-description">
-                            최근 1년 기준
-                        </div>
                     </div>
-
                 </div>
-
 
                 <!-- 총 실행 -->
                 <div class="stat-card">
-
                     <div class="stat-icon">
                         ◎
                     </div>
@@ -185,14 +173,8 @@
                         <div class="stat-value">
                             {{ totalCompleted }}<span>회</span>
                         </div>
-
-                        <div class="stat-description">
-                            최근 1년 기준
-                        </div>
                     </div>
-
                 </div>
-
             </div>
 
 
@@ -232,9 +214,10 @@
                         <div class="calendar-grid">
                             <div class="week-column" *ngFor="let week of calendarWeeks">
                                 <div class="day-cell" *ngFor="let day of week" [class.empty]="!day.date"
-                                    [class.future]="day.future" [class.level-0]="day.level === 0"
-                                    [class.level-1]="day.level === 1" [class.level-2]="day.level === 2"
-                                    [class.level-3]="day.level === 3" [class.level-4]="day.level === 4"
+                                    [class.today]="isToday(day)" [class.future]="day.future"
+                                    [class.level-0]="day.level === 0" [class.level-1]="day.level === 1"
+                                    [class.level-2]="day.level === 2" [class.level-3]="day.level === 3"
+                                    [class.level-4]="day.level === 4" [class.rest-day]="day.useRest"
                                     [style.--goal-color]="goalColor" [title]="getDayTitle(day)">
                                 </div>
                             </div>
@@ -243,6 +226,7 @@
                 </div>
                 <div class="activity-footer" [style.--goal-color]="goalColor">
                     <span>조금</span>
+
                     <div class="legend">
                         <span class="legend-cell level-0"></span>
                         <span class="legend-cell level-1"></span>
@@ -250,7 +234,13 @@
                         <span class="legend-cell level-3"></span>
                         <span class="legend-cell level-4"></span>
                     </div>
+
                     <span>많이</span>
+
+                    <div class="rest-legend">
+                        <span class="legend-cell rest-day"></span>
+                        <span>휴식권</span>
+                    </div>
                 </div>
             </div>
 
@@ -267,14 +257,14 @@
                                 <span>휴식권</span>
                             </div>
 
-                            <button type="button" class="achievement-more">
+                            <button type="button" class="achievement-more" (click)="openRestHistory()">
                                 내역 →
                             </button>
                         </div>
 
                         <div class="rest-content">
                             <div class="rest-count">
-                                0<span>개</span>
+                                {{ restTokenCount }}<span>개</span>
                             </div>
 
                             <div class="achievement-description">
@@ -341,14 +331,14 @@
         </div>
 
         <div class="badge-history-list">
-            @if (badgeHistory.length === 0) {
+            @if (badges.length === 0) {
             <div class="trophy-empty">
                 <div class="trophy-empty-icon">🏅</div>
                 <div class="trophy-empty-title">아직 첫 배지가 없습니다.</div>
                 <div class="trophy-empty-message">첫 루틴을 완료하고 배지를 받아보세요.</div>
             </div>
             } @else {
-            @for (badge of badgeHistory; track badge.code + badge.achievedAt) {
+            @for (badge of badges; track badge.code + badge.achievedAt) {
             <div class="badge-history-item">
                 <span class="badge-history-date">
                     {{ formatBadgeDate(badge.achievedAt) }}
@@ -383,11 +373,50 @@
             </div>
             } @else {
             <!-- 기존 트로피 목록 -->
-            @for (trophy of trophyHistory; track $index) {
+            @for (trophy of trophies; track $index) {
             <div class="badge-history-item">
                 <span class="badge-history-date">{{ formatBadgeDate(trophy.achievedAt) }}</span>
                 <span class="badge-history-icon">{{ trophy.icon }}</span>
                 <span class="badge-history-name">{{ trophy.name }}</span>
+            </div>
+            }
+            }
+        </div>
+    </div>
+</div>
+}
+
+@if (showRestHistory) {
+<div class="badge-modal-backdrop" (click)="closeRestHistory()">
+    <div class="badge-modal" (click)="$event.stopPropagation()">
+        <button type="button" class="badge-modal-close" (click)="closeRestHistory()">×</button>
+
+        <div class="badge-modal-header">
+            <span class="badge-modal-icon">🎫</span>
+            <span>휴식권 내역</span>
+        </div>
+
+        <div class="badge-history-list">
+            @if (restHistory.length === 0) {
+            <div class="trophy-empty">
+                <div class="trophy-empty-icon">🎫</div>
+                <div class="trophy-empty-title">아직 휴식권 내역이 없습니다.</div>
+                <div class="trophy-empty-message">5일 연속 1개이상의 습관을 완료하면 휴식권을 받을 수 있어요.</div>
+            </div>
+            } @else {
+            @for (rest of restHistory; track rest.id) {
+            <div class="badge-history-item">
+                <span class="badge-history-date">
+                    {{ formatBadgeDate(rest.createdAt) }}
+                </span>
+                <span class="badge-history-icon">
+                    {{ rest.type === 'reward' ? '🎫' : '☕' }}
+                </span>
+                <span class="badge-history-name">
+                    {{ rest.type === 'reward'
+                    ? '휴식권 +' + rest.amount
+                    : '휴식권 1개 사용' }}
+                </span>
             </div>
             }
             }

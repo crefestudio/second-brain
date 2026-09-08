@@ -11764,10 +11764,10 @@ export const recordDailyHabitStats = onSchedule({
                         userDoc.id,
                         targetDate
                     );
-                    await RoutineService.processHabitAchievements(
-                        userDoc.id
+                    await RoutineService.processHabitStats(
+                        userDoc.id,
+                        targetDate
                     );
-
                 } catch (error) {
                     console.error(
                         `[HabitStats] ${userDoc.id} 처리 실패`,
@@ -11817,7 +11817,10 @@ export const recordMyDailyHabitStatsWithUserId = onRequest(
                     today
                 );
 
-            await RoutineService.processHabitAchievements(userId);
+            await RoutineService.processHabitStats(
+                userId,
+                yesterday
+            );
 
             logger.info('[HabitStatsTest] 처리 완료', {
                 userId,
@@ -12268,6 +12271,7 @@ class RoutineService {
     }
 
     // 습관 통계 기록
+    // 습관 통계 기록
     static async recordDailyHabitStats(
         userId: string,
         targetDate: string
@@ -12294,7 +12298,7 @@ class RoutineService {
 
         const isChanged = !existingDoc.exists ||
             existingData?.total !== total ||
-            existingData?.completed !== completed
+            existingData?.completed !== completed;
 
         const status: DailyHabitStatsResult['status'] = !existingDoc.exists
             ? 'created'
@@ -12428,75 +12432,50 @@ class RoutineService {
         }
     ];
 
-    static async processHabitAchievements(
-        userId: string
-    ): Promise<void> {
+
+    //////////////////////////////////////////////////
+    // 습관 통계 처리
+    static async processHabitStats(userId: string, targetDate: string): Promise<void> {
         if (!userId) {
             throw new Error('Missing userId');
         }
 
-        const dailyStatsRef = db
+        const routineRef = db
             .collection('users')
             .doc(userId)
             .collection('integrations')
-            .doc('routine')
-            .collection('dailyStats');
+            .doc('routine');
 
-        const [statsSnapshot, badgesSnapshot, trophiesSnapshot] =
-            await Promise.all([
-                dailyStatsRef
-                    .orderBy('date', 'asc')
-                    .get(),
+        const dailyStatsRef = routineRef.collection('dailyStats');
+        const goalDailyStatsRef = routineRef.collection('goalDailyStats');
+        const badgesRef = routineRef.collection('badges');
+        const trophiesRef = routineRef.collection('trophies');
+        const restHistoryRef = routineRef.collection('restHistory');
+        const summaryRef = routineRef.collection('summary');
 
-                db
-                    .collection('users')
-                    .doc(userId)
-                    .collection('integrations')
-                    .doc('routine')
-                    .collection('badges')
-                    .get(),
+        const [
+            statsSnapshot,
+            goalStatsSnapshot,
+            badgesSnapshot,
+            trophiesSnapshot,
+            restHistorySnapshot
+        ] = await Promise.all([
+            dailyStatsRef.orderBy('date', 'asc').get(),
+            goalDailyStatsRef.orderBy('date', 'asc').get(),
+            badgesRef.get(),
+            trophiesRef.get(),
+            restHistoryRef.get()
+        ]);
 
-                db
-                    .collection('users')
-                    .doc(userId)
-                    .collection('integrations')
-                    .doc('routine')
-                    .collection('trophies')
-                    .get()
-            ]);
+        const stats = statsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as any[];
 
-        const stats = statsSnapshot.docs.map(doc => doc.data());
-
-        // 총 습관 기록 횟수
-        const totalCompleted = stats.reduce(
-            (sum, stat) => sum + (stat.completed ?? 0),
-            0
-        );
-
-        // 가장 긴 연속 완료 일수
-        let longestStreak = 0;
-        let currentStreak = 0;
-        let previousDate: string | null = null;
-
-        for (const stat of stats) {
-            const date = stat.date;
-            const completed = stat.completed ?? 0;
-
-            if (completed <= 0) {
-                currentStreak = 0;
-                previousDate = date;
-                continue;
-            }
-
-            if (previousDate && this.isNextDay(previousDate, date)) {
-                currentStreak++;
-            } else {
-                currentStreak = 1;
-            }
-
-            longestStreak = Math.max(longestStreak, currentStreak);
-            previousDate = date;
-        }
+        const goalStats = goalStatsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as any[];
 
         const existingBadges = new Set(
             badgesSnapshot.docs.map(doc => doc.id)
@@ -12506,64 +12485,306 @@ class RoutineService {
             trophiesSnapshot.docs.map(doc => doc.id)
         );
 
+        const restHistory = restHistorySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as any[];
+
+        const existingRestHistory = new Set(
+            restHistory.map(item => item.id)
+        );
+
+        // 현재 휴식권 개수
+        let restTokens = restHistory.reduce(
+            (sum, item) => sum + (item.amount ?? 0),
+            0
+        );
+
         const batch = db.batch();
 
-        // 배지
+        // ============================================================
+        // 1. 대상 날짜에 휴식권 자동 사용
+        // ============================================================
+
+        const targetStat = stats.find(
+            stat => stat.date === targetDate
+        );
+
+        if (targetStat) {
+            const completed = targetStat.completed ?? 0;
+            const useRest = targetStat.useRest === true;
+            const useRestId = `use_${targetDate}`;
+
+            if (
+                completed <= 0 &&
+                !useRest &&
+                restTokens > 0 &&
+                !existingRestHistory.has(useRestId)
+            ) {
+                batch.update(
+                    dailyStatsRef.doc(targetStat.id),
+                    {
+                        useRest: true
+                    }
+                );
+
+                // 해당 날짜의 모든 목표에도 휴식권 사용 기록
+                for (const goalStat of goalStats) {
+                    if (goalStat.date !== targetDate) {
+                        continue;
+                    }
+
+                    batch.update(
+                        goalDailyStatsRef.doc(goalStat.id),
+                        {
+                            useRest: true
+                        }
+                    );
+
+                    goalStat.useRest = true;
+                }
+
+                batch.set(
+                    restHistoryRef.doc(useRestId),
+                    {
+                        date: targetDate,
+                        type: 'use',
+                        amount: -1,
+                        message: '휴식권 사용',
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    }
+                );
+
+                targetStat.useRest = true;
+                restTokens--;
+            }
+        }
+
+        // ============================================================
+        // 2. 전체 기록 기준 통계 계산
+        // ============================================================
+
+        let totalCompleted = 0;
+        let totalCount = 0;
+        let longestStreak = 0;
+        let currentStreak = 0;
+        let previousDate: string | null = null;
+
+        for (const stat of stats) {
+            const date = stat.date;
+            const completed = stat.completed ?? 0;
+            const total = stat.total ?? 0;
+            const useRest = stat.useRest === true;
+
+            totalCompleted += completed;
+            totalCount += total;
+
+            const isActiveDay = completed > 0 || useRest;
+
+            if (!isActiveDay) {
+                currentStreak = 0;
+                previousDate = null;
+                continue;
+            }
+
+            if (
+                previousDate &&
+                this.isNextDay(previousDate, date)
+            ) {
+                currentStreak++;
+            } else {
+                currentStreak = 1;
+            }
+
+            longestStreak = Math.max(
+                longestStreak,
+                currentStreak
+            );
+
+            // ========================================================
+            // 5일 단위 휴식권 지급
+            // ========================================================
+
+            if (currentStreak > 0 && currentStreak % 5 === 0) {
+                const rewardId = `reward_${date}_${currentStreak}`;
+
+                if (!existingRestHistory.has(rewardId)) {
+                    batch.set(
+                        restHistoryRef.doc(rewardId),
+                        {
+                            date,
+                            type: 'reward',
+                            amount: 1,
+                            streak: currentStreak,
+                            message: `${currentStreak}일 꾸준히 달성`,
+                            createdAt: admin.firestore.FieldValue.serverTimestamp()
+                        }
+                    );
+
+                    existingRestHistory.add(rewardId);
+                    restTokens++;
+                }
+            }
+
+            previousDate = date;
+        }
+
+        // 전체 완료율
+        const completionRate = totalCount > 0
+            ? Math.round((totalCompleted / totalCount) * 10000) / 100
+            : 0;
+
+        // ============================================================
+        // 3. 전체 summary 저장
+        // ============================================================
+
+        batch.set(
+            summaryRef.doc('all'),
+            {
+                currentStreak,
+                longestStreak,
+                totalCompleted,
+                completionRate,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            },
+            { merge: true }
+        );
+
+        // ============================================================
+        // 4. 목표별 통계 계산
+        // ============================================================
+
+        const goalStatsMap = new Map<string, any[]>();
+
+        for (const stat of goalStats) {
+            const goalId = stat.goalId;
+
+            if (!goalId) {
+                continue;
+            }
+
+            if (!goalStatsMap.has(goalId)) {
+                goalStatsMap.set(goalId, []);
+            }
+
+            goalStatsMap.get(goalId)!.push(stat);
+        }
+
+        for (const [goalId, goalDailyStats] of goalStatsMap) {
+            let goalTotalCompleted = 0;
+            let goalTotalCount = 0;
+            let goalLongestStreak = 0;
+            let goalCurrentStreak = 0;
+            let goalPreviousDate: string | null = null;
+
+            for (const stat of goalDailyStats) {
+                const date = stat.date;
+                const completed = stat.completed ?? 0;
+                const total = stat.total ?? 0;
+                const useRest = stat.useRest === true;
+
+                goalTotalCompleted += completed;
+                goalTotalCount += total;
+
+                const isActiveDay = completed > 0 || useRest;
+
+                if (!isActiveDay) {
+                    goalCurrentStreak = 0;
+                    goalPreviousDate = null;
+                    continue;
+                }
+
+                if (
+                    goalPreviousDate &&
+                    this.isNextDay(goalPreviousDate, date)
+                ) {
+                    goalCurrentStreak++;
+                } else {
+                    goalCurrentStreak = 1;
+                }
+
+                goalLongestStreak = Math.max(
+                    goalLongestStreak,
+                    goalCurrentStreak
+                );
+
+                goalPreviousDate = date;
+            }
+
+            const goalCompletionRate = goalTotalCount > 0
+                ? Math.round((goalTotalCompleted / goalTotalCount) * 10000) / 100
+                : 0;
+
+            batch.set(
+                summaryRef.doc(goalId),
+                {
+                    currentStreak: goalCurrentStreak,
+                    longestStreak: goalLongestStreak,
+                    totalCompleted: goalTotalCompleted,
+                    completionRate: goalCompletionRate,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                },
+                { merge: true }
+            );
+        }
+
+        // ============================================================
+        // 5. 배지 지급
+        // ============================================================
+
         for (const badge of this.BADGE_THRESHOLDS) {
             if (
                 totalCompleted >= badge.value &&
                 !existingBadges.has(badge.code)
             ) {
-                const ref = db
-                    .collection('users')
-                    .doc(userId)
-                    .collection('integrations')
-                    .doc('routine')
-                    .collection('badges')
-                    .doc(badge.code);
-
-                batch.set(ref, {
-                    code: badge.code,
-                    name: badge.name,
-                    icon: badge.icon,
-                    value: badge.value,
-                    message: badge.message,
-                    achievedAt: admin.firestore.FieldValue.serverTimestamp()
-                });
+                batch.set(
+                    badgesRef.doc(badge.code),
+                    {
+                        code: badge.code,
+                        name: badge.name,
+                        icon: badge.icon,
+                        value: badge.value,
+                        message: badge.message,
+                        achievedAt: admin.firestore.FieldValue.serverTimestamp()
+                    }
+                );
             }
         }
 
-        // 트로피
+        // ============================================================
+        // 6. 트로피 지급
+        // ============================================================
+
         for (const trophy of this.TROPHY_THRESHOLDS) {
             if (
                 longestStreak >= trophy.value &&
                 !existingTrophies.has(trophy.code)
             ) {
-                const ref = db
-                    .collection('users')
-                    .doc(userId)
-                    .collection('integrations')
-                    .doc('routine')
-                    .collection('trophies')
-                    .doc(trophy.code);
-
-                batch.set(ref, {
-                    code: trophy.code,
-                    name: trophy.name,
-                    icon: trophy.icon,
-                    value: trophy.value,
-                    message: trophy.message,
-                    achievedAt: admin.firestore.FieldValue.serverTimestamp()
-                });
+                batch.set(
+                    trophiesRef.doc(trophy.code),
+                    {
+                        code: trophy.code,
+                        name: trophy.name,
+                        icon: trophy.icon,
+                        value: trophy.value,
+                        message: trophy.message,
+                        achievedAt: admin.firestore.FieldValue.serverTimestamp()
+                    }
+                );
             }
         }
 
         await batch.commit();
 
-        logger.info('[HabitAchievement] 완료', {
+        logger.info('[HabitStats] 완료', {
             userId,
+            targetDate,
             totalCompleted,
-            longestStreak
+            completionRate,
+            currentStreak,
+            longestStreak,
+            goalCount: goalStatsMap.size,
+            restTokens
         });
     }
 

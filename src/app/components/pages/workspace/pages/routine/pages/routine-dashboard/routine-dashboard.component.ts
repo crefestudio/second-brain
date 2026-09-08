@@ -5,7 +5,7 @@ import { _log } from '../../../../../../../lib/cf-common/cf-common';
 
 import { AuthService } from '../../../../../../../services/auth.service';
 import { ToastService } from '../../../../../../../services/toast.service';
-import { UserService, UserHabit, NewAchievement } from '../../../../../../../services/user.service';
+import { UserService, UserHabit, NewRestAndAchievement, RestHistory, HabitAchievement } from '../../../../../../../services/user.service';
 import { RouterLink } from '@angular/router';
 
 // interface NotionGoal {
@@ -24,6 +24,7 @@ export interface DailyStat {
     date: string;
     total: number;
     completed: number;
+    useRest: boolean;
 }
 
 export interface DailyHabitStat extends DailyStat {
@@ -40,6 +41,7 @@ interface CalendarDay {
     completionRate: number;
     level: number;
     future: boolean;
+    useRest: boolean;
 }
 
 interface CalendarMonth {
@@ -97,13 +99,16 @@ export class RoutineDashboardComponent implements OnInit {
     statsMap = new Map<string, DailyStat>();
 
     ///////////////////////////////////////////////////
-    // 배지, 트로피
-    badges: NewAchievement[] = [];
-    trophies: NewAchievement[] = [];
-    newAchievements: NewAchievement[] = [];
+    // 배지, 트로피, 휴식권
+    badges: HabitAchievement[] = [];
+    trophies: HabitAchievement[] = [];
+    restHistory: RestHistory[] = [];
+
+    newRestAndAchievements: NewRestAndAchievement[] = [];
 
     showBadgeHistory = false;
-    badgeHistory: any[] = [];
+    showTrophyHistory = false;
+    showRestHistory = false;
 
     constructor(
         private authService: AuthService,
@@ -115,8 +120,8 @@ export class RoutineDashboardComponent implements OnInit {
     async ngOnInit() {
         this.isLoading = true;
         try {
-            this.generateCalendarWeeks(2026);
-            this.generateMonthLabels(2026);
+            this.generateCalendarWeeks(this.currentYear);
+            this.generateMonthLabels(this.currentYear);
             await this.updateSession();
 
             if (this.userId) {
@@ -127,11 +132,14 @@ export class RoutineDashboardComponent implements OnInit {
         }
     }
 
-    async reloadAllData() {
-        this.loadGoals();
-        this.loadDailyStats();
-        this.loadNewAchievements();
-        this.loadHabitAchievements();
+    async reloadAllData(): Promise<void> {
+        await Promise.all([
+            this.loadSummary(),
+            this.loadGoals(),
+            this.loadDailyStats(),
+            this.loadNewRestAndAchievements(),  // 새 배지, 트로피, 휴식권
+            this.loadHabitAchievements()        // 내역
+        ]);
     }
 
     async loadGoals() {
@@ -148,6 +156,37 @@ export class RoutineDashboardComponent implements OnInit {
         } catch (error) {
             console.error('[Habit] 목표 조회 실패:', error);
             this.goals = [];
+        }
+    }
+
+    async loadSummary(): Promise<void> {
+        try {
+            const goalId =
+                this.selectedGoalId === ''
+                    ? undefined
+                    : this.selectedGoalId;
+
+            const summary =
+                await this.userService.getHabitSummary(
+                    this.userId,
+                    goalId
+                );
+
+            this.currentStreak = summary.currentStreak;
+            this.longestStreak = summary.longestStreak;
+            this.totalCompleted = summary.totalCompleted;
+            this.completionRate = summary.completionRate;
+
+        } catch (error) {
+            console.error(
+                '[HabitDashboard] 통계 조회 실패',
+                error
+            );
+
+            this.currentStreak = 0;
+            this.longestStreak = 0;
+            this.totalCompleted = 0;
+            this.completionRate = 0;
         }
     }
 
@@ -185,7 +224,8 @@ export class RoutineDashboardComponent implements OnInit {
                 total: 0,
                 completionRate: 0,
                 level: 0,
-                future: false
+                future: false,
+                useRest: false
             });
         }
 
@@ -196,7 +236,8 @@ export class RoutineDashboardComponent implements OnInit {
                 total: 0,
                 completionRate: 0,
                 level: 0,
-                future: date > new Date()
+                future: date > new Date(),
+                useRest: false
             });
 
             if (week.length === 7) {
@@ -213,7 +254,8 @@ export class RoutineDashboardComponent implements OnInit {
                     total: 0,
                     completionRate: 0,
                     level: 0,
-                    future: false
+                    future: false,
+                    useRest: false
                 });
             }
             weeks.push(week);
@@ -228,10 +270,11 @@ export class RoutineDashboardComponent implements OnInit {
         if (goalId === '') {
             this.goalColor = DEFUALT_COLOR;
         } else {
-            const goal = this.goals.find(goal => goal.id === goalId);
+            //const goal = this.goals.find(goal => goal.id === goalId);
             this.goalColor = color ?? DEFUALT_COLOR;
         }
 
+        this.loadSummary()
         this.loadDailyStats();
     }
 
@@ -322,9 +365,7 @@ export class RoutineDashboardComponent implements OnInit {
             ToastService.show('어제와 오늘 기록이 모두 최신 상태입니다.');
         }
 
-        this.loadDailyStats();
-        this.loadNewAchievements();
-        this.loadHabitAchievements();
+        this.reloadAllData();
     }
 
     buildCalendar(stats: DailyStat[]): void {
@@ -337,7 +378,6 @@ export class RoutineDashboardComponent implements OnInit {
         const startDate = new Date(this.currentYear, 0, 1);
         const endDate = new Date(this.currentYear, 11, 31);
 
-        // 월요일 시작
         const dayOfWeek = (startDate.getDay() + 6) % 7;
         startDate.setDate(startDate.getDate() - dayOfWeek);
 
@@ -367,7 +407,8 @@ export class RoutineDashboardComponent implements OnInit {
                     total: 0,
                     completionRate: 0,
                     level: 0,
-                    future: false
+                    future: false,
+                    useRest: false
                 });
             } else {
                 week.push({
@@ -376,7 +417,8 @@ export class RoutineDashboardComponent implements OnInit {
                     total,
                     completionRate,
                     level: this.getActivityLevel(completionRate),
-                    future: isFuture
+                    future: isFuture,
+                    useRest: stat?.useRest === true
                 });
             }
 
@@ -393,7 +435,7 @@ export class RoutineDashboardComponent implements OnInit {
         }
 
         this.buildMonthLabels();
-        this.calculateStats();
+        //this.calculateStats();
     }
 
     getActivityLevel(progress: number): number {
@@ -464,88 +506,88 @@ export class RoutineDashboardComponent implements OnInit {
         );
     }
 
-    private calculateStats(): void {
-        const stats =
-            Array.from(
-                this.statsMap.values()
-            );
+    // private calculateStats(): void {
+    //     const stats =
+    //         Array.from(
+    //             this.statsMap.values()
+    //         );
 
 
-        this.totalCompleted =
-            stats.reduce(
-                (sum, stat) =>
-                    sum + stat.completed,
-                0
-            );
+    //     this.totalCompleted =
+    //         stats.reduce(
+    //             (sum, stat) =>
+    //                 sum + stat.completed,
+    //             0
+    //         );
 
 
-        const total =
-            stats.reduce(
-                (sum, stat) =>
-                    sum + stat.total,
-                0
-            );
+    //     const total =
+    //         stats.reduce(
+    //             (sum, stat) =>
+    //                 sum + stat.total,
+    //             0
+    //         );
 
 
-        this.completionRate =
-            total > 0
-                ? Math.round(
-                    (this.totalCompleted / total) * 100
-                )
-                : 0;
+    //     this.completionRate =
+    //         total > 0
+    //             ? Math.round(
+    //                 (this.totalCompleted / total) * 100
+    //             )
+    //             : 0;
 
-        this.currentStreak = this.calculateCurrentStreak();
-        this.longestStreak = this.calculateLongestStreak();
-    }
+    //     this.currentStreak = this.calculateCurrentStreak();
+    //     this.longestStreak = this.calculateLongestStreak();
+    // }
 
-    private calculateCurrentStreak(): number {
-        let streak = 0;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    // private calculateCurrentStreak(): number {
+    //     let streak = 0;
+    //     const today = new Date();
+    //     today.setHours(0, 0, 0, 0);
 
-        for (let i = 0; i < 365; i++) {
-            const date = new Date(today);
+    //     for (let i = 0; i < 365; i++) {
+    //         const date = new Date(today);
 
-            date.setDate(
-                today.getDate() - i
-            );
-            const dateString = this.formatDate(date);
-            const stat = this.statsMap.get(dateString);
+    //         date.setDate(
+    //             today.getDate() - i
+    //         );
+    //         const dateString = this.formatDate(date);
+    //         const stat = this.statsMap.get(dateString);
 
-            if (stat && stat.completed > 0) {
-                streak++;
-            } else {
-                break;
-            }
-        }
-        return streak;
-    }
+    //         if (stat && stat.completed > 0) {
+    //             streak++;
+    //         } else {
+    //             break;
+    //         }
+    //     }
+    //     return streak;
+    // }
 
-    private calculateLongestStreak(): number {
-        let longest = 0;
-        let current = 0;
+    // private calculateLongestStreak(): number {
+    //     let longest = 0;
+    //     let current = 0;
 
-        const dates =
-            Array.from(
-                this.statsMap.keys()
-            ).sort();
+    //     const dates =
+    //         Array.from(
+    //             this.statsMap.keys()
+    //         ).sort();
 
-        for (const date of dates) {
-            const stat = this.statsMap.get(date);
-            if (stat && stat.completed > 0) {
-                current++;
-                longest =
-                    Math.max(
-                        longest,
-                        current
-                    );
+    //     for (const date of dates) {
+    //         const stat = this.statsMap.get(date);
+    //         if (stat && stat.completed > 0) {
+    //             current++;
+    //             longest =
+    //                 Math.max(
+    //                     longest,
+    //                     current
+    //                 );
 
-            } else {
-                current = 0;
-            }
-        }
-        return longest;
-    }
+    //         } else {
+    //             current = 0;
+    //         }
+    //     }
+    //     return longest;
+    // }
 
     getDayTitle(
         day: CalendarDay
@@ -616,21 +658,13 @@ ${day.completed}/${day.total} 완료
         }
 
         try {
-            const result =
-                await this.userService.getHabitAchievements(
-                    this.userId
-                );
+            const result = await this.userService.getHabitRestAndAchievements(
+                this.userId
+            );
 
             this.badges = result.badges;
             this.trophies = result.trophies;
-
-            this.newAchievements = [
-                ...result.badges,
-                ...result.trophies
-            ].filter(
-                achievement => !achievement.dismissedAt
-            );
-
+            this.restHistory = result.restHistory;
         } catch (error) {
             console.error(
                 '[HabitDashboard] 성취 조회 실패',
@@ -639,26 +673,29 @@ ${day.completed}/${day.total} 완료
 
             this.badges = [];
             this.trophies = [];
-            this.newAchievements = [];
         }
     }
 
-    async loadNewAchievements(): Promise<void> {
+    async loadNewRestAndAchievements(): Promise<void> {
         if (!this.userId) { return; }
 
         try {
-            const achievements = await this.userService.getNewHabitAchievements(this.userId);
-            this.newAchievements = achievements;
+            const [achievements, restTokens] = await Promise.all([
+                this.userService.getNewHabitAchievements(this.userId),
+                this.userService.getNewHabitRestTokens(this.userId)
+            ]);
+
+            this.newRestAndAchievements = [
+                ...achievements,
+                ...restTokens
+            ];
         } catch (error) {
-            console.error(
-                '[HabitDashboard] 새 성취 조회 실패',
-                error
-            );
-            this.newAchievements = [];
+            console.error('[HabitDashboard] 새 성취 조회 실패', error);
+            this.newRestAndAchievements = [];
         }
     }
 
-    async dismissAchievement(achievement: NewAchievement): Promise<void> {
+    async dismissAchievement(achievement: NewRestAndAchievement): Promise<void> {
         if (!this.userId) {
             return;
         }
@@ -670,8 +707,8 @@ ${day.completed}/${day.total} 완료
                 achievement.code
             );
 
-            this.newAchievements =
-                this.newAchievements.filter(
+            this.newRestAndAchievements =
+                this.newRestAndAchievements.filter(
                     item => item.id !== achievement.id
                 );
         } catch (error) {
@@ -687,7 +724,7 @@ ${day.completed}/${day.total} 완료
     }
 
     openBadgeHistory(): void {
-        this.badgeHistory = [...this.badges].sort((a, b) => {
+        this.badges = [...this.badges].sort((a, b) => {
             const aTime = a.achievedAt?.toMillis?.() ?? new Date(a.achievedAt).getTime();
             const bTime = b.achievedAt?.toMillis?.() ?? new Date(b.achievedAt).getTime();
             return bTime - aTime;
@@ -696,26 +733,44 @@ ${day.completed}/${day.total} 완료
         this.showBadgeHistory = true;
     }
 
-    closeBadgeHistory(): void {
-        this.showBadgeHistory = false;
+    openRestHistory(): void {
+        this.restHistory = [...this.restHistory].sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() ??
+                new Date(a.createdAt).getTime();
+            const bTime = b.createdAt?.toMillis?.() ??
+                new Date(b.createdAt).getTime();
+            return bTime - aTime;
+        });
+
+        this.showRestHistory = true;
     }
 
-    /////////////////
-    showTrophyHistory = false;
-    trophyHistory: any[] = [];
-
     openTrophyHistory(): void {
-        this.trophyHistory = [...this.trophies].sort((a, b) => {
+        this.trophies = [...this.trophies].sort((a, b) => {
             const aTime = a.achievedAt?.toMillis?.() ?? 0;
             const bTime = b.achievedAt?.toMillis?.() ?? 0;
             return bTime - aTime;
         });
-
         this.showTrophyHistory = true;
+    }
+
+    closeBadgeHistory(): void {
+        this.showBadgeHistory = false;
     }
 
     closeTrophyHistory(): void {
         this.showTrophyHistory = false;
+    }
+
+    closeRestHistory(): void {
+        this.showRestHistory = false;
+    }
+
+    get restTokenCount(): number {
+        return this.restHistory.reduce(
+            (total, item) => total + item.amount,
+            0
+        );
     }
     ///////////////
 
@@ -728,6 +783,19 @@ ${day.completed}/${day.total} 완료
             month: 'numeric',
             day: 'numeric'
         });
+    }
+
+    isToday(day: CalendarDay): boolean {
+        if (!day.date) {
+            return false;
+        }
+
+        const today = new Date();
+        const date = new Date(day.date);
+
+        return today.getFullYear() === date.getFullYear()
+            && today.getMonth() === date.getMonth()
+            && today.getDate() === date.getDate();
     }
 }
 
