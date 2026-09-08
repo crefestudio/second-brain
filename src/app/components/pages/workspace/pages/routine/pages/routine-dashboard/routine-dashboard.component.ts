@@ -8,17 +8,17 @@ import { ToastService } from '../../../../../../../services/toast.service';
 import { UserService, UserHabit, NewAchievement } from '../../../../../../../services/user.service';
 import { RouterLink } from '@angular/router';
 
-interface NotionGoal {
-    id: string;
-    name: string;
-    status: string;
-}
-
-// interface Goal {
+// interface NotionGoal {
 //     id: string;
 //     name: string;
-//     color: string;
+//     status: string;
 // }
+
+interface Goal {
+    id: string;
+    name: string;
+    color: string;
+}
 
 export interface DailyStat {
     date: string;
@@ -46,6 +46,8 @@ interface CalendarMonth {
     label: string;
     position: number;
 }
+
+const DEFUALT_COLOR = '#3595df';
 
 @Component({
     selector: 'app-routine-dashboard',
@@ -77,7 +79,7 @@ export class RoutineDashboardComponent implements OnInit {
     hourHeightLevels = [120, 180, 240, 60];
     hourHeightIndex = 0;
 
-    goals: NotionGoal[] = [];
+    goals: Goal[] = [];
 
     ///////////////////////////////////////////////////
 
@@ -85,7 +87,7 @@ export class RoutineDashboardComponent implements OnInit {
     monthLabels: CalendarMonth[] = [];
 
     selectedGoalId = '';
-    goalColor = '#2dd4bf';
+    goalColor = DEFUALT_COLOR;
 
     currentStreak = 0;
     longestStreak = 0;
@@ -99,6 +101,9 @@ export class RoutineDashboardComponent implements OnInit {
     badges: NewAchievement[] = [];
     trophies: NewAchievement[] = [];
     newAchievements: NewAchievement[] = [];
+
+    showBadgeHistory = false;
+    badgeHistory: any[] = [];
 
     constructor(
         private authService: AuthService,
@@ -217,19 +222,15 @@ export class RoutineDashboardComponent implements OnInit {
         this.calendarWeeks = weeks;
     }
 
-    selectGoal(goalId: string): void {
+    selectGoal(goalId: string, color?: string): void {
         this.selectedGoalId = goalId;
 
-
-        // if (goalId === 'all') {
-        //     this.goalColor = '#2dd4bf';
-        // } else {
-        //     const goal = this.goals.find(
-        //         goal => goal.id === goalId
-        //     );
-
-        //     this.goalColor = goal?.color ?? '#2dd4bf';
-        // }
+        if (goalId === '') {
+            this.goalColor = DEFUALT_COLOR;
+        } else {
+            const goal = this.goals.find(goal => goal.id === goalId);
+            this.goalColor = color ?? DEFUALT_COLOR;
+        }
 
         this.loadDailyStats();
     }
@@ -359,14 +360,25 @@ export class RoutineDashboardComponent implements OnInit {
                 ? Math.round((completed / total) * 100)
                 : 0;
 
-            week.push({
-                date: dateString,
-                completed,
-                total,
-                completionRate,
-                level: this.getActivityLevel(completionRate),
-                future: isFuture
-            });
+            if (current.getFullYear() !== this.currentYear) {
+                week.push({
+                    date: '',
+                    completed: 0,
+                    total: 0,
+                    completionRate: 0,
+                    level: 0,
+                    future: false
+                });
+            } else {
+                week.push({
+                    date: dateString,
+                    completed,
+                    total,
+                    completionRate,
+                    level: this.getActivityLevel(completionRate),
+                    future: isFuture
+                });
+            }
 
             if (week.length === 7) {
                 this.calendarWeeks.push(week);
@@ -672,6 +684,50 @@ ${day.completed}/${day.total} 완료
                 '알림을 닫지 못했습니다.'
             );
         }
+    }
+
+    openBadgeHistory(): void {
+        this.badgeHistory = [...this.badges].sort((a, b) => {
+            const aTime = a.achievedAt?.toMillis?.() ?? new Date(a.achievedAt).getTime();
+            const bTime = b.achievedAt?.toMillis?.() ?? new Date(b.achievedAt).getTime();
+            return bTime - aTime;
+        });
+
+        this.showBadgeHistory = true;
+    }
+
+    closeBadgeHistory(): void {
+        this.showBadgeHistory = false;
+    }
+
+    /////////////////
+    showTrophyHistory = false;
+    trophyHistory: any[] = [];
+
+    openTrophyHistory(): void {
+        this.trophyHistory = [...this.trophies].sort((a, b) => {
+            const aTime = a.achievedAt?.toMillis?.() ?? 0;
+            const bTime = b.achievedAt?.toMillis?.() ?? 0;
+            return bTime - aTime;
+        });
+
+        this.showTrophyHistory = true;
+    }
+
+    closeTrophyHistory(): void {
+        this.showTrophyHistory = false;
+    }
+    ///////////////
+
+
+    formatBadgeDate(timestamp: any): string {
+        const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+
+        return date.toLocaleDateString('ko-KR', {
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric'
+        });
     }
 }
 

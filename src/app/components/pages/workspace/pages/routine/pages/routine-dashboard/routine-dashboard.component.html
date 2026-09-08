@@ -37,10 +37,11 @@
                 <h1>루틴 대시보드</h1>
                 <p>지난 1년간의 꾸준함을 한눈에 확인하세요.<br>
                     <span class="guide-gap"></span>
-                    ▪ 습관 기록은 매일 오전 12시 10분에 자동으로 업데이트됩니다. 자동 업데이트에서는 전날의 기록을 반영합니다.<br>
-                    ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다.
+                    습관 기록은 매일 오전 12시 10분에 자동으로 업데이트되며, 자동 업데이트에서는 전날의 기록을 반영합니다.<br>
+                    ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다.<br>
+                    ▪ 어제 이전의 기록은 통계에 반영되지 않습니다.
                     <button type="button" class="inline-action-btn" (click)="onRecordMyDailyHabitStatsWithUserId()">
-                        내 기록 업데이트 하기
+                        내 오늘 기록 업데이트 하기
                     </button>
                 </p>
             </div>
@@ -90,7 +91,8 @@
                     </button>
                     @for(goal of goals; track goal.id; let i = $index) {
                     <button type="button" class="goal-chip" [style.--goal-color]="getGoalColor(i)"
-                        [class.goal-selected]="selectedGoalId === goal.id" (click)="selectGoal(goal.id)">
+                        [class.goal-selected]="selectedGoalId === goal.id"
+                        (click)="selectGoal(goal.id, getGoalColor(i))">
                         {{ goal.name }}
                     </button>
                     }
@@ -239,7 +241,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="activity-footer">
+                <div class="activity-footer" [style.--goal-color]="goalColor">
                     <span>조금</span>
                     <div class="legend">
                         <span class="legend-cell level-0"></span>
@@ -288,9 +290,9 @@
                                 <span class="achievement-icon">🏅</span>
                                 <span>배지</span>
                             </div>
-                            <!-- <button type="button" class="achievement-more">
+                            <button type="button" class="achievement-more" (click)="openBadgeHistory()">
                                 내역 →
-                            </button> -->
+                            </button>
                         </div>
                         <div class="badge-list">
                             @for (badge of badges; track badge.code) {
@@ -308,9 +310,9 @@
                                 <span class="achievement-icon">🏆</span>
                                 <span>트로피</span>
                             </div>
-                            <!-- <button type="button" class="achievement-more">
+                            <button type="button" class="achievement-more" (click)="openTrophyHistory()">
                                 내역 →
-                            </button> -->
+                            </button>
                         </div>
                         <div class="trophy-list">
                             @for (trophy of trophies; track trophy.code) {
@@ -323,6 +325,72 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+</div>
+}
+
+@if (showBadgeHistory) {
+<div class="badge-modal-backdrop" (click)="closeBadgeHistory()">
+    <div class="badge-modal" (click)="$event.stopPropagation()">
+        <button type="button" class="badge-modal-close" (click)="closeBadgeHistory()">×</button>
+
+        <div class="badge-modal-header">
+            <span class="badge-modal-icon">🏅</span>
+            <span>배지 내역</span>
+        </div>
+
+        <div class="badge-history-list">
+            @if (badgeHistory.length === 0) {
+            <div class="trophy-empty">
+                <div class="trophy-empty-icon">🏅</div>
+                <div class="trophy-empty-title">아직 첫 배지가 없습니다.</div>
+                <div class="trophy-empty-message">첫 루틴을 완료하고 배지를 받아보세요.</div>
+            </div>
+            } @else {
+            @for (badge of badgeHistory; track badge.code + badge.achievedAt) {
+            <div class="badge-history-item">
+                <span class="badge-history-date">
+                    {{ formatBadgeDate(badge.achievedAt) }}
+                </span>
+                <span class="badge-history-icon">{{ badge.icon }}</span>
+                <span class="badge-history-name">{{ badge.name }}</span>
+            </div>
+            }
+            }
+        </div>
+    </div>
+</div>
+}
+
+
+@if (showTrophyHistory) {
+<div class="badge-modal-backdrop" (click)="closeTrophyHistory()">
+    <div class="badge-modal" (click)="$event.stopPropagation()">
+        <button type="button" class="badge-modal-close" (click)="closeTrophyHistory()">×</button>
+
+        <div class="badge-modal-header">
+            <span class="badge-modal-icon">🏆</span>
+            <span>트로피 내역</span>
+        </div>
+
+        <div class="badge-history-list">
+            @if (trophies.length === 0) {
+            <div class="trophy-empty">
+                <div class="trophy-empty-icon">🏆</div>
+                <div class="trophy-empty-title">아직 첫 트로피가 없습니다.</div>
+                <div class="trophy-empty-message">7일 연속 꾸준히 기록하고 트로피를 받아보세요.</div>
+            </div>
+            } @else {
+            <!-- 기존 트로피 목록 -->
+            @for (trophy of trophyHistory; track $index) {
+            <div class="badge-history-item">
+                <span class="badge-history-date">{{ formatBadgeDate(trophy.achievedAt) }}</span>
+                <span class="badge-history-icon">{{ trophy.icon }}</span>
+                <span class="badge-history-name">{{ trophy.name }}</span>
+            </div>
+            }
+            }
         </div>
     </div>
 </div>
