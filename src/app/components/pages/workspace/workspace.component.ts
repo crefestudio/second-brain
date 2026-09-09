@@ -60,8 +60,8 @@ export class WorkspaceComponent implements OnInit {
     async initData() {
         await this.updateSession();
         await this.updatePurchaseInfo();
+        await this.loadLifeupTemplateInfo();
         this.updateEventCount();
-        this.loadLifeupTemplateInfo();
 
         // 자동화 정보
         const automations = await UserService.getUserIntegrations(this.userId);

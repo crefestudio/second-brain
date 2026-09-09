@@ -1,7 +1,7 @@
 <div class="page">
     <div class="page-header">
         <h1>
-            ⚡ 라이프봇 데시보드 (🚧 제작중입니다. 조금만 기다려주세요.)
+            ⚡ 라이프봇 데시보드
         </h1>
         <div class="hero-box">
             <button class="template-link-btn" routerLink="/workspace/auto">
@@ -78,10 +78,15 @@
                 </div>
             </div>
             <div class="dashboard-footer">
-                @if(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId) {
+                @if (isLoading) {
+                <button class="template-connect-btn loading-btn" disabled>
+                    <img src="assets/images/notion_icon_w.png" alt="Notion">
+                    <span>내 라이프업 열기 →</span>
+                </button>
+                } @else if (userId && hasLifeupPurchase && notionAccessToken && kakaoUserId && templateUrl) {
                 <button class="template-connect-btn" (click)="openLifeup()">
                     <img src="assets/images/notion_icon_w.png" alt="Notion">
-                    내 라이프업 열기  →
+                    내 라이프업 열기 →
                 </button>
                 } @else {
                 <button class="connect-btn" routerLink="/workspace/connect">
