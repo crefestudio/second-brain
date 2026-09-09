@@ -351,6 +351,15 @@
     background: var(--goal-color);
 }
 
+.rest-legend {
+    cursor: pointer;
+}
+
+.rest-legend .legend-cell.disabled {
+    opacity: 0.25;
+}
+
+
 .day-cell.future {
     background: #1e2c41;
 }

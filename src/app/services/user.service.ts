@@ -1633,6 +1633,64 @@ export class UserService {
         }
     }
 
+    ///////////////////////////////////////////////////////////////////////////
+    // #template
+    static async getConnectedNotionRoot(
+        userId: string
+    ): Promise<{ pageId: string; pageUrl: string } | null> {
+        // TODO: 실제 Notion root 조회 구현
+        return null;
+    }
+
+    async getLifeupTemplateInfo(userId: string): Promise<{
+        templateName: string;
+        version: string;
+        serialNumber: string;
+        rootPageUrl: string;
+    } | null> {
+        if (!userId) return null;
+
+        try {
+            const response = await firstValueFrom(
+                this.http.post<{
+                    success: boolean;
+                    data: {
+                        templateName: string;
+                        version: string;
+                        serialNumber: string;
+                        rootPageUrl: string;
+                    } | null;
+                }>(
+                    `${this.functionsBaseUrl}/getLifeupTemplateInfo`,
+                    { userId }
+                )
+            );
+
+            return response.data ?? null;
+        } catch (error) {
+            console.error('getLifeupTemplateInfo failed', error);
+            throw error;
+        }
+    }
+
+    async deleteLifeupTemplateInfo(userId: string): Promise<boolean> {
+        if (!userId) return false;
+
+        try {
+            await firstValueFrom(
+                this.http.post(
+                    `${this.functionsBaseUrl}/deleteLifeupTemplateInfo`,
+                    { userId }
+                )
+            );
+
+            return true;
+        } catch (error) {
+            console.error('deleteLifeupTemplateInfo failed', error);
+            return false;
+        }
+    }
+
 }
 
 /**

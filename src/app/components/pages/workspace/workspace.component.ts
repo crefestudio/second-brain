@@ -22,6 +22,9 @@ export class WorkspaceComponent implements OnInit {
     hasLifeupPurchase: boolean = false;
     purchaseInfo: any = null;
 
+    templateUrl: string | null = null;
+
+
     // event count
     totalCount: number = 0;
     kakaoCount: number = 0;
@@ -57,7 +60,8 @@ export class WorkspaceComponent implements OnInit {
     async initData() {
         await this.updateSession();
         await this.updatePurchaseInfo();
-        await this.updateEventCount();
+        this.updateEventCount();
+        this.loadLifeupTemplateInfo();
 
         // 자동화 정보
         const automations = await UserService.getUserIntegrations(this.userId);
@@ -68,6 +72,32 @@ export class WorkspaceComponent implements OnInit {
                 status: automations[agent.id]?.enabled ? 'running' : 'waiting'
             }));
 
+    }
+
+    async loadLifeupTemplateInfo(): Promise<void> {
+        try {
+            const info = await this.userService.getLifeupTemplateInfo(this.userId);
+            this.templateUrl = info?.rootPageUrl ?? null;
+        } catch (error) {
+            console.error('LifeUp template info load failed', error);
+            this.templateUrl = null;
+        }
+    }
+
+    async openLifeup(): Promise<void> {
+        try {
+            const info = await this.userService.getLifeupTemplateInfo(this.userId);
+            const url = info?.rootPageUrl;
+
+            if (!url) {
+                console.warn('LifeUp root page URL not found');
+                return;
+            }
+
+            window.open(url, '_blank');
+        } catch (error) {
+            console.error('LifeUp open failed', error);
+        }
     }
 
     async updateEventCount() {
@@ -102,7 +132,6 @@ export class WorkspaceComponent implements OnInit {
         this.purchaseInfo = result.purchaseInfo;
         this.hasLifeupPurchase = result.isPurchaser;
     }
-
 
 
 }

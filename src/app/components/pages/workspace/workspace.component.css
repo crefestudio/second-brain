@@ -175,14 +175,14 @@
  * ========================================== */
 
 .dashboard-footer {
-    padding: 18px 20px;
+    padding: 0px 20px 20px 20px;
 }
 
 .dashboard-card button {
     border: none;
     border-radius: 10px;
-    padding: 13px;
-    font-size: 15px;
+    padding: 15px;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     transition: .2s;
@@ -488,4 +488,100 @@
     .guide-grid {
         grid-template-columns: 1fr;
     }
+}
+
+.connect-btn {
+    background: rgba(56, 189, 248, 0.08);
+    color: #7dd3fc;
+    border: 1px solid #0369a1;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 10px;
+}
+
+.connect-btn {
+    background: rgba(37, 99, 235, 0.25);
+    color: #60a5fa;
+    border: 1px solid #1e40af;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 10px;
+}
+
+.connect-btn img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+.connect-btn:hover {
+    background: #2d72b5;
+    border-color: #4389ca;
+}
+
+.connect-btn:active {
+    background: #205991;
+}
+
+
+.hero-box {
+    position: relative;
+}
+
+.template-link-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 2;
+
+    padding: 6px 10px;
+    border: 1px solid #1d4ed8;
+    border-radius: 8px;
+    background: rgba(59, 130, 246, 0.08);
+    color: #93c5fd;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.template-link-btn:hover {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: #2563eb;
+    color: #bfdbfe;
+}
+
+.template-connect-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+
+    background: rgba(37, 99, 235, 0.25);
+    color: #c5d5e9;
+    border: 1px solid #1e40af;
+
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+}
+
+.template-connect-btn img {
+    width: 26px;
+    height: 20px;
+    object-fit: contain;
+}
+
+.template-connect-btn:hover {
+    background: #3a3a3a;
+    border-color: #777;
+}
+
+.template-connect-btn:active {
+    background: #242424;
 }

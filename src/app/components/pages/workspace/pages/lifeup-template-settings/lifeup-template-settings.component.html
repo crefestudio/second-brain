@@ -1,0 +1,229 @@
+@if (isLoading) {
+<div class="page-loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">
+        라이프업 설정 정보를 불러오는 중입니다...
+    </div>
+</div>
+} @else {
+
+<div class="page-container">
+
+    @if (!userId || !hasLifeupPurchase) {
+    <div class="empty-state">
+        <div class="empty-icon">⚙️</div>
+
+        <h2>라이프업 이용 권한이 없습니다.</h2>
+
+        <p>
+            라이프업을 이용하려면 먼저 워크스페이스 연결을 진행해주세요.
+        </p>
+
+        <button class="connect-btn" routerLink="/workspace/connect">
+            연결 설정하기
+        </button>
+    </div>
+    }
+
+    @else {
+
+    <div class="page-header">
+        <div class="breadcrumb">
+            <span>워크스페이스</span>
+            <span>›</span>
+            <span>라이프업 관리</span>
+        </div>
+
+        <h1>라이프업 템플릿 관리</h1>
+
+        <p>
+            라이프업에 오신 것을 환영합니다.
+            이제부터 나만의 인생관리 시스템을 더 나답게 바꿔보세요.
+        </p>
+    </div>
+
+    @if (!isLifeupTemplate) {
+
+    <div class="connection-card">
+        <div class="connection-icon">
+            !
+        </div>
+
+        <div class="connection-content">
+            <h2>라이프업 템플릿을 확인할 수 없습니다.</h2>
+
+            <p>
+                라이프봇과 연결된 Notion에서 라이프업 템플릿을 찾을 수 없습니다.
+                연결 설정에서 Notion 연결 상태를 확인해주세요.
+            </p>
+        </div>
+
+        <button class="connect-btn" routerLink="/workspace/connect">
+            연결 설정하기
+        </button>
+    </div>
+
+    } @else {
+
+    <div class="connection-card success">
+        <div class="connection-icon">
+            ✓
+        </div>
+
+        <div class="connection-content">
+            <h2>라이프봇과 템플릿이 정상적으로 연결되어 있습니다.</h2>
+
+            <p>
+                연결된 라이프업 템플릿을 확인하고 설정할 수 있습니다.
+            </p>
+        </div>
+
+        <button class="open-btn" (click)="openLifeup()">
+            내 라이프업 열기
+        </button>
+    </div>
+
+    <!-- 기본 정보 -->
+
+    <section class="settings-section">
+        <div class="section-header">
+            <h2>기본 정보</h2>
+            <p>
+                현재 연결된 라이프업 템플릿의 기본 정보입니다.
+            </p>
+        </div>
+
+        <div class="info-card">
+
+            <div class="info-row">
+                <div class="info-label">
+                    템플릿 이름
+                </div>
+
+                <div class="info-value">
+                    라이프업
+                </div>
+            </div>
+
+            <div class="info-row">
+                <div class="info-label">
+                    버전
+                </div>
+
+                <div class="info-value">
+                    {{ templateVersion }}
+                </div>
+            </div>
+
+            <div class="info-row">
+                <div class="info-label">
+                    정품인증 시리얼넘버
+                </div>
+
+                <div class="info-value serial-number">
+                    {{ serialNumber }}
+                </div>
+            </div>
+
+            <div class="info-row">
+                <div class="info-label">
+                    템플릿 링크
+                </div>
+
+                <div class="info-value template-link">
+                    <span>
+                        {{ rootPageUrl }}
+                    </span>
+
+                    <button class="open-btn small" (click)="openLifeup()">
+                        내 라이프업 열기
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- 템플릿 설정 -->
+
+<section class="settings-section">
+    <div class="section-header">
+        <h2>템플릿 설정</h2>
+        <p>
+            라이프업 템플릿을 나만의 스타일로 설정할 수 있습니다.
+        </p>
+    </div>
+    <!--
+    <div class="setting-card">
+        <div class="setting-header">
+            <div>
+                <h3>템플릿 이름</h3>
+                <p>
+                    Notion의 라이프업 첫 페이지 이름을 변경합니다.
+                </p>
+            </div>
+        </div>
+        <div class="setting-control">
+            <input
+                type="text"
+                [(ngModel)]="templateName"
+                maxlength="50"
+            >
+            <button class="save-btn" (click)="saveTemplateName()">
+                저장
+            </button>
+        </div>
+    </div>
+
+    <div class="setting-card">
+        <div class="setting-header">
+            <div>
+                <h3>템플릿 커버</h3>
+                <p>
+                    라이프업 첫 페이지에 사용할 커버 이미지를 선택합니다.
+                </p>
+            </div>
+        </div>
+        <div class="cover-grid">
+            <button
+                *ngFor="let cover of coverImages"
+                class="cover-item"
+                [class.selected]="selectedCover === cover.id"
+                (click)="selectCover(cover.id)"
+            >
+                <img
+                    [src]="cover.url"
+                    [alt]="'라이프업 커버 ' + cover.id"
+                >
+                <span class="cover-check">
+                    ✓
+                </span>
+            </button>
+        </div>
+        <div class="setting-footer">
+            <button
+                class="save-btn"
+                [disabled]="!selectedCover"
+                (click)="saveCover()"
+            >
+                커버 저장
+            </button>
+        </div>
+    </div>
+    -->
+</section>
+
+    <div class="coming-soon-box">
+        <div class="coming-soon-icon">🚧</div>
+        <h3>준비중입니다.</h3>
+        <p>
+            라이프업 템플릿 설정 기능을 준비하고 있습니다.
+        </p>
+    </div>
+
+    }
+
+    }
+
+</div>
+}

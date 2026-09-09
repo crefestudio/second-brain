@@ -1578,7 +1578,6 @@ class NotionService {
         const notion = new Client({ auth: accessToken });
         const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
         console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
-
         let dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
 
         // entity있으면 entity만, 컨텐츠까지 넣으면 중복됨
@@ -3781,8 +3780,196 @@ class NotionService {
         };
     }
 
-}
+    // #template
+    // #lifeup template
+    static async fetchLifeupTemplateInfoFromNotion(userId: string): Promise<{
+        templateName: string;
+        version: string;
+        serialNumber: string;
+        rootPageUrl: string;
+    } | null> {
+        console.log(`[LifeupInfo] fetch from Notion userId = ${userId}`);
 
+        const userDoc = await db.collection("users").doc(userId).get();
+        const accessToken = userDoc.data()?.notionAccessToken;
+
+        if (!accessToken) {
+            throw new Error("NOTION_NOT_CONNECTED");
+        }
+
+        const notion = new Client({ auth: accessToken });
+
+        const databaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            "lifeup info"
+        );
+
+        const dataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            databaseId
+        );
+
+        const response = await notion.dataSources.query({
+            data_source_id: dataSourceId
+        });
+
+        if (response.results.length === 0) {
+            return null;
+        }
+
+        const page: any = response.results[0];
+        const properties = page.properties ?? {};
+
+        const getPropertyValue = (property: any): string => {
+            if (!property) return "";
+
+            switch (property.type) {
+                case "title":
+                    return property.title
+                        ?.map((item: any) => item.plain_text ?? "")
+                        .join("") ?? "";
+
+                case "rich_text":
+                    return property.rich_text
+                        ?.map((item: any) => item.plain_text ?? "")
+                        .join("") ?? "";
+
+                case "number":
+                    return property.number !== null && property.number !== undefined
+                        ? String(property.number)
+                        : "";
+
+                case "select":
+                    return property.select?.name ?? "";
+
+                case "status":
+                    return property.status?.name ?? "";
+
+                default:
+                    return "";
+            }
+        };
+
+        const templateName = getPropertyValue(properties["이름"]);
+        const version = getPropertyValue(properties["버전"]);
+        const serialNumber = getPropertyValue(properties["시리얼넘버"]);
+
+        const database: any = await notion.databases.retrieve({
+            database_id: databaseId
+        });
+
+        const rootPageUrl = await this.findRootPageUrl(
+            notion,
+            database
+        );
+
+        return {
+            templateName,
+            version,
+            serialNumber,
+            rootPageUrl
+        };
+    }
+
+    // #template
+    static async getLifeupTemplateInfo(userId: string): Promise<{
+        templateName: string;
+        version: string;
+        serialNumber: string;
+        rootPageUrl: string;
+    } | null> {
+        if (!userId) return null;
+
+        const userRef = db.collection("users").doc(userId);
+        const userDoc = await userRef.get();
+        const userData = userDoc.data();
+
+        const cachedInfo = userData?.lifeupTemplateInfo;
+
+        if (cachedInfo) {
+            console.log(`[LifeupInfo] use cached info userId = ${userId}`);
+            return cachedInfo;
+        }
+
+        console.log(`[LifeupInfo] cache missing, fetch from Notion`);
+
+        const templateInfo = await this.fetchLifeupTemplateInfoFromNotion(
+            userId
+        );
+
+        if (!templateInfo) {
+            return null;
+        }
+
+        await userRef.set({
+            lifeupTemplateInfo: templateInfo
+        }, {
+            merge: true
+        });
+
+        console.log(`[LifeupInfo] cached template info`);
+
+        return templateInfo;
+    }
+
+    static async deleteLifeupTemplateInfo(userId: string): Promise<void> {
+        if (!userId) return;
+
+        await db.collection("users").doc(userId).update({
+            lifeupTemplateInfo: admin.firestore.FieldValue.delete()
+        });
+
+        console.log(`[LifeupInfo] deleted userId = ${userId}`);
+    }
+
+    // #template
+    private static async findRootPageUrl(
+        notion: Client,
+        object: any,
+        depth = 0
+    ): Promise<string> {
+        if (depth >= 10) {
+            console.warn(`[LifeupInfo] parent depth exceeded`);
+            return "";
+        }
+
+        console.log(
+            `[LifeupInfo] depth=${depth}, parent=`,
+            JSON.stringify(object.parent)
+        );
+
+        if (!object.parent) {
+            return object.url ?? "";
+        }
+
+        if (object.parent.type === "page_id") {
+            const parentPage = await notion.pages.retrieve({
+                page_id: object.parent.page_id
+            });
+
+            return this.findRootPageUrl(
+                notion,
+                parentPage,
+                depth + 1
+            );
+        }
+
+        if (object.parent.type === "block_id") {
+            const parentBlock = await notion.blocks.retrieve({
+                block_id: object.parent.block_id
+            });
+
+            return this.findRootPageUrl(
+                notion,
+                parentBlock,
+                depth + 1
+            );
+        }
+
+        return object.url ?? "";
+    }
+}
 
 function formatProductPrice(price: string, currency: string): string {
     if (!price) {
@@ -12841,3 +13028,72 @@ export const getNotionGoals = onRequest(withCors(async (req, res) => {
         });
     }
 }));
+
+// #template
+// #lifeup template
+export const getLifeupTemplateInfo = onRequest(
+    withCors(async (req, res) => {
+        try {
+            const userId = req.body?.userId;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    error: "MISSING_USER_ID"
+                });
+                return;
+            }
+
+            const result = await NotionService.getLifeupTemplateInfo(userId);
+
+            res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: any) {
+            console.error("[getLifeupTemplateInfo] error =", error);
+
+            if (error.message === "NOTION_NOT_CONNECTED") {
+                res.status(400).json({
+                    success: false,
+                    error: "NOTION_NOT_CONNECTED"
+                });
+                return;
+            }
+
+            res.status(500).json({
+                success: false,
+                error: error.message ?? "INTERNAL_ERROR"
+            });
+        }
+    })
+);
+
+export const deleteLifeupTemplateInfo = onRequest(
+    withCors(async (req, res) => {
+        try {
+            const userId = req.body?.userId;
+
+            if (!userId) {
+                res.status(400).json({
+                    success: false,
+                    error: "MISSING_USER_ID"
+                });
+                return;
+            }
+
+            await NotionService.deleteLifeupTemplateInfo(userId);
+
+            res.status(200).json({
+                success: true
+            });
+        } catch (error: any) {
+            console.error("[deleteLifeupTemplateInfo] error =", error);
+
+            res.status(500).json({
+                success: false,
+                error: error.message ?? "INTERNAL_ERROR"
+            });
+        }
+    })
+);

@@ -1,24 +1,32 @@
 <div class="page">
     <div class="page-header">
-
         <h1>
             ⚡ 라이프봇 데시보드 (🚧 제작중입니다. 조금만 기다려주세요.)
         </h1>
-
         <div class="hero-box">
+            <button class="template-link-btn" routerLink="/workspace/auto">
+                자동화 비서 관리 →
+            </button>
+
             <div class="hero-image">
                 <img src="assets/images/welcome_lifeupBot.png" alt="라이프업 봇">
             </div>
+
             <div class="hero-content">
                 <div class="hero-title">
                     안녕하세요. 라이프봇입니다. 🎉
                 </div>
+
                 <div class="hero-description">
-                    이곳은 <strong>라이프봇</strong>을 통해 <strong>라이프업</strong>을 더욱 편리하게 활용할 수 있는 <strong>AI 자동화 서비스
-                        공간</strong>입니다.<br>
-                    <strong>라이프업 노션 템플릿</strong>을 연결하고, <strong>Second Brain API</strong>, <strong>카카오톡 AI 비서</strong> 등
-                    다양한 <strong>AI 자동화 기능</strong>을 설정하고 이용 현황을 확인할 수 있습니다.<br>
+                    이곳은 <strong>라이프봇</strong>을 통해
+                    <strong>라이프업</strong>을 더욱 편리하게 활용할 수 있는
+                    <strong>AI 자동화 서비스 공간</strong>입니다.<br>
+                    <strong>라이프업 노션 템플릿</strong>을 연결하고,
+                    <strong>Second Brain API</strong>,
+                    <strong>카카오톡 AI 비서</strong> 등 다양한
+                    <strong>AI 자동화 기능</strong>을 설정하고 이용 현황을 확인할 수 있습니다.<br>
                 </div>
+
                 @if(!(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId) && !isLoading) {
                 <div class="hero-action">
                     <div class="hero-action-text">
@@ -70,13 +78,16 @@
                 </div>
             </div>
             <div class="dashboard-footer">
-                <button class="verify-btn" routerLink="/workspace/connect">
-                    @if(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId) {
-                    연결 관리하기
-                    } @else {
-                    연결하러 가기
-                    }
+                @if(userId && hasLifeupPurchase && notionAccessToken && kakaoUserId) {
+                <button class="template-connect-btn" (click)="openLifeup()">
+                    <img src="assets/images/notion_icon_w.png" alt="Notion">
+                    내 라이프업 열기  →
                 </button>
+                } @else {
+                <button class="connect-btn" routerLink="/workspace/connect">
+                    연결하러 가기
+                </button>
+                }
             </div>
         </div>
 
@@ -104,7 +115,7 @@
                 </div>
             </div>
             <div class="dashboard-footer">
-                <button class="verify-btn" routerLink="/workspace/auto">
+                <button class="connect-btn" routerLink="/workspace/auto">
                     자동화 비서 관리하기
                 </button>
             </div>

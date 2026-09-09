@@ -543,6 +543,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
     async onClickDisconnectNotionTemplate() {
         const result = await this.userService.disconnectNotionTemplate(this.userId);
+        await this.userService.deleteLifeupTemplateInfo(this.userId); // 템플릿 캐시 정보 삭제
         this.updateSession();
 
         if (result) {

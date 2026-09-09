@@ -31,6 +31,7 @@ import { NotificationComponent } from './components/pages/myPage/pages/notificat
 import { WorkspaceLayoutComponent } from './workspace-layout.component';
 import { WidgetLayoutComponent } from './widget-layout.component';
 import { EventLogComponent } from './components/pages/workspace/pages/event-log/event-log.component';
+import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/lifeup-template-settings/lifeup-template-settings.component';
 
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
@@ -39,7 +40,7 @@ import { WorkspaceComponent } from './components/pages/workspace/workspace.compo
 import { UnauthorizedComponent } from './components/login/app-unauthorized.component';
 
 import { memberGuard } from './services/auth.guard';
-import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect-component/agent-connect-component.component';
+import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
   {
@@ -72,10 +73,10 @@ export const routes: Routes = [
         path: 'secondbrain/:userId',
         component: SecondBrainWidgetComponent
       },
-      // {
-      //   path: 'service',
-      //   component: ServiceManagerComponent
-      // },
+      {
+        path: 'templete',
+        component: LifeupTemplateSettingsComponent
+      },
       {
         path: 'routine',
         component: RoutineComponent,
@@ -85,7 +86,7 @@ export const routes: Routes = [
             redirectTo: 'dashboard',
             pathMatch: 'full'
           },
-           {
+          {
             path: 'dashboard',
             component: RoutineDashboardComponent
           },
@@ -110,7 +111,8 @@ export const routes: Routes = [
       {
         path: 'event-log/:agentId',
         component: EventLogComponent
-      }
+      },
+
       //   {
       //     path: 'update',
       //     component: UpdateComponent

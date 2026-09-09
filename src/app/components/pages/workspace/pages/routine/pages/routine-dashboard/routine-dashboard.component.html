@@ -210,14 +210,14 @@
                                 {{ month.label }}
                             </span>
                         </div>
-
                         <div class="calendar-grid">
                             <div class="week-column" *ngFor="let week of calendarWeeks">
                                 <div class="day-cell" *ngFor="let day of week" [class.empty]="!day.date"
                                     [class.today]="isToday(day)" [class.future]="day.future"
                                     [class.level-0]="day.level === 0" [class.level-1]="day.level === 1"
                                     [class.level-2]="day.level === 2" [class.level-3]="day.level === 3"
-                                    [class.level-4]="day.level === 4" [class.rest-day]="day.useRest"
+                                    [class.level-4]="day.level === 4" 
+                                    [class.rest-day]="showRestDays && day.useRest"
                                     [style.--goal-color]="goalColor" [title]="getDayTitle(day)">
                                 </div>
                             </div>
@@ -237,8 +237,8 @@
 
                     <span>많이</span>
 
-                    <div class="rest-legend">
-                        <span class="legend-cell rest-day"></span>
+                    <div class="rest-legend" (click)="toggleRestDays()">
+                        <span class="legend-cell rest-day" [class.disabled]="!showRestDays"></span>
                         <span>휴식권</span>
                     </div>
                 </div>

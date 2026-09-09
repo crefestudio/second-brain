@@ -120,6 +120,7 @@ export class RoutineDashboardComponent implements OnInit {
     async ngOnInit() {
         this.isLoading = true;
         try {
+            this.loadRestDaysSetting();
             this.generateCalendarWeeks(this.currentYear);
             this.generateMonthLabels(this.currentYear);
             await this.updateSession();
@@ -796,6 +797,24 @@ ${day.completed}/${day.total} 완료
         return today.getFullYear() === date.getFullYear()
             && today.getMonth() === date.getMonth()
             && today.getDate() === date.getDate();
+    }
+
+    /////////////////////////////////////////
+    // 휴식권 옵션
+    showRestDays = true;
+    private readonly REST_DAYS_STORAGE_KEY = 'routine-show-rest-days';
+
+    private loadRestDaysSetting(): void {
+        const saved = localStorage.getItem(this.REST_DAYS_STORAGE_KEY);
+        this.showRestDays = saved !== 'false';
+    }
+
+    toggleRestDays(): void {
+        this.showRestDays = !this.showRestDays;
+        localStorage.setItem(
+            this.REST_DAYS_STORAGE_KEY,
+            String(this.showRestDays)
+        );
     }
 }
 
