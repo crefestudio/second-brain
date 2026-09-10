@@ -46,3 +46,4 @@ functions/.env
 src/app/services/notion.service.ts
 
 .firebase/hosting.ZGlzdFxzZWNvbmQtYnJhaW4tYXBwXGJyb3dzZXI.cache
+firebase-debug.log

@@ -37,12 +37,16 @@
                 <h1>루틴 대시보드</h1>
                 <p>지난 1년간의 꾸준함을 한눈에 확인하세요.<br>
                     <span class="guide-gap"></span>
-                    습관 기록은 매일 오전 12시 10분에 자동으로 업데이트되며, 자동 업데이트에서는 전날의 기록을 반영합니다.<br>
-                    ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다.<br>
-                    ▪ 어제 이전의 기록은 통계에 반영되지 않습니다.
+                    ▪ 루틴 서비스는 현재 시험 운영 중이며, 12월 1일 정식 오픈 예정입니다.
+                    <button type="button" class="inline-action-btn" (click)="onSendFeedBack()">
+                        의견 보내기
+                    </button><br>
+                    ▪ 습관 기록은 매일 오전 12시 10분에 자동으로 업데이트되며, 자동 업데이트에서는 전날의 기록을 반영합니다.<br>
+                    ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다. 어제 이전의 기록은 통계에 반영되지 않습니다.
                     <button type="button" class="inline-action-btn" (click)="onRecordMyDailyHabitStatsWithUserId()">
-                        오늘 기록 업데이트 하기
-                    </button>
+                        오늘 기록 가져오기
+                    </button><br>
+
                 </p>
             </div>
 
@@ -154,7 +158,7 @@
                         </div>
 
                         <div class="stat-value">
-                            {{ completionRate }}<span>%</span>
+                            {{ completionRate | number:'1.1-1' }}<span>%</span>
                         </div>
                     </div>
                 </div>
@@ -216,8 +220,7 @@
                                     [class.today]="isToday(day)" [class.future]="day.future"
                                     [class.level-0]="day.level === 0" [class.level-1]="day.level === 1"
                                     [class.level-2]="day.level === 2" [class.level-3]="day.level === 3"
-                                    [class.level-4]="day.level === 4" 
-                                    [class.rest-day]="showRestDays && day.useRest"
+                                    [class.level-4]="day.level === 4" [class.rest-day]="showRestDays && day.useRest"
                                     [style.--goal-color]="goalColor" [title]="getDayTitle(day)">
                                 </div>
                             </div>

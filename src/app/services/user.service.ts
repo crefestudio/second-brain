@@ -85,6 +85,22 @@ interface GoalDailyStat {
     useRest: boolean;
 }
 
+interface LifeupPageUrls {
+    root: string;
+    task_mobile: string;
+    memo_mobile: string;
+    reference_mobile: string;
+    contact_mobile: string;
+}
+
+interface LifeupTemplateInfo {
+    templateName: string;
+    version: string;
+    serialNumber: string;
+    pageUrls: LifeupPageUrls;
+}
+
+
 function isWidgetMode(): boolean {
     return window.location.pathname.includes("/widget")
 }
@@ -231,6 +247,7 @@ export class UserService {
                 updatedAt: serverTimestamp()
             });
 
+            await this.deleteLifeupTemplateInfo(userId); // 템플릿 캐시 정보 삭제
             return true;
         } catch (error) {
             console.error('disconnectNotionTemplate error:', error);
@@ -1642,24 +1659,14 @@ export class UserService {
         return null;
     }
 
-    async getLifeupTemplateInfo(userId: string): Promise<{
-        templateName: string;
-        version: string;
-        serialNumber: string;
-        rootPageUrl: string;
-    } | null> {
+    async getLifeupTemplateInfo(userId: string): Promise<LifeupTemplateInfo | null> {
         if (!userId) return null;
 
         try {
             const response = await firstValueFrom(
                 this.http.post<{
                     success: boolean;
-                    data: {
-                        templateName: string;
-                        version: string;
-                        serialNumber: string;
-                        rootPageUrl: string;
-                    } | null;
+                    data: LifeupTemplateInfo | null;
                 }>(
                     `${this.functionsBaseUrl}/getLifeupTemplateInfo`,
                     { userId }
@@ -1690,7 +1697,6 @@ export class UserService {
             return false;
         }
     }
-
 }
 
 /**

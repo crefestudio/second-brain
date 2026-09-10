@@ -20,6 +20,9 @@ import { Timestamp } from "firebase-admin/firestore";
 import { AssistantEntity, TextEntity, WebPageEntity, ImageEntity, ContactEntity, YoutubeEntity, ProductEntity, BookEntity } from './services/assistant-entity';
 import { WebPageAnalyzer } from './services/web-page-analyzer';
 
+import * as functions from "firebase-functions";
+import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime, resolveDateExpr } from './services/date-service';
+
 // notion
 import { Client } from "@notionhq/client";
 
@@ -75,6 +78,22 @@ interface NotionGoal {
     name: string;
     status: string;
 }
+
+interface LifeupPageUrls {
+    root: string;
+    task_mobile: string;
+    memo_mobile: string;
+    reference_mobile: string;
+    contact_mobile: string;
+}
+
+interface LifeupTemplateInfo {
+    templateName: string;
+    version: string;
+    serialNumber: string;
+    pageUrls: LifeupPageUrls;
+}
+
 // export interface PreparedAssistantInput {
 //     aiInput: string;
 //     entity: AssistantEntity;
@@ -85,8 +104,6 @@ interface NotionGoal {
 
 //admin.initializeApp();
 
-import * as functions from "firebase-functions";
-import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime, resolveDateExpr } from './services/date-service';
 
 export const importPurchasers = functions.https.onRequest(
     async (req, res) => {
@@ -351,6 +368,35 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 
+        // 템플릿 정보 가져오기
+        let templateInfo: LifeupTemplateInfo | null = null;
+        try {
+            templateInfo = await NotionService.fetchLifeupTemplateInfoFromNotion(userId);
+            if (templateInfo) {
+                console.log("[Notion OAuth] lifeupTemplateInfo fetched", {
+                    userId,
+                    templateInfo
+                });
+            } else {
+                console.warn("[Notion OAuth] lifeupTemplateInfo not found", { userId });
+            }
+        } catch (error) {
+            console.warn("[Notion OAuth] lifeupTemplateInfo fetch failed", {
+                userId,
+                error
+            });
+        }
+
+        if (templateInfo) {
+            await userRef.set({ lifeupTemplateInfo: templateInfo }, { merge: true });
+            if (kakaoUserId) {
+                await db.collection("kakaoConnections").doc(kakaoUserId).set({
+                    pageUrls: templateInfo.pageUrls,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+        }
+
         // secondbrain은 항상 초기화
 
         await userRef.collection("integrations").doc("secondbrain").set(
@@ -377,21 +423,6 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
                 { merge: true }
             );
         }
-        //////////////////////////////////////
-        // agent 초기화
-
-        // secondbrain 연결정보 저장 : 이전 버전을 위해 / 임시 코드
-        // await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
-        //     enabled: false
-        // });
-
-        // await db.collection("users").doc(userId).collection("integrations").doc("kakao-capture").set({
-        //     enabled: false
-        // });
-        // const kakaoUserId = userDoc.get('kakaoUserId');
-        // if (kakaoUserId) {
-        //     await connectKakaoUser(uid, kakaoUserId);
-        // }
 
         await Promise.all(
             (Object.entries(dbMap) as [string, string][])
@@ -439,8 +470,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
             )}&error=${encodeURIComponent(errorMessage)}`
         );
     }
-})
-);
+}));
 
 
 // ----------------------
@@ -3782,12 +3812,9 @@ class NotionService {
 
     // #template
     // #lifeup template
-    static async fetchLifeupTemplateInfoFromNotion(userId: string): Promise<{
-        templateName: string;
-        version: string;
-        serialNumber: string;
-        rootPageUrl: string;
-    } | null> {
+
+
+    static async fetchLifeupTemplateInfoFromNotion(userId: string): Promise<LifeupTemplateInfo | null> {
         console.log(`[LifeupInfo] fetch from Notion userId = ${userId}`);
 
         const userDoc = await db.collection("users").doc(userId).get();
@@ -3859,26 +3886,56 @@ class NotionService {
             database_id: databaseId
         });
 
-        const rootPageUrl = await this.findRootPageUrl(
-            notion,
-            database
+        const rootPageUrl = await this.findRootPageUrl(notion, database);
+
+        const appsDatabaseId = await this.resolveDatabaseId(
+            accessToken,
+            userId,
+            "apps"
         );
+
+        const appsDataSourceId = await this.resolveDataSourceId(
+            accessToken,
+            appsDatabaseId
+        );
+
+        const appsResponse = await notion.dataSources.query({
+            data_source_id: appsDataSourceId
+        });
+
+        const pageUrls: LifeupPageUrls = {
+            root: rootPageUrl,
+            task_mobile: "",
+            memo_mobile: "",
+            reference_mobile: "",
+            contact_mobile: ""
+        };
+
+        for (const appPage of appsResponse.results as any[]) {
+            const appProperties = appPage.properties ?? {};
+            const appId = getPropertyValue(appProperties["appId"]);
+
+            if (appId === "task-mobile") {
+                pageUrls.task_mobile = appPage.url ?? "";
+            } else if (appId === "memo-mobile") {
+                pageUrls.memo_mobile = appPage.url ?? "";
+            } else if (appId === "reference-mobile") {
+                pageUrls.reference_mobile = appPage.url ?? "";
+            } else if (appId === "contact-mobile") {
+                pageUrls.contact_mobile = appPage.url ?? "";
+            }
+        }
 
         return {
             templateName,
             version,
             serialNumber,
-            rootPageUrl
+            pageUrls
         };
     }
 
     // #template
-    static async getLifeupTemplateInfo(userId: string): Promise<{
-        templateName: string;
-        version: string;
-        serialNumber: string;
-        rootPageUrl: string;
-    } | null> {
+    static async getLifeupTemplateInfo(userId: string): Promise<LifeupTemplateInfo | null> {
         if (!userId) return null;
 
         const userRef = db.collection("users").doc(userId);
@@ -3894,9 +3951,7 @@ class NotionService {
 
         console.log(`[LifeupInfo] cache missing, fetch from Notion`);
 
-        const templateInfo = await this.fetchLifeupTemplateInfoFromNotion(
-            userId
-        );
+        const templateInfo = await this.fetchLifeupTemplateInfoFromNotion(userId);
 
         if (!templateInfo) {
             return null;
@@ -3916,10 +3971,26 @@ class NotionService {
     static async deleteLifeupTemplateInfo(userId: string): Promise<void> {
         if (!userId) return;
 
-        await db.collection("users").doc(userId).update({
+        const userRef = db.collection("users").doc(userId);
+        const userSnap = await userRef.get();
+        const kakaoUserId = userSnap.data()?.kakaoUserId;
+
+        const batch = db.batch();
+
+        batch.update(userRef, {
             lifeupTemplateInfo: admin.firestore.FieldValue.delete()
         });
 
+        if (kakaoUserId) {
+            batch.update(
+                db.collection("kakaoConnections").doc(kakaoUserId),
+                {
+                    pageUrls: admin.firestore.FieldValue.delete(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                }
+            );
+        }
+        await batch.commit();
         console.log(`[LifeupInfo] deleted userId = ${userId}`);
     }
 
@@ -7484,19 +7555,25 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
             });
 
             const userDoc = db.collection("users").doc(connection.uid);
+            const queueData: any = {
+                type: "capture",
+                utterance,
+                user,
+                kakaoUserId,
+                callbackUrl,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                status: "pending"
+            };
+
+            if (connection.pageUrls) {
+                queueData.pageUrls = connection.pageUrls;
+            }
+
             await userDoc
                 .collection("integrations")
                 .doc("kakao-capture")
                 .collection("webhook_queue")
-                .add({
-                    type: "capture",
-                    utterance,
-                    user,
-                    kakaoUserId,
-                    callbackUrl,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                    status: "pending"
-                });
+                .add(queueData);
 
             console.log(
                 "[KAKAO] queue created",
@@ -7534,7 +7611,7 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
 })
 );
 
-
+// #kakao
 export const handleKakaoWebhookQueue = onDocumentCreated({
     document: "users/{userId}/integrations/kakao-capture/webhook_queue/{jobId}",
     minInstances: 1,
@@ -7553,7 +7630,8 @@ export const handleKakaoWebhookQueue = onDocumentCreated({
             userId,
             data.utterance,
             data.callbackUrl,
-            jobId
+            jobId,
+            data.pageUrls
         );
 
         await snapshot.ref.delete();
@@ -7603,7 +7681,8 @@ async function processKakaoAgent(
     userId: string,
     userMessage: string,
     callbackUrl: string,
-    jobId: string
+    jobId: string,
+    pageUrls?: LifeupPageUrls
 ) {
     const userDoc = await db.collection("users").doc(userId).get();
     const accessToken = userDoc.data()?.notionAccessToken;
@@ -7734,7 +7813,8 @@ async function processKakaoAgent(
 
             enrichedResult = enrichKakaoAssistantResult(
                 result,
-                previousContext
+                previousContext,
+                pageUrls
             );
 
             console.log("[AI] enrichedResult", {
@@ -8234,7 +8314,11 @@ else:
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-function enrichKakaoAssistantResult(result: any, previousResult: any) {
+function enrichKakaoAssistantResult(
+    result: any,
+    previousResult: any,
+    pageUrls?: LifeupPageUrls
+) {
     console.log("[enrich] result =", JSON.stringify(result, null, 2));
     console.log("[enrich] previousResult =", JSON.stringify(previousResult, null, 2));
 
@@ -8266,13 +8350,18 @@ function enrichKakaoAssistantResult(result: any, previousResult: any) {
     }
 
     if (["create", "correct"].includes(enrichedResult.action)) {
-        enrichedResult.response = buildAssistantResponse(enrichedResult, previousResult);
+        enrichedResult.response = buildAssistantResponse(
+            enrichedResult,
+            previousResult,
+            pageUrls
+        );
     }
 
     console.log("[enrich] final =", JSON.stringify(enrichedResult, null, 2));
 
     return enrichedResult;
 }
+
 // Kakao Assistant AI => {
 //   "action": "correct",
 //   "dateExpr": "tomorrow+19:00",
@@ -8289,8 +8378,14 @@ function enrichKakaoAssistantResult(result: any, previousResult: any) {
 // template info에 각 url을 저장함
 // 주소 변환기를 만들어야 함
 // 결과를 우리 주소로 해서 응답함
-function buildAssistantResponse(result: any, previousResult?: any): string {
+function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: LifeupPageUrls): string {
     const lines: string[] = [];
+
+    let pageUrl = "";
+    if (result.db === "task") { pageUrl = pageUrls?.task_mobile ?? ""; }
+    else if (result.db === "memo") { pageUrl = pageUrls?.memo_mobile ?? ""; }
+    else if (result.db === "reference") { pageUrl = pageUrls?.reference_mobile ?? ""; }
+    else if (result.db === "contact") { pageUrl = pageUrls?.contact_mobile ?? ""; }
 
     // 날짜
     if (result.dateData?.date) {
@@ -8410,10 +8505,21 @@ function buildAssistantResponse(result: any, previousResult?: any): string {
             }
     }
 
-    // 테스트용 Notion 링크
-    lines.push("");
-    lines.push("🔗 라이프업에서 보기");
-    lines.push("https://app.notion.com/p/L-I-F-E-U-P-1-4-2ed916d8a1ef807c8a55f9be2ceb5aec");
+    // if (pageUrl) {
+    //     lines.push("");
+    //     lines.push("🔗 라이프업에서 보기");
+    //     lines.push(pageUrl);
+    // }
+    if (pageUrl) {
+        const notionAppUrl = pageUrl.replace(
+            "https://app.notion.com/",
+            "notion://app.notion.com/"
+        );
+
+        lines.push("");
+        lines.push("🔗 노션에서 보기");
+        lines.push(notionAppUrl);
+    }
 
     return lines.join("\n");
 }
@@ -11313,23 +11419,32 @@ export async function connectKakaoUser(uid: string, kakaoUserId: string): Promis
         const connRef = db.collection('kakaoConnections').doc(kakaoUserId);
         const integrationRef = db.collection('users').doc(uid).collection('integrations').doc('kakao-capture');
 
+        const userDoc = await userRef.get();
+        const userData = userDoc.data();
+        const pageUrls = userData?.lifeupTemplateInfo?.pageUrls;
+
         const batch = db.batch();
 
         batch.update(userRef, { kakaoUserId });
 
-        batch.set(connRef, {
+        const connectionData: any = {
             uid,
             enabled: true,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        };
 
+        // 페이지 정보를 복사함
+        if (pageUrls) {
+            connectionData.pageUrls = pageUrls;
+        }
+
+        batch.set(connRef, connectionData);
         batch.set(integrationRef, {
             enabled: true,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
         await batch.commit();
-
         console.log("[connectKakaoUser] committed");
     } catch (error) {
         console.error("[connectKakaoUser FAILED]", error);
@@ -11400,8 +11515,8 @@ export async function findEnabledConnectedUser(
 ): Promise<{
     uid: string;
     enabled: boolean;
+    pageUrls?: LifeupPageUrls;
 } | null> {
-
     const doc = await db
         .collection('kakaoConnections')
         .doc(kakaoUserId)
@@ -11415,7 +11530,8 @@ export async function findEnabledConnectedUser(
 
     return {
         uid: data!.uid,
-        enabled: data!.enabled === true
+        enabled: data!.enabled === true,
+        pageUrls: data!.pageUrls
     };
 }
 

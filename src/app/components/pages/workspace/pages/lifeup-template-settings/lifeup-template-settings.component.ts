@@ -71,7 +71,7 @@ export class LifeupTemplateSettingsComponent {
 
         await this.loadTemplateInfo();
         this.isLoading = false;
-    }    
+    }
 
     async updateSession(): Promise<void> {
         await this.authService.updateSession();
@@ -113,8 +113,9 @@ export class LifeupTemplateSettingsComponent {
             if (this.isLifeupTemplate) {
                 this.templateVersion = result.version;
                 this.serialNumber = '준비중'; // result.serialNumber;
-                this.rootPageUrl = result.rootPageUrl;
+                this.rootPageUrl = result.pageUrls?.root ?? '';
             }
+
         } catch (error) {
             console.error('라이프업 템플릿 정보를 불러오지 못했습니다.', error);
             this.isLifeupTemplate = false;

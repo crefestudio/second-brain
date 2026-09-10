@@ -816,6 +816,10 @@ ${day.completed}/${day.total} 완료
             String(this.showRestDays)
         );
     }
+
+    onSendFeedBack() {
+        window.open('https://notionable.net/feedback', '_blank');
+    }
 }
 
 

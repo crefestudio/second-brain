@@ -76,8 +76,8 @@ export class WorkspaceComponent implements OnInit {
 
     async loadLifeupTemplateInfo(): Promise<void> {
         try {
-            const info = await this.userService.getLifeupTemplateInfo(this.userId);
-            this.templateUrl = info?.rootPageUrl ?? null;
+            const info: any = await this.userService.getLifeupTemplateInfo(this.userId);
+            this.templateUrl = info?.pageUrls?.root ?? null;
         } catch (error) {
             console.error('LifeUp template info load failed', error);
             this.templateUrl = null;
@@ -86,8 +86,8 @@ export class WorkspaceComponent implements OnInit {
 
     async openLifeup(): Promise<void> {
         try {
-            const info = await this.userService.getLifeupTemplateInfo(this.userId);
-            const url = info?.rootPageUrl;
+            const info: any = await this.userService.getLifeupTemplateInfo(this.userId);
+            const url = info?.pageUrls?.root;
 
             if (!url) {
                 console.warn('LifeUp root page URL not found');

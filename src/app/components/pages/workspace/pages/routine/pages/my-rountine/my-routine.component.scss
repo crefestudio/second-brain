@@ -64,7 +64,7 @@
     min-height: 100%;
     box-sizing: border-box;
     color: #e5e7eb;
-    background: #111318;
+    // background: #111318;
     --hour-height: 150px;
 }
 
@@ -138,7 +138,7 @@
 }
 
 .inline-action-btn {
-    margin-left: 4px;
+    margin: 0 0 3px 4px;
     padding: 2px 8px;
     border: 1px solid #d1d5db;
     border-radius: 8px;
