@@ -337,7 +337,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
                 notionToken.duplicated_template_id
         });
 
-        const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact"];
+        const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact", "apps", "lifeup info"];
         const dbMap = await NotionService.updateTemplateDbs(
             notionToken.access_token,
             dbNames
