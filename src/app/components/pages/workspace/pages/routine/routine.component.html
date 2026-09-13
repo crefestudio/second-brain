@@ -1,12 +1,6 @@
 <div class="routine-layout">
 
   <div class="routine-header">
-
-    <!-- <div class="title-section">
-      <h1>루틴</h1>
-      <p>나에게 맞는 루틴을 찾고 관리하세요.</p>
-    </div> -->
-
     <nav class="sub-menu">
       <a routerLink="/workspace/routine/dashboard" routerLinkActive="active" class="sub-menu-item">
         대시보드
@@ -17,20 +11,17 @@
       <a routerLink="/workspace/routine/find" routerLinkActive="active" class="sub-menu-item">
         추천 습관
       </a>
-
-      <!-- <a
-        routerLink="/workspace/routine/create"
-        routerLinkActive="active"
-        class="sub-menu-item">
-
-        🞥 습관 직접 추가
-
-      </a> -->
-
-
     </nav>
-
   </div>
+
+  <div class="routine-notice">
+    <div class="routine-notice-content">
+      루틴 서비스는 현재 <strong>시험 운영 중</strong>이며, 12월 1일 정식 오픈 예정입니다.
+      <a href="#">자세히 보기</a>
+    </div>
+    <!-- <button type="button" class="routine-notice-close" aria-label="닫기">×</button> -->
+  </div>
+
 
   <div class="routine-content">
     <router-outlet></router-outlet>

@@ -35,19 +35,25 @@
         <div class="habit-dashboard">
             <div>
                 <h1>루틴 대시보드</h1>
-                <p>지난 1년간의 꾸준함을 한눈에 확인하세요.<br>
-                    <span class="guide-gap"></span>
-                    ▪ 루틴 서비스는 현재 시험 운영 중이며, 12월 1일 정식 오픈 예정입니다.
-                    <button type="button" class="inline-action-btn" (click)="onSendFeedBack()">
-                        의견 보내기
-                    </button><br>
-                    ▪ 습관 기록은 매일 오전 12시 10분에 자동으로 업데이트되며, 자동 업데이트에서는 전날의 기록을 반영합니다.<br>
-                    ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다. 어제 이전의 기록은 통계에 반영되지 않습니다.
-                    <button type="button" class="inline-action-btn" (click)="onRecordMyDailyHabitStatsWithUserId()">
-                        오늘 기록 가져오기
-                    </button><br>
+                <p>지난 1년간의 꾸준함을 한눈에 확인하세요.</p>
 
-                </p>
+                <div class="habit-guide">
+                    <button type="button" class="habit-guide-toggle" (click)="showHabitGuide = !showHabitGuide">
+                        <span class="habit-guide-arrow" [class.open]="showHabitGuide">></span>
+                        <span>루틴 서비스 가이드</span>
+                    </button>
+
+                    <div class="habit-guide-content" *ngIf="showHabitGuide">
+                        <div>▪ 습관 기록은 매일 오전 12시 10분에 자동으로 업데이트되며, 자동 업데이트에서는 전날의 기록을 반영합니다.</div>
+                        <div class="habit-guide-action">
+                            ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다. 어제 이전의 기록은 통계에 반영되지 않습니다.
+                            <button type="button" class="inline-action-btn"
+                                (click)="onRecordMyDailyHabitStatsWithUserId()">
+                                오늘 기록 가져오기
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             @if (newRestAndAchievements.length > 0) {

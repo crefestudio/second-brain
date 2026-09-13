@@ -3,9 +3,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
-import { UserService } from '../../../../../services/user.service';
-import { AuthService } from '../../../../../services/auth.service';
-import { ToastService } from '../../../../../services/toast.service';
+import { UserService } from '../../../../../../../services/user.service';
+import { AuthService } from '../../../../../../../services/auth.service';
+import { ToastService } from '../../../../../../../services/toast.service';
 
 @Component({
     selector: 'app-lifeup-template-settings',

@@ -1,0 +1,117 @@
+<div class="page-header">
+    <h1>추천 습관 갤러리</h1>
+    <p>
+      일상에서 실천하기 좋은 습관들을 준비했어요.<br>원하는 습관 카드를 골라 내 루틴에 추가해보세요.
+    </p>
+  </div>
+<div class="habit-page">  
+
+  <div class="category-row">
+
+    @for(category of categories; track category) {
+
+      <button
+        class="category-chip"
+        [class.active]="selectedCategory === category"
+        (click)="selectedCategory = category">
+
+        {{ category }}
+
+      </button>
+
+    }
+
+  </div>
+
+  <div class="habit-grid">
+
+    @for(habit of filteredHabits; track habit.name) {
+
+
+      <div class="habit-card">
+
+        <div class="habit-header">
+          <span class="habit-icon">
+            {{ habit.icon }}
+          </span>
+
+          <div class="habit-title">
+            <span class="habit-name">
+              {{ habit.name }}
+            </span>
+
+            <!-- 키워드 여러개 -->
+            <div class="keyword-row">
+
+              @for (kw of habit.categories; track kw) {
+
+                <span class="habit-tag">
+                  #{{ kw }}
+                </span>
+
+              }
+
+            </div>
+          </div>
+        </div>
+
+        <div class="days-row">
+
+          @for(day of weekDays; track day) {
+
+            <button
+              class="day-btn"
+              [class.active]="isSelected(habit, day)"
+              (click)="toggleDay(habit, day)">
+
+              {{ day }}
+
+            </button>
+
+          }
+
+        </div>
+
+        <div class="input-row">
+
+          <div class="field">
+            <label>시간</label>
+
+            <input
+              type="time"
+              [(ngModel)]="habit.time">
+          </div>
+
+          <div class="field">
+            <label>소요시간</label>
+
+            <select [(ngModel)]="habit.duration">
+
+              <option [value]="5">5분</option>
+              <option [value]="10">10분</option>
+              <option [value]="15">15분</option>
+              <option [value]="30">30분</option>
+              <option [value]="60">1시간</option>
+              <option [value]="120">1시간</option>
+
+
+            </select>
+          </div>
+
+        </div>
+
+        <button
+          class="add-btn"
+          (click)="addHabit(habit)">
+
+          + 추가하기
+
+        </button>
+
+      </div>
+
+    }
+
+  </div>
+
+</div>

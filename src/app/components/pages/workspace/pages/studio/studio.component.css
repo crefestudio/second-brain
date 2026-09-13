@@ -1,39 +1,20 @@
-.routine-layout {
+.studio-layout {
   padding: 24px;
 }
 
-.routine-header {
+.studio-header {
   display: flex;
   justify-content: center;
   margin-bottom: 10px;
 }
 
-.title-section {
-  margin-bottom: 20px;
-
-  h1 {
-    margin: 0;
-    font-size: 28px;
-    font-weight: 700;
-    color: #fff;
-  }
-
-  p {
-    margin-top: 8px;
-    color: #9ca3af;
-    font-size: 14px;
-  }
-}
-
-.routine-content {
-  padding-top: 0px;
+.studio-content {
+  padding-top: 0;
 }
 
 .sub-menu {
   display: flex;
   align-items: center;
-  /* gap: 4px;
-  padding: 4px; */
   background: #252527;
   border-radius: 11px;
   width: fit-content;
@@ -65,11 +46,7 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-/*
-
-*/
-
-.routine-notice {
+.studio-notice {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -85,27 +62,27 @@
   font-size: 13px;
 }
 
-.routine-notice-content {
+.studio-notice-content {
   line-height: 1.5;
 }
 
-.routine-notice strong {
+.studio-notice strong {
   color: #e5a15f;
   font-weight: 600;
 }
 
-.routine-notice a {
+.studio-notice a {
   margin-left: 8px;
   color: #7fa9d8;
   text-decoration: none;
   font-size: 12px;
 }
 
-.routine-notice a:hover {
+.studio-notice a:hover {
   color: #9bc2eb;
 }
 
-.routine-notice-close {
+.studio-notice-close {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -124,7 +101,7 @@
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-.routine-notice-close:hover {
+.studio-notice-close:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #ccc;
 }

@@ -68,6 +68,7 @@ export class RoutineDashboardComponent implements OnInit {
     kakaoUserId: string = '';
     notionAccessToken: string = '';
 
+    showHabitGuide = false;
     currentYear = new Date().getFullYear();
     days = ['월', '화', '수', '목', '금', '토', '일'];
 

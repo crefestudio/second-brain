@@ -17,6 +17,9 @@ import { SecondBrainOauthFailComponent } from './components/pages/workspace/page
 import { ServiceManagerComponent } from './components/pages/workspace/pages/serviceManager/service-manager.component';
 
 import { RoutineComponent } from './components/pages/workspace/pages/routine/routine.component';
+import { StudioComponent } from './components/pages/workspace/pages/studio/studio.component';
+import { StudioDashboardComponent } from './components/pages/workspace/pages/studio/pages/studio-dashboard/studio-dashboard.component';
+
 import { RoutineFindComponent } from './components/pages/workspace/pages/routine/pages/rountine-find/routine-find.component';
 import { MyRoutineComponent } from './components/pages/workspace/pages/routine/pages/my-rountine/my-routine.component';
 import { RoutineDashboardComponent } from './components/pages/workspace/pages/routine/pages/routine-dashboard/routine-dashboard.component';
@@ -31,8 +34,7 @@ import { NotificationComponent } from './components/pages/myPage/pages/notificat
 import { WorkspaceLayoutComponent } from './workspace-layout.component';
 import { WidgetLayoutComponent } from './widget-layout.component';
 import { EventLogComponent } from './components/pages/workspace/pages/event-log/event-log.component';
-import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/lifeup-template-settings/lifeup-template-settings.component';
-
+import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/studio/pages/lifeup-template-settings/lifeup-template-settings.component'; 
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
 //import { UpdateComponent } from './components/pages/life-up/pages/update/update.component';
@@ -74,10 +76,6 @@ export const routes: Routes = [
         component: SecondBrainWidgetComponent
       },
       {
-        path: 'templete',
-        component: LifeupTemplateSettingsComponent
-      },
-      {
         path: 'routine',
         component: RoutineComponent,
         children: [
@@ -98,6 +96,37 @@ export const routes: Routes = [
             path: 'myroutine',
             component: MyRoutineComponent
           }
+        ]
+      },
+      {
+        path: 'studio',
+        component: StudioComponent,
+        children: [
+          {
+            path: '',
+            redirectTo: 'dashboard',
+            pathMatch: 'full'
+          },
+          {
+            path: 'dashboard',
+            component: StudioDashboardComponent
+          },
+          {
+            path: 'template',
+            component: LifeupTemplateSettingsComponent
+          },
+          // {
+          //   path: 'lifeup',
+          //   component: StudioLifeupComponent
+          // },
+          // {
+          //   path: 'care',
+          //   component: LifeupCareComponent
+          // },
+          // {
+          //   path: 'customizing',
+          //   component: StudioCustomizingComponent
+          // }
         ]
       },
       {

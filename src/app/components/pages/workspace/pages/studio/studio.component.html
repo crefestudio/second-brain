@@ -1,0 +1,32 @@
+<div class="studio-layout">
+
+  <div class="studio-header">
+    <nav class="sub-menu">
+      <a routerLink="/workspace/studio/dashboard" routerLinkActive="active" class="sub-menu-item">
+        대시보드
+      </a>
+      <a routerLink="/workspace/studio/template" routerLinkActive="active" class="sub-menu-item">
+        내 라이프업
+      </a>
+      <a routerLink="/workspace/studio/care" routerLinkActive="active" class="sub-menu-item">
+        라이프업 케어
+      </a>
+      <a routerLink="/workspace/studio/customizing" routerLinkActive="active" class="sub-menu-item">
+        커스터마이징
+      </a>
+    </nav>
+  </div>
+
+  <div class="studio-notice">
+    <div class="studio-notice-content">
+      스튜디오 서비스는 현재 <strong>시험 운영 중</strong>입니다.
+      <a href="#">자세히 보기</a>
+    </div>
+    <!-- <button type="button" class="studio-notice-close" aria-label="닫기">×</button> -->
+  </div>
+
+  <div class="studio-content">
+    <router-outlet></router-outlet>
+  </div>
+
+</div>

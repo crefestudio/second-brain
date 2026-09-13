@@ -1,0 +1,207 @@
+<div class="page">
+
+    <div class="page-header">
+        <h1>✨ 라이프업 스튜디오</h1>
+
+        <div class="hero-box">
+            <div class="hero-content">
+                <div class="hero-title">
+                    내 라이프업을 함께 만들어가세요. 😊
+                </div>
+
+                <div class="hero-description">
+                    <strong>라이프업 스튜디오</strong>는 정해진 템플릿을 쓰는 것에 그치지 않고,
+                    노션과 자동화를 활용해 <strong>내 삶에 딱 맞는 시스템</strong>을 함께 만들어가고
+                    발전시키는 공간입니다.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+
+        <!-- 내 요청 현황 -->
+        <div class="dashboard-card">
+
+            <div class="dashboard-title">
+                내 요청 현황
+            </div>
+
+            <div class="dashboard-content">
+
+                @for (request of requests; track request.title) {
+                <div class="dashboard-item">
+                    <div class="item-info">
+                        <span class="badge" [ngClass]="request.statusClass">
+                            {{ request.status }}
+                        </span>
+                        <span class="type">
+                            ({{ request.type }})
+                        </span>
+                        <span class="item-title">
+                            {{ request.title }}
+                        </span>
+                    </div>
+                </div>
+                }
+
+            </div>
+
+            <div class="dashboard-footer">
+                <button class="connect-btn" routerLink="/workspace/studio/care">
+                    요청 현황 보기 →
+                </button>
+            </div>
+
+        </div>
+
+        <!-- 내 활동 현황 -->
+        <div class="dashboard-card">
+
+            <div class="dashboard-title">
+                내 활동 현황
+            </div>
+
+            <div class="dashboard-content">
+
+                @for (activity of activities; track activity.title) {
+                <div class="dashboard-item">
+                    <div class="item-info">
+                        <span class="type">
+                            ({{ activity.type }})
+                        </span>
+                        <span class="item-title">
+                            {{ activity.title }}
+                        </span>
+                    </div>
+                </div>
+                }
+
+            </div>
+
+            <div class="dashboard-footer">
+                <button class="connect-btn">
+                    내 활동 보기 →
+                </button>
+            </div>
+
+        </div>
+
+        <!-- 새 소식 -->
+        <div class="dashboard-card">
+
+            <div class="dashboard-title">
+                새 소식
+            </div>
+
+            <div class="dashboard-content">
+
+                @for (item of news; track item.title) {
+                <div class="dashboard-item">
+                    <div class="item-info">
+                        <span class="type">
+                            ({{ item.type }})
+                        </span>
+                        <span class="item-title">
+                            {{ item.title }}
+                        </span>
+                        <span class="date">
+                            {{ item.date }}
+                        </span>
+                    </div>
+                </div>
+                }
+
+            </div>
+
+            <div class="dashboard-footer">
+                <button class="connect-btn">
+                    소식 더보기 →
+                </button>
+            </div>
+
+        </div>
+
+        <!-- 잔여 크레딧 -->
+        <div class="dashboard-card credit-card">
+
+            <div class="dashboard-title">
+                잔여 크레딧
+            </div>
+
+            <div class="credit-content">
+                <div class="credit-number">
+                    {{ credit }}<span>H</span>
+                </div>
+
+                <div class="credit-description">
+                    라이프업 스튜디오에서 사용할 수 있는
+                    잔여 크레딧입니다.
+                </div>
+            </div>
+
+            <div class="dashboard-footer">
+                <button class="connect-btn">
+                    크레딧 이용 안내 →
+                </button>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- 안내 / 가이드 / FAQ -->
+    <section class="guide">
+
+        <div class="guide-card">
+
+            <h2>스튜디오 안내</h2>
+
+            <div class="guide-grid">
+
+                <details class="guide-toggle">
+                    <summary>💡 라이프업 스튜디오는 무엇인가요?</summary>
+                    <p>
+                        라이프업을 사용하면서 생기는 질문이나 불편한 점을 해결하고,
+                        내게 맞는 방식으로 라이프업을 발전시켜 나갈 수 있는 공간입니다.
+                    </p>
+                </details>
+
+                <details class="guide-toggle">
+                    <summary>🛠️ 어떤 도움을 받을 수 있나요?</summary>
+                    <p>
+                        라이프업 활용 상담, 오류 복구, 노션 관련 상담,
+                        기능 제안 등 라이프업을 더 잘 활용하기 위한 다양한 도움을 받을 수 있습니다.
+                    </p>
+                </details>
+
+                <details class="guide-toggle">
+                    <summary>🎨 커스터마이징은 무엇인가요?</summary>
+                    <p>
+                        기본 라이프업 구조에서 벗어나 나에게 필요한 방식으로
+                        라이프업을 변경하거나 새로운 기능을 만들어가는 요청입니다.
+                    </p>
+                </details>
+
+                <details class="guide-toggle">
+                    <summary>💳 크레딧은 어떻게 사용하나요?</summary>
+                    <p>
+                        상담이나 커스터마이징 등 스튜디오에서 제공하는 일부 서비스를
+                        이용할 때 크레딧이 사용됩니다.
+                    </p>
+                </details>
+
+                <details class="guide-toggle">
+                    <summary>❓ 자주 묻는 질문</summary>
+                    <p>
+                        라이프업과 스튜디오 이용에 대한 자주 묻는 질문을 확인할 수 있습니다.
+                    </p>
+                </details>
+
+            </div>
+
+        </div>
+
+    </section>
+
+</div>
