@@ -181,7 +181,7 @@
 .dashboard-card button {
     border: none;
     border-radius: 10px;
-    padding: 13px;
+    padding: 12px 18px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;

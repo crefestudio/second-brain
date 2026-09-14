@@ -1,0 +1,251 @@
+.page {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 5px 32px 32px;
+}
+
+.page-header {
+    margin-bottom: 40px;
+}
+
+.page-header h1 {
+    margin: 0 0 22px;
+    color: #fff;
+    font-size: 36px;
+    font-weight: 700;
+}
+
+.hero-box {
+    display: flex;
+    align-items: center;
+    padding: 23px 32px 28px;
+    background: linear-gradient(180deg, rgba(122,162,247,.08), rgba(122,162,247,.03));
+    border: 1px solid rgba(122,162,247,.15);
+    border-radius: 16px;
+}
+
+.hero-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.hero-title {
+    margin-bottom: 4px;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.hero-description {
+    max-width: 900px;
+    color: #b6beca;
+    font-size: 15px;
+    line-height: 1.8;
+}
+
+.hero-description strong {
+    color: #fff;
+}
+
+.service-section {
+    margin: 30px 0 40px;
+}
+
+.section-header {
+    margin-bottom: 18px;
+}
+
+.section-header h2 {
+    margin: 0 0 6px;
+    color: #fff;
+    font-size: 22px;
+}
+
+.section-header p {
+    margin: 0;
+    color: #8b949e;
+    font-size: 14px;
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.custom-card {
+    position: relative;
+    min-width: 0;
+    min-height: 245px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    background: #1b1b1b;
+    border: 1px solid #2d2d2d;
+    border-radius: 14px;
+    transition: .2s;
+}
+
+.custom-card:hover {
+    border-color: #414141;
+    transform: translateY(-2px);
+}
+
+.custom-card.premium {
+    border-color: rgba(229,161,95,.28);
+    background: linear-gradient(145deg, #1b1b1b, rgba(229,161,95,.035));
+}
+
+.premium-badge {
+    position: absolute;
+    top: 13px;
+    right: 14px;
+    font-size: 15px;
+}
+
+.custom-icon {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #373737;
+    border-radius: 11px;
+    font-size: 21px;
+}
+
+.custom-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.custom-title {
+    margin-bottom: 7px;
+    padding-right: 24px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.custom-description {
+    color: #aeb6c2;
+    font-size: 12px;
+    line-height: 1.65;
+}
+
+.custom-footer {
+    margin-top: 18px;
+}
+
+.custom-price {
+    margin-bottom: 9px;
+    color: #8f98a5;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.custom-card.premium .custom-price {
+    color: #e5a15f;
+}
+
+.custom-btn {
+    width: 100%;
+    padding: 8px 10px;
+    background: rgba(37,99,235,.16);
+    border: 1px solid #1e40af;
+    border-radius: 8px;
+    color: #60a5fa;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.custom-btn:hover {
+    background: #2d72b5;
+    border-color: #4389ca;
+    transform: translateY(-1px);
+}
+
+.premium-btn {
+    background: rgba(229,161,95,.12);
+    border-color: rgba(229,161,95,.4);
+    color: #e5a15f;
+}
+
+.premium-btn:hover {
+    background: rgba(229,161,95,.22);
+    border-color: #e5a15f;
+}
+
+.guide {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.guide-card {
+    padding: 28px;
+    background: #181c23;
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.18);
+}
+
+.guide-card h2 {
+    margin: 0 0 20px;
+    color: #fff;
+    font-size: 22px;
+}
+
+.guide-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.guide-toggle {
+    min-width: 0;
+}
+
+.guide-card p {
+    color: #b4bcc9;
+    font-size: 15px;
+    line-height: 1.8;
+}
+
+@media (max-width: 1100px) {
+    .service-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .service-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    .page {
+        padding: 20px;
+    }
+
+    .custom-card {
+        min-height: 230px;
+        padding: 18px;
+    }
+}
+
+@media (max-width: 600px) {
+    .service-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .guide-grid {
+        grid-template-columns: 1fr;
+    }
+}

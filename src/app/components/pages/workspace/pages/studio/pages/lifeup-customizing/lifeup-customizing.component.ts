@@ -1,55 +1,21 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../../../../../services/auth.service';
 import { _log } from '../../../../../../../lib/cf-common/cf-common';
 
 @Component({
-    selector: 'app-studio-dashboard',
+    selector: 'app-lifeup-customizing',
     standalone: true,
-    imports: [CommonModule, RouterLink],
-    templateUrl: './studio-dashboard.component.html',
-    styleUrl: './studio-dashboard.component.scss'
+    imports: [CommonModule],
+    templateUrl: './lifeup-customizing.component.html',
+    styleUrl: './lifeup-customizing.component.scss'
 })
-export class StudioDashboardComponent implements OnInit {
+export class LifeupCustomizingComponent implements OnInit {
     isLoading = true;
     memberUid: string = '';
     userId: string = '';
     kakaoUserId: string = '';
     notionAccessToken: string = '';
-
-    // 임시 데이터
-    requests = [
-        {
-            status: '진행중',
-            statusClass: 'pending',
-            type: '문의',
-            title: '라이프업에서 이 기능을 어떻게 사용하나요?'
-        },
-        {
-            status: '완료',
-            statusClass: 'success',
-            type: '요청',
-            title: '라이프업 구조 변경 요청'
-        }
-    ];
-    
-    activities = [
-        {
-            type: '질문 게시판',
-            title: '노션 데이터베이스 관련 질문입니다.'
-        }
-    ];
-
-    news = [
-        {
-            type: '업데이트 알림',
-            date: '2027.03',
-            title: '라이프업 새로운 업데이트 안내'
-        }
-    ];
-
-    credit = 0;
 
     constructor(private authService: AuthService) {
     }

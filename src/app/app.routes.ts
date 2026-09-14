@@ -19,6 +19,7 @@ import { ServiceManagerComponent } from './components/pages/workspace/pages/serv
 import { RoutineComponent } from './components/pages/workspace/pages/routine/routine.component';
 import { StudioComponent } from './components/pages/workspace/pages/studio/studio.component';
 import { StudioDashboardComponent } from './components/pages/workspace/pages/studio/pages/studio-dashboard/studio-dashboard.component';
+import { LifeupCustomizingComponent } from './components/pages/workspace/pages/studio/pages/lifeup-customizing/lifeup-customizing.component';
 
 import { RoutineFindComponent } from './components/pages/workspace/pages/routine/pages/rountine-find/routine-find.component';
 import { MyRoutineComponent } from './components/pages/workspace/pages/routine/pages/my-rountine/my-routine.component';
@@ -35,6 +36,7 @@ import { WorkspaceLayoutComponent } from './workspace-layout.component';
 import { WidgetLayoutComponent } from './widget-layout.component';
 import { EventLogComponent } from './components/pages/workspace/pages/event-log/event-log.component';
 import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/studio/pages/lifeup-template-settings/lifeup-template-settings.component'; 
+import { LifeupCareComponent } from './components/pages/workspace/pages/studio/pages/lifeup-care/lifeup-care.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
 //import { UpdateComponent } from './components/pages/life-up/pages/update/update.component';
@@ -115,18 +117,14 @@ export const routes: Routes = [
             path: 'template',
             component: LifeupTemplateSettingsComponent
           },
-          // {
-          //   path: 'lifeup',
-          //   component: StudioLifeupComponent
-          // },
-          // {
-          //   path: 'care',
-          //   component: LifeupCareComponent
-          // },
-          // {
-          //   path: 'customizing',
-          //   component: StudioCustomizingComponent
-          // }
+          {
+            path: 'care',
+            component: LifeupCareComponent
+          },
+          {
+            path: 'customizing',
+            component: LifeupCustomizingComponent
+          }
         ]
       },
       {
