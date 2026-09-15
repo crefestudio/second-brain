@@ -9,7 +9,7 @@ import {
 
 import { firstValueFrom, Subject, Subscription } from 'rxjs';
 const SB_USER_ID_KEY = 'sb_user_id';
-
+const PURCHASER_INFO_STORAGE_KEY = "notionable_verified_purchases";
 
 
 import { _log } from '../lib/cf-common/cf-common';
@@ -156,12 +156,15 @@ export class UserService {
     public notionConnected$ = new Subject<void>();
     private notionConnectUnsubscribe?: () => void;
 
+    public notionMigrationConnected$ = new Subject<void>();
+    private notionMigrationConnectUnsubscribe?: () => void;
+
     constructor(private http: HttpClient) { }
 
     static async updatePurchaseInfo(userId: string) {
         let purchaseInfo: any;
         if (isWidgetMode()) {
-            purchaseInfo = await UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
+            purchaseInfo = await UserService.getPurchaseInfoFromLocalStorage(TEMPLATE_KEY_LIFEUP);
         } else {
             if (userId) {
                 purchaseInfo = await UserService.getPurchaseInfo(userId, TEMPLATE_KEY_LIFEUP);
@@ -369,14 +372,14 @@ export class UserService {
     }
 
     // 인증번호 확인
-    async verifyCode(email: string, code: string): Promise<{ userId: string, accessKey: string, message?: string } | null> {
+    async verifyCode(email: string, code: string, memberUid?: string): Promise<{ userId: string, accessKey: string, message?: string } | null> {
         if (!email || !code) return null;
 
         try {
             const result = await firstValueFrom(
                 this.http.post<{ userId: string; accessKey: string }>(
                     `${this.functionsBaseUrl}/verifyCode`,
-                    { email, code }
+                    { email, code, memberUid }
                 )
             );
             return result;
@@ -438,7 +441,7 @@ export class UserService {
         }
     }
 
-    async verifyPurchaser(templateId: string, email?: string, phone?: string, userId?: string): Promise<boolean> {
+    async verifyPurchaser(templateId: string, email?: string, phone?: string): Promise<any | null> {
         if (!templateId || (!email && !phone)) {
             return false;
         }
@@ -451,24 +454,25 @@ export class UserService {
                 )
             );
 
+            _log('verifyPurchaser result =>', result);
+
             if (!result?.purchaser) {
-                return false;
+                return null;
             }
 
             // localStorage 저장
-            const STORAGE_KEY = 'notionable_verified_purchases';
             const purchases = JSON.parse(
-                localStorage.getItem(STORAGE_KEY) || '{}'
+                localStorage.getItem(PURCHASER_INFO_STORAGE_KEY) || '{}'
             );
             purchases[templateId] = {
                 ...result.purchaser,
                 verifiedAt: Date.now()
             };
             localStorage.setItem(
-                STORAGE_KEY,
+                PURCHASER_INFO_STORAGE_KEY,
                 JSON.stringify(purchases)
             );
-            return true;
+            return result?.purchaser;
         } catch (error: any) {
 
             console.error(
@@ -476,7 +480,7 @@ export class UserService {
                 error.error?.message || error.message
             );
 
-            return false;
+            return null;
         }
     }
 
@@ -560,14 +564,15 @@ export class UserService {
         };
     }
 
-    static getPurchaseInfoFromLocalstorage(templateId: string): any | undefined {
-        const STORAGE_KEY = "notionable_verified_purchases";
-
+    static getPurchaseInfoFromLocalStorage(templateId: string): any | undefined {       
         const purchases = JSON.parse(
-            localStorage.getItem(STORAGE_KEY) || "{}"
+            localStorage.getItem(PURCHASER_INFO_STORAGE_KEY) || "{}"
         );
-
         return purchases[templateId];
+    }
+
+    static deletePurchaseInfoLocalStorage(tempateId: string) {
+        localStorage.removeItem(PURCHASER_INFO_STORAGE_KEY);
     }
 
     //import { deleteDoc, doc } from 'firebase/firestore';
@@ -626,13 +631,13 @@ export class UserService {
         localStorage.removeItem(userId);
     }
 
-    static async saveImwebMemberId(userId: string, imwebMemberId: string): Promise<void> {
-        const userRef = doc(firestore, 'users', userId);
-        await updateDoc(userRef, {
-            imwebMemberId,
-            updatedAt: serverTimestamp()
-        });
-    }
+    // static async saveImwebMemberId(userId: string, imwebMemberId: string): Promise<void> {
+    //     const userRef = doc(firestore, 'users', userId);
+    //     await updateDoc(userRef, {
+    //         imwebMemberId,
+    //         updatedAt: serverTimestamp()
+    //     });
+    // }
 
     static async getUserByImwebMemberId(
         imwebMemberId: string
@@ -743,15 +748,12 @@ export class UserService {
 
     startNotionConnectWatcher(userId: string) {
         if (!userId) { return; }
-
         this.stopNotionConnectWatcher();
-
         const docRef = doc(
             firestore,
             'users',
             userId
         );
-
         this.notionConnectUnsubscribe = onSnapshot(
             docRef,
             (snapshot) => {
@@ -770,6 +772,39 @@ export class UserService {
         this.notionConnectUnsubscribe?.();
         this.notionConnectUnsubscribe = undefined;
     }
+
+    ////////////////////////////////
+    startNotionMigrationConnectWatcher(userId: string) {
+        if (!userId) { return; }
+
+        this.stopNotionMigrationConnectWatcher();
+
+        const docRef = doc(
+            firestore,
+            'users',
+            userId
+        );
+
+        this.notionMigrationConnectUnsubscribe = onSnapshot(
+            docRef,
+            (snapshot) => {
+                if (!snapshot.exists()) { return; }
+
+                const data = snapshot.data();
+
+                if (data['notionMigrationAccessToken']) {
+                    this.notionMigrationConnected$.next();
+                    this.stopNotionMigrationConnectWatcher();
+                }
+            }
+        );
+    }
+
+    stopNotionMigrationConnectWatcher() {
+        this.notionMigrationConnectUnsubscribe?.();
+        this.notionMigrationConnectUnsubscribe = undefined;
+    }
+    ////////////////////////
 
     static async getUserEvents(
         userId: string,
@@ -1647,6 +1682,29 @@ export class UserService {
                 error
             );
             return false;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // #migration
+    async getMigrationConnectionStatus(userId: string): Promise<boolean> {
+        if (!userId) return false;
+
+        try {
+            const response = await firstValueFrom(
+                this.http.post<{
+                    success: boolean;
+                    connected: boolean;
+                }>(
+                    `${this.functionsBaseUrl}/getMigrationConnectionStatus`,
+                    { userId }
+                )
+            );
+
+            return response.connected ?? false;
+        } catch (error) {
+            console.error('getMigrationConnectionStatus failed', error);
+            throw error;
         }
     }
 

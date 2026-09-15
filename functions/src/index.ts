@@ -50,6 +50,9 @@ const db = admin.firestore();
 const NOTION_TOKEN = defineSecret("NOTION_TOKEN");
 const NOTION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionOAuthCallback"; // 노션에 등록되서 바꿀 수 없음
 
+const NOTION_MIGRATION_TOKEN = defineSecret("NOTION_MIGRATION_TOKEN");
+const NOTION_MIGRATION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionMigrationOAuthCallback"; // 노션에 등록되서 바꿀 수 없음
+
 const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net"];
 
 export enum AgentId {
@@ -195,78 +198,28 @@ export const notionAuth = onRequest(withCors((req, res) => {
     return res.redirect(authUrl);
 }));
 
-
 // ----------------------
-// Notion OAuth Callback : 원래 세컨드브래인 콜백
+// Notion Migration OAuth Auth
 // ----------------------
-// export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCors(async (req, res) => {
-//     try {
-//         const code = req.query.code as string | undefined;
-//         const userId = (req.query.state as string) || "default_user";
-//         if (!userId) return res.status(400).send("Missing authorization code");
-//         if (!code) return res.status(400).send("Missing authorization code");
+export const notionMigrationAuth = onRequest(withCors((req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).send("userId is required");
 
-//         const clientId = process.env.NOTION_CLIENT_ID!;
-//         const clientSecret = process.env.NOTION_CLIENT_SECRET!;
-//         const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const redirectUri = encodeURIComponent(NOTION_MIGRATION_OAUTH_REDIRECT_URI);
+    const state = encodeURIComponent(userId as string);
 
-//         const tokenResponse = await fetch("https://api.notion.com/v1/oauth/token", {
-//             method: "POST",
-//             headers: { "Authorization": `Basic ${basicAuth}`, "Content-Type": "application/json" },
-//             body: JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: NOTION_OAUTH_REDIRECT_URI }),
-//         });
+    const authUrl =
+        "https://api.notion.com/v1/oauth/authorize" +
+        `?client_id=${process.env.NOTION_MIGRATION_CLIENT_ID}` +
+        "&response_type=code" +
+        "&owner=user" +
+        `&redirect_uri=${redirectUri}` +
+        `&state=${state}`;
 
-//         if (!tokenResponse.ok) {
-//             const errorText = await tokenResponse.text();
-//             console.error("Notion OAuth failed:", errorText);
-//             return res.status(500).send("Notion OAuth failed");
-//         }
+    return res.redirect(authUrl);
+}));
 
-//         const notionToken = await tokenResponse.json();
 
-//         // note Database ID 얻기
-//         const noteDatabaseId = await NotionService.getDatabaseIdByDatabaseName(notionToken.access_token, 'note_lifeup_1_3');
-
-//         // users/{userId} 에 저장
-//         await db.collection("users").doc(userId).set(
-//             {
-//                 notionAccessToken: notionToken.access_token,
-//                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-//             },
-//             { merge: true }
-//         );
-
-//         // secondbrain 연결정보 저장
-//         await db.collection("users").doc(userId).collection("integrations").doc("secondbrain").set({
-//             accessToken: notionToken.access_token,
-//             workspaceId: notionToken.workspace_id,
-//             botId: notionToken.bot_id,
-//             duplicatedTemplateId: notionToken.duplicated_template_id,
-//             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-//             noteDatabaseId: noteDatabaseId
-//         });
-
-//         await db.collection("notionDatabaseMap").doc(noteDatabaseId).set({
-//             userId,
-//             accessToken: notionToken.access_token,
-//             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-//         });
-
-//         // 초기에 연결하면 키워드를 초기화 한다. 
-//         await NotionService.resetKeywordOptions(notionToken.access_token, noteDatabaseId);
-
-//         // // 처음 한번 기존 노트에 키워드를 가져와서 저장한다. 
-//         // await NotionService.genetateNotionNoteKMData(notionToken.access_token, userId, noteDatabaseId);
-//         return res.redirect(`http://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(userId)}`);
-//     } catch (error) {
-//         console.error("OAuth process failed:", error);
-//         const userId = (req.query.state as string) || "";
-//         return res.redirect(
-//             `http://app.notionable.net/notion-auth/fail?userId=${encodeURIComponent(userId)}`
-//         );
-//     }
-// })
-// );
 
 // ----------------------
 // Notion OAuth Callback
@@ -472,6 +425,198 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
     }
 }));
 
+
+// #migration
+export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATION_TOKEN] }, withCors(async (req, res) => {
+    const userId = (req.query.state as string) || "";
+
+    try {
+        const code = req.query.code as string | undefined;
+
+        if (!userId) {
+            throw new Error("Missing state(userId)");
+        }
+
+        if (!code) {
+            throw new Error("Missing authorization code");
+        }
+
+        console.log("[Notion Migration OAuth] Start", {
+            userId,
+            hasCode: !!code
+        });
+
+        const clientId = process.env.NOTION_MIGRATION_CLIENT_ID!;
+        const clientSecret = process.env.NOTION_MIGRATION_CLIENT_SECRET!;
+
+        const basicAuth = Buffer.from(
+            `${clientId}:${clientSecret}`
+        ).toString("base64");
+
+        // --------------------------------------------------
+        // 1. OAuth Token 교환
+        // --------------------------------------------------
+
+        const tokenResponse = await fetch(
+            "https://api.notion.com/v1/oauth/token",
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Basic ${basicAuth}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    grant_type: "authorization_code",
+                    code,
+                    redirect_uri: NOTION_MIGRATION_OAUTH_REDIRECT_URI
+                })
+            }
+        );
+
+        if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+
+            console.error("[Notion Migration OAuth] Token exchange failed", {
+                userId,
+                status: tokenResponse.status,
+                statusText: tokenResponse.statusText,
+                errorText
+            });
+
+            throw new Error(
+                `Token exchange failed (${tokenResponse.status}): ${errorText}`
+            );
+        }
+
+        const notionToken = await tokenResponse.json();
+        const accessToken = notionToken.access_token;
+
+        console.log("[Notion Migration OAuth] Token exchange success", {
+            userId,
+            workspaceId: notionToken.workspace_id,
+            botId: notionToken.bot_id,
+            duplicatedTemplateId: notionToken.duplicated_template_id
+        });
+
+        if (!accessToken) {
+            throw new Error("Notion access token is missing");
+        }
+
+        // --------------------------------------------------
+        // 2. 1.3 템플릿 Data Source 확인
+        //
+        // 기존 DB:
+        // note_lifeup_1_3
+        //
+        // 신규 표기:
+        // Note #13
+        // Note#13
+        // --------------------------------------------------
+
+        const lifeup13DataSourceId = await NotionService.resolveDataSourceIdByDbName( accessToken, userId, "note");
+        if (!lifeup13DataSourceId) {
+            throw new Error(
+                "라이프업 1.3 템플릿의 데이터 소스를 찾을 수 없습니다. 1.3 템플릿이 현재 연결된 Notion에 있는지 확인해주세요."
+            );
+        }
+
+        console.log("[Notion Migration OAuth] LifeUp 1.3 found", {
+            userId,
+            dataSourceId: lifeup13DataSourceId
+        });
+
+        // --------------------------------------------------
+        // 3. 1.5 템플릿 Data Source 확인
+        //
+        // lifeup info #15
+        // lifeup info#15
+        // --------------------------------------------------
+
+        const lifeup15DataSourceId = await NotionService.resolveDataSourceIdByDbName( accessToken, userId, "lifeup info");
+        if (!lifeup15DataSourceId) {
+            throw new Error(
+                "라이프업 1.5 템플릿의 데이터 소스를 찾을 수 없습니다. 1.5 템플릿이 현재 연결된 Notion에 있는지 확인해주세요."
+            );
+        }
+
+        console.log("[Notion Migration OAuth] LifeUp 1.5 found", {
+            userId,
+            dataSourceId: lifeup15DataSourceId
+        });
+
+        // --------------------------------------------------
+        // 4. Migration 연결 정보 저장
+        // --------------------------------------------------
+
+        const userRef = db.collection("users").doc(userId);
+
+        await userRef.set({
+            notionMigrationAccessToken: accessToken,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        console.log("[Notion Migration OAuth] Connection verified", {
+            userId,
+            lifeup13: lifeup13DataSourceId,
+            lifeup15: lifeup15DataSourceId
+        });
+
+        // --------------------------------------------------
+        // 5. 성공
+        // --------------------------------------------------
+        return res.redirect(
+            `http://app.notionable.net/notion-migration-auth/success?userId=${encodeURIComponent(
+                userId
+            )}`
+        );
+
+    } catch (error: any) {
+        console.error("[Notion Migration OAuth] Failed", {
+            userId,
+            message: error?.message,
+            stack: error?.stack,
+            error
+        });
+
+        const errorMessage =
+            error instanceof Error
+                ? error.message
+                : typeof error === "string"
+                    ? error
+                    : JSON.stringify(error);
+
+        return res.redirect(
+            `http://app.notionable.net/notion-migration-auth/fail?userId=${encodeURIComponent(
+                userId
+            )}&error=${encodeURIComponent(errorMessage)}`
+        );
+    }
+}));
+
+// #migration
+export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ success: false, error: 'METHOD_NOT_ALLOWED' });
+            return;
+        }
+
+        const userId = req.body.userId;
+
+        if (!userId) {
+            res.status(400).json({ success: false, error: 'Missing userId' });
+            return;
+        }
+
+        const userSnap = await db.collection('users').doc(userId).get();
+        const connected = userSnap.exists && !!userSnap.data()?.notionMigrationAccessToken;
+
+        res.json({ success: true, connected });
+    } catch (error: any) {
+        console.error('[Migration Connection Status] Failed', error);
+        res.status(500).json({ success: false, error: error?.message || 'Failed to get migration connection status' });
+    }
+}));
 
 // ----------------------
 // Notion Database 조회
@@ -717,25 +862,32 @@ export const sendVerificationEmail = onRequest(
 
 export const verifyCode = onRequest(withCors(async (req, res) => {
     try {
-        const { email, code } = req.body;
-        if (!email || !code) {
-            return res.status(200).json({ message: '이메일과 인증번호가 필요합니다.' });
-        }
-        let nomalizedEMail: string = email.trim().toLowerCase();
-        let nomalizedCode = code.trim();
+        const { email, code, memberUid } = req.body;
 
-        // 이메일 형식 검증
+        if (!email || !code) {
+            return res.status(200).json({
+                message: '이메일과 인증번호가 필요합니다.',
+            });
+        }
+
+        const nomalizedEMail: string = email.trim().toLowerCase();
+        const nomalizedCode = code.trim();
+        const normalizedMemberId = memberUid?.trim() || null;
+
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(nomalizedEMail)) {
-            return res.status(200).json({ message: '이메일 형식이 올바르지 않습니다.' });
+            return res.status(200).json({
+                message: '이메일 형식이 올바르지 않습니다.',
+            });
         }
 
-        // Firestore에서 인증 코드 가져오기
         const docRef = db.collection('email_verifications').doc(nomalizedEMail);
         const docSnap = await docRef.get();
 
         if (!docSnap.exists) {
-            return res.status(200).json({ message: '인증번호를 먼저 요청해주세요.' });
+            return res.status(200).json({
+                message: '인증번호를 먼저 요청해주세요.',
+            });
         }
 
         const data = docSnap.data() as {
@@ -744,24 +896,31 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             attempts?: number;
         };
 
-        const hashedInput = crypto.createHash('sha256').update(nomalizedCode).digest('hex');
+        const hashedInput = crypto.createHash('sha256')
+            .update(nomalizedCode)
+            .digest('hex');
 
-        // 만료 확인
         const now = admin.firestore.Timestamp.now();
-        if (data!.expiresAt.toMillis() < now.toMillis()) {
-            return res.status(200).json({ message: '인증번호가 만료되었습니다. 홈페이지에서 다시 연결요청을 해주세요.' });
+
+        if (data.expiresAt.toMillis() < now.toMillis()) {
+            return res.status(200).json({
+                message: '인증번호가 만료되었습니다. 홈페이지에서 다시 연결요청을 해주세요.',
+            });
         }
 
-        // 코드 비교
-        if (hashedInput !== data!.code) {
-            await docRef.update({ attempts: (data!.attempts || 0) + 1 });
-            return res.status(200).json({ message: '인증번호가 올바르지 않습니다.' });
+        if (hashedInput !== data.code) {
+            await docRef.update({
+                attempts: (data.attempts || 0) + 1,
+            });
+
+            return res.status(200).json({
+                message: '인증번호가 올바르지 않습니다.',
+            });
         }
 
-        ///////////////////////////////////
         // 인증 성공
-
-        // 1️⃣ 기존 user 조회 (email 기준)
+        // 위젯 모드에서는 memberId가 없고,
+        // 홈페이지 워크스페이스 모드에서는 memberId가 전달됩니다.
         const userQuerySnap = await db.collection('users')
             .where('email', '==', nomalizedEMail)
             .limit(1)
@@ -769,23 +928,61 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 
         let userId: string;
         let accessKeyData: CreateUserAccessKeyResult;
-        // 2️⃣ user가 이미 존재하면 재사용
+
         if (userQuerySnap.empty || userQuerySnap.docs.length === 0) {
+            // 기존 userId가 없는 경우 새로 생성
             userId = nanoid();
-            await db.collection('users').doc(userId).set({
+
+            const userData: any = {
                 email: nomalizedEMail,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+            };
+
+            // 홈페이지 워크스페이스 모드에서만 memberId 연결
+            if (normalizedMemberId) {
+                userData.imwebMemberId = normalizedMemberId;
+            }
+
+            await db.collection('users').doc(userId).set(userData);
+
             accessKeyData = await UserService.createAndSetUserAccessKey(userId);
+
         } else {
             const userDoc = userQuerySnap.docs[0];
+
             if (!userDoc) {
                 throw new Error('User document unexpectedly missing');
             }
 
             userId = userDoc.id;
-            const userData = userDoc.data() as any;
 
+            const userData = userDoc.data() as any;
+            const existingMemberId = userData?.imwebMemberId;
+
+            // 홈페이지 워크스페이스 모드
+            if (normalizedMemberId) {
+
+                // 이미 다른 memberId에 연결되어 있음
+                if (existingMemberId && existingMemberId !== normalizedMemberId) {
+                    return res.status(200).json({
+                        code: 'ALREADY_CONNECTED',
+                        message:
+`이 이메일로 구매한 라이프업은 이미 다른 계정에 연결되어 있습니다.
+라이프업 템플릿 하나에는 하나의 계정만 라이프봇을 연결할 수 있습니다.
+계정 연결에 문제가 있다면 관리자에게 문의해 주세요. (toto791@gmail.com)`,
+                    });
+                }
+
+                // 기존 userId에 memberId가 없으면 현재 memberId 연결
+                if (!existingMemberId) {
+                    await userDoc.ref.update({
+                        imwebMemberId: normalizedMemberId,
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                }
+            }
+
+            // accessKey가 있으면 기존 것 사용
             if (userData?.accessKey && userData?.expiresAt) {
                 accessKeyData = {
                     accessKey: userData.accessKey,
@@ -796,28 +993,22 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             }
         }
 
-        // 4️⃣ clientId는 항상 새로 생성
-        // const clientId = nanoid(); //crypto.randomUUID();
-
-        // // clients/{clientId} 저장
-        // await UserService.saveClientInfo({
-        //     userId,
-        //     clientId,
-        //     origin: req.get('origin') || undefined,
-        //     userAgent: req.get('user-agent') || undefined,
-        // });
-
-
-        // 5️⃣ 사용 후 인증번호 삭제
         await docRef.delete();
 
-        // 6️⃣ 성공 결과 반환
-        return res.status(200).json({ userId, accessKey: accessKeyData.accessKey });
+        return res.status(200).json({
+            userId,
+            accessKey: accessKeyData.accessKey,
+        });
+
     } catch (error: any) {
         console.error('verifyCode error:', error);
-        return res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+
+        return res.status(500).json({
+            message: '서버 오류가 발생했습니다.',
+        });
     }
 }));
+
 
 export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
     const userId: string = req.body.userId;
@@ -943,6 +1134,14 @@ class NotionService {
         }
 
         return dataSourceId;
+    }
+
+    static async resolveDataSourceIdByDbName(accessToken: string, userId: string, dbName: string): Promise<string> {
+        const databaseId = await NotionService.resolveDatabaseId(accessToken, userId, dbName);
+        if (!databaseId) {
+            throw new Error(`Database not found: ${dbName}`);
+        }
+        return await NotionService.resolveDataSourceId(accessToken, databaseId);
     }
 
     static async updateTemplateDbs(accessToken: string, dbNames: string[]) {
@@ -5709,7 +5908,7 @@ memo.type: 아이디어, 계정 정보, 필기, 개인 문서, 사진 메모
 "넷플릭스 로그인 아이디 [abc@example.com](mailto:abc@example.com)" → Memo - 계정 정보
 
 * 필기: 사용자가 직접 작성하거나 참여하여 생성한 필기, 화이트보드, 강의 노트, 회의 메모
-* 개인 문서: 사용자와 직접 관련된 문서, 예: 영수증, 병원 기록, 계약서, 고지서 등
+* 개인 문서: [추가 분석 정보]가 이미지인 경우만 혜당 함, 사용자와 직접 관련된 문서의 캡쳐 이미지, 예: 영수증, 병원 기록, 처방전, 계약서, 고지서 등
 * 사진 메모: 내가 찍은 내 사진, 일상 사진, 참고로 캡쳐한 사진이 아닌 경우, 대중적으로 알려진 얼굴이 아닌 내 얼굴, 지인 얼굴의 사진
 
 ## 3. Reference 판단 기준
@@ -8520,6 +8719,12 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
         lines.push("🔗 노션에서 보기");
         lines.push(notionAppUrl);
     }
+
+    // 시험 운영 안내
+    lines.push("");
+    lines.push("📢 [시험 운영 안내]");
+    lines.push("◾ 분석이 잘못될 수 있으며, '할일로', '메모로'처럼 바로 수정할 수 있습니다. 오류를 캡처해 보내주시면 개선에 큰 도움이 됩니다.");
+    lines.push("👉 오류 신고 : https://notionable.net/feedback?category=13h58R7m0A");
 
     return lines.join("\n");
 }

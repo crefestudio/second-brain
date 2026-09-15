@@ -1,12 +1,13 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../../../../../services/auth.service';
 import { _log } from '../../../../../../../lib/cf-common/cf-common';
 
 @Component({
     selector: 'app-lifeup-care',
     standalone: true,
-    imports: [CommonModule],
+    imports: [CommonModule, RouterLink],
     templateUrl: './lifeup-care.component.html',
     styleUrl: './lifeup-care.component.scss'
 })

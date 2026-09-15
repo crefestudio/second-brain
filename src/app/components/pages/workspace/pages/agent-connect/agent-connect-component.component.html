@@ -65,7 +65,7 @@
 
           <td class="status-cell">
 
-            @if(hasLifeupPurchase) {
+            @if(isLifeupPurchaser) {
             <span class="badge success">
               완료
             </span>
@@ -84,7 +84,7 @@
           </td>
 
           <td class="action-cell">
-            @if (hasLifeupPurchase && purchaseInfo.email) {
+            @if (isLifeupPurchaser && purchaseInfo && purchaseInfo.email) {
             <div class="verified-email">
               ✓ {{ purchaseInfo.email }}
               <button class="remove-btn" (click)="removeLifeupPurchase()">
@@ -121,7 +121,7 @@
         <tr>
 
           <td class="status-cell">
-            @if(userId && hasLifeupPurchase) {
+            @if(userId && isLifeupPurchaser) {
             <span class="badge success">
               완료
             </span>
@@ -391,7 +391,7 @@
       <tbody>
         <tr>
           <td class="status-cell">
-            @if(userId && hasLifeupPurchase && notionAccessToken) {
+            @if(userId && isLifeupPurchaser && notionAccessToken) {
             <span class="badge success">
               완료
             </span>
@@ -406,7 +406,7 @@
           </td>
           <td class="action-cell">
             <div class="verify-wrap">
-              @if (!userId || !hasLifeupPurchase) {
+              @if (!userId || !isLifeupPurchaser) {
               <span class="text-muted">
                 먼저 Step 1단계를 진행해주세요.
               </span>
@@ -439,7 +439,7 @@
         </tr>
         <tr>
           <td class="status-cell">
-            @if(kakaoUserId && userId && hasLifeupPurchase && notionAccessToken) {
+            @if(kakaoUserId && userId && isLifeupPurchaser && notionAccessToken) {
             <span class="badge success">
               완료
             </span>
@@ -454,7 +454,7 @@
           </td>
           <td class="action-cell">
             <div class="verify-wrap">
-              @if (!userId || !hasLifeupPurchase) {
+              @if (!userId || !isLifeupPurchaser) {
               <span class="text-muted">
                 먼저 Step 1단계를 진행해주세요.
               </span>
@@ -463,7 +463,7 @@
                 먼저 <span class="link-text">노션 템플릿 연결</span>을 진행해주세요.
               </span>
               }
-              @else if (kakaoUserId && userId && hasLifeupPurchase) {
+              @else if (kakaoUserId && userId && isLifeupPurchaser) {
               <div class="verified-email">
                 연결됨
                 <button class="remove-btn" (click)="onClickDisconnectKakaoBtn()">
@@ -517,7 +517,7 @@
   </div>
   @if (
   userId &&
-  hasLifeupPurchase &&
+  isLifeupPurchaser &&
   kakaoUserId &&
   notionAccessToken
   ) {
@@ -548,7 +548,7 @@
   <div class="purchase-error-card">
     <strong>구매 정보를 확인할 수 없습니다.</strong>
     <p>
-      현재 베타 서비스 운영 중으로 구매 정보가 실시간으로 연동되지 않아
+      현재 시험 운영 중으로 구매 정보가 실시간으로 연동되지 않아
       신규 구매 고객의 정보가 아직 반영되지 않았을 수 있습니다.<br>
       구매하신 상품의 확인이 되지 않는 경우 고객센터로 문의해 주세요.
     </p>

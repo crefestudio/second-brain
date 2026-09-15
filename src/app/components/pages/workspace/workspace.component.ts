@@ -19,7 +19,7 @@ export class WorkspaceComponent implements OnInit {
     userId: string = '';
     kakaoUserId: string = '';
     notionAccessToken: string = '';
-    hasLifeupPurchase: boolean = false;
+    isLifeupPurchaser: boolean = false;
     purchaseInfo: any = null;
 
     templateUrl: string | null = null;
@@ -130,7 +130,7 @@ export class WorkspaceComponent implements OnInit {
     async updatePurchaseInfo() {
         const result = await UserService.updatePurchaseInfo(this.userId);
         this.purchaseInfo = result.purchaseInfo;
-        this.hasLifeupPurchase = result.isPurchaser;
+        this.isLifeupPurchaser = result.isPurchaser;
     }
 
 

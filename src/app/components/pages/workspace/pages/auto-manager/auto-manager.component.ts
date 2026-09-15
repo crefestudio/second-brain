@@ -100,12 +100,12 @@ export class AutoManagerComponent {
         }
     }
 
-    hasLifeupPurchase: boolean = false;
+    isLifeupPurchaser: boolean = false;
     purchaseInfo: any = null;
     async updatePurchaseInfo() {
         const result = await UserService.updatePurchaseInfo(this.userId);
         this.purchaseInfo = result.purchaseInfo;
-        this.hasLifeupPurchase = result.isPurchaser;
+        this.isLifeupPurchaser = result.isPurchaser;
     }
 
 

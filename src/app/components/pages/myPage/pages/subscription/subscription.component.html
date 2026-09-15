@@ -47,7 +47,7 @@
           <td>라이프업</td>
 
           <td>
-            @if (hasLifeupPurchase && purchaseInfo.email) {
+            @if (isLifeupPurchaser && purchaseInfo.email) {
             <span class="badge success">
               확인됨
             </span>
@@ -65,7 +65,7 @@
           </td>
 
           <td>
-            @if (hasLifeupPurchase && purchaseInfo.email) {
+            @if (isLifeupPurchaser && purchaseInfo.email) {
 
             <button class="verify-btn" [class.close-btn]="showPurchaseDetail"
               (click)="showPurchaseDetail = !showPurchaseDetail">
@@ -84,7 +84,7 @@
           </td>
 
           <td>
-            @if (hasLifeupPurchase && purchaseInfo.email) {
+            @if (isLifeupPurchaser && purchaseInfo.email) {
 
             <button class="verify-btn" (click)="downloadTemplate()">
               다운로드
@@ -100,7 +100,7 @@
           </td>
 
           <td>
-            @if ( userId && hasLifeupPurchase && kakaoUserId && notionAccessToken) {
+            @if ( userId && isLifeupPurchaser && kakaoUserId && notionAccessToken) {
             <span class="badge success">
               연결됨
             </span>

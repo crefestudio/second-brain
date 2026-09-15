@@ -12,7 +12,7 @@ import { AuthService } from '../../../../../services/auth.service';
 연결 정보 
 
 userId              : 구매 확인
-hasLifeupPurchase   : 
+isLifeupPurchaser   : 
 notionAccessToken   : 
 
 */
@@ -59,7 +59,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
     ///////////////////////////////////
 
-    hasLifeupPurchase: boolean = false;
+    isLifeupPurchaser: boolean = false;
     purchaseInfo: any = null;
 
     showPurchaseDetail = false;
@@ -175,21 +175,20 @@ export class AgentConnectComponentComponent implements OnInit {
         }
 
         try {
-            const success = await this.userService.verifyPurchaser(TEMPLATE_KEY_LIFEUP, email, phone);
-            if (!success) {
+            const purchaserInfo: any | null = await this.userService.verifyPurchaser(TEMPLATE_KEY_LIFEUP, email, phone); // 여기서 로컬호스트에 저장함
+            _log('submitVerification purchaserInfo =>', purchaserInfo);
+            if (!purchaserInfo) {
                 //this.errorMessage = '구매정보를 찾을 수 없습니다.';
                 this.isShowCannotFindPurcherInfo = true;
                 return;
             }
-            // 만약에 이미 userId가 있다면 서버에 저장해야 함
-            if (this.userId) {
-                let purchaseInfo = UserService.getPurchaseInfoFromLocalstorage(TEMPLATE_KEY_LIFEUP);
-                _log('submitVerification purchaseInfo =>', purchaseInfo);
-                await UserService.savePurchaserInfo(this.userId, TEMPLATE_KEY_LIFEUP, purchaseInfo);
-            }
+            _log('submitVerification userId =>', this.userId);
+
+            // if (this.userId) {
+            //     await UserService.savePurchaserInfo(this.userId, TEMPLATE_KEY_LIFEUP, purchaserInfo);
+            // } 
             this.updatePurchaseInfo();
             ToastService.show('구매 정보가 확인되었습니다.');
-
             this.requestPurchaserCheck = false;
         } catch (e) {
             console.error(e);
@@ -199,30 +198,56 @@ export class AgentConnectComponentComponent implements OnInit {
         }
     }
 
+    /*
+
+    1. 구매 확인 : isLifeupPurchaser , purchaseInfo 구매 정보       check : isLifeupPurchaser && purchaseInfo && purchaseInfo.email
+    2. 구매 이메일 인증  =>  member_id : userId : purchaseInfo      check : userId
+    3. 템플릿 연결 => userId : notionAccessToken
+    4. 카카오톡 연결 => userId : kakaoId
+
+
+    */
+
     cancelVerification() {
         this.verifyValue = '';
         this.requestPurchaserCheck = false;
     }
 
-    async removeLifeupPurchase(): Promise<void> {
-        if (!this.userId || !this.purchaseInfo?.templateId) {
-            return;
-        }
-
-        await UserService.deletePurchase(
-            this.userId,
-            this.purchaseInfo.templateId
-        );
-
-        this.purchaseInfo = null;
-        this.hasLifeupPurchase = false;
-    }
 
     async updatePurchaseInfo() {
-        const result = await UserService.updatePurchaseInfo(this.userId);
-        this.purchaseInfo = result.purchaseInfo;
-        this.hasLifeupPurchase = result.isPurchaser;
+
+        // userId 있으면 서버 참고 우선
+        // 없으면 로컬호스트 참조
+
+        if (this.userId) {
+            const result = await UserService.updatePurchaseInfo(this.userId);
+            this.purchaseInfo = result.purchaseInfo;
+            this.isLifeupPurchaser = result.isPurchaser;
+        } else {
+            // 로컬호스트에서 가져옴
+            let purchaseInfo = UserService.getPurchaseInfoFromLocalStorage(TEMPLATE_KEY_LIFEUP);
+            if (purchaseInfo && purchaseInfo.email) {
+                this.purchaseInfo = purchaseInfo;
+                this.isLifeupPurchaser = true;
+            } else {
+                this.purchaseInfo = null;
+                this.isLifeupPurchaser = false;
+            }
+        }
     }
+
+    async removeLifeupPurchase(): Promise<void> {
+        if (this.userId) {
+            await UserService.deletePurchase(
+                this.userId,
+                this.purchaseInfo.templateId
+            );
+        }
+        UserService.deletePurchaseInfoLocalStorage(TEMPLATE_KEY_LIFEUP);
+        this.purchaseInfo = null;
+        this.isLifeupPurchaser = false;
+    }
+
 
     onRequestMailCheck() {
         this.requestMailCheck();
@@ -355,62 +380,75 @@ export class AgentConnectComponentComponent implements OnInit {
         this.errorMessage = '';
         this.warnMessage = '';
         this.isVerifying = true;
-        if (!this.memberUid) {
-            this.errorMessage = '권한이 없습니다. 로그인이 필요합니다.';
-            return;
-        }
 
-        if (!this.email) {
-            this.errorMessage = '인증 이메일을 확인 할 수 없습니다. 관리자에게 문의 바랍니다.';
-            return;
-        }
-        const result: { userId: string, accessKey: string, message?: string } | null =
-            await this.userService.verifyCode(this.email, this.getVerificationCode());
-
-        _log('submitCertificationNumber result =>', result);
-        if (result && result.userId && result.accessKey) {
-            _log('메일 인증 성공!', result.userId);
-
-            // 만약에 accessKey를 못받으면.
-            if (result.userId && result.accessKey) {
-                // 로컬 스토리지나 상태 관리에 저장
-                UserService.saveLocalSession(result.userId, { userId: result.userId, accessKey: result.accessKey });
-
-                if (this.memberUid) {
-                    await UserService.saveImwebMemberId(
-                        result.userId,
-                        this.memberUid
-                    );
-                }
-
-                this.userId = result.userId;
-
-                // localstorage에 있는 것을 firestore에 저장
-                if (this.purchaseInfo) {
-                    await UserService.savePurchaserInfo(this.userId, TEMPLATE_KEY_LIFEUP, this.purchaseInfo);
-                }
-
-                // 세션 단계로 넘어감   
-                // if (this.userId !== result.userId) {
-                //     this.userId = result.userId;
-                //     this.initStateData();
-                //     this.clientUrl = 'https://app.notionable.net/secondbrain/widget/' + this.userId;
-                //     this.state = 'change-client-url';
-                // } else {
-                //     await this.redoStateProc();
-                // }
-            } else {
-                this.errorMessage = result && result.message ? result.message : '인증에 실패하였습니다. 문제가 지속되면 관리자 ( toto791@gmail.com) 에게 문의바랍니다. code = 132';
+        try {
+            if (!this.memberUid) {
+                this.errorMessage = '권한이 없습니다. 로그인이 필요합니다.';
+                return;
             }
 
-        } else if (!result || result.message) {
-            console.warn('인증 실패');
-            this.initStateData();
-            this.errorMessage = result && result.message ? result.message : '인증에 실패하였습니다. 문제가 지속되면 관리자 ( toto791@gmail.com) 에게 문의바랍니다.';
-        }
-        this.isVerifying = false;
-    }
+            if (!this.email) {
+                this.errorMessage = '인증 이메일을 확인할 수 없습니다. 관리자에게 문의 바랍니다.';
+                return;
+            }
 
+            const result: any = await this.userService.verifyCode(
+                this.email,
+                this.getVerificationCode(),
+                this.memberUid
+            );
+
+            _log('submitCertificationNumber result =>', result);
+
+            if (!result) {
+                this.initStateData();
+                this.errorMessage = '인증에 실패하였습니다. 문제가 지속되면 관리자에게 문의 바랍니다.';
+                return;
+            }
+
+            if (result.code === 'ALREADY_CONNECTED') {
+                this.errorMessage = result.message || '이미 다른 계정에 연결된 라이프업입니다.';
+                return;
+            }
+
+            if (result.message && (!result.userId || !result.accessKey)) {
+                this.errorMessage = result.message;
+                return;
+            }
+
+            if (!result.userId || !result.accessKey) {
+                this.errorMessage = '인증에 실패하였습니다. 문제가 지속되면 관리자에게 문의 바랍니다. code = 132';
+                return;
+            }
+
+            _log('메일 인증 성공!', result.userId);
+
+            UserService.saveLocalSession(
+                result.userId,
+                { userId: result.userId, accessKey: result.accessKey }
+            );
+
+            // if (this.memberUid) {
+            //     await UserService.saveImwebMemberId(
+            //         result.userId,
+            //         this.memberUid
+            //     );
+            // }
+
+            this.userId = result.userId;
+
+            if (this.purchaseInfo) {
+                await UserService.savePurchaserInfo(
+                    this.userId,
+                    TEMPLATE_KEY_LIFEUP,
+                    this.purchaseInfo
+                );
+            }
+
+        } finally {
+            this.isVerifying = false;
+        }
+    }
     /////////////////////////////////////////////////
     // kakao
 

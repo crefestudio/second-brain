@@ -26,7 +26,7 @@ export class SubscriptionComponent implements OnInit {
     showPurchaseDetail = false;
     showDownload = false;
 
-    hasLifeupPurchase: boolean = false;
+    isLifeupPurchaser: boolean = false;
     purchaseInfo: any = null;
 
     constructor(
@@ -59,7 +59,7 @@ export class SubscriptionComponent implements OnInit {
     async updatePurchaseInfo() {
         const result = await UserService.updatePurchaseInfo(this.userId);
         this.purchaseInfo = result.purchaseInfo;
-        this.hasLifeupPurchase = result.isPurchaser;
+        this.isLifeupPurchaser = result.isPurchaser;
     }
 
 

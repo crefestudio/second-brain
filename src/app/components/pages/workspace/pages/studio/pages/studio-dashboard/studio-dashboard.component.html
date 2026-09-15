@@ -1,5 +1,26 @@
-<div class="page">
+@if(isLoading) {
+<div class="page-loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">
+        정보를 불러오는 중입니다...
+    </div>
+</div>
+} @else {
+<!-- Notion 연결 안 됨 -->
+<div *ngIf="!userId" class="notificaton-box">
+    <div class="notificaton-icon">🔗</div>
+    <h2>라이프업 템플릿 구매인증이 필요합니다</h2>
+    <p>
+        스튜디오를 사용하려면 라이프업 템플릿 구매인증을 <br>
+        먼저 진행해주세요.
+    </p>
+    <button type="button" class="notificaton-btn" routerLink="/workspace/connect">
+        구매 인증하기
+    </button>
+</div>
 
+<!-- Notion 연결됨 -->
+<div *ngIf="userId" class="page">
     <div class="page-header">
         <h1>✨ 라이프업 스튜디오</h1>
 
@@ -205,3 +226,4 @@
     </section>
 
 </div>
+}

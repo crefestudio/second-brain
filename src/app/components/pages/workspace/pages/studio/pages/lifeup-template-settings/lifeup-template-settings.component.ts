@@ -20,7 +20,7 @@ export class LifeupTemplateSettingsComponent {
     memberUid = '';
     userId = '';
 
-    hasLifeupPurchase = false;
+    isLifeupPurchaser = false;
     purchaseInfo: any = null;
 
     isLifeupTemplate = false;
@@ -90,11 +90,11 @@ export class LifeupTemplateSettingsComponent {
         const result = await UserService.updatePurchaseInfo(this.userId);
 
         this.purchaseInfo = result.purchaseInfo;
-        this.hasLifeupPurchase = result.isPurchaser;
+        this.isLifeupPurchaser = result.isPurchaser;
     }
 
     async loadTemplateInfo(): Promise<void> {
-        if (!this.hasLifeupPurchase || !this.userId) {
+        if (!this.isLifeupPurchaser || !this.userId) {
             return;
         }
 

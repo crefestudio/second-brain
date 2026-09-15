@@ -173,14 +173,14 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         await this.updatePurchaseInfo()
     }
 
-    hasLifeupPurchase: boolean = false;
+    isLifeupPurchaser: boolean = false;
     purchaseInfo: any = null;
     async updatePurchaseInfo() {
         if (!this.userId) { return; }
         const result = await UserService.updatePurchaseInfo(this.userId);
         this.purchaseInfo = result.purchaseInfo;
-        this.hasLifeupPurchase = result.isPurchaser;
-        _log('updatePurchaseInfo hasLifeupPurchase, purchaseInfo =>', this.hasLifeupPurchase, this.purchaseInfo);
+        this.isLifeupPurchaser = result.isPurchaser;
+        _log('updatePurchaseInfo isLifeupPurchaser, purchaseInfo =>', this.isLifeupPurchaser, this.purchaseInfo);
     }
 
 
@@ -351,9 +351,9 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     private async stateProcWorkspace(): Promise<boolean> {
         await this.updateSession();
 
-        _log('stateProcWorkspace userId, hasLifeupPurchase, notionAccessToken =>', this.userId, this.hasLifeupPurchase, this.notionAccessToken);
+        _log('stateProcWorkspace userId, isLifeupPurchaser, notionAccessToken =>', this.userId, this.isLifeupPurchaser, this.notionAccessToken);
 
-        if (!this.userId || !this.hasLifeupPurchase) {
+        if (!this.userId || !this.isLifeupPurchaser) {
             this.state = 'connect-button';
             return false;
         }

@@ -6,6 +6,9 @@ import { NotionConnectComponent } from './components/pages/notion-auth/connect/n
 import { NotionOauthSuccessComponent } from './components/pages/notion-auth/oauth-success/notion-oauth-success.component';
 import { NotionOauthFailComponent } from './components/pages/notion-auth/oauth-fail/notion-oauth-fail.component';
 
+import { NotionMigrationConnectComponent } from './components/pages/notion-migration-auth/connect/notion-migration-connect.component';
+import { NotionMigrationOauthSuccessComponent } from './components/pages/notion-migration-auth/oauth-success/notion-migration-oauth-success.component';
+import { NotionMigrationOauthFailComponent } from './components/pages/notion-migration-auth/oauth-fail/notion-migration-oauth-fail.component';
 
 import { SecondBrainWidgetComponent } from './components/pages/workspace/pages/secondbrain/widget/secondbrain.widget.component';
 import { SecondBrainSetupComponent } from './components/pages/workspace/pages/secondbrain/setup/secondbrain.setup.component';
@@ -20,6 +23,7 @@ import { RoutineComponent } from './components/pages/workspace/pages/routine/rou
 import { StudioComponent } from './components/pages/workspace/pages/studio/studio.component';
 import { StudioDashboardComponent } from './components/pages/workspace/pages/studio/pages/studio-dashboard/studio-dashboard.component';
 import { LifeupCustomizingComponent } from './components/pages/workspace/pages/studio/pages/lifeup-customizing/lifeup-customizing.component';
+import { LifeupMigrationComponent } from './components/pages/workspace/pages/studio/pages/lifeup-migration/lifeup-migration.component'; 
 
 import { RoutineFindComponent } from './components/pages/workspace/pages/routine/pages/rountine-find/routine-find.component';
 import { MyRoutineComponent } from './components/pages/workspace/pages/routine/pages/my-rountine/my-routine.component';
@@ -35,7 +39,7 @@ import { NotificationComponent } from './components/pages/myPage/pages/notificat
 import { WorkspaceLayoutComponent } from './workspace-layout.component';
 import { WidgetLayoutComponent } from './widget-layout.component';
 import { EventLogComponent } from './components/pages/workspace/pages/event-log/event-log.component';
-import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/studio/pages/lifeup-template-settings/lifeup-template-settings.component'; 
+import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/studio/pages/lifeup-template-settings/lifeup-template-settings.component';
 import { LifeupCareComponent } from './components/pages/workspace/pages/studio/pages/lifeup-care/lifeup-care.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
@@ -120,6 +124,10 @@ export const routes: Routes = [
           {
             path: 'care',
             component: LifeupCareComponent
+          },
+          {
+            path: 'migration',
+            component: LifeupMigrationComponent
           },
           {
             path: 'customizing',
@@ -245,6 +253,29 @@ export const routes: Routes = [
       }
     ]
   },
+
+  // =========================
+  // Notion Auth
+  // =========================
+  {
+    path: 'notion-migration-auth',
+    component: WidgetLayoutComponent,
+    children: [
+      {
+        path: 'connect',
+        component: NotionMigrationConnectComponent
+      },
+      {
+        path: 'success',
+        component: NotionMigrationOauthSuccessComponent
+      },
+      {
+        path: 'fail',
+        component: NotionMigrationOauthFailComponent
+      }
+    ]
+  },
+
 
   /////////////////////////////////////////////////////////////////////////////////////
   // 기존 주소 유지 

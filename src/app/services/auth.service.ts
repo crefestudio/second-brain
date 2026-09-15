@@ -18,7 +18,7 @@ export class AuthService {
         // localhost 테스트용
         if (window.location.hostname == 'localhost') {
             _log('로컬 호스트 - 테스트 모드 - toto791@gmail.com으로 로그인')
-            this.memberUid = 'toto791@gmail.com';
+            this.memberUid = 'crefestudio@gmail.com';
         }        
 
         // 서버에서 다시 가져옴
@@ -26,10 +26,7 @@ export class AuthService {
         this.userId = user?.userId ?? '';        
         this.kakaoUserId = user?.kakaoUserId ?? '';
         this.notionAccessToken = user?.notionAccessToken ?? '';
-
-        // this.userId = "";
-        // this.kakaoUserId = '';
-        // this.notionAccessToken = '';  
+          
     }
 
     getUserIds() {

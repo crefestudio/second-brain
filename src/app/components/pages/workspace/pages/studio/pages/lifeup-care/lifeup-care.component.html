@@ -1,5 +1,26 @@
-<div class="page">
+@if(isLoading) {
+<div class="page-loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">
+        정보를 불러오는 중입니다...
+    </div>
+</div>
+} @else {
+<!-- Notion 연결 안 됨 -->
+<div *ngIf="!userId" class="notificaton-box">
+    <div class="notificaton-icon">🔗</div>
+    <h2>라이프업 템플릿 구매인증이 필요합니다</h2>
+    <p>
+        스튜디오를 사용하려면 라이프업 템플릿 구매인증을 <br>
+        먼저 진행해주세요.
+    </p>
+    <button type="button" class="notificaton-btn" routerLink="/workspace/connect">
+        구매 인증하기
+    </button>
+</div>
 
+<!-- Notion 연결됨 -->
+<div *ngIf="userId" class="page">
     <div class="page-header">
         <h1>❤️ 라이프업 케어</h1>
         <div class="studio-notice lifeup-update-notice">
@@ -7,7 +28,7 @@
                 <span class="lifeup-update-icon">✨</span>
                 <strong>새로운 업데이트 소식이 있습니다.</strong>
                 <span>현재 1.3 버전을 이용 중이시라면 최신 1.5 버전으로 업데이트해 주세요.</span>
-                <a href="#">업데이트</a>
+                <a href="#" routerLink="/workspace/studio/migration">업데이트</a>
             </div>
             <button type="button" class="studio-notice-close" aria-label="닫기">×</button>
         </div>
@@ -99,7 +120,44 @@
                 </button>
             </div>
 
-            <!-- 빠른 문제 해결 -->
+          
+            <!-- 템플릿 업데이트 -->
+            <div class="service-card premium">
+                <div class="premium-badge">👑</div>
+                <div class="service-icon">🔄</div>
+
+                <div class="service-content">
+                    <div class="service-title">템플릿 자동 업데이트</div>
+                    <div class="service-description">
+                        라이프업을 1.3에서 1.5로 업데이트합니다.
+                    </div>
+                    <div class="credit-info">프리미엄 · 크레딧 미사용</div>
+                </div>
+
+                <button class="service-btn premium-btn" routerLink="/workspace/studio/migration">
+                    업데이트 →
+                </button>
+            </div>
+
+             <!-- 템플릿 업데이트 신청 -->
+            <div class="service-card premium">
+                <div class="premium-badge">👑</div>
+                <div class="service-icon">🔄</div>
+
+                <div class="service-content">
+                    <div class="service-title">템플릿 업데이트 요청</div>
+                    <div class="service-description">
+                        라이프업을 1.3에서 1.5로 업데이트합니다.
+                    </div>
+                    <div class="credit-info">프리미엄 · 크레딧 2H 사용</div>
+                </div>
+
+                <button class="service-btn premium-btn" routerLink="/workspace/studio/migration">
+                    업데이트 →
+                </button>
+            </div>
+
+              <!-- 빠른 문제 해결 -->
             <div class="service-card premium">
                 <div class="premium-badge">👑</div>
                 <div class="service-icon">⚡</div>
@@ -117,23 +175,6 @@
                 </button>
             </div>
 
-            <!-- 템플릿 업데이트 -->
-            <div class="service-card premium">
-                <div class="premium-badge">👑</div>
-                <div class="service-icon">🔄</div>
-
-                <div class="service-content">
-                    <div class="service-title">템플릿 업데이트</div>
-                    <div class="service-description">
-                        라이프업을 1.3에서 1.5로 업데이트합니다.
-                    </div>
-                    <!-- <div class="credit-info">프리미엄 · 크레딧 사용</div> -->
-                </div>
-
-                <button class="service-btn premium-btn">
-                    업데이트 →
-                </button>
-            </div>
 
             <!-- 템플릿 오류 복구 -->
             <div class="service-card premium">
@@ -204,3 +245,4 @@
     </section>
 
 </div>
+}
