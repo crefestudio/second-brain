@@ -140,6 +140,14 @@ export interface NewRestAndAchievement {
     dismissedAt: any | null;
 }
 
+interface LifeUpMigrationCheckResult {
+    success: boolean;
+    totalDbCount: number;
+    totalCount: number;
+    results: any[];
+}
+
+
 
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
@@ -158,6 +166,16 @@ export class UserService {
 
     public notionMigrationConnected$ = new Subject<void>();
     private notionMigrationConnectUnsubscribe?: () => void;
+
+
+    // #migration
+    public migrationCheckResult$ = new Subject<any>();
+    private migrationCheckUnsubscribe?: () => void;
+    private migrationCheckStatusUnsubscribe?: () => void;
+    private verificationStatusUnsubscribe?: () => void;
+
+    verificationResult$ = new Subject<any>();
+    verificationStatus$ = new Subject<any>();
 
     constructor(private http: HttpClient) { }
 
@@ -564,7 +582,7 @@ export class UserService {
         };
     }
 
-    static getPurchaseInfoFromLocalStorage(templateId: string): any | undefined {       
+    static getPurchaseInfoFromLocalStorage(templateId: string): any | undefined {
         const purchases = JSON.parse(
             localStorage.getItem(PURCHASER_INFO_STORAGE_KEY) || "{}"
         );
@@ -698,31 +716,59 @@ export class UserService {
         }
     }
 
-    startVerificationWatcher(userId: string, verificationId: string) {
-        if (!userId || !verificationId) { return; }
+    startVerificationWatcher(userId: string, runId: string) {
+        if (!userId || !runId) { return; }
+
         this.stopVerificationWatcher();
 
-        const docRef = doc(firestore, 'verifications', userId);
+        const resultsRef = collection(
+            firestore,
+            'users',
+            userId,
+            'migrationCheck',
+            runId,
+            'results'
+        );
 
-        this.verificationUnsubscribe = onSnapshot(docRef, (snapshot) => {
-            if (!snapshot.exists()) { return; }
+        this.verificationUnsubscribe = onSnapshot(
+            query(resultsRef, orderBy('order')),
+            snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type !== 'added') { return; }
 
-            const data = snapshot.data();
-
-            if (data['verificationId'] !== verificationId) { return; }
-
-            if (data['verified'] === true) {
-                this.kakaoVerified$.next();
-                this.stopVerificationWatcher();
+                    this.verificationResult$.next(change.doc.data());
+                });
             }
-        });
+        );
+
+        const statusRef = doc(
+            firestore,
+            'users',
+            userId,
+            'migrationCheck',
+            runId
+        );
+
+        this.verificationStatusUnsubscribe = onSnapshot(
+            statusRef,
+            snapshot => {
+                if (!snapshot.exists()) { return; }
+
+                this.verificationStatus$.next(snapshot.data());
+            }
+        );
     }
 
     stopVerificationWatcher() {
         this.verificationUnsubscribe?.();
         this.verificationUnsubscribe = undefined;
+
+        this.verificationStatusUnsubscribe?.();
+        this.verificationStatusUnsubscribe = undefined;
     }
 
+    /////////////////////////////////////////////////////////////////////
+    // 
     async disconnectKakao(userId: string): Promise<boolean> {
         if (!userId) return false;
 
@@ -1706,6 +1752,72 @@ export class UserService {
             console.error('getMigrationConnectionStatus failed', error);
             throw error;
         }
+    }
+
+
+    ///////////////////////////////////////////////////////////////////////////
+    // #migration   
+    async analyzeLifeUpMigrationSchema(userId: string): Promise<{ success: boolean } | null> {
+        if (!userId) return null;
+
+        try {
+            const result = await firstValueFrom(
+                this.http.post<{ success: boolean }>(
+                    `${this.functionsBaseUrl}/analyzeLifeUpMigrationSchema`,
+                    { userId }
+                )
+            );
+            return result;
+        } catch (error) {
+            console.error('analyzeLifeUpMigrationSchema failed', error);
+            return null;
+        }
+    }
+
+    async checkLifeUpMigration(userId: string): Promise<LifeUpMigrationCheckResult | null> {
+        if (!userId) return null;
+
+        try {
+            return await firstValueFrom(
+                this.http.post<LifeUpMigrationCheckResult>(
+                    `${this.functionsBaseUrl}/checkLifeUpMigration`,
+                    { userId }
+                )
+            );
+        } catch (error) {
+            console.error('checkLifeUpMigration failed', error);
+            return null;
+        }
+    }
+
+    startMigrationCheckWatcher(userId: string, runId: string) {
+        if (!userId || !runId) { return; }
+
+        this.stopMigrationCheckWatcher();
+
+        const resultsRef = collection(
+            firestore,
+            'users',
+            userId,
+            'migrationCheck',
+            runId,
+            'results'
+        );
+
+        this.migrationCheckUnsubscribe = onSnapshot(
+            query(resultsRef, orderBy('order')),
+            (snapshot) => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type !== 'added') { return; }
+                    this.migrationCheckResult$.next(change.doc.data());
+                });
+            }
+        );
+    }
+
+    stopMigrationCheckWatcher() {
+        this.migrationCheckUnsubscribe?.();
+        this.migrationCheckUnsubscribe = undefined;
     }
 
     ///////////////////////////////////////////////////////////////////////////

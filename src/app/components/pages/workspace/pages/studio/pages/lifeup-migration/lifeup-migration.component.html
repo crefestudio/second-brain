@@ -42,12 +42,9 @@
     <section class="update-progress">
         <div class="progress-line"></div>
 
-        <div class="progress-step"
-            *ngFor="let step of steps; let i = index"
-            [class.active]="getStepStatus(i) === 'active'"
-            [class.completed]="getStepStatus(i) === 'completed'"
-            [class.waiting]="getStepStatus(i) === 'waiting'"
-            (click)="goToStep(i)">
+        <div class="progress-step" *ngFor="let step of steps; let i = index"
+            [class.active]="getStepStatus(i) === 'active'" [class.completed]="getStepStatus(i) === 'completed'"
+            [class.waiting]="getStepStatus(i) === 'waiting'" (click)="goToStep(i)">
 
             <div class="progress-circle"></div>
 
@@ -278,9 +275,7 @@
                     ← 이전 단계
                 </button>
 
-                <button class="primary-btn"
-                    [disabled]="!isMigrationConnected"
-                    (click)="nextStep()">
+                <button class="primary-btn" [disabled]="!isMigrationConnected" (click)="nextStep()">
                     데이터 이전 준비 · 다음 단계 →
                 </button>
 
@@ -314,56 +309,42 @@
 
                 <div class="console-header">
                     <span class="console-title">데이터 이전 사전 점검</span>
-                    <span class="console-status">READY</span>
+                    <span class="console-status">{{ migrationCheckStatus }}</span>
                 </div>
 
                 <div class="console-content">
-                    <!-- <div class="console-line success">
-                        <span>✓</span>
-                        <span>1.3 라이프업 연결 확인</span>
-                        <span>OK</span>
+                    <div class="console-line" *ngFor="let item of migrationCheckResults"
+                        [class.success]="item.status === 'ok'" [class.error]="item.status === 'error'">
+                        <span>{{ item.status === 'ok' ? '✓' : '✕' }}</span>
+                        <span>{{ getMigrationCheckMessage(item) }}</span>
+                        <span>{{ item.status === 'ok' ? 'OK' : 'ERROR' }}</span>
                     </div>
-                    <div class="console-line success">
-                        <span>✓</span>
-                        <span>1.5 라이프업 연결 확인</span>
-                        <span>OK</span>
+                    <div class="console-divider" *ngIf="migrationCheckResults.length"></div>
+                    <div class="console-message" *ngIf="migrationCheckStatus === 'CHECKING'">
+                        데이터 이전을 위한 점검을 시작합니다.
                     </div>
-
-                    <div class="console-line success">
-                        <span>✓</span>
-                        <span>할일 DB 확인</span>
-                        <span>OK</span>
-                    </div>
-
-                    <div class="console-line success">
-                        <span>✓</span>
-                        <span>메모 DB 확인</span>
-                        <span>OK</span>
-                    </div>
-
-                    <div class="console-line success">
-                        <span>✓</span>
-                        <span>자료 DB 확인</span>
-                        <span>OK</span>
-                    </div>
-
-                    <div class="console-line success">
-                        <span>✓</span>
-                        <span>연락처 DB 확인</span>
-                        <span>OK</span>
-                    </div>
-
-                    <div class="console-divider"></div>
- -->
-                    <div class="console-message">
+                    <div class="console-message" *ngIf="migrationCheckStatus === 'READY' && !migrationCheckComplete">
                         점검을 시작하면 실제 데이터 이전 가능 여부를 확인합니다.
+                    </div>
+                    <div class="console-message" *ngIf="migrationCheckComplete">
+                        <ng-container *ngIf="migrationCheckSuccess">
+                            총 {{ migrationCheckTotalCount }}개의 데이터를 이전합니다.
+                        </ng-container>
+
+                        <ng-container *ngIf="!migrationCheckSuccess">
+                            이전할 수 없는 항목이 있습니다. 내용을 확인해주세요.
+                        </ng-container>
                     </div>
 
                 </div>
+                <!-- <div class="console-message" *ngIf="migrationCheckComplete && migrationCheckSuccess">
+                    총 {{ migrationCheckResults.filter(item => item.count > 0).length }}개 DB에서
+                    {{ migrationCheckTotalCount }}개의 데이터를 이전합니다.
+                </div>                 -->
             </div>
-
             <div class="check-action">
-                <button class="primary-btn large" (click)="startCheckProcess()">
+                <button class="primary-btn large" [disabled]="migrationCheckStatus === 'CHECKING'"
+                    (click)="startCheckProcess()">
                     점검 시작
                 </button>
             </div>

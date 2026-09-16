@@ -40,7 +40,32 @@ export class LifeupMigrationComponent implements OnInit {
     ) {
     }
 
+    // #migraton
+    migrationCheckResults: any[] = [];
+    migrationCheckTotalCount = 0;
+    migrationCheckStatus = 'READY';
+    migrationCheckComplete = false;
+    migrationCheckSuccess = false;
+
+
     async ngOnInit() {
+
+        this.userService.verificationResult$.subscribe(result => {
+            this.migrationCheckResults.push(result);
+        });
+
+        this.userService.verificationStatus$.subscribe(status => {
+            this.migrationCheckTotalCount = status.totalCount || 0;
+
+            if (status.status !== 'complete') { return; }
+
+            this.migrationCheckComplete = true;
+            this.migrationCheckSuccess = status.success === true;
+            this.migrationCheckStatus = this.migrationCheckSuccess ? 'READY' : 'ERROR';
+
+            this.userService.stopVerificationWatcher();
+        });
+
         try {
             await this.initData();
         } finally {
@@ -162,8 +187,63 @@ export class LifeupMigrationComponent implements OnInit {
         }
     }
 
-    startCheckProcess() {
+    async startCheckProcess() {
+        this.userService.stopVerificationWatcher();
 
+        this.migrationCheckStatus = 'CHECKING';
+        this.migrationCheckComplete = false;
+        this.migrationCheckResults = [];
+        this.migrationCheckTotalCount = 0;
+        this.migrationCheckSuccess = false;
+
+        const result: any = await this.userService.checkLifeUpMigration(this.userId);
+
+        if (!result?.success || !result.runId) {
+            this.migrationCheckStatus = 'ERROR';
+            return;
+        }
+
+        this.userService.startVerificationWatcher(this.userId, result.runId);
     }
+
+    getMigrationCheckMessage(item: any): string {
+        if (item.type === 'removed') {
+            return `${item.dbName} DB는 새 버전에서 더 이상 사용하지 않아 이전하지 않습니다.`;
+        }
+
+        if (item.type === 'not-found-old') {
+            return `${item.dbName} DB를 1.3 버전에서 찾을 수 없습니다.`;
+        }
+
+        if (item.type === 'not-found-new') {
+            return `${item.dbName} DB를 1.5 버전에서 찾을 수 없습니다. 1.5 버전 설치를 확인해주세요.`;
+        }
+
+        if (item.type === 'schema') {
+            const properties = item.onlyOld?.join(', ') || '';
+            return `${item.dbName} DB에 1.5 버전에서 없는 프로퍼티가 있습니다: ${properties} `;
+        }
+
+        if (item.type === 'none') {
+            return `${item.dbName} DB는 이전 대상이 아닙니다.`;
+        }
+
+        if (item.type === 'migration') {
+            if (item.count > 0) {
+                return `${item.dbName} DB의 ${item.count}개 데이터를 새 버전으로 이전합니다.`;
+            }
+
+            return `${item.dbName} DB에 이전할 데이터가 없습니다.`;
+        }
+
+        return `${item.dbName} DB 확인 중 오류가 발생했습니다.`;
+    }
+
+    // const result = await this.userService.analyzeLifeUpMigrationSchema(this.userId);
+
+    // if (result?.success) {
+    //     console.log('마이그레이션 구조 점검 완료');
+    // }
+
 
 }
