@@ -159,7 +159,7 @@ export class UserService {
     private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 
     public kakaoVerified$ = new Subject<void>();
-    private verificationUnsubscribe?: () => void;
+    private kakaoVerificationUnsubscribe?: () => void;
 
     public notionConnected$ = new Subject<void>();
     private notionConnectUnsubscribe?: () => void;
@@ -170,9 +170,10 @@ export class UserService {
 
     // #migration
     public migrationCheckResult$ = new Subject<any>();
+    public migrationCheckStatus$ = new Subject<any>();
+
     private migrationCheckUnsubscribe?: () => void;
     private migrationCheckStatusUnsubscribe?: () => void;
-    private verificationStatusUnsubscribe?: () => void;
 
     verificationResult$ = new Subject<any>();
     verificationStatus$ = new Subject<any>();
@@ -191,6 +192,27 @@ export class UserService {
         _log('updatePurchaseInfo userId, purchaseInfo, isWidgetMode =>', userId, purchaseInfo, isWidgetMode());
         return { purchaseInfo, isPurchaser: purchaseInfo != null };
     }
+
+    static async getUserIntegrations(userId: string): Promise<Record<string, any>> {
+        if (!userId) return {};
+
+        const colRef = collection(
+            firestore,
+            'users',
+            userId,
+            'integrations'
+        );
+
+        const snapshot = await getDocs(colRef);
+        const integrations: Record<string, any> = {};
+
+        snapshot.forEach(doc => {
+            integrations[doc.id] = doc.data();
+        });
+
+        return integrations;
+    }
+
 
     /////////////////////////////////////////////////////////////////////////////////////
     // userId로 integration/secondbrain 연결 정보 가져오기
@@ -220,25 +242,26 @@ export class UserService {
         return docSnap.data();
     }
 
-    static async getUserIntegrations(userId: string): Promise<Record<string, any>> {
-        if (!userId) return {};
+    // static async getMigrationCheckRun(userId: string, runId: string): Promise<any | null> {
+    //     if (!userId || !runId) return null;
 
-        const colRef = collection(
-            firestore,
-            'users',
-            userId,
-            'integrations'
-        );
+    //     const runRef = doc(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         'migrationRuns',
+    //         runId
+    //     );
 
-        const snapshot = await getDocs(colRef);
-        const integrations: Record<string, any> = {};
+    //     const snapshot = await getDoc(runRef);
 
-        snapshot.forEach(doc => {
-            integrations[doc.id] = doc.data();
-        });
+    //     if (!snapshot.exists()) return null;
 
-        return integrations;
-    }
+    //     return {
+    //         id: snapshot.id,
+    //         ...snapshot.data()
+    //     };
+    // }
 
     // users/zNkqIoVU/integrations/secondbrain
     static async removeSecondBrainIntegration(userId: string): Promise<boolean> {
@@ -716,56 +739,83 @@ export class UserService {
         }
     }
 
-    startVerificationWatcher(userId: string, runId: string) {
-        if (!userId || !runId) { return; }
 
-        this.stopVerificationWatcher();
+    startKakaoVerificationWatcher(userId: string, verificationId: string) {
+        if (!userId || !verificationId) { return; }
+        this.stopKakaoVerificationWatcher();
 
-        const resultsRef = collection(
-            firestore,
-            'users',
-            userId,
-            'migrationCheck',
-            runId,
-            'results'
-        );
+        const docRef = doc(firestore, 'kakao_verifications', userId);
 
-        this.verificationUnsubscribe = onSnapshot(
-            query(resultsRef, orderBy('order')),
-            snapshot => {
-                snapshot.docChanges().forEach(change => {
-                    if (change.type !== 'added') { return; }
+        this.kakaoVerificationUnsubscribe = onSnapshot(docRef, (snapshot) => {
+            if (!snapshot.exists()) { return; }
 
-                    this.verificationResult$.next(change.doc.data());
-                });
+            const data = snapshot.data();
+
+            if (data['verificationId'] !== verificationId) { return; }
+
+            if (data['verified'] === true) {
+                this.kakaoVerified$.next();
+                this.stopKakaoVerificationWatcher();
             }
-        );
-
-        const statusRef = doc(
-            firestore,
-            'users',
-            userId,
-            'migrationCheck',
-            runId
-        );
-
-        this.verificationStatusUnsubscribe = onSnapshot(
-            statusRef,
-            snapshot => {
-                if (!snapshot.exists()) { return; }
-
-                this.verificationStatus$.next(snapshot.data());
-            }
-        );
+        });
     }
 
-    stopVerificationWatcher() {
-        this.verificationUnsubscribe?.();
-        this.verificationUnsubscribe = undefined;
-
-        this.verificationStatusUnsubscribe?.();
-        this.verificationStatusUnsubscribe = undefined;
+    stopKakaoVerificationWatcher() {
+        this.kakaoVerificationUnsubscribe?.();
+        this.kakaoVerificationUnsubscribe = undefined;
     }
+
+
+    // startVerificationWatcher(userId: string, runId: string) {
+    //     if (!userId || !runId) { return; }
+
+    //     this.stopVerificationWatcher();
+
+    //     const resultsRef = collection(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         'migrationCheck',
+    //         runId,
+    //         'results'
+    //     );
+
+    //     this.verificationUnsubscribe = onSnapshot(
+    //         query(resultsRef, orderBy('order')),
+    //         snapshot => {
+    //             snapshot.docChanges().forEach(change => {
+    //                 if (change.type !== 'added') { return; }
+
+    //                 this.verificationResult$.next(change.doc.data());
+    //             });
+    //         }
+    //     );
+
+    //     const statusRef = doc(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         'migrationCheck',
+    //         runId
+    //     );
+
+    //     this.verificationStatusUnsubscribe = onSnapshot(
+    //         statusRef,
+    //         snapshot => {
+    //             if (!snapshot.exists()) { return; }
+
+    //             this.verificationStatus$.next(snapshot.data());
+    //         }
+    //     );
+    // }
+
+    // stopVerificationWatcher() {
+    //     this.verificationUnsubscribe?.();
+    //     this.verificationUnsubscribe = undefined;
+
+    //     this.verificationStatusUnsubscribe?.();
+    //     this.verificationStatusUnsubscribe = undefined;
+    // }
 
     /////////////////////////////////////////////////////////////////////
     // 
@@ -1790,15 +1840,87 @@ export class UserService {
         }
     }
 
+    // async getLatestMigrationCheckRun(userId: string): Promise<any | null> {
+    //     if (!userId) return null;
+
+    //     const runsRef = collection(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         'integrations',
+    //         'migration',
+    //         'migrationCheck'
+    //     );
+
+    //     const snapshot = await getDocs(query(runsRef, orderBy('createdAt', 'desc'), limit(1)));
+
+    //     if (snapshot.empty) return null;
+
+    //     const run = snapshot.docs[0];
+
+    //     return {
+    //         runId: run.id,
+    //         ...run.data()
+    //     };
+    // }
+
+    async getMigrationCheckRun(userId: string): Promise<any | null> {
+        if (!userId) return null;
+
+        const migrationRef = doc(
+            firestore,
+            'users',
+            userId,
+            'integrations',
+            'migration'
+        );
+
+        const snapshot = await getDoc(migrationRef);
+
+        if (!snapshot.exists()) return null;
+
+        const data = snapshot.data();
+        const runId = data['migrationCheckRunId'];
+
+        if (!runId) return null;
+
+        const checkRef = doc(
+            firestore,
+            'users',
+            userId,
+            'integrations',
+            'migration',
+            'migrationCheck',
+            runId
+        );
+
+        const checkSnapshot = await getDoc(checkRef);
+
+        if (!checkSnapshot.exists()) return null;
+
+        return {
+            runId,
+            ...checkSnapshot.data()
+        };
+    }
+
+
     startMigrationCheckWatcher(userId: string, runId: string) {
         if (!userId || !runId) { return; }
 
         this.stopMigrationCheckWatcher();
 
+        console.log('[Migration Check] watcher listening:', {
+            userId,
+            runId
+        });
+
         const resultsRef = collection(
             firestore,
             'users',
             userId,
+            'integrations',
+            'migration',
             'migrationCheck',
             runId,
             'results'
@@ -1806,11 +1928,55 @@ export class UserService {
 
         this.migrationCheckUnsubscribe = onSnapshot(
             query(resultsRef, orderBy('order')),
-            (snapshot) => {
-                snapshot.docChanges().forEach(change => {
-                    if (change.type !== 'added') { return; }
-                    this.migrationCheckResult$.next(change.doc.data());
+            snapshot => {
+                console.log('[Migration Check] snapshot:', {
+                    size: snapshot.size,
+                    changes: snapshot.docChanges().length
                 });
+
+                snapshot.docChanges().forEach(change => {
+                    console.log(
+                        '[Migration Check] change:',
+                        change.type,
+                        change.doc.data()
+                    );
+
+                    if (change.type !== 'added') { return; }
+
+                    this.migrationCheckResult$.next({
+                        id: change.doc.id,
+                        ...change.doc.data()
+                    });
+                });
+            },
+            error => {
+                console.error('[Migration Check] watcher ERROR:', error);
+            }
+        );
+
+        const statusRef = doc(
+            firestore,
+            'users',
+            userId,
+            'integrations',
+            'migration',
+            'migrationCheck',
+            runId
+        );
+
+        this.migrationCheckStatusUnsubscribe = onSnapshot(
+            statusRef,
+            snapshot => {
+                if (!snapshot.exists()) { return; }
+
+                const status = snapshot.data();
+
+                console.log('[Migration Check] status:', status);
+
+                this.migrationCheckStatus$.next(status);
+            },
+            error => {
+                console.error('[Migration Check] status watcher ERROR:', error);
             }
         );
     }
@@ -1818,8 +1984,55 @@ export class UserService {
     stopMigrationCheckWatcher() {
         this.migrationCheckUnsubscribe?.();
         this.migrationCheckUnsubscribe = undefined;
+
+        this.migrationCheckStatusUnsubscribe?.();
+        this.migrationCheckStatusUnsubscribe = undefined;
     }
 
+    // async getMigrationCheckRun(userId: string, runId: string): Promise<any | null> {
+    //     if (!userId || !runId) return null;
+
+    //     const runRef = doc(
+    //         firestore,
+    //         'users',
+    //         userId,
+    //         'integrations',
+    //         'migration',
+    //         'migrationCheck',
+    //         runId
+    //     );
+
+    //     const snapshot = await getDoc(runRef);
+
+    //     if (!snapshot.exists()) return null;
+
+    //     return {
+    //         id: snapshot.id,
+    //         ...snapshot.data()
+    //     };
+    // }
+
+    async getMigrationCheckResults(userId: string, runId: string): Promise<any[]> {
+        if (!userId || !runId) return [];
+
+        const resultsRef = collection(
+            firestore,
+            'users',
+            userId,
+            'integrations',
+            'migration',
+            'migrationCheck',
+            runId,
+            'results'
+        );
+
+        const snapshot = await getDocs(query(resultsRef, orderBy('order')));
+
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+    }
     ///////////////////////////////////////////////////////////////////////////
     // #template
     static async getConnectedNotionRoot(

@@ -488,7 +488,7 @@ export class AgentConnectComponentComponent implements OnInit {
         this.isKakaoVerificationSuccess = false;
         this.kakaoVerificationCode = '';
         this.kakaoVerificationId = '';
-        this.userService.stopVerificationWatcher();
+        this.userService.stopKakaoVerificationWatcher();
     }
 
     async copyKakaoVerificationCode() {
@@ -508,7 +508,7 @@ export class AgentConnectComponentComponent implements OnInit {
             'http://pf.kakao.com/_dICwX/chat',
             '_blank'
         );
-        this.userService.startVerificationWatcher(this.userId, this.kakaoVerificationId);
+        this.userService.startKakaoVerificationWatcher(this.userId, this.kakaoVerificationId);
     }
 
     onComplateKakaoConnect() {

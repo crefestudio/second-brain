@@ -583,6 +583,14 @@
     color: #579c73;
 }
 
+.console-line.warning {
+    color: #f59e0b;
+}
+
+.console-line.error {
+    color: #f97316;
+}
+
 .console-divider {
     height: 1px;
     margin: 12px 0;
@@ -590,6 +598,7 @@
 }
 
 .console-message {
+    line-height: 16px;
     color: #697382;
     font-size: 11px;
 }

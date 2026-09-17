@@ -253,19 +253,19 @@
 
             <!-- 연결 완료 -->
             <ng-container *ngIf="isMigrationConnected">
-
                 <div class="connect-box success-connect-box">
-
                     <div class="connect-icon success-icon">🎉</div>
-
                     <h3>성공적으로 연결되었습니다.</h3>
-
                     <p>
                         이제 데이터 이전을 위한 준비가 되었습니다.
                     </p>
-
+                    <p>
+                        연결을 변경하시려면 아래 버튼을 눌러주세요.
+                    </p>
+                    <button class="secondary-btn" (click)="onClickConnectTemplate()">
+                        연결 변경
+                    </button>
                 </div>
-
             </ng-container>
 
 
@@ -306,7 +306,6 @@
             </div>
 
             <div class="console-box">
-
                 <div class="console-header">
                     <span class="console-title">데이터 이전 사전 점검</span>
                     <span class="console-status">{{ migrationCheckStatus }}</span>
@@ -314,28 +313,49 @@
 
                 <div class="console-content">
                     <div class="console-line" *ngFor="let item of migrationCheckResults"
-                        [class.success]="item.status === 'ok'" [class.error]="item.status === 'error'">
-                        <span>{{ item.status === 'ok' ? '✓' : '✕' }}</span>
+                        [class.success]="item.status === 'ok'" [class.warning]="item.status === 'notification'"
+                        [class.error]="item.status === 'error'">
+
+                        <span>
+                            {{ item.status === 'ok' ? '✓' : item.status === 'notification' ? '!' : '✕' }}
+                        </span>
+
                         <span>{{ getMigrationCheckMessage(item) }}</span>
-                        <span>{{ item.status === 'ok' ? 'OK' : 'ERROR' }}</span>
+
+                        <span>
+                            {{ item.status === 'ok'
+                            ? 'OK'
+                            : item.status === 'notification'
+                            ? '참고'
+                            : '오류' }}
+                        </span>
                     </div>
+
                     <div class="console-divider" *ngIf="migrationCheckResults.length"></div>
+
                     <div class="console-message" *ngIf="migrationCheckStatus === 'CHECKING'">
-                        데이터 이전을 위한 점검을 시작합니다.
+                        데이터 이전을 위한 준비작업 및 검정을 진행중입니다. 이 작업은 10분이상의 시간이 소요 됩니다.
                     </div>
+
                     <div class="console-message" *ngIf="migrationCheckStatus === 'READY' && !migrationCheckComplete">
-                        점검을 시작하면 실제 데이터 이전 가능 여부를 확인합니다.
+                        점검을 시작하면 실제 데이터 이전 가능 여부를 확인합니다. 이 작업은 10분이상의 시간이 소요 됩니다.
                     </div>
+
                     <div class="console-message" *ngIf="migrationCheckComplete">
                         <ng-container *ngIf="migrationCheckSuccess">
-                            총 {{ migrationCheckTotalCount }}개의 데이터를 이전합니다.
+                            사전 점검을 마무리했습니다.<br>
+                            총 {{ migrationCheckTotalCount }}개의 데이터를 이전합니다.<br>
+                            다음을 눌러 백업 후 이전을 진행해주세요.<br>
+                            이전 후 문제가 발생하면 관리자에게 문의해주세요.
                         </ng-container>
 
                         <ng-container *ngIf="!migrationCheckSuccess">
-                            이전할 수 없는 항목이 있습니다. 내용을 확인해주세요.
+                            사전 점검을 마무리했습니다.<br>
+                            오류가 발견되어 이전을 권고하지 않습니다.
+                            이전을 진행하기 전에 반드시 백업해주세요.
+                            이전 후 문제가 발생하면 관리자에게 문의해주세요. 
                         </ng-container>
                     </div>
-
                 </div>
                 <!-- <div class="console-message" *ngIf="migrationCheckComplete && migrationCheckSuccess">
                     총 {{ migrationCheckResults.filter(item => item.count > 0).length }}개 DB에서
@@ -343,9 +363,10 @@
                 </div>                 -->
             </div>
             <div class="check-action">
-                <button class="primary-btn large" [disabled]="migrationCheckStatus === 'CHECKING'"
-                    (click)="startCheckProcess()">
-                    점검 시작
+                <button class="primary-btn large"
+                    [disabled]="migrationCheckStatus === 'CHECKING' && !forceStopAvailable"
+                    (click)="forceStopAvailable ? forceStopMigrationCheck() : startCheckProcess()">
+                    {{ forceStopAvailable ? '강제 종료' : (migrationCheckStatus === 'CHECKING' ? '검사 중...' : '검사하기') }}
                 </button>
             </div>
 
@@ -400,34 +421,29 @@
 
             </div>
 
+            <!-- 
             <div class="migration-preview">
-
                 <div class="preview-title">이전 예정 데이터</div>
-
                 <div class="preview-grid">
-
                     <div class="preview-item">
                         <strong>할일</strong>
                         <span>842개</span>
                     </div>
-
                     <div class="preview-item">
                         <strong>메모</strong>
                         <span>214개</span>
                     </div>
-
                     <div class="preview-item">
                         <strong>자료</strong>
                         <span>156개</span>
                     </div>
-
                     <div class="preview-item">
                         <strong>연락처</strong>
                         <span>72개</span>
                     </div>
-
                 </div>
-            </div>
+            </div> 
+            -->
 
             <div class="work-footer">
 

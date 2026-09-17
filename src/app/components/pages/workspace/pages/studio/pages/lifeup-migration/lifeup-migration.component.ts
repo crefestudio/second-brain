@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { RouterLink, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../../../../../../services/auth.service';
 import { _log } from '../../../../../../../lib/cf-common/cf-common';
 import { ToastService } from '../../../../../../../services/toast.service';
@@ -22,8 +22,19 @@ export class LifeupMigrationComponent implements OnInit {
 
     currentStep = 0;
 
-    // notion tempalte
-    isOpenNotionConnectWindow: boolean = false; // 연결창 띄움 여부
+    // #migration
+    migrationCheckRunId = '';
+    migrationCheckResults: any[] = [];
+    migrationCheckTotalCount = 0;
+    migrationCheckStatus = 'READY';
+    migrationCheckComplete = false;
+    migrationCheckSuccess = false;
+
+    private forceStopTimer: any;
+    forceStopAvailable = false;
+
+    // notion template
+    isOpenNotionConnectWindow: boolean = false;
 
     steps = [
         { title: '백업 • 설치', description: '새 버전 설치 및 기존 버전 백업' },
@@ -34,43 +45,123 @@ export class LifeupMigrationComponent implements OnInit {
         { title: '완료', description: '업데이트 완료' }
     ];
 
-    constructor(private authService: AuthService,
+    constructor(
+        private authService: AuthService,
         private userService: UserService,
-        private toastService: ToastService,
-    ) {
-    }
-
-    // #migraton
-    migrationCheckResults: any[] = [];
-    migrationCheckTotalCount = 0;
-    migrationCheckStatus = 'READY';
-    migrationCheckComplete = false;
-    migrationCheckSuccess = false;
-
+        private route: ActivatedRoute,
+        private toastService: ToastService
+    ) { }
 
     async ngOnInit() {
+        this.restoreStepFromHash();
 
-        this.userService.verificationResult$.subscribe(result => {
-            this.migrationCheckResults.push(result);
+        console.log('[Migration Check] restore step:', this.currentStep);
+
+        this.userService.migrationCheckResult$.subscribe(result => {
+            console.log('[Migration Check] watcher result:', result);
+            this.mergeMigrationCheckResult(result);
         });
 
-        this.userService.verificationStatus$.subscribe(status => {
+        this.userService.migrationCheckStatus$.subscribe(status => {
+            console.log('[Migration Check] watcher status:', status);
+
             this.migrationCheckTotalCount = status.totalCount || 0;
 
-            if (status.status !== 'complete') { return; }
+            if (status.status !== 'complete') {
+                this.migrationCheckStatus = 'CHECKING';
+                return;
+            }
 
             this.migrationCheckComplete = true;
             this.migrationCheckSuccess = status.success === true;
             this.migrationCheckStatus = this.migrationCheckSuccess ? 'READY' : 'ERROR';
 
-            this.userService.stopVerificationWatcher();
+            this.userService.stopMigrationCheckWatcher();
+
+            this.clearForceStopTimer();
+            this.forceStopAvailable = false;
         });
 
         try {
             await this.initData();
+            console.log('[Migration Check] userId:', this.userId);
+
+            await this.restoreMigrationCheck();
         } finally {
             this.isLoading = false;
         }
+    }
+
+    async restoreMigrationCheck() {
+        if (!this.userId) {
+            return;
+        }
+
+        const run = await this.userService.getMigrationCheckRun(this.userId);
+
+        if (!run?.runId) {
+            return;
+        }
+
+        this.migrationCheckRunId = run.runId;
+        this.migrationCheckTotalCount = run.totalCount || 0;
+        this.migrationCheckComplete = run.status === 'complete';
+        this.migrationCheckSuccess = run.success === true;
+
+        if (run.status === 'complete') {
+            this.migrationCheckStatus = this.migrationCheckSuccess ? 'READY' : 'ERROR';
+            this.forceStopAvailable = false;
+        } else {
+            this.migrationCheckStatus = 'CHECKING';
+            this.startForceStopTimer();
+        }
+
+        const results = await this.userService.getMigrationCheckResults(
+            this.userId,
+            this.migrationCheckRunId
+        );
+
+        this.migrationCheckResults = results || [];
+
+        if (run.status !== 'complete') {
+            this.userService.startMigrationCheckWatcher(
+                this.userId,
+                this.migrationCheckRunId
+            );
+        }
+    }
+
+    restoreStepFromHash() {
+        const fragment = this.route.snapshot.fragment;
+
+        if (!fragment?.startsWith('step-')) {
+            return;
+        }
+
+        const step = Number(fragment.replace('step-', ''));
+
+        if (Number.isInteger(step) && step >= 0 && step < this.steps.length) {
+            this.currentStep = step;
+        }
+    }
+
+    updateStepHash() {
+        const url = `${window.location.pathname}${window.location.search}#step-${this.currentStep}`;
+        window.history.replaceState(null, '', url);
+    }
+
+    mergeMigrationCheckResult(result: any) {
+        const index = this.migrationCheckResults.findIndex(
+            item => item.id === result.id || item.dbName === result.dbName
+        );
+
+        if (index >= 0) {
+            this.migrationCheckResults[index] = result;
+        } else {
+            this.migrationCheckResults.push(result);
+        }
+
+        this.migrationCheckResults.sort((a, b) => (a.order || 0) - (b.order || 0));
     }
 
     async initData() {
@@ -102,23 +193,23 @@ export class LifeupMigrationComponent implements OnInit {
             return;
         }
 
-        if (this.currentStep === 0 && this.isMigrationConnected) {
-            this.currentStep = 2;
-            return;
+        if (this.currentStep < this.steps.length - 1) {
+            this.currentStep++;
+            this.updateStepHash();
         }
-
-        this.currentStep++;
     }
 
     previousStep() {
         if (this.currentStep > 0) {
             this.currentStep--;
+            this.updateStepHash();
         }
     }
 
     goToStep(index: number) {
         if (index <= this.currentStep) {
             this.currentStep = index;
+            this.updateStepHash();
         }
     }
 
@@ -136,7 +227,7 @@ export class LifeupMigrationComponent implements OnInit {
 
     ///////////////////////////////////////////////////////////////
     //
-    // notion tempate 연결
+    // notion template 연결
 
     onClickConnectTemplate() {
         this.isOpenNotionConnectWindow = true;
@@ -151,35 +242,39 @@ export class LifeupMigrationComponent implements OnInit {
 
     async openNotionConnectWindow() {
         _log('connectTemplate userId =>', this.userId);
-        if (!this.userId) { return; }
 
-        const encryptedUserId = await NACommonService.encrypt(this.userId); // 암호화해서 userId를 넘긴다.
+        if (!this.userId) {
+            return;
+        }
+
+        const encryptedUserId = await NACommonService.encrypt(this.userId);
         const baseUrl = window.location.origin;
         const serviceName = 'notion-migration-auth';
         const setupPath = 'connect';
         const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
+
         window.open(url, '_blank');
-        return;
     }
 
     onComplateNotionTemplateConnect() {
         this.isOpenNotionConnectWindow = false;
+
         ToastService.show(
             '노션 템플릿 연결이 완료되었습니다.'
         );
+
         this.updateSession();
     }
 
     async onClickDisconnectNotionTemplate() {
         const result = await this.userService.disconnectNotionTemplate(this.userId);
+
         this.updateSession();
 
         if (result) {
             ToastService.show(
                 '노션 템플릿 연결을 해제하였습니다.'
             );
-
-            // this.notionAccessToken = '';
         } else {
             ToastService.error(
                 '노션 템플릿 연결 해제에 실패하였습니다.'
@@ -187,9 +282,17 @@ export class LifeupMigrationComponent implements OnInit {
         }
     }
 
-    async startCheckProcess() {
-        this.userService.stopVerificationWatcher();
+    ///////////////////////////////////////////////////////////////
+    //
+    // migration check
 
+    async startCheckProcess() {
+        this.userService.stopMigrationCheckWatcher();
+
+        this.clearForceStopTimer();
+        this.forceStopAvailable = false;
+
+        this.migrationCheckRunId = '';
         this.migrationCheckStatus = 'CHECKING';
         this.migrationCheckComplete = false;
         this.migrationCheckResults = [];
@@ -198,12 +301,45 @@ export class LifeupMigrationComponent implements OnInit {
 
         const result: any = await this.userService.checkLifeUpMigration(this.userId);
 
+        console.log('[Migration Check] start result:', result);
+
         if (!result?.success || !result.runId) {
             this.migrationCheckStatus = 'ERROR';
             return;
         }
 
-        this.userService.startVerificationWatcher(this.userId, result.runId);
+        this.migrationCheckRunId = result.runId;
+
+        this.startForceStopTimer();
+
+        console.log('[Migration Check] watcher START:', {
+            userId: this.userId,
+            runId: this.migrationCheckRunId
+        });
+
+        this.userService.startMigrationCheckWatcher(
+            this.userId,
+            this.migrationCheckRunId
+        );
+    }
+
+    startForceStopTimer() {
+        this.clearForceStopTimer();
+
+        this.forceStopAvailable = false;
+
+        this.forceStopTimer = setTimeout(() => {
+            if (this.migrationCheckStatus === 'CHECKING') {
+                this.forceStopAvailable = true;
+            }
+        }, 60 * 1000);
+    }
+
+    clearForceStopTimer() {
+        if (this.forceStopTimer) {
+            clearTimeout(this.forceStopTimer);
+            this.forceStopTimer = null;
+        }
     }
 
     getMigrationCheckMessage(item: any): string {
@@ -220,8 +356,15 @@ export class LifeupMigrationComponent implements OnInit {
         }
 
         if (item.type === 'schema') {
-            const properties = item.onlyOld?.join(', ') || '';
-            return `${item.dbName} DB에 1.5 버전에서 없는 프로퍼티가 있습니다: ${properties} `;
+            if (item.onlyOld?.length) {
+                return `${item.dbName} DB에 1.5 버전에서 없는 프로퍼티가 있습니다: ${item.onlyOld.join(', ')}`;
+            }
+
+            if (item.onlyNew?.length) {
+                return `${item.dbName} DB에 1.5 버전에서 새로 추가된 프로퍼티가 있습니다: ${item.onlyNew.join(', ')}`;
+            }
+
+            return `${item.dbName} DB의 프로퍼티 구성이 변경되었습니다.`;
         }
 
         if (item.type === 'none') {
@@ -236,14 +379,17 @@ export class LifeupMigrationComponent implements OnInit {
             return `${item.dbName} DB에 이전할 데이터가 없습니다.`;
         }
 
+        console.error('[Migration Check] 알 수 없는 결과 타입:', item);
+
         return `${item.dbName} DB 확인 중 오류가 발생했습니다.`;
     }
 
-    // const result = await this.userService.analyzeLifeUpMigrationSchema(this.userId);
+    forceStopMigrationCheck() {
+        this.clearForceStopTimer();
+        this.forceStopAvailable = false;
 
-    // if (result?.success) {
-    //     console.log('마이그레이션 구조 점검 완료');
-    // }
+        this.userService.stopMigrationCheckWatcher();
 
-
+        this.migrationCheckStatus = 'READY';
+    }
 }
