@@ -945,6 +945,8 @@ export class UserService {
         if (!userId) { return; }
 
         this.stopNotionMigrationConnectWatcher();
+        let initialized = false;
+        let connectionUpdatedAt = 0;
 
         const docRef = doc(
             firestore,
@@ -958,8 +960,14 @@ export class UserService {
                 if (!snapshot.exists()) { return; }
 
                 const data = snapshot.data();
+                const updatedAt = data['notionMigrationConnectedAt']?.toMillis?.() || 0;
+                if (!initialized) {
+                    initialized = true;
+                    connectionUpdatedAt = updatedAt;
+                    return;
+                }
 
-                if (data['notionMigrationAccessToken']) {
+                if (data['notionMigrationAccessToken'] && updatedAt > connectionUpdatedAt) {
                     this.notionMigrationConnected$.next();
                     this.stopNotionMigrationConnectWatcher();
                 }

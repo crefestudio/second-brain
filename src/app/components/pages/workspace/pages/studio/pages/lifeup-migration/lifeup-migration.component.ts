@@ -191,6 +191,14 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             }
             this.applyMigrationStatus(status);
         }));
+        this.subscriptions.add(this.userService.notionMigrationConnected$.subscribe(async () => {
+            if (this.destroyed) return;
+            await this.updateSession();
+            await this.restoreMigration();
+            if (!this.destroyed) {
+                ToastService.show('데이터 이전 템플릿 연결이 완료되었습니다. 새 이전을 시작할 수 있습니다.');
+            }
+        }));
 
         try {
             await this.initData();
@@ -218,10 +226,36 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         return `lifeup-migration-started:${this.userId}`;
     }
 
+    private get migrationStartRequestedAtKey(): string {
+        return `lifeup-migration-start-requested-at:${this.userId}`;
+    }
+
+    private resetMigrationState() {
+        this.userService.stopMigrationWatcher();
+        localStorage.removeItem(this.migrationStartedKey);
+        localStorage.removeItem(this.migrationStartRequestedAtKey);
+        this.migrationStarted = false;
+        this.migrationRunId = '';
+        this.migrationStatus = 'READY';
+        this.migrationResults = [];
+        this.migrationTotalCount = 0;
+        this.migrationCompletedCount = 0;
+        this.migrationComplete = false;
+        this.migrationSuccess = false;
+        this.migrationError = '';
+        this.migrationCounting = false;
+        this.migrationTotalCountReady = true;
+        this.migrationRestartAfter = 0;
+        this.migrationSupportsStop = false;
+        this.migrationStopPending = false;
+    }
+
     private async restoreMigration() {
         if (!this.userId || this.destroyed) return;
         this.migrationStarted = localStorage.getItem(this.migrationStartedKey) === 'true';
-        if (this.migrationStarted) this.migrationStatus = 'MIGRATING';
+        if (this.migrationStarted) {
+            this.migrationStatus = 'MIGRATING';
+        }
         try {
             const run = await this.userService.getMigrationRun(this.userId);
             if (this.destroyed) return;
@@ -229,8 +263,16 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
                 this.applyMigrationStatus(run);
                 this.userService.startMigrationWatcher(this.userId, run.runId);
             } else {
-                // A reload can happen before the function creates its run document.
-                this.userService.watchNextMigrationRun(this.userId, '');
+                const requestedAt = Number(localStorage.getItem(this.migrationStartRequestedAtKey));
+                const requestIsStillStarting = this.migrationStarted &&
+                    Number.isFinite(requestedAt) && Date.now() - requestedAt < 30 * 1000;
+                if (requestIsStillStarting) {
+                    // The function may not have created its run document yet.
+                    this.userService.watchNextMigrationRun(this.userId, '');
+                } else {
+                    // Reconnecting deletes integrations/migration, so a stored old run is invalid.
+                    this.resetMigrationState();
+                }
             }
         } catch (error) {
             console.error('[Migration] restore failed:', error);
@@ -244,6 +286,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         if (!this.userId || this.migrationStarted) return;
         this.migrationStarted = true;
         localStorage.setItem(this.migrationStartedKey, 'true');
+        localStorage.setItem(this.migrationStartRequestedAtKey, `${Date.now()}`);
         this.migrationStatus = 'MIGRATING';
         this.migrationError = '';
 
@@ -257,12 +300,14 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             if (result?.success && result.runId) {
                 if (!this.migrationRunId) this.userService.startMigrationWatcher(this.userId, result.runId);
             } else if (!this.migrationComplete) {
-                this.migrationError = '이전 요청의 응답을 확인하지 못했습니다. 진행 상태를 확인해주세요.';
+                const message = result?.message || '데이터 이전을 시작하지 못했습니다. 다시 시도해주세요.';
+                this.resetMigrationState();
+                ToastService.error(message);
             }
         } catch (error) {
             console.error('[Migration] start failed:', error);
-            this.migrationStatus = 'ERROR';
-            this.migrationError = '데이터 이전을 시작하지 못했습니다. 새로고침하여 진행 상태를 확인해주세요.';
+            this.resetMigrationState();
+            ToastService.error('데이터 이전을 시작하지 못했습니다. 다시 시도해주세요.');
         }
     }
 

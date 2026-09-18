@@ -1,38 +1,50 @@
 
 
------------------------------------------------------------------------------------
-
-note · 라이프업 글로벌 버전 출시 — Request to Notion API failed with status: 502. The response was returned by Notion's edge proxy before reaching the Notion API (content-type: text/html; charset=UTF-8). Cloudflare Ray ID: a3cde9fa39d3ead9-DFW. Include this ID when contacting Notion support. (25 / 277)
-note · 일부 페이지 이전 실패
 
 -----------------------------------------------------------------------------------
 
 ** 페이지 템플릿 이전에 대한 문제
 
-- 삭제 하고 새로 만들기 이게 제일 안전함 
-
-
 *대상 
-project db
-goal
-folder
-category
-reference tag
-reference sub tag
-reference type
-memo tag
-memo type
+project db          O
+goal                세보목표 등 내부 폼 
+folder              O
+category            기본 폴더 replace
+reference tag       O
+reference sub tag   O
+reference type      O
+memo tag            O
+memo type           O
 
 -----------------------------------------------------------------------------------
 
-
-기본 폴더 검수
-
+defaultMigration : ifNotSamePageIdAndSameNameThenReplace 이면 -> 페이지 아이디가 다르고 이름이 같다면 기존 항목을 지우고 이동하기 
 
 
+migrationErrorMessage 이 함수 과정에서 새로운 템플릿으로 교체 과정에서 기존에 템플릿 컨텐츠 복구 문제
+
+* 이전 템플릿 보존 문제 
+
+규칙
+1. text 블럭으로 ▫ 또는 ▪◽◾◻◼ 블릿 다음 섹션 이름이 나오고 다음줄에 콜아웃블럭이라면 템플릿 섹션이다.  
+2. 새 템플릿 생성 후 같은 섹션 이름이 있으면 기존 콜아웃으로 대체 한다. 
+3. 동일한 섹션이 없다면 하단에 ▫ 제목 , 콜아웃을 하단에 추가한다. 
+
+즉 규칙에 맞는 text, callout블럭을 기존과 교체 하던가 하단에 추가한다. 
+
+주의 : 새로운 템플릿이 추가 된 후 작업이 필요함, 노션은 비동기임 
+
+
+------------------------------------------------------------------------------------
 
 
 
+
+** 연결 설정 오류 개선 -> 두가지 api 
+
+
+
+1.3 → 1.5 데이터 이전 가이드 => 이거 접게
 
 
 

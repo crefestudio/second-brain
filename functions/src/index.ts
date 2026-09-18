@@ -543,6 +543,7 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
 
         await userRef.set({
             notionMigrationAccessToken: accessToken,
+            notionMigrationConnectedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 
@@ -554,6 +555,7 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
 
         await userRef.set({
             notionMigrationAccessToken: accessToken,
+            notionMigrationConnectedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 
@@ -802,7 +804,7 @@ interface LifeUpMigrationDbInfo {
     minVersion: string;
     migration: "none" | "all";
     defaultProperty?: string;
-    defaultMigration?: "none" | "move";
+    defaultMigration?: "none" | "move" | "replace"; // move: 페이지 아이디가 다르면 이동,  replace : 페이지 아이디가 다르고 이름이 같다면 기존 항목을 지우고 이동하기 
     refreshContentWithDefaultTemplate?: boolean;
     dbNames?: {
         "1.3"?: string;
@@ -875,7 +877,7 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
         minVersion: "1.3",
         migration: "all",
         defaultProperty: "기본 태그",
-        defaultMigration: "none",       //
+        defaultMigration: "replace",       //
         refreshContentWithDefaultTemplate: true
     },
 
