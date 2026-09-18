@@ -456,7 +456,7 @@
                         [class.error]="item.status === 'error'">
                         <span>{{ item.status === 'ok' ? '✓' : item.status === 'error' ? '✕' : '·' }}</span>
                         <span>
-                            {{ item.dbName }} · {{ item.message || item.errorMessage || item.type }}
+                            {{ item.dbName }} {{ item.type === 'database-complete' ? '-' : '·' }} {{ item.message || item.errorMessage || item.type }}
                             <ng-container *ngIf="item.total">({{ item.current }} / {{ item.total }})</ng-container>
                         </span>
                         <span>{{ item.status === 'ok' ? 'OK' : item.status === 'error' ? '오류' : '진행' }}</span>

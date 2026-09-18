@@ -25,7 +25,7 @@ import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime,
 
 // notion
 import { Client } from "@notionhq/client";
-import { executeMigration, MigrationConflict } from './lifeup-migration-runner';
+import { executeMigration, MigrationConflict, migrationErrorMessage } from './lifeup-migration-runner';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
@@ -803,6 +803,7 @@ interface LifeUpMigrationDbInfo {
     migration: "none" | "all";
     defaultProperty?: string;
     defaultMigration?: "none" | "move";
+    refreshContentWithDefaultTemplate?: boolean;
     dbNames?: {
         "1.3"?: string;
         "1.5"?: string;
@@ -854,7 +855,8 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
         minVersion: "1.3",
         migration: "all",
         defaultProperty: "기본 폴더",
-        defaultMigration: "move"        // 체크해볼 문제
+        defaultMigration: "none",       // 체크해볼 문제
+        refreshContentWithDefaultTemplate: true
     },
 
     "goal": {
@@ -863,7 +865,8 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
         minVersion: "1.5",
         migration: "all",
         defaultProperty: "기본 항목",
-        defaultMigration: "none"        // 기본 항목이 없을꺼임
+        defaultMigration: "none",       // 기본 항목이 없을꺼임
+        refreshContentWithDefaultTemplate: true
     },
 
     "category": {
@@ -872,25 +875,26 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
         minVersion: "1.3",
         migration: "all",
         defaultProperty: "기본 태그",
-        defaultMigration: "move"        // 이거는 옮겨야 함 / 일단 옮겨보기
+        defaultMigration: "none",       //
+        refreshContentWithDefaultTemplate: true
     },
 
     //////////////////////////////
     // migration "all"
 
     "vision": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
-    "project": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
+    "project": { v13: true, v15: true, minVersion: "1.3", migration: "all", refreshContentWithDefaultTemplate: true },
     "note": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
     "contact": { v13: true, v15: true, minVersion: "1.5", migration: "all" },
 
     "reference": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
-    "reference tag": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
-    "reference sub tag": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
-    "reference type": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
+    "reference tag": { v13: true, v15: true, minVersion: "1.3", migration: "all", refreshContentWithDefaultTemplate: true },
+    "reference sub tag": { v13: true, v15: true, minVersion: "1.3", migration: "all", refreshContentWithDefaultTemplate: true },
+    "reference type": { v13: true, v15: true, minVersion: "1.3", migration: "all", refreshContentWithDefaultTemplate: true },
 
     "memo": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
-    "memo tag": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
-    "memo type": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
+    "memo tag": { v13: true, v15: true, minVersion: "1.3", migration: "all", refreshContentWithDefaultTemplate: true },
+    "memo type": { v13: true, v15: true, minVersion: "1.3", migration: "all", refreshContentWithDefaultTemplate: true },
 
     "habit": { v13: false, v15: true, minVersion: "1.5", migration: "all" },       // 신규 추가
     "habit log": { v13: false, v15: true, minVersion: "1.5", migration: "all" },   // 신규 추가
@@ -1270,7 +1274,7 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
 export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 3600 }, withCors(async (req, res) => {
     const userId = req.body?.userId;
     if (typeof userId !== 'string' || !userId || userId.includes('/')) {
-        return res.status(400).json({ success: false, message: 'Invalid userId' });
+        return res.status(400).json({ success: false, message: '사용자 정보를 확인할 수 없습니다. 다시 로그인해주세요.' });
     }
     const runId = req.body?.runId;
     const action = req.body?.action || 'start';
@@ -1279,13 +1283,13 @@ export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], time
     );
     const invalidAction = !['start', 'resume', 'stop'].includes(action);
     if (invalidRunId || invalidAction) {
-        return res.status(400).json({ success: false, message: 'Invalid migration request' });
+        return res.status(400).json({ success: false, message: '이전 요청이 올바르지 않습니다. 새로고침 후 다시 시도해주세요.' });
     }
     try {
         const userRef = db.collection('users').doc(userId);
         const accessToken = (await userRef.get()).data()?.notionMigrationAccessToken;
         if (!accessToken) {
-            throw new Error('Migration Notion access token not found');
+            return res.status(400).json({ success: false, message: '노션 연결 정보가 없습니다. 노션을 연결한 후 다시 시도해주세요.' });
         }
         const migrationRef = userRef.collection('integrations').doc('migration');
         const cache = (await migrationRef.get()).data()?.datasources || {};
@@ -1314,7 +1318,10 @@ export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], time
         return res.status(200).json(result);
     } catch (error: any) {
         console.error('[Migration] request failed', error);
-        return res.status(error instanceof MigrationConflict ? 409 : 500).json({ success: false, message: error.message });
+        return res.status(error instanceof MigrationConflict ? 409 : 500).json({
+            success: false,
+            message: migrationErrorMessage(error)
+        });
     }
 }));
 

@@ -5,7 +5,9 @@ const admin = require('firebase-admin');
 
 let moveCalls = [];
 let retrieveCalls = [];
+let updateCalls = [];
 let onMove;
+let onUpdate;
 let currentParent = 'target';
 const originalLoad = Module._load;
 Module._load = function (name, ...args) {
@@ -14,6 +16,7 @@ Module._load = function (name, ...args) {
         Client: class {
             pages = {
                 move: async ({ page_id }) => { moveCalls.push(page_id); if (onMove) await onMove(page_id); },
+                update: async options => { updateCalls.push(options); if (onUpdate) await onUpdate(options); },
                 retrieve: async ({ page_id }) => {
                     retrieveCalls.push(page_id);
                     return { parent: { type: 'data_source_id', data_source_id: currentParent } };
@@ -23,7 +26,7 @@ Module._load = function (name, ...args) {
     };
     return originalLoad.call(this, name, ...args);
 };
-const { executeMigration, MigrationConflict } = require('../lib/lifeup-migration-runner');
+const { executeMigration, MigrationConflict, migrationErrorMessage } = require('../lib/lifeup-migration-runner');
 Module._load = originalLoad;
 
 const root = 'users/user/integrations/migration';
@@ -78,7 +81,7 @@ function memoryDb(seed) {
     };
 }
 function fixture(pages, extra = {}) {
-    moveCalls = []; retrieveCalls = []; onMove = undefined; currentParent = 'target';
+    moveCalls = []; retrieveCalls = []; updateCalls = []; onMove = undefined; onUpdate = undefined; currentParent = 'target';
     return memoryDb({
         [root]: { migrationRunId: 'run' },
         [runPath]: { status: 'migrating', createdAt: timestamp(Date.now() - 7200000), totalCount: pages.length, ...extra },
@@ -225,5 +228,93 @@ test('failed discovery never publishes a partial total or starts moving pages', 
     assert.equal(db.records.get(runPath).status, 'error');
     await executeMigration(db, 'user', 'token', 'run', 'resume', deps(['pending']));
     assert.equal(db.records.get(runPath).totalCount, 1);
+    assert.equal(db.records.get(runPath).completedCount, 1);
+});
+
+test('502 failures show Korean guidance and accurate incomplete counts, then clear on resume', async () => {
+    const db = fixture([['done', 'complete'], ['first', 'pending'], ['second', 'pending']]);
+    const failure = Object.assign(new Error(
+        'Request to Notion API failed with status: 502. Cloudflare Ray ID: a3cde9fa39d3ead9-DFW.'
+    ), { status: 502, code: 'notionhq_client_response_error' });
+    onMove = async () => { throw failure; };
+    await executeMigration(db, 'user', 'token', 'run', 'resume', deps());
+
+    const pageResult = db.records.get(`${runPath}/results/page_first`);
+    assert.match(pageResult.message, /노션 서버와의 통신에 일시적인 문제/);
+    assert.doesNotMatch(pageResult.message, /Request|Cloudflare|Ray ID/);
+    assert.equal(db.records.get(`${runPath}/pages/first`).errorMessage, migrationErrorMessage(failure));
+    const databaseResult = db.records.get(`${runPath}/results/database_task`);
+    assert.equal(databaseResult.incompleteCount, 2);
+    assert.equal(databaseResult.message, '데이터베이스 중 2개의 페이지 이전이 완료되지 않았습니다.');
+    assert.equal(db.records.get(runPath).completedCount, 1);
+
+    onMove = undefined;
+    currentParent = 'source';
+    await executeMigration(db, 'user', 'token', 'run', 'resume', deps());
+    assert.equal(db.records.get(`${runPath}/results/database_task`).incompleteCount, 0);
+    assert.equal(db.records.get(`${runPath}/results/database_task`).message, '데이터베이스 이전 완료');
+    assert.equal(db.records.get(`${runPath}/pages/first`).errorMessage, undefined);
+    assert.equal(db.records.get(runPath).completedCount, 3);
+    assert.equal(db.records.get(runPath).success, true);
+});
+
+test('developer errors are replaced with Korean guidance, including unknown and mixed-language errors', () => {
+    for (const error of [
+        { status: 429 }, { status: 401 }, { status: 403 }, { status: 404 },
+        { status: 400 }, { code: 'notionhq_client_request_timeout' },
+        new Error('Internal failure'), new Error('오류: internal SDK diagnostics'), null
+    ]) {
+        const message = migrationErrorMessage(error);
+        assert.match(message, /[가-힣]/);
+        assert.doesNotMatch(message, /Internal|internal|SDK|diagnostics/);
+    }
+    assert.equal(migrationErrorMessage(new MigrationConflict('이미 진행 중입니다.')), '이미 진행 중입니다.');
+});
+
+test('template databases verify the new parent and replace old blocks with the default template', async () => {
+    const db = fixture([['project-page', 'pending']]);
+    db.records.set(`${runPath}/pages/project-page`, {
+        ...db.records.get(`${runPath}/pages/project-page`), dbName: 'project'
+    });
+    await executeMigration(db, 'user', 'token', 'run', 'resume', {
+        entries: [['project', { refreshContentWithDefaultTemplate: true }]],
+        resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
+        pages: async () => [{ id: 'project-page', title: '프로젝트' }]
+    });
+
+    assert.deepEqual(moveCalls, ['project-page']);
+    assert.deepEqual(retrieveCalls, ['project-page']);
+    assert.deepEqual(updateCalls, [{
+        page_id: 'project-page',
+        erase_content: true,
+        template: { type: 'default' }
+    }]);
+    const page = db.records.get(`${runPath}/pages/project-page`);
+    assert.equal(page.status, 'complete');
+    assert.equal(page.templateApplied, true);
+    assert.equal(page.templateApplying, undefined);
+});
+
+test('resume retries only an incomplete template refresh without moving or recounting the page', async () => {
+    const db = fixture([['project-page', 'pending']]);
+    db.records.set(`${runPath}/pages/project-page`, {
+        ...db.records.get(`${runPath}/pages/project-page`), dbName: 'project'
+    });
+    const dependencies = {
+        entries: [['project', { refreshContentWithDefaultTemplate: true }]],
+        resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
+        pages: async () => [{ id: 'project-page', title: '프로젝트' }]
+    };
+    onUpdate = async () => { throw Object.assign(new Error('temporary failure'), { status: 502 }); };
+    await executeMigration(db, 'user', 'token', 'run', 'resume', dependencies);
+    assert.equal(db.records.get(`${runPath}/pages/project-page`).status, 'error');
+    assert.deepEqual(moveCalls, ['project-page']);
+    assert.equal(db.records.get(runPath).completedCount, 0);
+
+    onUpdate = undefined;
+    await executeMigration(db, 'user', 'token', 'run', 'resume', dependencies);
+    assert.deepEqual(moveCalls, ['project-page']);
+    assert.equal(updateCalls.length, 2);
+    assert.equal(db.records.get(`${runPath}/pages/project-page`).templateApplied, true);
     assert.equal(db.records.get(runPath).completedCount, 1);
 });

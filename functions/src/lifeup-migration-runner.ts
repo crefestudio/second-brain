@@ -4,6 +4,8 @@ import { randomUUID } from 'crypto';
 
 const STALE_MS = 5 * 60 * 1000;
 const LEGACY_TIMEOUT_MS = 60 * 60 * 1000;
+const MOVE_CONFIRM_ATTEMPTS = 3;
+const MOVE_CONFIRM_DELAY_MS = 1000;
 interface PageInfo {
     id: string;
     title: string;
@@ -16,6 +18,7 @@ type DatabaseInfo = {
     dbNames?: Record<string, string>;
     defaultMigration?: string;
     defaultProperty?: string;
+    refreshContentWithDefaultTemplate?: boolean;
 };
 interface Dependencies {
     entries: [string, DatabaseInfo][];
@@ -23,9 +26,46 @@ interface Dependencies {
     pages: (dataSourceId: string) => Promise<PageInfo[]>;
 }
 export class MigrationConflict extends Error { }
+class MigrationUserError extends Error { }
 class WorkerStopped extends Error { }
+
+// Keep SDK diagnostics in server logs; only these messages are shown to users.
+export function migrationErrorMessage(error: any): string {
+    if (error instanceof MigrationConflict || error instanceof MigrationUserError) {
+        return error.message;
+    }
+
+    const status = Number(error?.status);
+    const code = error?.code;
+    if (status >= 500 && status <= 599) {
+        return '노션 서버와의 통신에 일시적인 문제가 발생했습니다. 잠시 후 재시작하면 미완료 페이지부터 이어서 진행합니다.';
+    }
+    if (status === 429 || code === 'rate_limited') {
+        return '노션 요청이 일시적으로 많아 처리가 지연되었습니다. 잠시 후 재시작해주세요.';
+    }
+    if (code === 'notionhq_client_request_timeout' || code === 'ETIMEDOUT' || code === 'ECONNRESET') {
+        return '노션 응답을 기다리는 시간이 길어 처리를 완료하지 못했습니다. 잠시 후 재시작해주세요.';
+    }
+    if (status === 401 || code === 'unauthorized') {
+        return '노션 연결 인증을 확인할 수 없습니다. 노션 연결 상태를 확인해주세요.';
+    }
+    if (status === 403 || code === 'restricted_resource') {
+        return '노션 페이지에 접근할 권한이 없습니다. 연결된 계정의 접근 권한을 확인해주세요.';
+    }
+    if (status === 404 || code === 'object_not_found') {
+        return '노션 페이지 또는 데이터베이스를 찾을 수 없습니다. 삭제 여부와 공유 권한을 확인해주세요.';
+    }
+    if (code === 'validation_error') {
+        return '노션에서 이전 요청을 처리할 수 없습니다. 원본과 대상 데이터베이스의 속성 구성을 확인해주세요.';
+    }
+    if (status === 400) {
+        return '노션에서 이전 요청을 처리할 수 없습니다. 같은 문제가 계속되면 고객지원에 문의해주세요.';
+    }
+    return '데이터 이전을 완료하지 못했습니다. 재시작 후에도 같은 문제가 계속되면 고객지원에 문의해주세요.';
+}
 const millis = (value: any): number => value?.toMillis?.() || 0;
 const normalizeId = (value: string) => value.replace(/-/g, '');
+const wait = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 // Legacy workers do not understand leases: wait out their maximum invocation lifetime.
 function expiresAt(run: any): number {
@@ -138,7 +178,7 @@ export async function executeMigration(
     };
     const checkpoint = () => commit(() => {
         if (Date.now() - startedAt > 55 * 60 * 1000) {
-            throw new Error('실행 시간이 길어 작업을 일시 중단했습니다. 재시작하면 이어서 진행합니다.');
+            throw new MigrationUserError('실행 시간이 길어 작업을 일시 중단했습니다. 재시작하면 이어서 진행합니다.');
         }
     });
     const timed = async <T>(stage: string, operation: () => Promise<T>): Promise<T> => {
@@ -183,6 +223,7 @@ export async function executeMigration(
             dbName: string;
             source: string;
             target: string;
+            info: DatabaseInfo;
         }> = [];
         const notify = async (message: string, dbName = '전체 집계') => {
             console.log(`[Migration] runId=${claimed.runId} ${dbName}: ${message}`);
@@ -208,7 +249,7 @@ export async function executeMigration(
             const source = await timed(`RESOLVE SOURCE db=${dbName}`, () => dependencies.resolve(dbName, '1.3'));
             const target = await timed(`RESOLVE TARGET db=${dbName}`, () => dependencies.resolve(dbName, '1.5'));
             if (!source || !target) {
-                throw new Error(`${dbName} 원본 또는 대상 DB를 찾을 수 없습니다.`);
+                throw new MigrationUserError(`${dbName} 원본 또는 대상 DB를 찾을 수 없습니다.`);
             }
             const remaining = await timed(`PAGES FETCH db=${dbName}`, () => dependencies.pages(source));
             const excluded = remaining.filter(page =>
@@ -265,7 +306,8 @@ export async function executeMigration(
             databases.push({
                 dbName,
                 source,
-                target
+                target,
+                info
             });
             const databaseCount = [...manifest.values()].filter(page =>
                 page.dbName === dbName && page.status !== 'skipped').length;
@@ -280,11 +322,11 @@ export async function executeMigration(
         }));
         await notify(`전체 집계 완료: 총 ${totalCount}개, 완료 ${completed}개, 남은 ${totalCount - completed}개`);
 
-        for (const { dbName, source, target } of databases) {
+        for (const { dbName, source, target, info } of databases) {
             try {
                 const databasePages = [...manifest.values()].filter(page =>
                     page.dbName === dbName && page.status !== 'skipped');
-                let dbSuccess = true;
+                let incompleteCount = 0;
                 for (let index = 0; index < databasePages.length; index++) {
                     const page = databasePages[index];
                     if (page.status === 'complete') {
@@ -311,7 +353,7 @@ export async function executeMigration(
                         if (page.status === 'migrating' || page.status === 'error') {
                             const current = await timed(`NOTION VERIFY page=${page.pageId}`, () => notion.pages.retrieve({ page_id: page.pageId }));
                             if (!('parent' in current)) {
-                                throw new Error('페이지의 현재 위치를 확인할 수 없습니다.');
+                                throw new MigrationUserError('페이지의 현재 위치를 확인할 수 없습니다.');
                             }
                             const currentParent = current.parent;
                             alreadyMoved = currentParent.type === 'data_source_id' &&
@@ -319,7 +361,7 @@ export async function executeMigration(
                             const stillInSource = currentParent.type === 'data_source_id' &&
                                 normalizeId(currentParent.data_source_id) === normalizeId(source);
                             if (!alreadyMoved && !stillInSource) {
-                                throw new Error('페이지가 원본/대상 외의 위치에 있습니다. 위치를 확인해주세요.');
+                                throw new MigrationUserError('페이지가 원본/대상 외의 위치에 있습니다. 위치를 확인해주세요.');
                             }
                         }
                         if (!alreadyMoved) {
@@ -328,10 +370,42 @@ export async function executeMigration(
                                 page_id: page.pageId, parent: { type: 'data_source_id', data_source_id: target }
                             }));
                         }
+                        if (info.refreshContentWithDefaultTemplate && !page.templateApplied) {
+                            let movedToTarget = alreadyMoved;
+                            for (let attempt = 0; attempt < MOVE_CONFIRM_ATTEMPTS && !movedToTarget; attempt++) {
+                                if (attempt > 0) {
+                                    await wait(MOVE_CONFIRM_DELAY_MS);
+                                }
+                                const current = await timed(
+                                    `NOTION VERIFY MOVE db=${dbName} page=${page.pageId} attempt=${attempt + 1}`,
+                                    () => notion.pages.retrieve({ page_id: page.pageId })
+                                );
+                                const parent = 'parent' in current ? current.parent : undefined;
+                                movedToTarget = parent?.type === 'data_source_id' &&
+                                    normalizeId(parent.data_source_id) === normalizeId(target);
+                            }
+                            if (!movedToTarget) {
+                                throw new MigrationUserError('페이지 이동 완료를 확인하지 못했습니다. 재시작하면 이 페이지부터 다시 확인합니다.');
+                            }
+                            // Notion replaces old blocks with the 1.5 default template in one request.
+                            await commit(tx => tx.update(pageRef, {
+                                status: 'migrating',
+                                templateApplying: true,
+                                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                            }));
+                            await timed(`NOTION APPLY TEMPLATE db=${dbName} page=${page.pageId}`, () => notion.pages.update({
+                                page_id: page.pageId,
+                                erase_content: true,
+                                template: { type: 'default' }
+                            }));
+                            page.templateApplied = true;
+                        }
                         // Save an in-flight move's result even if a stop was requested during the call.
                         await commit(tx => {
                             tx.update(pageRef, {
                                 status: 'complete',
+                                templateApplied: page.templateApplied === true,
+                                templateApplying: admin.firestore.FieldValue.delete(),
                                 errorMessage: admin.firestore.FieldValue.delete(),
                                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
                             });
@@ -350,22 +424,28 @@ export async function executeMigration(
                             throw error;
                         }
                         success = false;
-                        dbSuccess = false;
+                        incompleteCount++;
+                        const message = migrationErrorMessage(error);
+                        console.error('[Migration] page failed', {
+                            runId: claimed.runId, dbName, pageId: page.pageId,
+                            status: error?.status, code: error?.code, message: error?.message
+                        });
                         await commit(tx => {
                             tx.update(pageRef, {
                                 status: 'error',
-                                errorMessage: error.message,
+                                errorMessage: message,
                                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
                             });
                             tx.set(resultRef, {
                                 ...result,
                                 status: 'error',
                                 type: 'page-error',
-                                message: `${page.pageName} — ${error.message}`
+                                message: `${page.pageName} — ${message}`
                             });
                         }, true);
                     }
                 }
+                const dbSuccess = incompleteCount === 0;
                 if (dbSuccess) {
                     completedDbs++;
                 }
@@ -375,7 +455,9 @@ export async function executeMigration(
                         dbName,
                         type: 'database-complete',
                         status: dbSuccess ? 'ok' : 'error',
-                        message: dbSuccess ? '데이터베이스 이전 완료' : '일부 페이지 이전 실패',
+                        incompleteCount,
+                        message: dbSuccess ? '데이터베이스 이전 완료'
+                            : `데이터베이스 중 ${incompleteCount}개의 페이지 이전이 완료되지 않았습니다.`,
                         order: databaseOrder,
                         createdAt: admin.firestore.FieldValue.serverTimestamp()
                     });
@@ -386,12 +468,15 @@ export async function executeMigration(
                     throw error;
                 }
                 success = false;
+                console.error('[Migration] database failed', {
+                    runId: claimed.runId, dbName, message: error?.message
+                });
                 const databaseOrder = order++;
                 await commit(tx => tx.set(resultsRef.doc(`database_${dbName.replace(/\//g, '_')}`), {
                     dbName,
                     type: 'error',
                     status: 'error',
-                    message: error.message,
+                    message: migrationErrorMessage(error),
                     order: databaseOrder,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 }));
@@ -415,7 +500,7 @@ export async function executeMigration(
                     tx.update(run, {
                         status: 'error',
                         success: false,
-                        error: error.message,
+                        error: migrationErrorMessage(error),
                         workerId: null,
                         leaseExpiresAt: admin.firestore.Timestamp.fromMillis(0)
                     });
