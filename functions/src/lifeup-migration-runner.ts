@@ -1,0 +1,427 @@
+import * as admin from 'firebase-admin';
+import { Client, LogLevel } from '@notionhq/client';
+import { randomUUID } from 'crypto';
+
+const STALE_MS = 5 * 60 * 1000;
+const LEGACY_TIMEOUT_MS = 60 * 60 * 1000;
+interface PageInfo {
+    id: string;
+    title: string;
+    properties?: Record<string, {
+        type?: string;
+        checkbox?: boolean;
+    }>;
+}
+type DatabaseInfo = {
+    dbNames?: Record<string, string>;
+    defaultMigration?: string;
+    defaultProperty?: string;
+};
+interface Dependencies {
+    entries: [string, DatabaseInfo][];
+    resolve: (name: string, version: string) => Promise<string | null>;
+    pages: (dataSourceId: string) => Promise<PageInfo[]>;
+}
+export class MigrationConflict extends Error { }
+class WorkerStopped extends Error { }
+const millis = (value: any): number => value?.toMillis?.() || 0;
+const normalizeId = (value: string) => value.replace(/-/g, '');
+
+// Legacy workers do not understand leases: wait out their maximum invocation lifetime.
+function expiresAt(run: any): number {
+    return millis(run.leaseExpiresAt) || millis(run.createdAt) + LEGACY_TIMEOUT_MS;
+}
+
+export async function executeMigration(
+    db: admin.firestore.Firestore,
+    userId: string,
+    accessToken: string,
+    requestedRunId: string | undefined,
+    action: string,
+    dependencies: Dependencies
+) {
+    const parent = db.collection('users').doc(userId).collection('integrations').doc('migration');
+    const owner = randomUUID();
+    const claimed = await db.runTransaction(async tx => {
+        const parentSnap = await tx.get(parent);
+        const latestId = parentSnap.data()?.migrationRunId;
+        if (requestedRunId && latestId && requestedRunId !== latestId) {
+            throw new MigrationConflict('최신 이전 작업만 재시작할 수 있습니다. 새로고침해주세요.');
+        }
+        const runId = requestedRunId || latestId || randomUUID();
+        const ref = parent.collection('migration').doc(runId);
+        const snapshot = await tx.get(ref);
+        const run = snapshot.data();
+        const running = run && ['migrating', 'stopping'].includes(run.status) && expiresAt(run) > Date.now();
+        if (action === 'stop') {
+            if (!run) {
+                throw new MigrationConflict('이전 기록을 찾을 수 없습니다.');
+            }
+            if (running && !run.workerId) {
+                throw new MigrationConflict('이전 버전 작업은 즉시 중단할 수 없습니다. 기존 실행 제한시간이 지난 뒤 재시작해주세요.');
+            }
+            if (run.status === 'complete' && run.success) {
+                return { runId, execute: false };
+            }
+            tx.update(ref, running
+                ? { stopRequested: true, status: 'stopping' }
+                : {
+                    stopRequested: true,
+                    status: 'stopped',
+                    workerId: null,
+                    leaseExpiresAt: admin.firestore.Timestamp.fromMillis(0)
+                });
+            return { runId, execute: false };
+        }
+        if (running) {
+            throw new MigrationConflict('서버에서 작업 중입니다. 마지막 작업 갱신 후 5분이 지나면 재시작할 수 있습니다.');
+        }
+        if (run?.status === 'complete' && run.success) {
+            return { runId, execute: false };
+        }
+        tx.set(ref, {
+            runId,
+            workerId: owner,
+            status: 'migrating',
+            success: false,
+            stopRequested: false,
+            restartTimeoutMs: STALE_MS,
+            phase: 'counting',
+            totalCountReady: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            leaseExpiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + STALE_MS),
+            error: admin.firestore.FieldValue.delete(),
+            ...(run ? {} : {
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                totalCount: 0,
+                completedCount: 0
+            })
+        }, { merge: true });
+        tx.set(parent, { migrationRunId: runId }, { merge: true });
+        return { runId, execute: true };
+    });
+    if (!claimed.execute) {
+        return { success: true, runId: claimed.runId };
+    }
+
+    const run = parent.collection('migration').doc(claimed.runId);
+    const pagesRef = run.collection('pages');
+    const resultsRef = run.collection('results');
+    const startedAt = Date.now();
+    // Every write is fenced by ownership. A timed-out worker cannot overwrite its successor.
+    const commit = async (write: (tx: admin.firestore.Transaction) => void, allowStop = false) => {
+        const writeStartedAt = Date.now();
+        const stopped = await db.runTransaction(async tx => {
+            const data = (await tx.get(run)).data();
+            if (data?.workerId !== owner || expiresAt(data) <= Date.now()) {
+                throw new WorkerStopped();
+            }
+            if (data.stopRequested && !allowStop) {
+                tx.update(run, {
+                    status: 'stopped',
+                    workerId: null,
+                    leaseExpiresAt: admin.firestore.Timestamp.fromMillis(0)
+                });
+                return true;
+            }
+            tx.update(run, {
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                leaseExpiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + STALE_MS)
+            });
+            write(tx);
+            return false;
+        });
+        console.log(`[Migration] runId=${claimed.runId} FIRESTORE CHECKPOINT elapsed=${Date.now() - writeStartedAt}ms`);
+        if (stopped) {
+            throw new WorkerStopped();
+        }
+    };
+    const checkpoint = () => commit(() => {
+        if (Date.now() - startedAt > 55 * 60 * 1000) {
+            throw new Error('실행 시간이 길어 작업을 일시 중단했습니다. 재시작하면 이어서 진행합니다.');
+        }
+    });
+    const timed = async <T>(stage: string, operation: () => Promise<T>): Promise<T> => {
+        await checkpoint();
+        const start = Date.now();
+        console.log(`[Migration] runId=${claimed.runId} ${stage} START`);
+        try {
+            return await operation();
+        } finally {
+            console.log(`[Migration] runId=${claimed.runId} ${stage} elapsed=${Date.now() - start}ms`);
+        }
+    };
+    const notion = new Client({
+        auth: accessToken,
+        timeoutMs: 30000,
+        retry: { maxRetries: 2, maxRetryDelayMs: 10000 },
+        logLevel: LogLevel.INFO,
+        logger: (level, message, details) => {
+            if (message === 'retrying request' || level === LogLevel.WARN || level === LogLevel.ERROR) {
+                console.log('[Migration] NOTION SDK', {
+                    runId: claimed.runId,
+                    level,
+                    message,
+                    path: details.path,
+                    attempt: details.attempt,
+                    delayMs: details.delayMs,
+                    code: details.code,
+                    status: details.status
+                });
+            }
+        }
+    });
+    try {
+        const saved = await pagesRef.get();
+        const manifest = new Map(saved.docs.map(doc => [doc.id, { ...doc.data(), pageId: doc.id }] as [string, any]));
+        let completed = [...manifest.values()].filter(page => page.status === 'complete').length;
+        const oldResults = await resultsRef.orderBy('order', 'desc').limit(1).get();
+        let order = (oldResults.docs[0]?.data().order ?? -1) + 1;
+        let success = true;
+        let completedDbs = 0;
+        const databases: Array<{
+            dbName: string;
+            source: string;
+            target: string;
+        }> = [];
+        const notify = async (message: string, dbName = '전체 집계') => {
+            console.log(`[Migration] runId=${claimed.runId} ${dbName}: ${message}`);
+            const notificationOrder = order++;
+            await commit(tx => tx.set(resultsRef.doc(`counting_${notificationOrder}`), {
+                dbName,
+                message,
+                status: 'notification',
+                type: 'counting',
+                order: notificationOrder,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }));
+        };
+        await notify('전체 DB의 이전 대상 개수를 집계합니다. 집계가 끝난 뒤 페이지 이동을 시작합니다.');
+        await commit(tx => tx.update(run, {
+            completedCount: completed,
+            totalDbCount: dependencies.entries.length,
+            completedDbCount: 0
+        }));
+        // Discover every database before moving. Saved successes no longer appear in the source.
+        for (const [dbName, info] of dependencies.entries) {
+            await notify('이전 대상 조회 중...', dbName);
+            const source = await timed(`RESOLVE SOURCE db=${dbName}`, () => dependencies.resolve(dbName, '1.3'));
+            const target = await timed(`RESOLVE TARGET db=${dbName}`, () => dependencies.resolve(dbName, '1.5'));
+            if (!source || !target) {
+                throw new Error(`${dbName} 원본 또는 대상 DB를 찾을 수 없습니다.`);
+            }
+            const remaining = await timed(`PAGES FETCH db=${dbName}`, () => dependencies.pages(source));
+            const excluded = remaining.filter(page =>
+                info.defaultMigration === 'none' && info.defaultProperty &&
+                page.properties?.[info.defaultProperty]?.checkbox === true
+            );
+            const excludedIds = new Set(excluded.map(page => page.id));
+            // Also remove default items queued by an older worker before a restart.
+            for (const page of excluded) {
+                const existing = manifest.get(page.id);
+                if (existing && existing.status !== 'complete') {
+                    const skippedOrder = order++;
+                    await commit(tx => {
+                        tx.update(pagesRef.doc(page.id), { status: 'skipped' });
+                        tx.set(resultsRef.doc(`page_${page.id}`), {
+                            dbName,
+                            pageId: page.id,
+                            status: 'notification',
+                            type: 'page-skipped',
+                            message: `${page.title} — 기본 항목으로 이전 제외`,
+                            order: skippedOrder,
+                            createdAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+                    existing.status = 'skipped';
+                }
+            }
+            const additions = remaining.filter(page => !excludedIds.has(page.id) &&
+                (!manifest.has(page.id) || manifest.get(page.id).status === 'skipped'));
+            for (let offset = 0; offset < additions.length; offset += 400) {
+                const chunk = additions.slice(offset, offset + 400);
+                await timed(`FIRESTORE PREPARE db=${dbName} count=${chunk.length}`, () => commit(tx => {
+                    for (const page of chunk) {
+                        tx.set(pagesRef.doc(page.id), {
+                            dbName,
+                            pageId: page.id,
+                            pageName: page.title || '이름 없는 페이지',
+                            status: 'pending',
+                            retryCount: 0,
+                            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                }));
+                for (const page of chunk) {
+                    manifest.set(page.id, {
+                        dbName,
+                        pageId: page.id,
+                        pageName: page.title || '이름 없는 페이지',
+                        status: 'pending'
+                    });
+                }
+            }
+            databases.push({
+                dbName,
+                source,
+                target
+            });
+            const databaseCount = [...manifest.values()].filter(page =>
+                page.dbName === dbName && page.status !== 'skipped').length;
+            await notify(`집계 완료: 이전 대상 ${databaseCount}개 (기본 항목 ${excluded.length}개 제외)`, dbName);
+        }
+        const totalCount = [...manifest.values()].filter(page => page.status !== 'skipped').length;
+        await commit(tx => tx.update(run, {
+            totalCount,
+            completedCount: completed,
+            totalCountReady: true,
+            phase: 'moving'
+        }));
+        await notify(`전체 집계 완료: 총 ${totalCount}개, 완료 ${completed}개, 남은 ${totalCount - completed}개`);
+
+        for (const { dbName, source, target } of databases) {
+            try {
+                const databasePages = [...manifest.values()].filter(page =>
+                    page.dbName === dbName && page.status !== 'skipped');
+                let dbSuccess = true;
+                for (let index = 0; index < databasePages.length; index++) {
+                    const page = databasePages[index];
+                    if (page.status === 'complete') {
+                        continue;
+                    }
+                    await checkpoint();
+                    const pageRef = pagesRef.doc(page.pageId);
+                    const resultRef = resultsRef.doc(`page_${page.pageId}`);
+                    const resultOrder = order++;
+                    const result = {
+                        dbName,
+                        pageId: page.pageId,
+                        pageName: page.pageName,
+                        message: page.pageName,
+                        current: index + 1,
+                        total: databasePages.length,
+                        count: 1,
+                        order: resultOrder,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    };
+                    try {
+                        // A move may have succeeded immediately before a crash or a lost HTTP response.
+                        let alreadyMoved = false;
+                        if (page.status === 'migrating' || page.status === 'error') {
+                            const current = await timed(`NOTION VERIFY page=${page.pageId}`, () => notion.pages.retrieve({ page_id: page.pageId }));
+                            if (!('parent' in current)) {
+                                throw new Error('페이지의 현재 위치를 확인할 수 없습니다.');
+                            }
+                            const currentParent = current.parent;
+                            alreadyMoved = currentParent.type === 'data_source_id' &&
+                                normalizeId(currentParent.data_source_id) === normalizeId(target);
+                            const stillInSource = currentParent.type === 'data_source_id' &&
+                                normalizeId(currentParent.data_source_id) === normalizeId(source);
+                            if (!alreadyMoved && !stillInSource) {
+                                throw new Error('페이지가 원본/대상 외의 위치에 있습니다. 위치를 확인해주세요.');
+                            }
+                        }
+                        if (!alreadyMoved) {
+                            await commit(tx => tx.update(pageRef, { status: 'migrating', updatedAt: admin.firestore.FieldValue.serverTimestamp() }));
+                            await timed(`NOTION MOVE db=${dbName} page=${page.pageId}`, () => notion.pages.move({
+                                page_id: page.pageId, parent: { type: 'data_source_id', data_source_id: target }
+                            }));
+                        }
+                        // Save an in-flight move's result even if a stop was requested during the call.
+                        await commit(tx => {
+                            tx.update(pageRef, {
+                                status: 'complete',
+                                errorMessage: admin.firestore.FieldValue.delete(),
+                                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                            });
+                            tx.set(resultRef, {
+                                ...result,
+                                status: 'ok',
+                                type: 'page-complete'
+                            });
+                            tx.update(run, { completedCount: completed + 1 });
+                        }, true);
+                        completed++;
+                        page.status = 'complete';
+                        console.log(`[Migration] runId=${claimed.runId} PAGE COMPLETE db=${dbName} page=${page.pageId} completed=${completed} total=${totalCount}`);
+                    } catch (error: any) {
+                        if (error instanceof WorkerStopped) {
+                            throw error;
+                        }
+                        success = false;
+                        dbSuccess = false;
+                        await commit(tx => {
+                            tx.update(pageRef, {
+                                status: 'error',
+                                errorMessage: error.message,
+                                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                            });
+                            tx.set(resultRef, {
+                                ...result,
+                                status: 'error',
+                                type: 'page-error',
+                                message: `${page.pageName} — ${error.message}`
+                            });
+                        }, true);
+                    }
+                }
+                if (dbSuccess) {
+                    completedDbs++;
+                }
+                const databaseOrder = order++;
+                await commit(tx => {
+                    tx.set(resultsRef.doc(`database_${dbName.replace(/\//g, '_')}`), {
+                        dbName,
+                        type: 'database-complete',
+                        status: dbSuccess ? 'ok' : 'error',
+                        message: dbSuccess ? '데이터베이스 이전 완료' : '일부 페이지 이전 실패',
+                        order: databaseOrder,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                    tx.update(run, { completedDbCount: completedDbs });
+                });
+            } catch (error: any) {
+                if (error instanceof WorkerStopped) {
+                    throw error;
+                }
+                success = false;
+                const databaseOrder = order++;
+                await commit(tx => tx.set(resultsRef.doc(`database_${dbName.replace(/\//g, '_')}`), {
+                    dbName,
+                    type: 'error',
+                    status: 'error',
+                    message: error.message,
+                    order: databaseOrder,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                }));
+            }
+        }
+        await commit(tx => tx.update(run, {
+            status: 'complete',
+            success,
+            completedCount: completed,
+            totalCount,
+            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            workerId: null,
+            leaseExpiresAt: admin.firestore.Timestamp.fromMillis(0)
+        }));
+    } catch (error: any) {
+        if (!(error instanceof WorkerStopped)) {
+            console.error('[Migration] worker failed', { runId: claimed.runId, message: error.message });
+            await db.runTransaction(async tx => {
+                const data = (await tx.get(run)).data();
+                if (data?.workerId === owner) {
+                    tx.update(run, {
+                        status: 'error',
+                        success: false,
+                        error: error.message,
+                        workerId: null,
+                        leaseExpiresAt: admin.firestore.Timestamp.fromMillis(0)
+                    });
+                }
+            });
+        }
+    }
+    return { success: true, runId: claimed.runId };
+}

@@ -25,6 +25,7 @@ import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime,
 
 // notion
 import { Client } from "@notionhq/client";
+import { executeMigration, MigrationConflict } from './lifeup-migration-runner';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
@@ -897,6 +898,8 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
 };
 
 
+
+
 // #migration
 export const checkLifeUpMigration = onRequest({ secrets: [NOTION_MIGRATION_TOKEN] }, withCors(async (req, res) => {
     const userId = req.body?.userId;
@@ -924,15 +927,20 @@ export const checkLifeUpMigration = onRequest({ secrets: [NOTION_MIGRATION_TOKEN
 
         console.log(`[Migration Check] START runId=${runId}`);
 
-        runLifeUpMigrationCheck(userId, accessToken, runId).catch(async error => {
-            console.error("[Migration Check] Background Failed", error);
+        try {
+            await runLifeUpMigrationCheck(userId, accessToken, runId);
+        } catch (error: any) {
+            console.error("[Migration Check] Failed", error);
 
             await checkRef.update({
                 status: "complete",
                 success: false,
-                completedAt: admin.firestore.FieldValue.serverTimestamp()
+                completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                error: error?.message || "Migration check failed"
             });
-        });
+
+            throw error;
+        }
 
         return res.status(200).json({
             success: true,
@@ -949,454 +957,366 @@ export const checkLifeUpMigration = onRequest({ secrets: [NOTION_MIGRATION_TOKEN
     }
 }));
 
+async function runLifeUpMigrationCheck(userId: string, accessToken: string, runId: string) {
+    const workerStartedAt = Date.now();
+
+    console.log(`[Migration Check] WORKER START runId=${runId}`);
+
+    let success = true;
+
+    const userRef = db.collection("users").doc(userId);
+    const migrationRef = userRef.collection("integrations").doc("migration");
+    const checkRef = migrationRef.collection("migrationCheck").doc(runId);
+    const resultsRef = checkRef.collection("results");
+
+    await migrationRef.set({
+        migrationCheckRunId: runId
+    }, { merge: true });
+
+    await checkRef.set({
+        runId,
+        status: "checking",
+        success: false,
+        totalCount: 0,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    const migrationSnap = await migrationRef.get();
+    const migrationData = migrationSnap.data() || {};
+    const dataSourceCache = migrationData.datasources || {};
+
+    const dbEntries = Object.entries(lifeUpMigrationDbInfo)
+        .filter(([_, info]) => info.v13 && info.migration === "all");
+
+    let order = 0;
+
+    const processDb = async ([dbName, info]: [string, LifeUpMigrationDbInfo]) => {
+        const dbStartedAt = Date.now();
+
+        console.log(`[Migration Check] ▶ START ${dbName}`);
+
+        let result: any;
+
+        try {
+            // --------------------------------------------------
+            // 1. Data Source resolve
+            // --------------------------------------------------
+
+            let oldDataSourceId: string | null = null;
+            let newDataSourceId: string | null = null;
+
+            if (info.v15) {
+                for (const version of ["1.3", "1.5"] as const) {
+                    const cacheKey = `${dbName}_${version}`;
+
+                    let dataSourceId = dataSourceCache[cacheKey];
+
+                    if (dataSourceId) {
+                        console.log(
+                            `[Migration Check] ${cacheKey} → CACHE HIT`
+                        );
+                    } else {
+                        console.log(
+                            `[Migration Check] ${cacheKey} → resolve START`
+                        );
+
+                        const resolveStartedAt = Date.now();
+
+                        try {
+                            const searchDbName =
+                                info.dbNames?.[version] ?? dbName;
+
+                            const databaseId =
+                                await NotionService.getDatabaseIdByDatabaseName(
+                                    accessToken,
+                                    searchDbName,
+                                    version
+                                );
+
+                            if (!databaseId) {
+                                console.log(
+                                    `[Migration Check] ${cacheKey} → database NOT FOUND`
+                                );
+                                dataSourceId = null;
+                            } else {
+                                dataSourceId =
+                                    await NotionService.resolveDataSourceId(
+                                        accessToken,
+                                        databaseId
+                                    );
+                            }
+
+                            if (dataSourceId) {
+                                dataSourceCache[cacheKey] = dataSourceId;
+
+                                await migrationRef.set({
+                                    datasources: {
+                                        [cacheKey]: dataSourceId
+                                    }
+                                }, { merge: true });
+
+                                console.log(
+                                    `[Migration Check] ${cacheKey} → cache saved`
+                                );
+                            }
+
+                            console.log(
+                                `[Migration Check] ${cacheKey} → resolve END ${Date.now() - resolveStartedAt}ms`
+                            );
+                        } catch (error: any) {
+                            console.error(
+                                `[Migration Check] ${cacheKey} → resolve FAILED`,
+                                {
+                                    name: error?.name,
+                                    message: error?.message,
+                                    cause: error?.cause,
+                                    stack: error?.stack
+                                }
+                            );
+
+                            dataSourceId = null;
+                        }
+                    }
+
+                    if (version === "1.3") {
+                        oldDataSourceId = dataSourceId || null;
+                    } else {
+                        newDataSourceId = dataSourceId || null;
+                    }
+                }
+            }
+
+            console.log(
+                `[Migration Check] ${dbName} → resolved`,
+                {
+                    old: !!oldDataSourceId,
+                    new: !!newDataSourceId
+                }
+            );
+
+            // --------------------------------------------------
+            // 2. 결과 판단
+            // --------------------------------------------------
+
+            if (!info.v15) {
+                result = {
+                    dbName,
+                    status: "notification",
+                    count: 0,
+                    type: "removed"
+                };
+            } else if (!oldDataSourceId) {
+                result = {
+                    dbName,
+                    status: "error",
+                    count: 0,
+                    type: "not-found-old"
+                };
+            } else if (!newDataSourceId) {
+                result = {
+                    dbName,
+                    status: "error",
+                    count: 0,
+                    type: "not-found-new"
+                };
+            } else {
+                // --------------------------------------------------
+                // 3. Schema 검사
+                // --------------------------------------------------
+
+                console.log(`[Migration Check] ${dbName} → schema START`);
+
+                const schemaStartedAt = Date.now();
+
+                const [oldProperties, newProperties] = await Promise.all([
+                    NotionService.getDataSourceSchema(accessToken, oldDataSourceId),
+                    NotionService.getDataSourceSchema(accessToken, newDataSourceId)
+                ]);
+
+                console.log(
+                    `[Migration Check] ${dbName} → schema END ${Date.now() - schemaStartedAt}ms`
+                );
+
+                const oldNames = Object.keys(oldProperties);
+                const newNames = Object.keys(newProperties);
+
+                const onlyOld = oldNames.filter(
+                    name => !newProperties[name]
+                );
+
+                const onlyNew = newNames.filter(
+                    name => !oldProperties[name]
+                );
+
+                // --------------------------------------------------
+                // 4. Count 검사
+                // --------------------------------------------------
+
+                console.log(`[Migration Check] ${dbName} → count START`);
+
+                const countStartedAt = Date.now();
+
+                const count = await NotionService.countDataSource(
+                    accessToken,
+                    oldDataSourceId
+                );
+
+                console.log(
+                    `[Migration Check] ${dbName} → count END ${Date.now() - countStartedAt}ms count=${count}`
+                );
+
+                // --------------------------------------------------
+                // 5. 결과 판단
+                // --------------------------------------------------
+
+                if (onlyOld.length || onlyNew.length) {
+                    const isError = onlyOld.length > 0 && count > 0;
+
+                    result = {
+                        dbName,
+                        status: isError ? "error" : "notification",
+                        count,
+                        type: "schema",
+                        onlyOld,
+                        onlyNew
+                    };
+                } else {
+                    result = {
+                        dbName,
+                        status: "ok",
+                        count,
+                        type: "migration"
+                    };
+                }
+            }
+
+        } catch (error: any) {
+            console.error(
+                `[Migration Check] ${dbName} Failed`,
+                {
+                    name: error?.name,
+                    message: error?.message,
+                    cause: error?.cause,
+                    stack: error?.stack
+                }
+            );
+
+            result = {
+                dbName,
+                status: "error",
+                count: 0,
+                type: "error"
+            };
+        }
+
+        // --------------------------------------------------
+        // 6. DB 하나가 끝나는 즉시 결과 저장
+        // --------------------------------------------------
+
+        if (result.status === "error") {
+            success = false;
+        }
+
+        order++;
+
+        await resultsRef.doc(dbName).set({
+            ...result,
+            order,
+            createdAt:
+                admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log(
+            `[Migration Check] ✓ END ${dbName} total=${Date.now() - dbStartedAt}ms`
+        );
+    };
+
+    // --------------------------------------------------
+    // 7. DB를 1개씩 처리
+    // --------------------------------------------------
+
+    for (let i = 0; i < dbEntries.length; i += 1) {
+        const batch = dbEntries.slice(i, i + 1);
+
+        await Promise.all(
+            batch.map(entry => processDb(entry))
+        );
+    }
+
+    // --------------------------------------------------
+    // 8. 전체 검사 완료
+    // --------------------------------------------------
+
+    await checkRef.update({
+        status: "complete",
+        success,
+        totalCount: dbEntries.length,
+        completedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(
+        `[Migration Check] WORKER END runId=${runId} total=${Date.now() - workerStartedAt}ms`
+    );
+}
+
 /*
     - 연락처에 '직책 / 역할' 이 '직책'으로 변경 
     - task 에 색상 추가됨                           OK로 처리하기
    
 */
 
-async function runLifeUpMigration(userId: string, accessToken: string, runId: string) {
-    const workerStartedAt = Date.now();
-
-    console.log(`[Migration] WORKER START runId=${runId}`);
-
-    let success = true;
-
-    const notion = new Client({ auth: accessToken });
-
-    const userRef = db.collection("users").doc(userId);
-    const migrationRef = userRef.collection("integrations").doc("migration");
-    const migrationRunRef = migrationRef.collection("migration").doc(runId);
-    const resultsRef = migrationRunRef.collection("results");
-    const pagesRef = migrationRunRef.collection("pages");
-
-    await migrationRef.set({ migrationRunId: runId }, { merge: true });
-
-    await migrationRunRef.set({
-        runId,
-        status: "migrating",
-        success: false,
-        totalDbCount: 0,
-        completedDbCount: 0,
-        totalCount: 0,
-        completedCount: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    // migration check와 동일한 Data Source 캐시 사용
-    const migrationSnap = await migrationRef.get();
-    const migrationData = migrationSnap.data() || {};
-    const dataSourceCache = migrationData.datasources || {};
-
-    const dbEntries = Object.entries(lifeUpMigrationDbInfo)
-        .filter(([_, info]) => info.v13 === true && info.migration === "all");
-
-    await migrationRunRef.update({
-        totalDbCount: dbEntries.length
-    });
-
-    let order = 0;
-    let completedDbCount = 0;
-    let totalCount = 0;
-    let completedCount = 0;
-
-    for (let dbIndex = 0; dbIndex < dbEntries.length; dbIndex++) {
-        const [dbName, info] = dbEntries[dbIndex];
-
-        console.log(`[Migration] ▶ START ${dbName}`);
-
-        try {
-            // -------------------------------------------------
-            // DB 마이그레이션 시작
-            // -------------------------------------------------
-
-            await resultsRef.doc(`db_${dbIndex}_start`).set({
-                dbName,
-                status: "migrating",
-                type: "database",
-                message: `${dbName} 데이터베이스 마이그레이션 시작`,
-                order: order++,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            // -------------------------------------------------
-            // Data Source ID
-            // -------------------------------------------------
-
-            let oldDataSourceId: string | null = null;
-            let newDataSourceId: string | null = null;
-
-            for (const version of ["1.3", "1.5"] as const) {
-                const cacheKey = `${dbName}_${version}`;
-                let dataSourceId = dataSourceCache[cacheKey];
-
-                if (dataSourceId) {
-                    console.log(`[Migration] ${cacheKey} → CACHE HIT`);
-                } else {
-                    const searchDbName = info.dbNames?.[version] ?? dbName;
-
-                    const databaseId = await NotionService.getDatabaseIdByDatabaseName(
-                        accessToken,
-                        searchDbName,
-                        version
-                    );
-
-                    if (databaseId) {
-                        dataSourceId = await NotionService.resolveDataSourceId(
-                            accessToken,
-                            databaseId
-                        );
-                    }
-
-                    if (dataSourceId) {
-                        dataSourceCache[cacheKey] = dataSourceId;
-
-                        await migrationRef.set({
-                            datasources: {
-                                [cacheKey]: dataSourceId
-                            }
-                        }, { merge: true });
-                    }
-                }
-
-                if (version === "1.3") {
-                    oldDataSourceId = dataSourceId || null;
-                } else {
-                    newDataSourceId = dataSourceId || null;
-                }
-            }
-
-            if (!oldDataSourceId) {
-                throw new Error(`${dbName} DB를 1.3 버전에서 찾을 수 없습니다.`);
-            }
-
-            if (!newDataSourceId) {
-                throw new Error(`${dbName} DB를 1.5 버전에서 찾을 수 없습니다.`);
-            }
-
-            // -------------------------------------------------
-            // 기존 1.3 전체 페이지 조회
-            // -------------------------------------------------
-
-            const pages = await NotionService.getAllDataSourcePages(
-                notion,
-                oldDataSourceId
-            );
-
-            // 기본 데이터 제외
-            const migrationPages = pages.filter(page => {
-                if (
-                    info.defaultMigration === "none" &&
-                    info.defaultProperty &&
-                    NotionService.isDefaultPage(page, info.defaultProperty)
-                ) {
-                    return false;
-                }
-
-                return true;
-            });
-
-            const pageTotal = migrationPages.length;
-
-            // -------------------------------------------------
-            // 전체 페이지를 Firestore에 먼저 저장
-            // 이미 저장된 페이지는 유지
-            // -------------------------------------------------
-
-            const pageDocs = await pagesRef.get();
-
-            const existingPages = new Map<string, any>();
-
-            pageDocs.docs.forEach(doc => {
-                existingPages.set(doc.id, doc.data());
-            });
-
-            for (const page of migrationPages) {
-                const pageName =
-                    NotionService.getPageTitle(page) || "이름 없는 페이지";
-
-                const existing = existingPages.get(page.id);
-
-                if (!existing) {
-                    await pagesRef.doc(page.id).set({
-                        dbName,
-                        pageId: page.id,
-                        pageName,
-                        status: "pending",
-                        retryCount: 0,
-                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                    });
-                }
-            }
-
-            totalCount += pageTotal;
-
-            await migrationRunRef.update({
-                totalCount
-            });
-
-            // -------------------------------------------------
-            // 페이지별 마이그레이션
-            // -------------------------------------------------
-
-            for (let pageIndex = 0; pageIndex < migrationPages.length; pageIndex++) {
-                const page = migrationPages[pageIndex];
-                const pageName =
-                    NotionService.getPageTitle(page) || "이름 없는 페이지";
-
-                const pageRef = pagesRef.doc(page.id);
-                const pageSnap = await pageRef.get();
-                const pageData = pageSnap.data();
-
-                // 이미 성공한 페이지는 건너뜀
-                if (pageData?.status === "complete") {
-                    completedCount++;
-
-                    await resultsRef.doc(`page_${order}`).set({
-                        dbName,
-                        status: "ok",
-                        type: "page",
-                        message: `${pageName} (완료)`,
-                        pageName,
-                        current: pageIndex + 1,
-                        total: pageTotal,
-                        count: 1,
-                        skipped: true,
-                        order: order++,
-                        createdAt: admin.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    continue;
-                }
-
-                // -------------------------------------------------
-                // 이동 시작
-                // -------------------------------------------------
-
-                await pageRef.set({
-                    status: "migrating",
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-
-                await resultsRef.doc(`page_${order}`).set({
-                    dbName,
-                    status: "migrating",
-                    type: "page",
-                    message: pageName,
-                    pageName,
-                    current: pageIndex + 1,
-                    total: pageTotal,
-                    order: order++,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-
-                try {
-                    await notion.pages.move({
-                        page_id: page.id,
-                        parent: {
-                            type: "data_source_id",
-                            data_source_id: newDataSourceId
-                        }
-                    });
-
-                    // -------------------------------------------------
-                    // 성공
-                    // -------------------------------------------------
-
-                    await pageRef.set({
-                        status: "complete",
-                        errorMessage: admin.firestore.FieldValue.delete(),
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-
-                    completedCount++;
-
-                    await resultsRef.doc(`page_${order}`).set({
-                        dbName,
-                        status: "ok",
-                        type: "page-complete",
-                        message: pageName,
-                        pageName,
-                        current: pageIndex + 1,
-                        total: pageTotal,
-                        count: 1,
-                        order: order++,
-                        createdAt: admin.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    await migrationRunRef.update({
-                        completedCount
-                    });
-
-                } catch (error: any) {
-                    // -------------------------------------------------
-                    // 실패
-                    // -------------------------------------------------
-
-                    success = false;
-
-                    const errorMessage =
-                        error?.message || "페이지 이동 실패";
-
-                    await pageRef.set({
-                        status: "error",
-                        errorMessage,
-                        retryCount: admin.firestore.FieldValue.increment(1),
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-
-                    await resultsRef.doc(`page_${order}`).set({
-                        dbName,
-                        status: "error",
-                        type: "page-error",
-                        message: `${pageName} — ${errorMessage}`,
-                        pageName,
-                        current: pageIndex + 1,
-                        total: pageTotal,
-                        count: 1,
-                        errorMessage,
-                        order: order++,
-                        createdAt: admin.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    console.error(
-                        `[Migration] PAGE ERROR db=${dbName} page=${page.id}`,
-                        error
-                    );
-                }
-            }
-
-            // -------------------------------------------------
-            // DB 완료
-            // -------------------------------------------------
-
-            completedDbCount++;
-
-            await resultsRef.doc(`db_${dbIndex}_complete`).set({
-                dbName,
-                status: "ok",
-                type: "database-complete",
-                count: pageTotal,
-                message: `${dbName} 데이터베이스 마이그레이션 완료`,
-                order: order++,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            await migrationRunRef.update({
-                completedDbCount
-            });
-
-        } catch (error: any) {
-            success = false;
-
-            const errorMessage =
-                error?.message || "Migration failed";
-
-            await resultsRef.doc(`db_${dbIndex}_error`).set({
-                dbName,
-                status: "error",
-                type: "error",
-                message: errorMessage,
-                order: order++,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            console.error(
-                `[Migration] DB ERROR db=${dbName}`,
-                error
-            );
-        }
-    }
-
-    // -------------------------------------------------
-    // 전체 완료
-    // -------------------------------------------------
-
-    await migrationRunRef.update({
-        status: "complete",
-        success,
-        totalDbCount: dbEntries.length,
-        completedDbCount,
-        totalCount,
-        completedCount,
-        completedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    console.log(
-        `[Migration] WORKER END runId=${runId} total=${Date.now() - workerStartedAt}ms`
-    );
-}
 
 // #migration
-export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN] }, withCors(async (req, res) => {
+export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 3600 }, withCors(async (req, res) => {
     const userId = req.body?.userId;
-
-    try {
-        if (!userId) {
-            throw new Error("Missing userId");
-        }
-
-        const userRef = db.collection("users").doc(userId);
-        const snap = await userRef.get();
-        const accessToken = snap.data()?.notionMigrationAccessToken;
-
-        if (!accessToken) {
-            throw new Error("Migration Notion access token not found");
-        }
-
-        const runId = `${Date.now()}`;
-
-        const migrationRef = userRef
-            .collection("integrations")
-            .doc("migration");
-
-        const migrationRefDoc = migrationRef
-            .collection("migration")
-            .doc(runId);
-
-        await migrationRefDoc.set({
-            runId,
-            status: "migrating",
-            success: false,
-            totalDbCount: 0,
-            completedDbCount: 0,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        console.log(`[Migration] START runId=${runId}`);
-
-        runLifeUpMigration(
-            userId,
-            accessToken,
-            runId
-        ).catch(async error => {
-            console.error("[Migration] Background Failed", error);
-
-            await migrationRefDoc.update({
-                status: "complete",
-                success: false,
-                completedAt: admin.firestore.FieldValue.serverTimestamp(),
-                error: error?.message || "Migration failed"
-            });
-        });
-
-        return res.status(200).json({
-            success: true,
-            runId
-        });
-
-    } catch (error: any) {
-        console.error("[Migration] Failed", error);
-
-        return res.status(500).json({
-            success: false,
-            message: error?.message || "Migration failed"
-        });
+    if (typeof userId !== 'string' || !userId || userId.includes('/')) {
+        return res.status(400).json({ success: false, message: 'Invalid userId' });
     }
-})
-);
-
+    const runId = req.body?.runId;
+    const action = req.body?.action || 'start';
+    const invalidRunId = runId !== undefined && (
+        typeof runId !== 'string' || !runId || runId.includes('/')
+    );
+    const invalidAction = !['start', 'resume', 'stop'].includes(action);
+    if (invalidRunId || invalidAction) {
+        return res.status(400).json({ success: false, message: 'Invalid migration request' });
+    }
+    try {
+        const userRef = db.collection('users').doc(userId);
+        const accessToken = (await userRef.get()).data()?.notionMigrationAccessToken;
+        if (!accessToken) {
+            throw new Error('Migration Notion access token not found');
+        }
+        const migrationRef = userRef.collection('integrations').doc('migration');
+        const cache = (await migrationRef.get()).data()?.datasources || {};
+        const result = await executeMigration(db, userId, accessToken, runId, action, {
+            entries: Object.entries(lifeUpMigrationDbInfo).filter(([, info]) => info.v13 && info.migration === 'all'),
+            resolve: async (dbName, version) => {
+                const cacheKey = `${dbName}_${version}`;
+                if (cache[cacheKey]) {
+                    return cache[cacheKey];
+                }
+                const info = lifeUpMigrationDbInfo[dbName];
+                const name = info?.dbNames?.[version as '1.3' | '1.5'] || dbName;
+                const databaseId = await NotionService.getDatabaseIdByDatabaseName(accessToken, name, version);
+                if (!databaseId) {
+                    return null;
+                }
+                const dataSourceId = await NotionService.resolveDataSourceId(accessToken, databaseId);
+                if (dataSourceId) {
+                    cache[cacheKey] = dataSourceId;
+                    await migrationRef.set({ datasources: { [cacheKey]: dataSourceId } }, { merge: true });
+                }
+                return dataSourceId;
+            },
+            pages: dataSourceId => NotionService.getAllDataSourcePageInfo(accessToken, dataSourceId)
+        });
+        return res.status(200).json(result);
+    } catch (error: any) {
+        console.error('[Migration] request failed', error);
+        return res.status(error instanceof MigrationConflict ? 409 : 500).json({ success: false, message: error.message });
+    }
+}));
 
 // ----------------------
 // Notion Database 조회
@@ -4997,132 +4917,40 @@ class NotionService {
     }
 
     // #migration
-    static async migrateDataSource(
-        accessToken: string,
-        oldDataSourceId: string,
-        newDataSourceId: string,
-        options: {
-            defaultProperty?: string;
-            defaultMigration?: "none" | "move";
-            onPageMigrated?: (page: any, index: number, total: number) => Promise<void>;
-        }
-    ) {
-        const pages = await this.getAllDataSourcePages(
-            accessToken,
-            oldDataSourceId
-        );
-
-        const migrationPages = options.defaultProperty &&
-            options.defaultMigration === "none"
-            ? pages.filter(page =>
-                !this.isDefaultPage(page, options.defaultProperty!)
-            )
-            : pages;
-
-        const total = migrationPages.length;
-
-        for (let i = 0; i < total; i++) {
-            const page = migrationPages[i];
-
-            await this.migratePage(
-                accessToken,
-                page,
-                newDataSourceId
-            );
-
-            if (options.onPageMigrated) {
-                await options.onPageMigrated(
-                    page,
-                    i,
-                    total
-                );
-            }
-        }
-
-        return {
-            count: total
-        };
-    }
-
-    // #migration
-    static async getAllDataSourcePages(
+    static async getAllDataSourcePageInfo(
         accessToken: string,
         dataSourceId: string
-    ): Promise<any[]> {
-        const pages: any[] = [];
-
-        let nextCursor: string | undefined = undefined;
+    ): Promise<Array<{ id: string; title: string; properties: any }>> {
+        const notion = new Client({ auth: accessToken });
+        const pages: Array<{ id: string; title: string; properties: any }> = [];
+        let startCursor: string | undefined = undefined;
 
         do {
-            const response = await axios.post(
-                `https://api.notion.com/v1/data_sources/${dataSourceId}/query`,
-                {
-                    page_size: 100,
-                    ...(nextCursor ? { start_cursor: nextCursor } : {})
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`,
-                        "Notion-Version": "2025-09-03",
-                        "Content-Type": "application/json"
-                    }
-                }
-            );
+            const response: any = await notion.dataSources.query({
+                data_source_id: dataSourceId,
+                page_size: 100,
+                ...(startCursor ? { start_cursor: startCursor } : {})
+            });
 
-            pages.push(...(response.data?.results || []));
+            pages.push(...response.results.map((page: any) => {
+                const titleProperty = Object.values(page.properties ?? {}).find(
+                    (property: any) => property?.type === "title"
+                ) as any;
 
-            nextCursor = response.data?.next_cursor || undefined;
+                return {
+                    id: page.id,
+                    title: (titleProperty?.title ?? [])
+                        .map((text: any) => text.plain_text ?? "")
+                        .join(""),
+                    properties: page.properties ?? {}
+                };
+            }));
 
-        } while (nextCursor);
+            startCursor = response.next_cursor || undefined;
+
+        } while (startCursor);
 
         return pages;
-    }
-
-    static isDefaultPage(
-        page: any,
-        defaultProperty: string
-    ): boolean {
-        const property = page.properties?.[defaultProperty];
-
-        if (!property) {
-            return false;
-        }
-
-        const value =
-            property.title?.[0]?.plain_text ??
-            property.rich_text?.[0]?.plain_text ??
-            property.select?.name ??
-            property.status?.name ??
-            property.multi_select?.[0]?.name ??
-            null;
-
-        return value === defaultProperty;
-    }
-
-    // #migration
-    static async migratePage(
-        accessToken: string,
-        page: any,
-        newDataSourceId: string
-    ): Promise<any> {
-        const response = await axios.post(
-            "https://api.notion.com/v1/pages",
-            {
-                parent: {
-                    data_source_id: newDataSourceId
-                },
-                properties: page.properties
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    "Notion-Version": "2025-09-03",
-                    "Content-Type": "application/json"
-                }
-            }
-        );
-
-        return response.data;
     }
 }
 

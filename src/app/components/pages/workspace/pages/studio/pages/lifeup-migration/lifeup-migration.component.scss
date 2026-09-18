@@ -603,6 +603,42 @@
     font-size: 11px;
 }
 
+.migration-guide {
+    margin-top: 20px;
+    padding: 18px 20px;
+    background: #15191f;
+    border: 1px solid #303640;
+    border-radius: 12px;
+
+    h3 {
+        margin: 0 0 8px;
+        color: #fff;
+        font-size: 14px;
+    }
+
+    ul {
+        margin: 0;
+        padding-left: 18px;
+        color: #9da7b5;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    li + li {
+        margin-top: 4px;
+    }
+
+    strong {
+        color: #d8a36f;
+        font-weight: 400;
+    }
+
+    p {
+        margin: 4px 0 0;
+        overflow-wrap: anywhere;
+    }
+}
+
 .check-action {
     display: flex;
     justify-content: center;
@@ -640,6 +676,34 @@
     line-height: 1.7;
 }
 
+.migration-progress {
+    padding: 12px 27px 12px 18px;
+    background: #101216;
+}
+
+.migration-progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    color: #9da7b5;
+    font-size: 12px;
+    padding: 0 3px;
+}
+
+.migration-progress-track {
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: #394047;
+}
+
+.migration-progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: #74c995;
+    transition: width 180ms ease;
+}
+
 .migration-warning {
     display: inline-block;
     margin-bottom: 20px;
@@ -648,6 +712,12 @@
     background: rgba(229,161,95,.08);
     color: #d8a36f;
     font-size: 11px;
+    line-height: 1.7;
+}
+
+.migration-action {
+    display: flex;
+    justify-content: center;
 }
 
 .migration-preview {

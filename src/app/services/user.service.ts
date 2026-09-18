@@ -147,6 +147,12 @@ interface LifeUpMigrationCheckResult {
     results: any[];
 }
 
+interface LifeUpMigrationResult {
+    success: boolean;
+    runId: string;
+    message?: string;
+}
+
 
 
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
@@ -171,6 +177,71 @@ export class UserService {
     // #migration
     public migrationCheckResult$ = new Subject<any>();
     public migrationCheckStatus$ = new Subject<any>();
+
+    public migrationResult$ = new Subject<any>();
+    public migrationStatus$ = new Subject<any>();
+    private migrationUnsubscribers: (() => void)[] = [];
+    private migrationRunUnsubscribe?: () => void;
+
+    async getMigrationRun(userId: string): Promise<any | null> {
+        if (!userId) return null;
+        const parent = await getDoc(doc(firestore, 'users', userId, 'integrations', 'migration'));
+        const runId = parent.data()?.['migrationRunId'];
+        if (runId) {
+            const run = await getDoc(doc(firestore, 'users', userId, 'integrations', 'migration', 'migration', runId));
+            if (run.exists()) return { ...run.data(), runId };
+        }
+        const runs = await getDocs(query(
+            collection(firestore, 'users', userId, 'integrations', 'migration', 'migration'),
+            orderBy('createdAt', 'desc'), limit(1)
+        ));
+        const latest = runs.docs[0];
+        return latest ? { ...latest.data(), runId: latest.id } : null;
+    }
+
+    watchNextMigrationRun(userId: string, previousRunId: string) {
+        this.stopMigrationWatcher();
+        this.migrationRunUnsubscribe = onSnapshot(
+            query(
+                collection(firestore, 'users', userId, 'integrations', 'migration', 'migration'),
+                orderBy('createdAt', 'desc'), limit(1)
+            ),
+            snapshot => {
+                const runId = snapshot.docs[0]?.id;
+                if (runId && runId !== previousRunId) {
+                    this.startMigrationWatcher(userId, runId);
+                }
+            },
+            error => this.migrationStatus$.next({ status: 'watch-error', error: error.message })
+        );
+    }
+
+    startMigrationWatcher(userId: string, runId: string) {
+        this.stopMigrationWatcher();
+        const runRef = doc(firestore, 'users', userId, 'integrations', 'migration', 'migration', runId);
+        const onError = (error: Error) => this.migrationStatus$.next({ status: 'watch-error', error: error.message });
+        this.migrationUnsubscribers = [
+            onSnapshot(query(collection(runRef, 'results'), orderBy('order')), snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type !== 'removed') {
+                        this.migrationResult$.next({ ...change.doc.data(), id: change.doc.id });
+                    }
+                });
+            }, onError),
+            onSnapshot(runRef, snapshot => {
+                if (snapshot.exists()) {
+                    this.migrationStatus$.next({ ...snapshot.data(), runId });
+                }
+            }, onError)
+        ];
+    }
+
+    stopMigrationWatcher() {
+        this.migrationRunUnsubscribe?.();
+        this.migrationRunUnsubscribe = undefined;
+        this.migrationUnsubscribers.forEach(unsubscribe => unsubscribe());
+        this.migrationUnsubscribers = [];
+    }
 
     private migrationCheckUnsubscribe?: () => void;
     private migrationCheckStatusUnsubscribe?: () => void;
@@ -1837,6 +1908,22 @@ export class UserService {
         } catch (error) {
             console.error('checkLifeUpMigration failed', error);
             return null;
+        }
+    }
+
+    async migrateLifeUp(userId: string, runId?: string, action: 'start' | 'resume' | 'stop' = 'start'): Promise<LifeUpMigrationResult | null> {
+        if (!userId) return null;
+
+        try {
+            return await firstValueFrom(
+                this.http.post<LifeUpMigrationResult>(
+                    `${this.functionsBaseUrl}/migrateLifeUp`,
+                    { userId, runId, action }
+                )
+            );
+        } catch (error: any) {
+            console.error('migrateLifeUp failed', error);
+            return { success: false, runId: runId || '', message: error?.error?.message || '서버 응답을 확인하지 못했습니다.' };
         }
     }
 

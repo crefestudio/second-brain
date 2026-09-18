@@ -1,4 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, OnDestroy, OnInit, QueryList, ViewChildren } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../../../../../../services/auth.service';
@@ -14,7 +15,97 @@ import { NACommonService } from '../../../../../../../services/common.service';
     templateUrl: './lifeup-migration.component.html',
     styleUrl: './lifeup-migration.component.scss'
 })
-export class LifeupMigrationComponent implements OnInit {
+export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChecked {
+    @ViewChildren('migrationConsole') private migrationConsoles!: QueryList<ElementRef<HTMLElement>>;
+    private consoleItemCounts = new WeakMap<HTMLElement, number>();
+
+    ngAfterViewChecked() {
+        this.migrationConsoles.forEach(({ nativeElement: element }) => {
+            const count = element.childElementCount;
+            if (this.consoleItemCounts.get(element) !== count) {
+                element.scrollTop = element.scrollHeight;
+                this.consoleItemCounts.set(element, count);
+            }
+        });
+    }
+
+    private subscriptions = new Subscription();
+    private destroyed = false;
+    migrationStarted = false;
+    migrationRunId = '';
+    migrationStatus = 'READY';
+    migrationResults: any[] = [];
+    migrationTotalCount = 0;
+    migrationCompletedCount = 0;
+    migrationComplete = false;
+    migrationSuccess = false;
+    migrationError = '';
+    private migrationClock?: ReturnType<typeof setInterval>;
+    migrationNow = Date.now();
+    migrationRestartAfter = 0;
+    migrationSupportsStop = false;
+    migrationStopPending = false;
+
+    get migrationCanRestart(): boolean {
+        return !!this.migrationRunId && !this.migrationSuccess &&
+            this.migrationRestartAfter > 0 && this.migrationNow >= this.migrationRestartAfter;
+    }
+
+    migrationCounting = false;
+    migrationTotalCountReady = true;
+
+    get migrationRemainingCount(): number {
+        return Math.max(0, this.migrationTotalCount - this.migrationCompletedCount);
+    }
+
+    get migrationProgress(): number {
+        return this.migrationTotalCount > 0
+            ? Math.min(100, this.migrationCompletedCount / this.migrationTotalCount * 100)
+            : this.migrationComplete && this.migrationSuccess ? 100 : 0;
+    }
+
+    private applyMigrationStatus(status: any) {
+        this.migrationStarted = true;
+        this.migrationCounting = status.phase === 'counting';
+        this.migrationTotalCountReady = status.totalCountReady !== false;
+        this.migrationRunId = status.runId;
+        this.migrationTotalCount = status.totalCount || 0;
+        this.migrationCompletedCount = status.completedCount || 0;
+        this.migrationComplete = status.status === 'complete';
+        this.migrationSuccess = this.migrationComplete && status.success === true;
+        this.migrationStatus = this.migrationComplete
+            ? (this.migrationSuccess ? 'COMPLETE' : 'ERROR') : (status.status || 'migrating').toUpperCase();
+        this.migrationSupportsStop = !!status.restartTimeoutMs;
+        this.migrationRestartAfter = ['stopped', 'error', 'complete'].includes(status.status)
+            ? 1 : status.leaseExpiresAt?.toMillis?.() || (status.createdAt?.toMillis?.() || Date.now()) + 60 * 60 * 1000;
+        this.migrationError = status.error || '';
+        this.migrationNow = Date.now();
+    }
+
+    async restartMigration() {
+        if (!this.migrationCanRestart) return;
+        this.migrationStatus = 'MIGRATING';
+        this.migrationComplete = false;
+        this.migrationError = '';
+        this.migrationRestartAfter = Date.now() + 5 * 60 * 1000;
+        const result = await this.userService.migrateLifeUp(this.userId, this.migrationRunId, 'resume');
+        if (this.destroyed) return;
+        if (!result?.success) {
+            await this.restoreMigration();
+            this.migrationError = result?.message || '재시작 응답을 확인하지 못했습니다.';
+        }
+    }
+
+    async stopMigration() {
+        if (this.migrationStopPending || !this.migrationSupportsStop || this.migrationStatus !== 'MIGRATING') return;
+        this.migrationStopPending = true;
+        try {
+            const result = await this.userService.migrateLifeUp(this.userId, this.migrationRunId, 'stop');
+            if (!this.destroyed && !result?.success) this.migrationError = result?.message || '중단 요청에 실패했습니다.';
+        } finally {
+            this.migrationStopPending = false;
+        }
+    }
     isLoading = true;
     memberUid: string = '';
     userId: string = '';
@@ -54,15 +145,16 @@ export class LifeupMigrationComponent implements OnInit {
 
     async ngOnInit() {
         this.restoreStepFromHash();
+        this.migrationClock = setInterval(() => this.migrationNow = Date.now(), 1000);
 
         console.log('[Migration Check] restore step:', this.currentStep);
 
-        this.userService.migrationCheckResult$.subscribe(result => {
+        this.subscriptions.add(this.userService.migrationCheckResult$.subscribe(result => {
             console.log('[Migration Check] watcher result:', result);
             this.mergeMigrationCheckResult(result);
-        });
+        }));
 
-        this.userService.migrationCheckStatus$.subscribe(status => {
+        this.subscriptions.add(this.userService.migrationCheckStatus$.subscribe(status => {
             console.log('[Migration Check] watcher status:', status);
 
             this.migrationCheckTotalCount = status.totalCount || 0;
@@ -80,15 +172,97 @@ export class LifeupMigrationComponent implements OnInit {
 
             this.clearForceStopTimer();
             this.forceStopAvailable = false;
-        });
+        }));
+
+        this.subscriptions.add(this.userService.migrationResult$.subscribe(result => {
+            // Hide start/progress events, including logs saved by older workers.
+            if (result.status !== 'ok' && result.status !== 'error' && result.status !== 'notification') return;
+            const index = this.migrationResults.findIndex(item =>
+                item.id === result.id || (result.pageId && item.pageId === result.pageId)
+            );
+            if (index >= 0) this.migrationResults[index] = result;
+            else this.migrationResults.push(result);
+            this.migrationResults.sort((a, b) => (a.order || 0) - (b.order || 0));
+        }));
+        this.subscriptions.add(this.userService.migrationStatus$.subscribe(status => {
+            if (status.status === 'watch-error') {
+                this.migrationError = '진행 상태를 불러오지 못했습니다. 새로고침하여 다시 확인해주세요.';
+                return;
+            }
+            this.applyMigrationStatus(status);
+        }));
 
         try {
             await this.initData();
             console.log('[Migration Check] userId:', this.userId);
 
-            await this.restoreMigrationCheck();
+            await Promise.allSettled([
+                this.restoreMigrationCheck(),
+                this.restoreMigration()
+            ]);
         } finally {
             this.isLoading = false;
+        }
+    }
+
+    ngOnDestroy() {
+        this.destroyed = true;
+        clearInterval(this.migrationClock);
+        this.subscriptions.unsubscribe();
+        this.clearForceStopTimer();
+        this.userService.stopMigrationCheckWatcher();
+        this.userService.stopMigrationWatcher();
+    }
+
+    private get migrationStartedKey(): string {
+        return `lifeup-migration-started:${this.userId}`;
+    }
+
+    private async restoreMigration() {
+        if (!this.userId || this.destroyed) return;
+        this.migrationStarted = localStorage.getItem(this.migrationStartedKey) === 'true';
+        if (this.migrationStarted) this.migrationStatus = 'MIGRATING';
+        try {
+            const run = await this.userService.getMigrationRun(this.userId);
+            if (this.destroyed) return;
+            if (run) {
+                this.applyMigrationStatus(run);
+                this.userService.startMigrationWatcher(this.userId, run.runId);
+            } else {
+                // A reload can happen before the function creates its run document.
+                this.userService.watchNextMigrationRun(this.userId, '');
+            }
+        } catch (error) {
+            console.error('[Migration] restore failed:', error);
+            this.migrationStarted = true;
+            this.migrationStatus = 'ERROR';
+            this.migrationError = '이전 진행 상태를 불러오지 못했습니다. 새로고침하여 다시 확인해주세요.';
+        }
+    }
+
+    async startMigrationProcess() {
+        if (!this.userId || this.migrationStarted) return;
+        this.migrationStarted = true;
+        localStorage.setItem(this.migrationStartedKey, 'true');
+        this.migrationStatus = 'MIGRATING';
+        this.migrationError = '';
+
+        try {
+            const previousRun = await this.userService.getMigrationRun(this.userId);
+            if (this.destroyed) return;
+            // The HTTP function returns after migration finishes, so discover the run via Firestore first.
+            this.userService.watchNextMigrationRun(this.userId, previousRun?.runId || '');
+            const result = await this.userService.migrateLifeUp(this.userId);
+            if (this.destroyed) return;
+            if (result?.success && result.runId) {
+                if (!this.migrationRunId) this.userService.startMigrationWatcher(this.userId, result.runId);
+            } else if (!this.migrationComplete) {
+                this.migrationError = '이전 요청의 응답을 확인하지 못했습니다. 진행 상태를 확인해주세요.';
+            }
+        } catch (error) {
+            console.error('[Migration] start failed:', error);
+            this.migrationStatus = 'ERROR';
+            this.migrationError = '데이터 이전을 시작하지 못했습니다. 새로고침하여 진행 상태를 확인해주세요.';
         }
     }
 

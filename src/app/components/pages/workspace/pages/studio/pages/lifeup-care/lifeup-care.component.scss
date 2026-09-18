@@ -4,6 +4,11 @@
     padding: 5px 32px 32px;
 }
 
+/* 구매인증 안내 제목은 이 화면에서만 한 단계 작게 표시합니다. */
+.notificaton-box h2 {
+    font-size: 19px;
+}
+
 .page-header {
     margin-bottom: 40px;
 }
