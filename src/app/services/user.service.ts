@@ -172,6 +172,7 @@ export class UserService {
 
     public notionMigrationConnected$ = new Subject<void>();
     private notionMigrationConnectUnsubscribe?: () => void;
+    private notionMigrationConnectWatchGeneration = 0;
 
 
     // #migration
@@ -941,18 +942,23 @@ export class UserService {
     }
 
     ////////////////////////////////
-    startNotionMigrationConnectWatcher(userId: string) {
+    async startNotionMigrationConnectWatcher(userId: string) {
         if (!userId) { return; }
 
         this.stopNotionMigrationConnectWatcher();
-        let initialized = false;
-        let connectionId = '';
+        const generation = ++this.notionMigrationConnectWatchGeneration;
 
         const docRef = doc(
             firestore,
             'users',
             userId
         );
+
+        // Capture the pre-reconnect ID before opening OAuth. Otherwise a fast OAuth
+        // completion can be mistaken for the listener's initial snapshot.
+        const existingSnapshot = await getDoc(docRef);
+        if (generation !== this.notionMigrationConnectWatchGeneration) return;
+        const connectionId = existingSnapshot.data()?.['notionMigrationConnectionId'] || '';
 
         this.notionMigrationConnectUnsubscribe = onSnapshot(
             docRef,
@@ -961,12 +967,6 @@ export class UserService {
 
                 const data = snapshot.data();
                 const updatedConnectionId = data['notionMigrationConnectionId'] || '';
-                if (!initialized) {
-                    initialized = true;
-                    connectionId = updatedConnectionId;
-                    return;
-                }
-
                 if (data['notionMigrationAccessToken'] && updatedConnectionId && updatedConnectionId !== connectionId) {
                     this.notionMigrationConnected$.next();
                     this.stopNotionMigrationConnectWatcher();
@@ -976,6 +976,7 @@ export class UserService {
     }
 
     stopNotionMigrationConnectWatcher() {
+        this.notionMigrationConnectWatchGeneration++;
         this.notionMigrationConnectUnsubscribe?.();
         this.notionMigrationConnectUnsubscribe = undefined;
     }

@@ -60,6 +60,38 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         return Math.max(0, this.migrationTotalCount - this.migrationCompletedCount);
     }
 
+    get migrationErrorCount(): number {
+        return this.migrationResults.filter(
+            (result) => result.status === 'error' && result.type === 'page-error',
+        ).length;
+    }
+
+    migrationStatusLabel(status: string, isCheck = false): string {
+        const labels: Record<string, string> = isCheck
+            ? {
+                READY: '점검 준비',
+                CHECKING: '점검 진행 중',
+                COMPLETE: '점검 완료',
+                ERROR: '점검 오류',
+            }
+            : {
+                READY: '준비 중',
+                MIGRATING: '이전 진행 중',
+                STOPPING: '중단 요청 중',
+                STOPPED: '중단됨',
+                COMPLETE: '완료',
+                ERROR: '오류',
+            };
+        return labels[status] || status;
+    }
+
+    migrationStatusClass(status: string): string {
+        if (status === 'ERROR') return 'console-status-error';
+        if (status === 'MIGRATING' || status === 'CHECKING' || status === 'COMPLETE') return 'console-status-success';
+        if (status === 'STOPPING') return 'console-status-warning';
+        return 'console-status-muted';
+    }
+
     get migrationProgress(): number {
         return this.migrationTotalCount > 0
             ? Math.min(100, this.migrationCompletedCount / this.migrationTotalCount * 100)
@@ -128,6 +160,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
 
     // notion template
     isOpenNotionConnectWindow: boolean = false;
+    private notionConnectWindow?: Window | null;
 
     steps = [
         { title: '백업 • 설치', description: '새 버전 설치 및 기존 버전 백업' },
@@ -449,10 +482,12 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     //
     // notion template 연결
 
-    onClickConnectTemplate() {
+    async onClickConnectTemplate() {
         this.isOpenNotionConnectWindow = true;
-        this.userService.startNotionMigrationConnectWatcher(this.userId);
-        this.openNotionConnectWindow();
+        // Open synchronously from the click so browsers do not block the OAuth popup.
+        this.notionConnectWindow = window.open('', '_blank');
+        await this.userService.startNotionMigrationConnectWatcher(this.userId);
+        await this.openNotionConnectWindow(this.notionConnectWindow);
     }
 
     onClickCancelConnectTemplateBtn() {
@@ -460,7 +495,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         this.userService.stopNotionMigrationConnectWatcher();
     }
 
-    async openNotionConnectWindow() {
+    async openNotionConnectWindow(connectWindow?: Window | null) {
         _log('connectTemplate userId =>', this.userId);
 
         if (!this.userId) {
@@ -473,7 +508,11 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         const setupPath = 'connect';
         const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
 
-        window.open(url, '_blank');
+        if (connectWindow) {
+            connectWindow.location.href = url;
+        } else {
+            window.open(url, '_blank');
+        }
     }
 
     onComplateNotionTemplateConnect() {
@@ -578,6 +617,23 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         }
 
         if (item.type === 'schema') {
+            if (item.renamed?.length || item.typeChanged?.length) {
+                const changes: string[] = [];
+                if (item.renamed?.length) {
+                    changes.push(`필드명이 변경되었습니다: ${item.renamed.map((field: any) => `'${field.oldName}' → '${field.newName}'`).join(', ')}`);
+                }
+                if (item.onlyOld?.length) {
+                    changes.push(`새 버전에서 삭제된 프로퍼티: ${item.onlyOld.join(', ')}`);
+                }
+                if (item.onlyNew?.length) {
+                    changes.push(`새 버전에 추가된 프로퍼티: ${item.onlyNew.join(', ')}`);
+                }
+                if (item.typeChanged?.length) {
+                    changes.push(`프로퍼티 형식이 변경되었습니다: ${item.typeChanged.map((field: any) => `${field.name} (${field.oldType} → ${field.newType})`).join(', ')}`);
+                }
+                return `${item.dbName} DB ${changes.join(' / ')}`;
+            }
+
             if (item.onlyOld?.length) {
                 return `${item.dbName} DB에 1.5 버전에서 없는 프로퍼티가 있습니다: ${item.onlyOld.join(', ')}`;
             }

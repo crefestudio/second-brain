@@ -8,6 +8,7 @@ let retrieveCalls = [];
 let updateCalls = [];
 let appendCalls = [];
 let deleteCalls = [];
+let appendSequence = 0;
 let onMove;
 let onUpdate;
 let onListBlocks;
@@ -28,7 +29,10 @@ Module._load = function (name, ...args) {
             blocks = {
                 children: {
                     list: async ({ block_id }) => onListBlocks ? onListBlocks(block_id) : ({ results: [], has_more: false }),
-                    append: async options => { appendCalls.push(options); }
+                    append: async options => {
+                        appendCalls.push(options);
+                        return { results: options.children.map(() => ({ id: `appended-${++appendSequence}` })) };
+                    }
                 },
                 update: async options => { updateCalls.push(options); if (onUpdate) await onUpdate(options); },
                 delete: async ({ block_id }) => { deleteCalls.push(block_id); }
@@ -92,7 +96,7 @@ function memoryDb(seed) {
     };
 }
 function fixture(pages, extra = {}) {
-    moveCalls = []; retrieveCalls = []; updateCalls = []; appendCalls = []; deleteCalls = []; onMove = undefined; onUpdate = undefined; onListBlocks = undefined; currentParent = 'target';
+    moveCalls = []; retrieveCalls = []; updateCalls = []; appendCalls = []; deleteCalls = []; appendSequence = 0; onMove = undefined; onUpdate = undefined; onListBlocks = undefined; currentParent = 'target';
     return memoryDb({
         [root]: { migrationRunId: 'run' },
         [runPath]: { status: 'migrating', createdAt: timestamp(Date.now() - 7200000), totalCount: pages.length, ...extra },
@@ -348,7 +352,9 @@ test('a marked text block and its callout are restored only after the template r
     let templateApplied = false;
     onListBlocks = async blockId => ({
         results: blockId === 'old-callout' ? [
-            { id: 'old-bullet', type: 'bulleted_list_item', bulleted_list_item: { rich_text: [{ plain_text: '호치민' }] } }
+            { id: 'old-bullet', type: 'bulleted_list_item', has_children: true, bulleted_list_item: { rich_text: [{ plain_text: '호치민' }] } }
+        ] : blockId === 'old-bullet' ? [
+            { id: 'old-nested-bullet', type: 'bulleted_list_item', bulleted_list_item: { rich_text: [{ plain_text: '맛집' }] } }
         ] : blockId === 'new-callout' ? [] : templateApplied ? [
             { id: 'new-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '▫ 세부 목표' }] } },
             { id: 'new-callout', type: 'callout', callout: { rich_text: [{ plain_text: '기본 내용' }] } }
@@ -377,7 +383,46 @@ test('a marked text block and its callout are restored only after the template r
             type: 'bulleted_list_item',
             bulleted_list_item: { rich_text: [{ plain_text: '호치민' }] }
         }]
+    }, {
+        block_id: 'appended-1',
+        children: [{
+            object: 'block',
+            type: 'bulleted_list_item',
+            bulleted_list_item: { rich_text: [{ plain_text: '맛집' }] }
+        }]
     }]);
+});
+
+test('child databases and unsupported blocks are omitted while the new template is applied', async () => {
+    const db = fixture([['folder-page', 'pending']]);
+    db.records.set(`${runPath}/pages/folder-page`, {
+        ...db.records.get(`${runPath}/pages/folder-page`), dbName: 'folder'
+    });
+    let templateApplied = false;
+    onListBlocks = async blockId => ({
+        results: blockId === 'old-callout' ? [
+            { id: 'child-db', type: 'child_database', child_database: { title: '여행 기록' } },
+            { id: 'button', type: 'unsupported', unsupported: { block_type: 'button' } }
+        ] : templateApplied ? [
+            { id: 'new-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '기본 템플릿' }] } }
+        ] : [
+            { id: 'old-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '▫ 세부 목표' }] } },
+            { id: 'old-callout', type: 'callout', has_children: true, callout: { rich_text: [] } }
+        ],
+        has_more: false
+    });
+    onUpdate = async options => { if (options.template) templateApplied = true; };
+
+    await executeMigration(db, 'user', 'token', 'run', 'resume', {
+        entries: [['folder', { refreshContentWithDefaultTemplate: true }]],
+        resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
+        pages: async () => [{ id: 'folder-page', title: 'folder-page' }]
+    });
+
+    assert.equal(db.records.get(`${runPath}/pages/folder-page`).status, 'complete');
+    assert.equal(db.records.get(`${runPath}/pages/folder-page`).templateApplied, true);
+    assert.equal(db.records.get(`${runPath}/results/page_folder-page`).status, 'ok');
+    assert.equal(updateCalls.some(call => call.template), true);
 });
 
 test('resume retries only an incomplete template refresh without moving or recounting the page', async () => {

@@ -1136,12 +1136,42 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
                 const oldNames = Object.keys(oldProperties);
                 const newNames = Object.keys(newProperties);
 
+                // Notion keeps a property ID when its display name changes. Compare by
+                // ID first so a rename is not reported as a removed + added property.
+                const newPropertiesById = new Map(
+                    newNames
+                        .filter(name => !!newProperties[name]?.id)
+                        .map(name => [newProperties[name].id, { name, property: newProperties[name] }])
+                );
+                const renamed: Array<{ oldName: string; newName: string }> = [];
+                const typeChanged: Array<{ name: string; oldType: string; newType: string }> = [];
+                const renamedOldNames = new Set<string>();
+                const renamedNewNames = new Set<string>();
+
+                for (const oldName of oldNames) {
+                    const oldProperty = oldProperties[oldName];
+                    const matched = oldProperty?.id ? newPropertiesById.get(oldProperty.id) : undefined;
+                    if (!matched) continue;
+                    if (oldName !== matched.name) {
+                        renamed.push({ oldName, newName: matched.name });
+                        renamedOldNames.add(oldName);
+                        renamedNewNames.add(matched.name);
+                    }
+                    if (oldProperty.type !== matched.property.type) {
+                        typeChanged.push({
+                            name: oldName === matched.name ? oldName : `${oldName} → ${matched.name}`,
+                            oldType: oldProperty.type,
+                            newType: matched.property.type
+                        });
+                    }
+                }
+
                 const onlyOld = oldNames.filter(
-                    name => !newProperties[name]
+                    name => !newProperties[name] && !renamedOldNames.has(name)
                 );
 
                 const onlyNew = newNames.filter(
-                    name => !oldProperties[name]
+                    name => !oldProperties[name] && !renamedNewNames.has(name)
                 );
 
                 // --------------------------------------------------
@@ -1165,8 +1195,8 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
                 // 5. 결과 판단
                 // --------------------------------------------------
 
-                if (onlyOld.length || onlyNew.length) {
-                    const isError = onlyOld.length > 0 && count > 0;
+                if (onlyOld.length || onlyNew.length || renamed.length || typeChanged.length) {
+                    const isError = (onlyOld.length > 0 || typeChanged.length > 0) && count > 0;
 
                     result = {
                         dbName,
@@ -1174,7 +1204,9 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
                         count,
                         type: "schema",
                         onlyOld,
-                        onlyNew
+                        onlyNew,
+                        renamed,
+                        typeChanged
                     };
                 } else {
                     result = {

@@ -29,6 +29,17 @@ interface Dependencies {
 
 type TemplateSection = { title: string; callout: any; children: any[] };
 
+// Blocks returned by Notion that cannot be created with blocks.children.append
+// (for example child_database) must not be sent back as normal content.
+const appendableBlockTypes = new Set([
+    'embed', 'bookmark', 'image', 'video', 'pdf', 'file', 'audio', 'code', 'equation',
+    'divider', 'breadcrumb', 'tab', 'table_of_contents', 'link_to_page', 'table_row',
+    'ai_block', 'meeting_notes', 'custom_block', 'table', 'column_list', 'column',
+    'heading_1', 'heading_2', 'heading_3', 'heading_4', 'paragraph',
+    'bulleted_list_item', 'numbered_list_item', 'quote', 'to_do', 'toggle', 'template',
+    'callout', 'synced_block'
+]);
+
 const sectionBullet = /^\s*[▫▪◽◾◻◼◦•]\s*/;
 const blockText = (block: any): string => {
     const richText = block?.[block?.type]?.rich_text;
@@ -51,11 +62,10 @@ const appendBlockPayload = (block: any): any => {
         throw new MigrationUserError('복원할 수 없는 블록 형식이 포함되어 있습니다.');
     }
     const safeContent = block.type === 'callout' ? calloutPayload(block).callout : { ...content };
-    const children = Array.isArray(block.children) ? block.children.map(appendBlockPayload) : [];
     return {
         object: 'block',
         type: block.type,
-        [block.type]: children.length ? { ...safeContent, children } : safeContent
+        [block.type]: safeContent
     };
 };
 const nestedBlockSummary = (blocks: any[]): { count: number; types: string[] } => {
@@ -67,6 +77,27 @@ const nestedBlockSummary = (blocks: any[]): { count: number; types: string[] } =
     visit(blocks);
     return { count: types.length, types };
 };
+const unsupportedAppendBlockTypes = (blocks: any[]): string[] => {
+    const types = new Set<string>();
+    const visit = (items: any[]) => items.forEach(block => {
+        if (block?.type && !appendableBlockTypes.has(block.type)) {
+            const unsupportedType = block.type === 'unsupported'
+                ? block.unsupported?.block_type || 'unknown'
+                : block.type;
+            types.add(block.type === 'unsupported' ? `unsupported (${unsupportedType})` : unsupportedType);
+        }
+        if (Array.isArray(block?.children)) visit(block.children);
+    });
+    visit(blocks);
+    return [...types];
+};
+const omitIgnoredTemplateBlocks = (blocks: any[]): any[] => blocks.flatMap(block => {
+    // These blocks are intentionally not part of the preserved template content.
+    if (block?.type === 'child_database' || block?.type === 'unsupported') return [];
+    const copy = { ...block };
+    if (Array.isArray(block?.children)) copy.children = omitIgnoredTemplateBlocks(block.children);
+    return [copy];
+});
 export class MigrationConflict extends Error { }
 class MigrationUserError extends Error { }
 class WorkerStopped extends Error { }
@@ -285,6 +316,20 @@ export async function executeMigration(
         }
         return children;
     };
+    const appendBlockTree = async (parentId: string, blocks: any[], stage: string): Promise<void> => {
+        for (const block of blocks) {
+            const response: any = await timed(`${stage} type=${block.type}`, () =>
+                notion.blocks.children.append({ block_id: parentId, children: [appendBlockPayload(block)] })
+            );
+            const appendedId = response?.results?.[0]?.id;
+            if (!appendedId) {
+                throw new MigrationUserError('복원한 블록의 ID를 확인하지 못했습니다. 재시작하면 이 페이지부터 다시 확인합니다.');
+            }
+            if (Array.isArray(block.children) && block.children.length) {
+                await appendBlockTree(appendedId, block.children, stage);
+            }
+        }
+    };
     try {
         const saved = await pagesRef.get();
         const manifest = new Map(saved.docs.map(doc => [doc.id, { ...doc.data(), pageId: doc.id }] as [string, any]));
@@ -436,6 +481,7 @@ export async function executeMigration(
                         order: resultOrder,
                         createdAt: admin.firestore.FieldValue.serverTimestamp()
                     };
+                    let templateRestoreStarted = false;
                     try {
                         // A move may have succeeded immediately before a crash or a lost HTTP response.
                         let alreadyMoved = false;
@@ -470,6 +516,7 @@ export async function executeMigration(
                             targetPagesByTitle.set(page.pageName, sameNamePages.filter(candidate => candidate.id === page.pageId));
                         }
                         if (info.refreshContentWithDefaultTemplate && !page.templateApplied) {
+                            templateRestoreStarted = true;
                             // Read these before erase_content. Only marked title/callout pairs are user template sections.
                             const originalBlocks = await timed(
                                 `NOTION SAVE TEMPLATE SECTIONS db=${dbName} page=${page.pageId}`,
@@ -480,6 +527,42 @@ export async function executeMigration(
                                 section.children = section.callout.has_children
                                     ? await readBlockTree(section.callout.id)
                                     : [];
+                            }
+                            for (const section of preservedSections) {
+                                section.children = omitIgnoredTemplateBlocks(section.children);
+                            }
+                            const unsupportedTypes = unsupportedAppendBlockTypes(
+                                preservedSections.flatMap(section => section.children)
+                            );
+                            if (unsupportedTypes.length) {
+                                const warning = `템플릿 보존 영역에 노션에서 복원할 수 없는 블록(${unsupportedTypes.join(', ')})이 있어 템플릿 적용을 건너뛰었습니다. 페이지 이동과 기존 내용은 유지되었습니다.`;
+                                console.warn('[Migration] template refresh skipped for unsupported block type', {
+                                    runId: claimed.runId,
+                                    dbName,
+                                    pageId: page.pageId,
+                                    unsupportedTypes
+                                });
+                                await commit(tx => {
+                                    tx.update(pageRef, {
+                                        status: 'complete',
+                                        completedWithWarning: true,
+                                        templateApplied: false,
+                                        templateSkippedReason: warning,
+                                        templateApplying: admin.firestore.FieldValue.delete(),
+                                        errorMessage: admin.firestore.FieldValue.delete(),
+                                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                                    });
+                                    tx.set(resultRef, {
+                                        ...result,
+                                        status: 'warning',
+                                        type: 'page-warning',
+                                        message: `${page.pageName} · ${warning}`
+                                    });
+                                    tx.update(run, { completedCount: completed + 1 });
+                                }, true);
+                                completed++;
+                                page.status = 'complete';
+                                continue;
                             }
                             const originalBlockIds = new Set(originalBlocks.map(block => block.id).filter(Boolean));
                             console.log('[Migration] template sections saved', {
@@ -579,11 +662,10 @@ export async function executeMigration(
                                         );
                                     }
                                     if (preserved.children.length) {
-                                        await timed(`NOTION RESTORE TEMPLATE SECTION CHILDREN db=${dbName} page=${page.pageId}`, () =>
-                                            notion.blocks.children.append({
-                                                block_id: targetSection.id,
-                                                children: preserved.children.map(appendBlockPayload)
-                                            })
+                                        await appendBlockTree(
+                                            targetSection.id,
+                                            preserved.children,
+                                            `NOTION RESTORE TEMPLATE SECTION CHILDREN db=${dbName} page=${page.pageId}`
                                         );
                                     }
                                 } else {
@@ -595,19 +677,13 @@ export async function executeMigration(
                                         restoredChildTypes: summary.types
                                     });
                                     const callout = calloutPayload(preserved.callout).callout;
-                                    await timed(`NOTION APPEND TEMPLATE SECTION db=${dbName} page=${page.pageId}`, () =>
-                                        notion.blocks.children.append({
-                                            block_id: page.pageId,
-                                            children: [{
-                                                object: 'block', type: 'paragraph',
-                                                paragraph: { rich_text: [{ type: 'text', text: { content: `▫ ${preserved.title}` } }] }
-                                            }, {
-                                                object: 'block', type: 'callout',
-                                                callout: preserved.children.length
-                                                    ? { ...callout, children: preserved.children.map(appendBlockPayload) }
-                                                    : callout
-                                            }]
-                                        })
+                                    await appendBlockTree(page.pageId, [{
+                                        object: 'block', type: 'paragraph',
+                                        paragraph: { rich_text: [{ type: 'text', text: { content: `▫ ${preserved.title}` } }] }
+                                    }, {
+                                        object: 'block', type: 'callout', callout,
+                                        children: preserved.children
+                                    }], `NOTION APPEND TEMPLATE SECTION db=${dbName} page=${page.pageId}`
                                     );
                                 }
                             }
@@ -618,6 +694,8 @@ export async function executeMigration(
                             tx.update(pageRef, {
                                 status: 'complete',
                                 templateApplied: page.templateApplied === true,
+                                completedWithWarning: admin.firestore.FieldValue.delete(),
+                                templateSkippedReason: admin.firestore.FieldValue.delete(),
                                 templateApplying: admin.firestore.FieldValue.delete(),
                                 errorMessage: admin.firestore.FieldValue.delete(),
                                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -639,7 +717,7 @@ export async function executeMigration(
                         // Notion can reject a property validation after it has already moved
                         // the page. Treat that as a completed move with a warning only after
                         // verifying that the page is no longer in the source data source.
-                        if (error?.code === 'validation_error') {
+                        if (error?.code === 'validation_error' && !templateRestoreStarted) {
                             try {
                                 const current: any = await timed(
                                     `NOTION VERIFY VALIDATION ERROR db=${dbName} page=${page.pageId}`,

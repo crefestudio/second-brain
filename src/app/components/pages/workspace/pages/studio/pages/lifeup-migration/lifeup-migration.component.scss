@@ -528,9 +528,24 @@
 }
 
 .console-status {
-    color: #6e7785;
     font-family: monospace;
-    font-size: 10px;
+    font-size: 11px;
+}
+
+.console-status-muted {
+    color: #8b949e;
+}
+
+.console-status-success {
+    color: #74c995;
+}
+
+.console-status-warning {
+    color: #f4b860;
+}
+
+.console-status-error {
+    color: #f59e0b;
 }
 
 .console-content {
@@ -688,6 +703,10 @@
     color: #9da7b5;
     font-size: 12px;
     padding: 0 3px;
+}
+
+.migration-error-count {
+    color: #f59e0b;
 }
 
 .migration-progress-track {
