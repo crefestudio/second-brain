@@ -544,18 +544,8 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
         await userRef.set({
             notionMigrationAccessToken: accessToken,
             notionMigrationConnectedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-
-        /////////////////////////////////////////////////////////////
-        // --------------------------------------------------
-        // 5. Migration 연결 정보 저장
-        // --------------------------------------------------
-
-        await userRef.set({
-            notionMigrationAccessToken: accessToken,
-            notionMigrationConnectedAt: admin.firestore.FieldValue.serverTimestamp(),
+            // A fresh ID makes reconnect completion unambiguous to the open migration page.
+            notionMigrationConnectionId: randomUUID(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 

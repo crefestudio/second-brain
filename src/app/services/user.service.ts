@@ -946,7 +946,7 @@ export class UserService {
 
         this.stopNotionMigrationConnectWatcher();
         let initialized = false;
-        let connectionUpdatedAt = 0;
+        let connectionId = '';
 
         const docRef = doc(
             firestore,
@@ -960,14 +960,14 @@ export class UserService {
                 if (!snapshot.exists()) { return; }
 
                 const data = snapshot.data();
-                const updatedAt = data['notionMigrationConnectedAt']?.toMillis?.() || 0;
+                const updatedConnectionId = data['notionMigrationConnectionId'] || '';
                 if (!initialized) {
                     initialized = true;
-                    connectionUpdatedAt = updatedAt;
+                    connectionId = updatedConnectionId;
                     return;
                 }
 
-                if (data['notionMigrationAccessToken'] && updatedAt > connectionUpdatedAt) {
+                if (data['notionMigrationAccessToken'] && updatedConnectionId && updatedConnectionId !== connectionId) {
                     this.notionMigrationConnected$.next();
                     this.stopNotionMigrationConnectWatcher();
                 }

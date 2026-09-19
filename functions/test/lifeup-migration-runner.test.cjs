@@ -6,8 +6,11 @@ const admin = require('firebase-admin');
 let moveCalls = [];
 let retrieveCalls = [];
 let updateCalls = [];
+let appendCalls = [];
+let deleteCalls = [];
 let onMove;
 let onUpdate;
+let onListBlocks;
 let currentParent = 'target';
 const originalLoad = Module._load;
 Module._load = function (name, ...args) {
@@ -24,10 +27,11 @@ Module._load = function (name, ...args) {
             };
             blocks = {
                 children: {
-                    list: async () => ({ results: [], has_more: false }),
-                    append: async () => {}
+                    list: async ({ block_id }) => onListBlocks ? onListBlocks(block_id) : ({ results: [], has_more: false }),
+                    append: async options => { appendCalls.push(options); }
                 },
-                update: async () => {}
+                update: async options => { updateCalls.push(options); if (onUpdate) await onUpdate(options); },
+                delete: async ({ block_id }) => { deleteCalls.push(block_id); }
             };
         }
     };
@@ -88,7 +92,7 @@ function memoryDb(seed) {
     };
 }
 function fixture(pages, extra = {}) {
-    moveCalls = []; retrieveCalls = []; updateCalls = []; onMove = undefined; onUpdate = undefined; currentParent = 'target';
+    moveCalls = []; retrieveCalls = []; updateCalls = []; appendCalls = []; deleteCalls = []; onMove = undefined; onUpdate = undefined; onListBlocks = undefined; currentParent = 'target';
     return memoryDb({
         [root]: { migrationRunId: 'run' },
         [runPath]: { status: 'migrating', createdAt: timestamp(Date.now() - 7200000), totalCount: pages.length, ...extra },
@@ -334,6 +338,46 @@ test('template databases verify the new parent and replace old blocks with the d
     assert.equal(page.status, 'complete');
     assert.equal(page.templateApplied, true);
     assert.equal(page.templateApplying, undefined);
+});
+
+test('a marked text block and its callout are restored only after the template replaces old blocks', async () => {
+    const db = fixture([['project-page', 'pending']]);
+    db.records.set(`${runPath}/pages/project-page`, {
+        ...db.records.get(`${runPath}/pages/project-page`), dbName: 'project'
+    });
+    let templateApplied = false;
+    onListBlocks = async blockId => ({
+        results: blockId === 'old-callout' ? [
+            { id: 'old-bullet', type: 'bulleted_list_item', bulleted_list_item: { rich_text: [{ plain_text: '호치민' }] } }
+        ] : blockId === 'new-callout' ? [] : templateApplied ? [
+            { id: 'new-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '▫ 세부 목표' }] } },
+            { id: 'new-callout', type: 'callout', callout: { rich_text: [{ plain_text: '기본 내용' }] } }
+        ] : [
+            { id: 'old-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '▫ 세부 목표' }] } },
+            { id: 'old-callout', type: 'callout', has_children: true, callout: { icon: null, rich_text: [{ plain_text: '베트남 1차 여행\n호치민\n1개월' }] } }
+        ],
+        has_more: false
+    });
+    onUpdate = async options => { if (options.template) templateApplied = true; };
+
+    await executeMigration(db, 'user', 'token', 'run', 'resume', {
+        entries: [['project', { refreshContentWithDefaultTemplate: true }]],
+        resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
+        pages: async () => [{ id: 'project-page', title: '프로젝트' }]
+    });
+
+    assert.deepEqual(updateCalls.at(-1), {
+        block_id: 'new-callout',
+        callout: { rich_text: [{ plain_text: '베트남 1차 여행\n호치민\n1개월' }] }
+    });
+    assert.deepEqual(appendCalls, [{
+        block_id: 'new-callout',
+        children: [{
+            object: 'block',
+            type: 'bulleted_list_item',
+            bulleted_list_item: { rich_text: [{ plain_text: '호치민' }] }
+        }]
+    }]);
 });
 
 test('resume retries only an incomplete template refresh without moving or recounting the page', async () => {

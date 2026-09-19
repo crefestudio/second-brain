@@ -27,9 +27,9 @@ interface Dependencies {
     pages: (dataSourceId: string) => Promise<PageInfo[]>;
 }
 
-type TemplateSection = { title: string; callout: any };
+type TemplateSection = { title: string; callout: any; children: any[] };
 
-const sectionBullet = /^[▫▪◽◾◻◼]\s*/;
+const sectionBullet = /^\s*[▫▪◽◾◻◼◦•]\s*/;
 const blockText = (block: any): string => {
     const richText = block?.[block?.type]?.rich_text;
     return Array.isArray(richText) ? richText.map((item: any) => item.plain_text || item.text?.content || '').join('') : '';
@@ -39,7 +39,34 @@ const sectionTitle = (block: any): string | null => {
     const text = blockText(block).trim();
     return sectionBullet.test(text) ? text.replace(sectionBullet, '').trim() || null : null;
 };
-const calloutPayload = (block: any) => ({ callout: block.callout });
+const calloutPayload = (block: any) => {
+    const { icon, ...callout } = block.callout || {};
+    // Notion returns icon: null for callouts without an icon, but its update
+    // endpoint accepts an icon object or an omitted field only.
+    return { callout: icon ? { ...callout, icon } : callout };
+};
+const appendBlockPayload = (block: any): any => {
+    const content = block?.[block?.type];
+    if (!block?.type || !content) {
+        throw new MigrationUserError('복원할 수 없는 블록 형식이 포함되어 있습니다.');
+    }
+    const safeContent = block.type === 'callout' ? calloutPayload(block).callout : { ...content };
+    const children = Array.isArray(block.children) ? block.children.map(appendBlockPayload) : [];
+    return {
+        object: 'block',
+        type: block.type,
+        [block.type]: children.length ? { ...safeContent, children } : safeContent
+    };
+};
+const nestedBlockSummary = (blocks: any[]): { count: number; types: string[] } => {
+    const types: string[] = [];
+    const visit = (items: any[]) => items.forEach(block => {
+        types.push(block.type || 'unknown');
+        if (Array.isArray(block.children)) visit(block.children);
+    });
+    visit(blocks);
+    return { count: types.length, types };
+};
 export class MigrationConflict extends Error { }
 class MigrationUserError extends Error { }
 class WorkerStopped extends Error { }
@@ -238,17 +265,25 @@ export async function executeMigration(
         } while (cursor);
         return blocks;
     };
-    const savedTemplateSections = async (pageId: string): Promise<TemplateSection[]> => {
-        const blocks = await listBlocks(pageId);
+    const templateSections = (blocks: any[]): TemplateSection[] => {
         const sections: TemplateSection[] = [];
         for (let index = 0; index < blocks.length - 1; index++) {
             const title = sectionTitle(blocks[index]);
             if (title && blocks[index + 1]?.type === 'callout') {
-                sections.push({ title, callout: blocks[index + 1] });
+                sections.push({ title, callout: blocks[index + 1], children: [] });
                 index++;
             }
         }
         return sections;
+    };
+    const readBlockTree = async (blockId: string): Promise<any[]> => {
+        const children = await listBlocks(blockId);
+        for (const child of children) {
+            if (child.has_children) {
+                child.children = await readBlockTree(child.id);
+            }
+        }
+        return children;
     };
     try {
         const saved = await pagesRef.get();
@@ -436,10 +471,27 @@ export async function executeMigration(
                         }
                         if (info.refreshContentWithDefaultTemplate && !page.templateApplied) {
                             // Read these before erase_content. Only marked title/callout pairs are user template sections.
-                            const preservedSections = await timed(
+                            const originalBlocks = await timed(
                                 `NOTION SAVE TEMPLATE SECTIONS db=${dbName} page=${page.pageId}`,
-                                () => savedTemplateSections(page.pageId)
+                                () => listBlocks(page.pageId)
                             );
+                            const preservedSections = templateSections(originalBlocks);
+                            for (const section of preservedSections) {
+                                section.children = section.callout.has_children
+                                    ? await readBlockTree(section.callout.id)
+                                    : [];
+                            }
+                            const originalBlockIds = new Set(originalBlocks.map(block => block.id).filter(Boolean));
+                            console.log('[Migration] template sections saved', {
+                                runId: claimed.runId,
+                                dbName,
+                                pageId: page.pageId,
+                                blockCount: originalBlocks.length,
+                                sections: preservedSections.map(section => ({
+                                    title: section.title,
+                                    ...nestedBlockSummary(section.children)
+                                }))
+                            });
                             let movedToTarget = alreadyMoved;
                             for (let attempt = 0; attempt < MOVE_CONFIRM_ATTEMPTS && !movedToTarget; attempt++) {
                                 if (attempt > 0) {
@@ -467,17 +519,36 @@ export async function executeMigration(
                                 erase_content: true,
                                 template: { type: 'default' }
                             }));
-                            // Applying a Notion template is asynchronous. Wait until its blocks are visible before merging.
-                            let newTemplateBlocks: any[] = [];
+                            // Applying a Notion template can be asynchronous. This poll only delays
+                            // restoration; block IDs are not a reliable completion signal because
+                            // Notion can update a block in place.
+                            let allNewBlocks: any[] = [];
+                            let templateReady = originalBlockIds.size === 0;
                             for (let attempt = 0; attempt < TEMPLATE_CONFIRM_ATTEMPTS; attempt++) {
                                 if (attempt > 0) await wait(MOVE_CONFIRM_DELAY_MS);
-                                newTemplateBlocks = await savedTemplateSections(page.pageId);
-                                if (!preservedSections.length || preservedSections.every(section =>
-                                    newTemplateBlocks.some(newSection => newSection.title === section.title)
-                                )) break;
+                                allNewBlocks = await listBlocks(page.pageId);
+                                const currentIds = new Set(allNewBlocks.map(block => block.id).filter(Boolean));
+                                templateReady = originalBlockIds.size === 0 ||
+                                    (allNewBlocks.length > 0 && [...originalBlockIds].every(id => !currentIds.has(id)));
+                                if (templateReady) break;
                             }
+                            if (!templateReady) {
+                                console.warn('[Migration] template replacement was not confirmed; restoring after wait', {
+                                    runId: claimed.runId,
+                                    dbName,
+                                    pageId: page.pageId,
+                                    originalBlockCount: originalBlockIds.size,
+                                    lastVisibleBlockCount: allNewBlocks.length
+                                });
+                            }
+                            console.log('[Migration] template restoration begins', {
+                                runId: claimed.runId,
+                                dbName,
+                                pageId: page.pageId,
+                                newBlockCount: allNewBlocks.length,
+                                templateReplacementConfirmed: templateReady
+                            });
                             const targetSections = new Map<string, any>();
-                            const allNewBlocks = await listBlocks(page.pageId);
                             for (let index = 0; index < allNewBlocks.length - 1; index++) {
                                 const title = sectionTitle(allNewBlocks[index]);
                                 if (title && allNewBlocks[index + 1]?.type === 'callout') {
@@ -488,17 +559,54 @@ export async function executeMigration(
                             for (const preserved of preservedSections) {
                                 const targetSection = targetSections.get(preserved.title);
                                 if (targetSection) {
+                                    const templateChildren = targetSection.has_children
+                                        ? await listBlocks(targetSection.id)
+                                        : [];
+                                    const summary = nestedBlockSummary(preserved.children);
+                                    console.log('[Migration] restoring template section', {
+                                        runId: claimed.runId, dbName, pageId: page.pageId,
+                                        title: preserved.title, mode: 'replace-callout', blockId: targetSection.id,
+                                        removedTemplateChildCount: templateChildren.length,
+                                        restoredChildCount: summary.count,
+                                        restoredChildTypes: summary.types
+                                    });
                                     await timed(`NOTION RESTORE TEMPLATE SECTION db=${dbName} page=${page.pageId}`, () =>
                                         notion.blocks.update({ block_id: targetSection.id, ...calloutPayload(preserved.callout) })
                                     );
+                                    for (const child of templateChildren) {
+                                        await timed(`NOTION CLEAR TEMPLATE SECTION CHILD db=${dbName} block=${child.id}`, () =>
+                                            notion.blocks.delete({ block_id: child.id })
+                                        );
+                                    }
+                                    if (preserved.children.length) {
+                                        await timed(`NOTION RESTORE TEMPLATE SECTION CHILDREN db=${dbName} page=${page.pageId}`, () =>
+                                            notion.blocks.children.append({
+                                                block_id: targetSection.id,
+                                                children: preserved.children.map(appendBlockPayload)
+                                            })
+                                        );
+                                    }
                                 } else {
+                                    const summary = nestedBlockSummary(preserved.children);
+                                    console.log('[Migration] restoring template section', {
+                                        runId: claimed.runId, dbName, pageId: page.pageId,
+                                        title: preserved.title, mode: 'append-section',
+                                        restoredChildCount: summary.count,
+                                        restoredChildTypes: summary.types
+                                    });
+                                    const callout = calloutPayload(preserved.callout).callout;
                                     await timed(`NOTION APPEND TEMPLATE SECTION db=${dbName} page=${page.pageId}`, () =>
                                         notion.blocks.children.append({
                                             block_id: page.pageId,
                                             children: [{
                                                 object: 'block', type: 'paragraph',
                                                 paragraph: { rich_text: [{ type: 'text', text: { content: `▫ ${preserved.title}` } }] }
-                                            }, { object: 'block', type: 'callout', ...calloutPayload(preserved.callout) }]
+                                            }, {
+                                                object: 'block', type: 'callout',
+                                                callout: preserved.children.length
+                                                    ? { ...callout, children: preserved.children.map(appendBlockPayload) }
+                                                    : callout
+                                            }]
                                         })
                                     );
                                 }

@@ -195,14 +195,12 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         }));
         this.subscriptions.add(this.userService.notionMigrationConnected$.subscribe(async () => {
             if (this.destroyed) return;
-            // Reconnecting replaces integrations/migration in Firestore. Do not retain old runs in this frame.
+            // Reconnecting deletes integrations/migration in Firestore. Reload without the
+            // step hash so no previous run, results, or completed screen remains in memory.
             this.resetMigrationState();
             this.resetMigrationCheckState();
-            await this.updateSession();
-            await this.restoreMigration();
-            if (!this.destroyed) {
-                ToastService.show('데이터 이전 템플릿 연결이 완료되었습니다. 새 이전을 시작할 수 있습니다.');
-            }
+            this.currentStep = 0;
+            window.location.replace(`${window.location.pathname}${window.location.search}`);
         }));
 
         try {
