@@ -222,18 +222,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         this.userService.stopMigrationWatcher();
     }
 
-    private get migrationStartedKey(): string {
-        return `lifeup-migration-started:${this.userId}`;
-    }
-
-    private get migrationStartRequestedAtKey(): string {
-        return `lifeup-migration-start-requested-at:${this.userId}`;
-    }
-
     private resetMigrationState() {
         this.userService.stopMigrationWatcher();
-        localStorage.removeItem(this.migrationStartedKey);
-        localStorage.removeItem(this.migrationStartRequestedAtKey);
         this.migrationStarted = false;
         this.migrationRunId = '';
         this.migrationStatus = 'READY';
@@ -252,10 +242,6 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
 
     private async restoreMigration() {
         if (!this.userId || this.destroyed) return;
-        this.migrationStarted = localStorage.getItem(this.migrationStartedKey) === 'true';
-        if (this.migrationStarted) {
-            this.migrationStatus = 'MIGRATING';
-        }
         try {
             const run = await this.userService.getMigrationRun(this.userId);
             if (this.destroyed) return;
@@ -263,16 +249,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
                 this.applyMigrationStatus(run);
                 this.userService.startMigrationWatcher(this.userId, run.runId);
             } else {
-                const requestedAt = Number(localStorage.getItem(this.migrationStartRequestedAtKey));
-                const requestIsStillStarting = this.migrationStarted &&
-                    Number.isFinite(requestedAt) && Date.now() - requestedAt < 30 * 1000;
-                if (requestIsStillStarting) {
-                    // The function may not have created its run document yet.
-                    this.userService.watchNextMigrationRun(this.userId, '');
-                } else {
-                    // Reconnecting deletes integrations/migration, so a stored old run is invalid.
-                    this.resetMigrationState();
-                }
+                // The persisted migration log is the sole source of truth. No log means first start/reconnect.
+                this.resetMigrationState();
             }
         } catch (error) {
             console.error('[Migration] restore failed:', error);
@@ -285,8 +263,6 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     async startMigrationProcess() {
         if (!this.userId || this.migrationStarted) return;
         this.migrationStarted = true;
-        localStorage.setItem(this.migrationStartedKey, 'true');
-        localStorage.setItem(this.migrationStartRequestedAtKey, `${Date.now()}`);
         this.migrationStatus = 'MIGRATING';
         this.migrationError = '';
 

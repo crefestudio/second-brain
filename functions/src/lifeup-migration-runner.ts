@@ -6,6 +6,7 @@ const STALE_MS = 5 * 60 * 1000;
 const LEGACY_TIMEOUT_MS = 60 * 60 * 1000;
 const MOVE_CONFIRM_ATTEMPTS = 3;
 const MOVE_CONFIRM_DELAY_MS = 1000;
+const TEMPLATE_CONFIRM_ATTEMPTS = 5;
 interface PageInfo {
     id: string;
     title: string;
@@ -25,6 +26,20 @@ interface Dependencies {
     resolve: (name: string, version: string) => Promise<string | null>;
     pages: (dataSourceId: string) => Promise<PageInfo[]>;
 }
+
+type TemplateSection = { title: string; callout: any };
+
+const sectionBullet = /^[▫▪◽◾◻◼]\s*/;
+const blockText = (block: any): string => {
+    const richText = block?.[block?.type]?.rich_text;
+    return Array.isArray(richText) ? richText.map((item: any) => item.plain_text || item.text?.content || '').join('') : '';
+};
+const sectionTitle = (block: any): string | null => {
+    if (!block?.[block?.type]?.rich_text) return null;
+    const text = blockText(block).trim();
+    return sectionBullet.test(text) ? text.replace(sectionBullet, '').trim() || null : null;
+};
+const calloutPayload = (block: any) => ({ callout: block.callout });
 export class MigrationConflict extends Error { }
 class MigrationUserError extends Error { }
 class WorkerStopped extends Error { }
@@ -211,6 +226,30 @@ export async function executeMigration(
             }
         }
     });
+    const listBlocks = async (pageId: string): Promise<any[]> => {
+        const blocks: any[] = [];
+        let cursor: string | undefined;
+        do {
+            const response: any = await timed(`NOTION LIST BLOCKS page=${pageId}`, () =>
+                notion.blocks.children.list({ block_id: pageId, start_cursor: cursor, page_size: 100 })
+            );
+            blocks.push(...response.results);
+            cursor = response.has_more ? response.next_cursor || undefined : undefined;
+        } while (cursor);
+        return blocks;
+    };
+    const savedTemplateSections = async (pageId: string): Promise<TemplateSection[]> => {
+        const blocks = await listBlocks(pageId);
+        const sections: TemplateSection[] = [];
+        for (let index = 0; index < blocks.length - 1; index++) {
+            const title = sectionTitle(blocks[index]);
+            if (title && blocks[index + 1]?.type === 'callout') {
+                sections.push({ title, callout: blocks[index + 1] });
+                index++;
+            }
+        }
+        return sections;
+    };
     try {
         const saved = await pagesRef.get();
         const manifest = new Map(saved.docs.map(doc => [doc.id, { ...doc.data(), pageId: doc.id }] as [string, any]));
@@ -224,6 +263,7 @@ export async function executeMigration(
             source: string;
             target: string;
             info: DatabaseInfo;
+            targetPagesByTitle: Map<string, PageInfo[]>;
         }> = [];
         const notify = async (message: string, dbName = '전체 집계') => {
             console.log(`[Migration] runId=${claimed.runId} ${dbName}: ${message}`);
@@ -252,6 +292,14 @@ export async function executeMigration(
                 throw new MigrationUserError(`${dbName} 원본 또는 대상 DB를 찾을 수 없습니다.`);
             }
             const remaining = await timed(`PAGES FETCH db=${dbName}`, () => dependencies.pages(source));
+            const targetPages = info.defaultMigration === 'replace' ? await timed(`TARGET PAGES FETCH db=${dbName}`, () => dependencies.pages(target))
+                : [];
+            const targetPagesByTitle = new Map<string, PageInfo[]>();
+            for (const targetPage of targetPages) {
+                const matches = targetPagesByTitle.get(targetPage.title) || [];
+                matches.push(targetPage);
+                targetPagesByTitle.set(targetPage.title, matches);
+            }
             const excluded = remaining.filter(page =>
                 info.defaultMigration === 'none' && info.defaultProperty &&
                 page.properties?.[info.defaultProperty]?.checkbox === true
@@ -307,7 +355,8 @@ export async function executeMigration(
                 dbName,
                 source,
                 target,
-                info
+                info,
+                targetPagesByTitle
             });
             const databaseCount = [...manifest.values()].filter(page =>
                 page.dbName === dbName && page.status !== 'skipped').length;
@@ -322,7 +371,7 @@ export async function executeMigration(
         }));
         await notify(`전체 집계 완료: 총 ${totalCount}개, 완료 ${completed}개, 남은 ${totalCount - completed}개`);
 
-        for (const { dbName, source, target, info } of databases) {
+        for (const { dbName, source, target, info, targetPagesByTitle } of databases) {
             try {
                 const databasePages = [...manifest.values()].filter(page =>
                     page.dbName === dbName && page.status !== 'skipped');
@@ -365,12 +414,27 @@ export async function executeMigration(
                             }
                         }
                         if (!alreadyMoved) {
+                            if (info.defaultMigration === 'replace') {
+                                const sameNamePages = targetPagesByTitle.get(page.pageName) || [];
+                                for (const targetPage of sameNamePages.filter(candidate => candidate.id !== page.pageId)) {
+                                    await timed(`NOTION ARCHIVE REPLACED DEFAULT db=${dbName} page=${targetPage.id}`, () =>
+                                        notion.pages.update({ page_id: targetPage.id, archived: true })
+                                    );
+                                }
+                                // A retry must not archive the same target default twice.
+                                targetPagesByTitle.set(page.pageName, sameNamePages.filter(candidate => candidate.id === page.pageId));
+                            }
                             await commit(tx => tx.update(pageRef, { status: 'migrating', updatedAt: admin.firestore.FieldValue.serverTimestamp() }));
                             await timed(`NOTION MOVE db=${dbName} page=${page.pageId}`, () => notion.pages.move({
                                 page_id: page.pageId, parent: { type: 'data_source_id', data_source_id: target }
                             }));
                         }
                         if (info.refreshContentWithDefaultTemplate && !page.templateApplied) {
+                            // Read these before erase_content. Only marked title/callout pairs are user template sections.
+                            const preservedSections = await timed(
+                                `NOTION SAVE TEMPLATE SECTIONS db=${dbName} page=${page.pageId}`,
+                                () => savedTemplateSections(page.pageId)
+                            );
                             let movedToTarget = alreadyMoved;
                             for (let attempt = 0; attempt < MOVE_CONFIRM_ATTEMPTS && !movedToTarget; attempt++) {
                                 if (attempt > 0) {
@@ -398,6 +462,42 @@ export async function executeMigration(
                                 erase_content: true,
                                 template: { type: 'default' }
                             }));
+                            // Applying a Notion template is asynchronous. Wait until its blocks are visible before merging.
+                            let newTemplateBlocks: any[] = [];
+                            for (let attempt = 0; attempt < TEMPLATE_CONFIRM_ATTEMPTS; attempt++) {
+                                if (attempt > 0) await wait(MOVE_CONFIRM_DELAY_MS);
+                                newTemplateBlocks = await savedTemplateSections(page.pageId);
+                                if (!preservedSections.length || preservedSections.every(section =>
+                                    newTemplateBlocks.some(newSection => newSection.title === section.title)
+                                )) break;
+                            }
+                            const targetSections = new Map<string, any>();
+                            const allNewBlocks = await listBlocks(page.pageId);
+                            for (let index = 0; index < allNewBlocks.length - 1; index++) {
+                                const title = sectionTitle(allNewBlocks[index]);
+                                if (title && allNewBlocks[index + 1]?.type === 'callout') {
+                                    targetSections.set(title, allNewBlocks[index + 1]);
+                                    index++;
+                                }
+                            }
+                            for (const preserved of preservedSections) {
+                                const targetSection = targetSections.get(preserved.title);
+                                if (targetSection) {
+                                    await timed(`NOTION RESTORE TEMPLATE SECTION db=${dbName} page=${page.pageId}`, () =>
+                                        notion.blocks.update({ block_id: targetSection.id, ...calloutPayload(preserved.callout) })
+                                    );
+                                } else {
+                                    await timed(`NOTION APPEND TEMPLATE SECTION db=${dbName} page=${page.pageId}`, () =>
+                                        notion.blocks.children.append({
+                                            block_id: page.pageId,
+                                            children: [{
+                                                object: 'block', type: 'paragraph',
+                                                paragraph: { rich_text: [{ type: 'text', text: { content: `▫ ${preserved.title}` } }] }
+                                            }, { object: 'block', type: 'callout', ...calloutPayload(preserved.callout) }]
+                                        })
+                                    );
+                                }
+                            }
                             page.templateApplied = true;
                         }
                         // Save an in-flight move's result even if a stop was requested during the call.

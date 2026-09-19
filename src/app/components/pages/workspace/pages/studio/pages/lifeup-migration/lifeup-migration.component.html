@@ -21,7 +21,7 @@
 <!-- Notion 연결됨 -->
 <div *ngIf="userId" class="page">
     <div class="page-header">
-        <h1>🔄 라이프업 업데이트</h1>
+        <h1>🔄 라이프업 업데이트22</h1>
 
         <div class="hero-box">
             <div class="hero-content">
@@ -479,9 +479,10 @@
                 </div>
             </div>
 
-            <div class="check-action" *ngIf="migrationStarted && !migrationSuccess">
-                <button class="primary-btn large" *ngIf="migrationCanRestart" (click)="restartMigration()">재시작</button>
-                <button class="secondary-btn large" *ngIf="!migrationCanRestart" (click)="stopMigration()"
+            <div class="check-action" *ngIf="migrationStarted">
+                <button class="primary-btn large" *ngIf="migrationStatus !== 'MIGRATING' && migrationStatus !== 'STOPPING'"
+                    [disabled]="!migrationCanRestart" (click)="restartMigration()">재시작</button>
+                <button class="secondary-btn large" *ngIf="migrationStatus === 'MIGRATING' || migrationStatus === 'STOPPING'" (click)="stopMigration()"
                     [disabled]="!migrationRunId || !migrationSupportsStop || migrationStopPending || migrationStatus !== 'MIGRATING'">
                     {{ migrationStopPending || migrationStatus === 'STOPPING' ? '중단 요청 중...' : '강제 종료' }}
                 </button>

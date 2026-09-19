@@ -804,7 +804,7 @@ interface LifeUpMigrationDbInfo {
     minVersion: string;
     migration: "none" | "all";
     defaultProperty?: string;
-    defaultMigration?: "none" | "move" | "replace"; // move: 페이지 아이디가 다르면 이동,  replace : 페이지 아이디가 다르고 이름이 같다면 기존 항목을 지우고 이동하기 
+    defaultMigration?: "none" | "move" | "replace";
     refreshContentWithDefaultTemplate?: boolean;
     dbNames?: {
         "1.3"?: string;
@@ -877,7 +877,7 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
         minVersion: "1.3",
         migration: "all",
         defaultProperty: "기본 태그",
-        defaultMigration: "replace",       //
+        defaultMigration: "replace",
         refreshContentWithDefaultTemplate: true
     },
 

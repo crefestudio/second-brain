@@ -11,6 +11,7 @@ import {
 } from '@angular/router';
 
 import { filter } from 'rxjs/operators';
+import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 
 @Component({
     selector: 'app-root',
@@ -41,7 +42,11 @@ export class AppComponent implements OnInit {
     warnMessage = '';
 
 
-    constructor(private router: Router, private toastService: ToastService) {
+    constructor(
+        private router: Router,
+        private toastService: ToastService,
+        private swUpdate: SwUpdate
+    ) {
         this.currentPath = this.router.url;
 
         this.router.events
@@ -52,6 +57,7 @@ export class AppComponent implements OnInit {
     }
 
     ngOnInit(): void {
+        this.watchForAppUpdate();
         this.toastService.toast$.subscribe((toast) => {
             this.toastMessage = toast.message;
             this.toastType = toast.type;
@@ -65,6 +71,22 @@ export class AppComponent implements OnInit {
 
         // 사용법 테스트
         //ToastService.show('저장되었습니다.');
+    }
+
+    private watchForAppUpdate(): void {
+        if (!this.swUpdate.isEnabled) return;
+
+        // An iframe can stay open indefinitely. Activate the new cached app shell and reload
+        // this frame as soon as a deployment is available, so the parent does not need to reload.
+        this.swUpdate.versionUpdates
+            .pipe(filter((event): event is VersionReadyEvent => event.type === 'VERSION_READY'))
+            .subscribe(async () => {
+                await this.swUpdate.activateUpdate();
+                window.location.reload();
+            });
+
+        void this.swUpdate.checkForUpdate();
+        window.setInterval(() => void this.swUpdate.checkForUpdate(), 5 * 60 * 1000);
     }
 
 

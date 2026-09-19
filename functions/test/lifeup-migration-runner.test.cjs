@@ -22,6 +22,13 @@ Module._load = function (name, ...args) {
                     return { parent: { type: 'data_source_id', data_source_id: currentParent } };
                 }
             };
+            blocks = {
+                children: {
+                    list: async () => ({ results: [], has_more: false }),
+                    append: async () => {}
+                },
+                update: async () => {}
+            };
         }
     };
     return originalLoad.call(this, name, ...args);
