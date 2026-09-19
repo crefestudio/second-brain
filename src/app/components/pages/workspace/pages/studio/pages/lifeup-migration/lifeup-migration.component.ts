@@ -375,27 +375,61 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         if (!this.userId || this.migrationStarted) return;
         this.migrationStarted = true;
         this.migrationStatus = 'MIGRATING';
+        this.migrationCounting = true;
+        this.migrationTotalCountReady = false;
         this.migrationError = '';
+        let previousRunId = '';
 
         try {
             const previousRun = await this.userService.getMigrationRun(this.userId);
+            previousRunId = previousRun?.runId || '';
             if (this.destroyed) return;
             // The HTTP function returns after migration finishes, so discover the run via Firestore first.
-            this.userService.watchNextMigrationRun(this.userId, previousRun?.runId || '');
+            this.userService.watchNextMigrationRun(this.userId, previousRunId);
             const result = await this.userService.migrateLifeUp(this.userId);
             if (this.destroyed) return;
             if (result?.success && result.runId) {
                 if (!this.migrationRunId) this.userService.startMigrationWatcher(this.userId, result.runId);
             } else if (!this.migrationComplete) {
+                // The migration HTTP request stays open until the server worker finishes. A browser,
+                // proxy, or network disconnect can therefore lose its response after the server has
+                // already created the Firestore run. Reconcile the persisted run before clearing the
+                // console or stopping its watcher.
+                if (await this.restoreStartedMigration(previousRunId)) return;
                 const message = result?.message || '데이터 이전을 시작하지 못했습니다. 다시 시도해주세요.';
                 this.resetMigrationState();
                 ToastService.error(message);
             }
         } catch (error) {
             console.error('[Migration] start failed:', error);
+            if (await this.restoreStartedMigration(previousRunId)) return;
             this.resetMigrationState();
             ToastService.error('데이터 이전을 시작하지 못했습니다. 다시 시도해주세요.');
         }
+    }
+
+    private async restoreStartedMigration(previousRunId = ''): Promise<boolean> {
+        // A run is claimed at the beginning of the server worker, but allow a short grace period
+        // for Firestore visibility when the request itself failed before its response arrived.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            if (this.destroyed) return false;
+            try {
+                const run = await this.userService.getMigrationRun(this.userId);
+                if (run?.runId && run.runId !== previousRunId) {
+                    console.warn('[Migration] recovered a run after the start response was unavailable', {
+                        runId: run.runId,
+                        attempt: attempt + 1
+                    });
+                    this.applyMigrationStatus(run);
+                    this.userService.startMigrationWatcher(this.userId, run.runId);
+                    return true;
+                }
+            } catch (error) {
+                console.warn('[Migration] unable to reconcile migration run after start failure', error);
+            }
+            if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 2_000));
+        }
+        return false;
     }
 
     async restoreMigrationCheck() {
