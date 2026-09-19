@@ -71,7 +71,7 @@ export function migrationErrorMessage(error: any): string {
         return '노션 페이지 또는 데이터베이스를 찾을 수 없습니다. 삭제 여부와 공유 권한을 확인해주세요.';
     }
     if (code === 'validation_error') {
-        return '노션에서 이전 요청을 처리할 수 없습니다. 원본과 대상 데이터베이스의 속성 구성을 확인해주세요.';
+        return '노션에서 일부 속성 또는 연결 정보를 처리하지 못했습니다. 페이지의 이전 여부를 확인해주세요.';
     }
     if (status === 400) {
         return '노션에서 이전 요청을 처리할 수 없습니다. 같은 문제가 계속되면 고객지원에 문의해주세요.';
@@ -296,6 +296,11 @@ export async function executeMigration(
                 : [];
             const targetPagesByTitle = new Map<string, PageInfo[]>();
             for (const targetPage of targetPages) {
+                // replace only removes 1.5 template defaults. A user-created page with the
+                // same title must never be archived simply because an old page is moving in.
+                if (!info.defaultProperty || targetPage.properties?.[info.defaultProperty]?.checkbox !== true) {
+                    continue;
+                }
                 const matches = targetPagesByTitle.get(targetPage.title) || [];
                 matches.push(targetPage);
                 targetPagesByTitle.set(targetPage.title, matches);
@@ -414,20 +419,20 @@ export async function executeMigration(
                             }
                         }
                         if (!alreadyMoved) {
-                            if (info.defaultMigration === 'replace') {
-                                const sameNamePages = targetPagesByTitle.get(page.pageName) || [];
-                                for (const targetPage of sameNamePages.filter(candidate => candidate.id !== page.pageId)) {
-                                    await timed(`NOTION ARCHIVE REPLACED DEFAULT db=${dbName} page=${targetPage.id}`, () =>
-                                        notion.pages.update({ page_id: targetPage.id, archived: true })
-                                    );
-                                }
-                                // A retry must not archive the same target default twice.
-                                targetPagesByTitle.set(page.pageName, sameNamePages.filter(candidate => candidate.id === page.pageId));
-                            }
                             await commit(tx => tx.update(pageRef, { status: 'migrating', updatedAt: admin.firestore.FieldValue.serverTimestamp() }));
                             await timed(`NOTION MOVE db=${dbName} page=${page.pageId}`, () => notion.pages.move({
                                 page_id: page.pageId, parent: { type: 'data_source_id', data_source_id: target }
                             }));
+                        }
+                        if (info.defaultMigration === 'replace') {
+                            const sameNamePages = targetPagesByTitle.get(page.pageName) || [];
+                            for (const targetPage of sameNamePages.filter(candidate => candidate.id !== page.pageId)) {
+                                await timed(`NOTION ARCHIVE REPLACED DEFAULT db=${dbName} page=${targetPage.id}`, () =>
+                                    notion.pages.update({ page_id: targetPage.id, archived: true })
+                                );
+                            }
+                            // A retry must not archive the same target default twice.
+                            targetPagesByTitle.set(page.pageName, sameNamePages.filter(candidate => candidate.id === page.pageId));
                         }
                         if (info.refreshContentWithDefaultTemplate && !page.templateApplied) {
                             // Read these before erase_content. Only marked title/callout pairs are user template sections.
@@ -522,6 +527,51 @@ export async function executeMigration(
                     } catch (error: any) {
                         if (error instanceof WorkerStopped) {
                             throw error;
+                        }
+                        // Notion can reject a property validation after it has already moved
+                        // the page. Treat that as a completed move with a warning only after
+                        // verifying that the page is no longer in the source data source.
+                        if (error?.code === 'validation_error') {
+                            try {
+                                const current: any = await timed(
+                                    `NOTION VERIFY VALIDATION ERROR db=${dbName} page=${page.pageId}`,
+                                    () => notion.pages.retrieve({ page_id: page.pageId })
+                                );
+                                const currentParent = 'parent' in current ? current.parent : undefined;
+                                const removedFromSource = currentParent?.type === 'data_source_id' &&
+                                    normalizeId(currentParent.data_source_id) !== normalizeId(source);
+                                if (removedFromSource) {
+                                    const warning = '노션에서 일부 속성 또는 연결 정보를 처리하지 못했지만 페이지 이동은 완료되었습니다. 필요하면 페이지의 관계 속성을 확인해주세요.';
+                                    console.warn('[Migration] validation warning after moved page', {
+                                        runId: claimed.runId, dbName, pageId: page.pageId,
+                                        parent: currentParent.data_source_id, message: error?.message
+                                    });
+                                    await commit(tx => {
+                                        tx.update(pageRef, {
+                                            status: 'complete',
+                                            completedWithWarning: true,
+                                            templateApplying: admin.firestore.FieldValue.delete(),
+                                            errorMessage: admin.firestore.FieldValue.delete(),
+                                            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                                        });
+                                        tx.set(resultRef, {
+                                            ...result,
+                                            status: 'warning',
+                                            type: 'page-warning',
+                                            message: `${page.pageName} — ${warning}`
+                                        });
+                                        tx.update(run, { completedCount: completed + 1 });
+                                    }, true);
+                                    completed++;
+                                    page.status = 'complete';
+                                    continue;
+                                }
+                            } catch (verifyError: any) {
+                                if (verifyError instanceof WorkerStopped) throw verifyError;
+                                console.error('[Migration] validation-error verification failed', {
+                                    runId: claimed.runId, dbName, pageId: page.pageId, message: verifyError?.message
+                                });
+                            }
                         }
                         success = false;
                         incompleteCount++;

@@ -31,6 +31,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
 
     private subscriptions = new Subscription();
     private destroyed = false;
+    private migrationRestoreGeneration = 0;
+    private migrationCheckRestoreGeneration = 0;
     migrationStarted = false;
     migrationRunId = '';
     migrationStatus = 'READY';
@@ -176,7 +178,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
 
         this.subscriptions.add(this.userService.migrationResult$.subscribe(result => {
             // Hide start/progress events, including logs saved by older workers.
-            if (result.status !== 'ok' && result.status !== 'error' && result.status !== 'notification') return;
+            if (result.status !== 'ok' && result.status !== 'error' && result.status !== 'warning' && result.status !== 'notification') return;
             const index = this.migrationResults.findIndex(item =>
                 item.id === result.id || (result.pageId && item.pageId === result.pageId)
             );
@@ -193,6 +195,9 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         }));
         this.subscriptions.add(this.userService.notionMigrationConnected$.subscribe(async () => {
             if (this.destroyed) return;
+            // Reconnecting replaces integrations/migration in Firestore. Do not retain old runs in this frame.
+            this.resetMigrationState();
+            this.resetMigrationCheckState();
             await this.updateSession();
             await this.restoreMigration();
             if (!this.destroyed) {
@@ -223,6 +228,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     }
 
     private resetMigrationState() {
+        this.migrationRestoreGeneration++;
         this.userService.stopMigrationWatcher();
         this.migrationStarted = false;
         this.migrationRunId = '';
@@ -240,11 +246,25 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         this.migrationStopPending = false;
     }
 
+    private resetMigrationCheckState() {
+        this.migrationCheckRestoreGeneration++;
+        this.userService.stopMigrationCheckWatcher();
+        this.clearForceStopTimer();
+        this.forceStopAvailable = false;
+        this.migrationCheckRunId = '';
+        this.migrationCheckResults = [];
+        this.migrationCheckTotalCount = 0;
+        this.migrationCheckStatus = 'READY';
+        this.migrationCheckComplete = false;
+        this.migrationCheckSuccess = false;
+    }
+
     private async restoreMigration() {
         if (!this.userId || this.destroyed) return;
+        const generation = this.migrationRestoreGeneration;
         try {
             const run = await this.userService.getMigrationRun(this.userId);
-            if (this.destroyed) return;
+            if (this.destroyed || generation !== this.migrationRestoreGeneration) return;
             if (run) {
                 this.applyMigrationStatus(run);
                 this.userService.startMigrationWatcher(this.userId, run.runId);
@@ -253,6 +273,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
                 this.resetMigrationState();
             }
         } catch (error) {
+            if (generation !== this.migrationRestoreGeneration) return;
             console.error('[Migration] restore failed:', error);
             this.migrationStarted = true;
             this.migrationStatus = 'ERROR';
@@ -291,10 +312,14 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         if (!this.userId) {
             return;
         }
+        const generation = this.migrationCheckRestoreGeneration;
 
         const run = await this.userService.getMigrationCheckRun(this.userId);
 
+        if (this.destroyed || generation !== this.migrationCheckRestoreGeneration) return;
+
         if (!run?.runId) {
+            this.resetMigrationCheckState();
             return;
         }
 
@@ -315,6 +340,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             this.userId,
             this.migrationCheckRunId
         );
+
+        if (this.destroyed || generation !== this.migrationCheckRestoreGeneration) return;
 
         this.migrationCheckResults = results || [];
 
@@ -482,6 +509,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     // migration check
 
     async startCheckProcess() {
+        // Ignore an older restore request that may still be resolving while this new check starts.
+        this.migrationCheckRestoreGeneration++;
         this.userService.stopMigrationCheckWatcher();
 
         this.clearForceStopTimer();

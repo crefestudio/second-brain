@@ -21,7 +21,7 @@
 <!-- Notion 연결됨 -->
 <div *ngIf="userId" class="page">
     <div class="page-header">
-        <h1>🔄 라이프업 업데이트22</h1>
+        <h1>🔄 라이프업 업데이트</h1>
 
         <div class="hero-box">
             <div class="hero-content">
@@ -452,14 +452,14 @@
                 </div>
                 <div class="console-content" #migrationConsole>
                     <div class="console-line" *ngFor="let item of migrationResults"
-                        [class.success]="item.status === 'ok'" [class.warning]="item.status === 'notification'"
+                        [class.success]="item.status === 'ok'" [class.warning]="item.status === 'notification' || item.status === 'warning'"
                         [class.error]="item.status === 'error'">
-                        <span>{{ item.status === 'ok' ? '✓' : item.status === 'error' ? '✕' : '·' }}</span>
+                        <span>{{ item.status === 'ok' ? '✓' : item.status === 'error' ? '✕' : item.status === 'warning' ? '!' : '·' }}</span>
                         <span>
                             {{ item.dbName }} {{ item.type === 'database-complete' ? '-' : '·' }} {{ item.message || item.errorMessage || item.type }}
                             <ng-container *ngIf="item.total">({{ item.current }} / {{ item.total }})</ng-container>
                         </span>
-                        <span>{{ item.status === 'ok' ? 'OK' : item.status === 'error' ? '오류' : '진행' }}</span>
+                        <span>{{ item.status === 'ok' ? 'OK' : item.status === 'error' ? '오류' : item.status === 'warning' ? '경고' : '진행' }}</span>
                     </div>
                     <div class="console-divider" *ngIf="migrationResults.length"></div>
                     <div class="console-message" *ngIf="migrationStatus === 'MIGRATING' && !migrationCounting">

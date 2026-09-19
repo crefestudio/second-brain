@@ -278,6 +278,40 @@ test('developer errors are replaced with Korean guidance, including unknown and 
     assert.equal(migrationErrorMessage(new MigrationConflict('이미 진행 중입니다.')), '이미 진행 중입니다.');
 });
 
+test('a validation error is a warning and counts as complete after the page leaves the source', async () => {
+    const db = fixture([['moved', 'pending']]);
+    onMove = async () => {
+        throw Object.assign(new Error('relation property could not be validated'), {
+            status: 400, code: 'validation_error'
+        });
+    };
+
+    await executeMigration(db, 'user', 'token', 'run', 'resume', deps(['moved']));
+
+    assert.equal(db.records.get(`${runPath}/pages/moved`).status, 'complete');
+    assert.equal(db.records.get(`${runPath}/pages/moved`).completedWithWarning, true);
+    assert.equal(db.records.get(`${runPath}/results/page_moved`).status, 'warning');
+    assert.equal(db.records.get(runPath).completedCount, 1);
+    assert.equal(db.records.get(runPath).success, true);
+});
+
+test('replace archives only a matching target template default', async () => {
+    const db = fixture([]);
+    await executeMigration(db, 'user', 'token', 'run', 'resume', {
+        entries: [['category', { defaultMigration: 'replace', defaultProperty: '기본 태그' }]],
+        resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
+        pages: async source => source === 'source'
+            ? [{ id: 'old-default', title: '독서', properties: { '기본 태그': { type: 'checkbox', checkbox: true } } }]
+            : [
+                { id: 'template-default', title: '독서', properties: { '기본 태그': { type: 'checkbox', checkbox: true } } },
+                { id: 'user-page', title: '독서', properties: { '기본 태그': { type: 'checkbox', checkbox: false } } }
+            ]
+    });
+
+    assert.deepEqual(updateCalls, [{ page_id: 'template-default', archived: true }]);
+    assert.deepEqual(moveCalls, ['old-default']);
+});
+
 test('template databases verify the new parent and replace old blocks with the default template', async () => {
     const db = fixture([['project-page', 'pending']]);
     db.records.set(`${runPath}/pages/project-page`, {
