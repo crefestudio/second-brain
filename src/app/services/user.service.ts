@@ -914,7 +914,7 @@ export class UserService {
     //
     // notion
 
-    startNotionConnectWatcher(userId: string) {
+    async startNotionConnectWatcher(userId: string) {
         if (!userId) { return; }
         this.stopNotionConnectWatcher();
         const docRef = doc(
@@ -922,13 +922,17 @@ export class UserService {
             'users',
             userId
         );
+        const existingSnapshot = await getDoc(docRef);
+        const connectionId = existingSnapshot.data()?.['notionConnectionId'] || '';
         this.notionConnectUnsubscribe = onSnapshot(
             docRef,
             (snapshot) => {
                 if (!snapshot.exists()) { return; }
 
                 const data = snapshot.data();
-                if (data['notionAccessToken']) {
+                const updatedConnectionId = data['notionConnectionId'] || '';
+                if (data['notionConnection']?.status === 'connected' &&
+                    updatedConnectionId && updatedConnectionId !== connectionId) {
                     this.notionConnected$.next();
                     this.stopNotionConnectWatcher();
                 }
@@ -979,6 +983,15 @@ export class UserService {
         this.notionMigrationConnectWatchGeneration++;
         this.notionMigrationConnectUnsubscribe?.();
         this.notionMigrationConnectUnsubscribe = undefined;
+    }
+
+    async getNotionConnectionStatus(userId: string): Promise<boolean> {
+        if (!userId) return false;
+        const response = await firstValueFrom(this.http.post<{
+            success: boolean;
+            connected: boolean;
+        }>(`${this.functionsBaseUrl}/getNotionConnectionStatus`, { userId }));
+        return response.connected ?? false;
     }
     ////////////////////////
 

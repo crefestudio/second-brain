@@ -1,14 +1,20 @@
 <div class="success-wrapper">
     <div class="success-card">
-        <h1 class="title">🎉 연결 성공</h1>
+        <h1 class="title" *ngIf="isPending">연결 확인 중</h1>
+        <h1 class="title" *ngIf="!isPending">🎉 연결 성공</h1>
 
-        <p class="desc">
+        <p class="desc" *ngIf="!isPending">
             데이터 이전을 위한 라이프업 연결이 완료되었습니다.<br>
             이제 원래 페이지로 돌아가 다음 단계를 진행해주세요.
         </p>
 
-        <p class="guide">
+        <p class="guide" *ngIf="!isPending">
             이 창을 닫고 원래 페이지로 돌아가주세요.
+        </p>
+
+        <p class="guide" *ngIf="isPending">
+            노션 템플릿을 확인하고 있습니다. 완료되면 이 화면이 자동으로 갱신됩니다.<br>
+            보통 1~2분 정도 걸릴 수 있습니다.
         </p>
 
         <!-- <button class="close-btn" (click)="closeWindow()">

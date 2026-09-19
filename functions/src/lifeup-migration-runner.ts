@@ -759,6 +759,42 @@ export async function executeMigration(
                                 });
                             }
                         }
+                        // The page move has already completed before template preservation starts.
+                        // If an old template block cannot be restored into the new template,
+                        // keep the moved page complete and make the follow-up explicit instead
+                        // of counting it as a migration failure.
+                        if (templateRestoreStarted) {
+                            const warning = '페이지 이전 중 페이지 템플릿으로 완전히 이전하지 못했습니다. 페이지 이동은 완료되었으니, 이전 버전 템플릿에서 별도로 확인해주세요.';
+                            console.warn('[Migration] template restoration completed with warning', {
+                                runId: claimed.runId,
+                                dbName,
+                                pageId: page.pageId,
+                                status: error?.status,
+                                code: error?.code,
+                                message: error?.message
+                            });
+                            await commit(tx => {
+                                tx.update(pageRef, {
+                                    status: 'complete',
+                                    completedWithWarning: true,
+                                    templateApplied: false,
+                                    templateSkippedReason: warning,
+                                    templateApplying: admin.firestore.FieldValue.delete(),
+                                    errorMessage: admin.firestore.FieldValue.delete(),
+                                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                                });
+                                tx.set(resultRef, {
+                                    ...result,
+                                    status: 'warning',
+                                    type: 'page-warning',
+                                    message: `${page.pageName} · ${warning}`
+                                });
+                                tx.update(run, { completedCount: completed + 1 });
+                            }, true);
+                            completed++;
+                            page.status = 'complete';
+                            continue;
+                        }
                         success = false;
                         incompleteCount++;
                         const message = migrationErrorMessage(error);

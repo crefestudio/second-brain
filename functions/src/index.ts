@@ -54,7 +54,135 @@ const NOTION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cl
 const NOTION_MIGRATION_TOKEN = defineSecret("NOTION_MIGRATION_TOKEN");
 const NOTION_MIGRATION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionMigrationOAuthCallback"; // 노션에 등록되서 바꿀 수 없음
 
+// A newly duplicated Notion template can take a little while to be included in
+// the search index. Keep the OAuth request open while we wait for that index,
+// rather than sending the user to an error page that will resolve by itself.
+const NOTION_DATABASE_DISCOVERY_TIMEOUT_MS = 5 * 60 * 1000;
+const NOTION_DATABASE_DISCOVERY_INITIAL_DELAY_MS = 10 * 1000;
+const NOTION_DATABASE_DISCOVERY_MAX_DELAY_MS = 30 * 1000;
+
+const wait = (milliseconds: number) =>
+    new Promise<void>(resolve => setTimeout(resolve, milliseconds));
+
+function isNotionDatabaseNotIndexedError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+
+    // getDatabaseIdByDatabaseName throws the Korean message below. Keep the
+    // English variant too, so this remains safe if the service message changes.
+    return /database.*(?:찾을 수 없습니다|not found)/i.test(message);
+}
+
+async function retryNotionDatabaseDiscovery<T>(
+    label: string,
+    discover: () => Promise<T>,
+    deadlineAt = Date.now() + NOTION_DATABASE_DISCOVERY_TIMEOUT_MS
+): Promise<T> {
+    const startedAt = Date.now();
+    let attempt = 0;
+    let delayMs = NOTION_DATABASE_DISCOVERY_INITIAL_DELAY_MS;
+
+    while (true) {
+        attempt += 1;
+
+        try {
+            const result = await discover();
+            if (attempt > 1) {
+                console.log(`[Notion Discovery] ${label} found after retry`, {
+                    attempt,
+                    elapsedMs: Date.now() - startedAt
+                });
+            }
+            return result;
+        } catch (error) {
+            if (!isNotionDatabaseNotIndexedError(error)) {
+                throw error;
+            }
+
+            const elapsedMs = Date.now() - startedAt;
+            const remainingMs = deadlineAt - Date.now();
+            if (remainingMs <= 0) {
+                console.warn(`[Notion Discovery] ${label} was not indexed before timeout`, {
+                    attempt,
+                    elapsedMs
+                });
+                throw error;
+            }
+
+            const nextDelayMs = Math.min(delayMs, remainingMs);
+            console.log(`[Notion Discovery] ${label} not indexed yet; retrying`, {
+                attempt,
+                elapsedMs,
+                nextDelayMs
+            });
+            await wait(nextDelayMs);
+            delayMs = Math.min(delayMs + 5 * 1000, NOTION_DATABASE_DISCOVERY_MAX_DELAY_MS);
+        }
+    }
+}
+
 const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net"];
+
+async function completeNotionTemplateConnection(
+    userId: string,
+    accessToken: string,
+    workspaceId?: string,
+    botId?: string,
+    duplicatedTemplateId?: string
+): Promise<void> {
+    const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact", "apps", "lifeup info"];
+    const dbMap = await NotionService.updateTemplateDbs(accessToken, dbNames);
+    const missing = dbNames.filter(name => !dbMap?.[name]);
+    if (missing.length) throw new Error(`Template databases not found: ${missing.join(', ')}`);
+
+    const userRef = db.collection("users").doc(userId);
+    const user = (await userRef.get()).data();
+    const kakaoUserId = user?.kakaoUserId;
+    await userRef.set({
+        notionAccessToken: accessToken,
+        notionConnection: {
+            workspaceId,
+            botId,
+            duplicatedTemplateId,
+            databases: dbMap,
+            status: 'connected',
+            connectedAt: admin.firestore.FieldValue.serverTimestamp()
+        },
+        notionConnectionId: randomUUID(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    try {
+        const templateInfo = await NotionService.fetchLifeupTemplateInfoFromNotion(userId);
+        if (templateInfo) {
+            await userRef.set({ lifeupTemplateInfo: templateInfo }, { merge: true });
+            if (kakaoUserId) {
+                await db.collection("kakaoConnections").doc(kakaoUserId).set({
+                    pageUrls: (templateInfo as LifeupTemplateInfo).pageUrls,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+        }
+    } catch (error) {
+        console.warn('[Notion Connection] lifeupTemplateInfo fetch failed', { userId, error });
+    }
+
+    await userRef.collection("integrations").doc("secondbrain").set({
+        accessToken, workspaceId, botId, duplicatedTemplateId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        noteDatabaseId: dbMap.note,
+        enabled: false
+    }, { merge: true });
+    if (!kakaoUserId) {
+        await userRef.collection("integrations").doc("kakao-capture").set({ enabled: false }, { merge: true });
+    }
+    await Promise.all(Object.entries(dbMap).map(([name, dbId]) =>
+        db.collection("notionDatabaseMap").doc(String(dbId)).set({
+            userId, dbName: name, accessToken,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        })
+    ));
+    if (dbMap.note) await NotionService.resetKeywordOptions(accessToken, dbMap.note);
+}
 
 export enum AgentId {
     SECOND_BRAIN = 'secondbrain',
@@ -226,7 +354,7 @@ export const notionMigrationAuth = onRequest(withCors((req, res) => {
 // Notion OAuth Callback
 // ----------------------
 
-export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCors(async (req, res) => {
+export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutSeconds: 360 }, withCors(async (req, res) => {
     const userId = (req.query.state as string) || "";
     try {
         const code = req.query.code as string | undefined;
@@ -291,11 +419,29 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
                 notionToken.duplicated_template_id
         });
 
+        // Do not wait for Notion's eventually consistent search index inside
+        // the OAuth callback. The success page performs short polling requests.
+        const pendingUserRef = db.collection("users").doc(userId);
+        await pendingUserRef.set({
+            notionAccessToken: notionToken.access_token,
+            notionConnection: {
+                workspaceId: notionToken.workspace_id,
+                botId: notionToken.bot_id,
+                duplicatedTemplateId: notionToken.duplicated_template_id,
+                status: 'pending'
+            },
+            notionConnectionId: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        return res.redirect(
+            `http://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(userId)}`
+        );
+
         const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact", "apps", "lifeup info"];
-        const dbMap = await NotionService.updateTemplateDbs(
-            notionToken.access_token,
-            dbNames
-        )
+        const dbMap = await retryNotionDatabaseDiscovery(
+            "LifeUp template databases",
+            () => NotionService.updateTemplateDbs(notionToken.access_token, dbNames)
+        );
 
         // ❗ 누락된 DB 체크
         const missing = dbNames.filter(name => !dbMap?.[name])
@@ -342,10 +488,10 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
         }
 
         if (templateInfo) {
-            await userRef.set({ lifeupTemplateInfo: templateInfo }, { merge: true });
+            await userRef.set({ lifeupTemplateInfo: templateInfo as LifeupTemplateInfo }, { merge: true });
             if (kakaoUserId) {
                 await db.collection("kakaoConnections").doc(kakaoUserId).set({
-                    pageUrls: templateInfo.pageUrls,
+                    pageUrls: (templateInfo as LifeupTemplateInfo).pageUrls,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
             }
@@ -427,8 +573,51 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN] }, withCo
 }));
 
 
+export const getNotionConnectionStatus = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ success: false, error: 'METHOD_NOT_ALLOWED' });
+            return;
+        }
+        const userId = req.body?.userId;
+        if (!userId) {
+            res.status(400).json({ success: false, error: 'MISSING_USER_ID' });
+            return;
+        }
+        const user = (await db.collection('users').doc(userId).get()).data();
+        const connection = user?.notionConnection;
+        if (!user?.notionAccessToken || !connection) {
+            res.json({ success: true, connected: false, status: 'disconnected' });
+            return;
+        }
+        if (connection.status === 'connected') {
+            res.json({ success: true, connected: true, status: 'connected' });
+            return;
+        }
+        try {
+            await completeNotionTemplateConnection(
+                userId,
+                user.notionAccessToken,
+                connection.workspaceId,
+                connection.botId,
+                connection.duplicatedTemplateId
+            );
+            res.json({ success: true, connected: true, status: 'connected' });
+        } catch (error) {
+            if (isNotionDatabaseNotIndexedError(error)) {
+                res.json({ success: true, connected: false, status: 'pending' });
+                return;
+            }
+            throw error;
+        }
+    } catch (error: any) {
+        console.error('[Notion Connection Status] Failed', error);
+        res.status(500).json({ success: false, error: error?.message || 'Failed to get Notion connection status' });
+    }
+}));
+
 // #migration
-export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATION_TOKEN] }, withCors(async (req, res) => {
+export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 360 }, withCors(async (req, res) => {
     const userId = (req.query.state as string) || "";
 
     try {
@@ -503,9 +692,39 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
             throw new Error("Notion access token is missing");
         }
 
+        // Notion expects its OAuth callback to finish quickly. Database search
+        // visibility is eventually consistent, so defer that work to the
+        // status endpoint that the success page polls.
+        const pendingUserRef = db.collection("users").doc(userId);
+        const pendingMigrationRef = pendingUserRef.collection("integrations").doc("migration");
+        await db.recursiveDelete(pendingMigrationRef);
+        await pendingUserRef.set({
+            notionMigrationAccessToken: accessToken,
+            notionMigrationWorkspaceId: notionToken.workspace_id,
+            notionMigrationBotId: notionToken.bot_id,
+            notionMigrationConnectionStatus: 'pending',
+            notionMigrationConnectedAt: admin.firestore.FieldValue.delete(),
+            notionMigrationConnectionId: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        return res.redirect(
+            `http://app.notionable.net/notion-migration-auth/success?userId=${encodeURIComponent(
+                userId
+            )}`
+        );
+
+        // Both template checks share one five-minute window.
+        const templateDiscoveryDeadlineAt =
+            Date.now() + NOTION_DATABASE_DISCOVERY_TIMEOUT_MS;
+
         // 2. 1.3 템플릿 Data Source 확인
-        const lifeup13DataSourceId = await NotionService.resolveDataSourceIdByDbNameAndVersion(
-            accessToken, userId, "note", "1.3"
+        const lifeup13DataSourceId = await retryNotionDatabaseDiscovery(
+            "LifeUp 1.3 migration template",
+            () => NotionService.resolveDataSourceIdByDbNameAndVersion(
+                accessToken, userId, "note", "1.3"
+            ),
+            templateDiscoveryDeadlineAt
         );
 
         if (!lifeup13DataSourceId) {
@@ -518,8 +737,12 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
         });
 
         // 3. 1.5 템플릿 Data Source 확인
-        const lifeup15DataSourceId = await NotionService.resolveDataSourceIdByDbNameAndVersion(
-            accessToken, userId, "lifeup info", "1.5"
+        const lifeup15DataSourceId = await retryNotionDatabaseDiscovery(
+            "LifeUp 1.5 migration template",
+            () => NotionService.resolveDataSourceIdByDbNameAndVersion(
+                accessToken, userId, "lifeup info", "1.5"
+            ),
+            templateDiscoveryDeadlineAt
         );
 
         if (!lifeup15DataSourceId) {
@@ -602,10 +825,53 @@ export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) 
             return;
         }
 
-        const userSnap = await db.collection('users').doc(userId).get();
-        const connected = userSnap.exists && !!userSnap.data()?.notionMigrationAccessToken;
+        const userRef = db.collection('users').doc(userId);
+        const userSnap = await userRef.get();
+        const user = userSnap.data();
+        const accessToken = user?.notionMigrationAccessToken;
 
-        res.json({ success: true, connected });
+        if (!accessToken) {
+            res.json({ success: true, connected: false, status: 'disconnected' });
+            return;
+        }
+
+        if (user?.notionMigrationConnectionStatus === 'connected') {
+            res.json({ success: true, connected: true, status: 'connected' });
+            return;
+        }
+
+        try {
+            // One quick attempt only. The browser performs the retry cadence,
+            // keeping the Notion OAuth callback below its response deadline.
+            const lifeup13DataSourceId = await NotionService.resolveDataSourceIdByDbNameAndVersion(
+                accessToken, userId, 'note', '1.3'
+            );
+            const lifeup15DataSourceId = await NotionService.resolveDataSourceIdByDbNameAndVersion(
+                accessToken, userId, 'lifeup info', '1.5'
+            );
+
+            const migrationRef = userRef.collection('integrations').doc('migration');
+            await db.recursiveDelete(migrationRef);
+            await userRef.set({
+                notionMigrationConnectionStatus: 'connected',
+                notionMigrationConnectedAt: admin.firestore.FieldValue.serverTimestamp(),
+                notionMigrationConnectionId: randomUUID(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            console.log('[Migration Connection Status] Connection verified', {
+                userId,
+                lifeup13DataSourceId,
+                lifeup15DataSourceId
+            });
+            res.json({ success: true, connected: true, status: 'connected' });
+        } catch (error: any) {
+            if (isNotionDatabaseNotIndexedError(error)) {
+                res.json({ success: true, connected: false, status: 'pending' });
+                return;
+            }
+            throw error;
+        }
     } catch (error: any) {
         console.error('[Migration Connection Status] Failed', error);
         res.status(500).json({ success: false, error: error?.message || 'Failed to get migration connection status' });

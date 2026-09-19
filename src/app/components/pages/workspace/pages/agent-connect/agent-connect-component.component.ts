@@ -547,9 +547,9 @@ export class AgentConnectComponentComponent implements OnInit {
     //
     // notion tempate 연결
 
-    onClickConnectTemplate() {
+    async onClickConnectTemplate() {
         this.isOpenNotionConnectWindow = true;
-        this.userService.startNotionConnectWatcher(this.userId);
+        await this.userService.startNotionConnectWatcher(this.userId);
         this.openNotionConnectWindow();
     }
 
