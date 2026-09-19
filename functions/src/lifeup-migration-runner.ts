@@ -20,6 +20,8 @@ type DatabaseInfo = {
     defaultMigration?: string;
     defaultProperty?: string;
     refreshContentWithDefaultTemplate?: boolean;
+    restoreTemplateContent?: boolean;
+    excludedTemplateSections?: string[];
 };
 interface Dependencies {
     entries: [string, DatabaseInfo][];
@@ -482,6 +484,7 @@ export async function executeMigration(
                         createdAt: admin.firestore.FieldValue.serverTimestamp()
                     };
                     let templateRestoreStarted = false;
+                    let templateContentRestoring = false;
                     try {
                         // A move may have succeeded immediately before a crash or a lost HTTP response.
                         let alreadyMoved = false;
@@ -522,7 +525,10 @@ export async function executeMigration(
                                 `NOTION SAVE TEMPLATE SECTIONS db=${dbName} page=${page.pageId}`,
                                 () => listBlocks(page.pageId)
                             );
-                            const preservedSections = templateSections(originalBlocks);
+                            const excludedSections = new Set((info.excludedTemplateSections || []).map(title => title.trim()));
+                            const preservedSections = info.restoreTemplateContent === true
+                                ? templateSections(originalBlocks).filter(section => !excludedSections.has(section.title.trim()))
+                                : [];
                             for (const section of preservedSections) {
                                 section.children = section.callout.has_children
                                     ? await readBlockTree(section.callout.id)
@@ -640,27 +646,23 @@ export async function executeMigration(
                                 }
                             }
                             for (const preserved of preservedSections) {
+                                templateContentRestoring = true;
                                 const targetSection = targetSections.get(preserved.title);
                                 if (targetSection) {
-                                    const templateChildren = targetSection.has_children
-                                        ? await listBlocks(targetSection.id)
-                                        : [];
                                     const summary = nestedBlockSummary(preserved.children);
                                     console.log('[Migration] restoring template section', {
                                         runId: claimed.runId, dbName, pageId: page.pageId,
-                                        title: preserved.title, mode: 'replace-callout', blockId: targetSection.id,
-                                        removedTemplateChildCount: templateChildren.length,
+                                        // Do not clear the new template's content. An empty old
+                                        // section can be an intentional user deletion; clearing the
+                                        // matching new section would incorrectly carry that deletion
+                                        // forward. Keep the template and append preserved content.
+                                        title: preserved.title, mode: 'append-to-callout', blockId: targetSection.id,
                                         restoredChildCount: summary.count,
                                         restoredChildTypes: summary.types
                                     });
                                     await timed(`NOTION RESTORE TEMPLATE SECTION db=${dbName} page=${page.pageId}`, () =>
                                         notion.blocks.update({ block_id: targetSection.id, ...calloutPayload(preserved.callout) })
                                     );
-                                    for (const child of templateChildren) {
-                                        await timed(`NOTION CLEAR TEMPLATE SECTION CHILD db=${dbName} block=${child.id}`, () =>
-                                            notion.blocks.delete({ block_id: child.id })
-                                        );
-                                    }
                                     if (preserved.children.length) {
                                         await appendBlockTree(
                                             targetSection.id,
@@ -763,8 +765,8 @@ export async function executeMigration(
                         // If an old template block cannot be restored into the new template,
                         // keep the moved page complete and make the follow-up explicit instead
                         // of counting it as a migration failure.
-                        if (templateRestoreStarted) {
-                            const warning = '페이지 이전 중 페이지 템플릿으로 완전히 이전하지 못했습니다. 페이지 이동은 완료되었으니, 이전 버전 템플릿에서 별도로 확인해주세요.';
+                        if (templateContentRestoring) {
+                            const warning = '페이지 이동은 완료되었지만 일부 템플릿은 완전히 이전되지 않았습니다. 이전 버전에서 확인해주세요.';
                             console.warn('[Migration] template restoration completed with warning', {
                                 runId: claimed.runId,
                                 dbName,

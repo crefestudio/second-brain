@@ -367,7 +367,7 @@ test('a marked text block and its callout are restored only after the template r
     onUpdate = async options => { if (options.template) templateApplied = true; };
 
     await executeMigration(db, 'user', 'token', 'run', 'resume', {
-        entries: [['project', { refreshContentWithDefaultTemplate: true }]],
+        entries: [['project', { refreshContentWithDefaultTemplate: true, restoreTemplateContent: true }]],
         resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
         pages: async () => [{ id: 'project-page', title: '프로젝트' }]
     });
@@ -391,6 +391,38 @@ test('a marked text block and its callout are restored only after the template r
             bulleted_list_item: { rich_text: [{ plain_text: '맛집' }] }
         }]
     }]);
+    assert.deepEqual(deleteCalls, []);
+});
+
+test('a matching section retains new template content when old content was intentionally deleted', async () => {
+    const db = fixture([['project-page', 'pending']]);
+    db.records.set(`${runPath}/pages/project-page`, {
+        ...db.records.get(`${runPath}/pages/project-page`), dbName: 'project'
+    });
+    let templateApplied = false;
+    onListBlocks = async blockId => ({
+        results: blockId === 'new-callout' ? [
+            { id: 'new-default-child', type: 'paragraph', paragraph: { rich_text: [{ plain_text: 'new default' }] } }
+        ] : templateApplied ? [
+            { id: 'new-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '▫ section' }] } },
+            { id: 'new-callout', type: 'callout', has_children: true, callout: { rich_text: [] } }
+        ] : [
+            { id: 'old-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '▫ section' }] } },
+            // The user intentionally removed every child from this old section.
+            { id: 'old-callout', type: 'callout', has_children: false, callout: { rich_text: [] } }
+        ],
+        has_more: false
+    });
+    onUpdate = async options => { if (options.template) templateApplied = true; };
+
+    await executeMigration(db, 'user', 'token', 'run', 'resume', {
+        entries: [['project', { refreshContentWithDefaultTemplate: true, restoreTemplateContent: true }]],
+        resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
+        pages: async () => [{ id: 'project-page', title: 'project-page' }]
+    });
+
+    assert.deepEqual(deleteCalls, []);
+    assert.deepEqual(appendCalls, []);
 });
 
 test('child databases and unsupported blocks are omitted while the new template is applied', async () => {
@@ -414,7 +446,7 @@ test('child databases and unsupported blocks are omitted while the new template 
     onUpdate = async options => { if (options.template) templateApplied = true; };
 
     await executeMigration(db, 'user', 'token', 'run', 'resume', {
-        entries: [['folder', { refreshContentWithDefaultTemplate: true }]],
+        entries: [['folder', { refreshContentWithDefaultTemplate: true, restoreTemplateContent: true }]],
         resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
         pages: async () => [{ id: 'folder-page', title: 'folder-page' }]
     });
@@ -423,6 +455,34 @@ test('child databases and unsupported blocks are omitted while the new template 
     assert.equal(db.records.get(`${runPath}/pages/folder-page`).templateApplied, true);
     assert.equal(db.records.get(`${runPath}/results/page_folder-page`).status, 'ok');
     assert.equal(updateCalls.some(call => call.template), true);
+});
+
+for (const policy of [
+    { name: 'category does not restore old sections by default', dbName: 'category', options: {} },
+    { name: 'project excludes configured sections before reading children', dbName: 'project', options: { restoreTemplateContent: true, excludedTemplateSections: ['노트'] } }
+]) test(policy.name, async () => {
+    const db = fixture([['policy-page', 'pending']]);
+    db.records.set(`${runPath}/pages/policy-page`, {
+        ...db.records.get(`${runPath}/pages/policy-page`), dbName: policy.dbName
+    });
+    let applied = false;
+    onListBlocks = async blockId => {
+        assert.notEqual(blockId, 'old-callout', 'excluded content must not be read or restored');
+        return { results: applied ? [] : [
+            { id: 'old-title', type: 'paragraph', paragraph: { rich_text: [{ plain_text: '▫ 노트' }] } },
+            { id: 'old-callout', type: 'callout', has_children: true, callout: { rich_text: [] } }
+        ], has_more: false };
+    };
+    onUpdate = async options => { if (options.template) applied = true; };
+    await executeMigration(db, 'user', 'token', 'run', 'resume', {
+        entries: [[policy.dbName, { refreshContentWithDefaultTemplate: true, ...policy.options }]],
+        resolve: async (_, version) => version === '1.3' ? 'source' : 'target',
+        pages: async () => [{ id: 'policy-page', title: 'policy' }]
+    });
+    assert.equal(applied, true);
+    assert.deepEqual(appendCalls, []);
+    assert.deepEqual(deleteCalls, []);
+    assert.equal(db.records.get(`${runPath}/pages/policy-page`).status, 'complete');
 });
 
 test('resume retries only an incomplete template refresh without moving or recounting the page', async () => {

@@ -565,7 +565,41 @@
                 </div>
             </div>
 
-            <div class="result-summary">
+            <div class="result-summary" *ngIf="true">
+                <div class="result-icon">{{ migrationSuccess ? (migrationWarningResults.length ? '!' : '✓') : '!' }}</div>
+                <div>
+                    <strong>{{ migrationResultTitle }}</strong>
+                    <span>총 <b>{{ migrationCompletedCount }}개</b>의 페이지를 처리했습니다. 경고 {{ migrationWarningResults.length }}건 · 오류 {{ migrationPageErrorResults.length }}건</span>
+                </div>
+            </div>
+
+            <div class="result-table">
+                <div class="result-row result-header">
+                    <span>데이터베이스</span><span>이전 데이터</span><span>결과</span>
+                </div>
+                <div class="result-row" *ngFor="let database of migrationDatabaseSummaries">
+                    <span>{{ database.dbName }}</span>
+                    <span>{{ database.completed }} / {{ database.total }}개</span>
+                    <span [class.result-ok]="database.status === 'ok'" [class.result-warning]="database.status === 'warning'" [class.result-error]="database.status === 'error'">
+                        {{ database.status === 'ok' ? '완료' : database.status === 'warning' ? '완료 · 경고 ' + database.warnings + '건' : '오류 ' + database.errors + '건' }}
+                    </span>
+                </div>
+                <div class="result-row" *ngIf="!migrationDatabaseSummaries.length">
+                    <span>결과 집계 중</span><span>-</span><span>-</span>
+                </div>
+            </div>
+
+            <div class="issue-box success" *ngIf="migrationWarningResults.length">
+                <strong>확인이 필요한 경고 {{ migrationWarningResults.length }}건</strong>
+                <span *ngFor="let warning of migrationWarningResults">{{ warning.dbName }} · {{ warning.message }}</span>
+            </div>
+
+            <div class="issue-box error" *ngIf="migrationPageErrorResults.length">
+                <strong>이전하지 못한 항목 {{ migrationPageErrorResults.length }}건</strong>
+                <span *ngFor="let error of migrationPageErrorResults">{{ error.dbName }} · {{ error.message }}</span>
+            </div>
+
+            <div class="result-summary" *ngIf="false">
 
                 <div class="result-icon">✓</div>
 
@@ -580,7 +614,7 @@
 
             </div>
 
-            <div class="result-table">
+            <div class="result-table" *ngIf="false">
 
                 <div class="result-row result-header">
                     <span>데이터베이스</span>
@@ -614,7 +648,7 @@
 
             </div>
 
-            <div class="issue-box success">
+            <div class="issue-box success" *ngIf="false">
                 <strong>✓ 발생한 이슈가 없습니다.</strong>
 
                 <span>
@@ -632,7 +666,7 @@
                     </span>
                 </div>
 
-                <button class="primary-btn">
+                <button class="primary-btn" (click)="openMigratedLifeup()">
                     새 라이프업 열기 ↗
                 </button>
 
@@ -646,9 +680,9 @@
 
                 <div class="footer-actions">
 
-                    <button class="secondary-btn">
+                    <a class="secondary-btn" href="http://pf.kakao.com/_tGkqX/chat" target="_blank" rel="noopener">
                         데이터 이전 오류 신고
-                    </button>
+                    </a>
 
                     <button class="primary-btn" (click)="nextStep()">
                         문제 없습니다 →
@@ -677,7 +711,7 @@
                 이제 새로운 라이프업 1.5를 이용하시면 됩니다.
             </p>
 
-            <button class="primary-btn large">
+            <button class="primary-btn large" *ngIf="false">
                 라이프업 1.5 안내 영상 보기 ▶
             </button>
 
@@ -697,11 +731,12 @@
 
             </div>
 
-            <button class="danger-btn large">
+            <button class="danger-btn large" (click)="disconnectMigrationNotion()">
                 데이터 이전 연결 해제
             </button>
 
             <div class="complete-message">
+                연결을 해제하면 보안을 위해 이번 이전 결과와 업데이트 내역도 함께 삭제됩니다.<br>
                 데이터 이전 연결을 해제하면 업데이트 과정이 모두 완료됩니다.
             </div>
 

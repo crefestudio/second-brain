@@ -434,7 +434,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutS
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         return res.redirect(
-            `http://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(userId)}`
+            `https://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(userId)}`
         );
 
         const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact", "apps", "lifeup info"];
@@ -565,7 +565,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutS
                     : JSON.stringify(error);
 
         return res.redirect(
-            `http://app.notionable.net/notion-auth/fail?userId=${encodeURIComponent(
+            `https://app.notionable.net/notion-auth/fail?userId=${encodeURIComponent(
                 userId
             )}&error=${encodeURIComponent(errorMessage)}`
         );
@@ -709,7 +709,7 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
         }, { merge: true });
 
         return res.redirect(
-            `http://app.notionable.net/notion-migration-auth/success?userId=${encodeURIComponent(
+            `https://app.notionable.net/notion-migration-auth/success?userId=${encodeURIComponent(
                 userId
             )}`
         );
@@ -803,7 +803,7 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
                     : JSON.stringify(error);
 
         return res.redirect(
-            `http://app.notionable.net/notion-migration-auth/fail?userId=${encodeURIComponent(
+            `https://app.notionable.net/notion-migration-auth/fail?userId=${encodeURIComponent(
                 userId
             )}&error=${encodeURIComponent(errorMessage)}`
         );
@@ -850,8 +850,9 @@ export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) 
                 accessToken, userId, 'lifeup info', '1.5'
             );
 
-            const migrationRef = userRef.collection('integrations').doc('migration');
-            await db.recursiveDelete(migrationRef);
+            // The OAuth callback clears an old run once when a user explicitly
+            // reconnects. Do not clear it here: this endpoint is polled and a
+            // late polling response must never erase a migration in progress.
             await userRef.set({
                 notionMigrationConnectionStatus: 'connected',
                 notionMigrationConnectedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -875,6 +876,44 @@ export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) 
     } catch (error: any) {
         console.error('[Migration Connection Status] Failed', error);
         res.status(500).json({ success: false, error: error?.message || 'Failed to get migration connection status' });
+    }
+}));
+
+export const getMigrationTemplateRootUrl = onRequest(withCors(async (req, res) => {
+    try {
+        const userId = req.body?.userId;
+        if (!userId) return res.status(400).json({ success: false, error: 'MISSING_USER_ID' });
+        const user = (await db.collection('users').doc(userId).get()).data();
+        const accessToken = user?.notionMigrationAccessToken;
+        if (!accessToken) return res.status(400).json({ success: false, error: 'MIGRATION_NOT_CONNECTED' });
+        const databaseId = await NotionService.getDatabaseIdByDatabaseName(accessToken, 'lifeup info', '1.5');
+        const url = await NotionService.getRootPageUrl(accessToken, databaseId);
+        return res.json({ success: true, url });
+    } catch (error: any) {
+        console.error('[Migration Root URL] Failed', error);
+        return res.status(500).json({ success: false, error: error?.message || 'FAILED_TO_GET_ROOT_URL' });
+    }
+}));
+
+export const disconnectMigrationNotion = onRequest(withCors(async (req, res) => {
+    try {
+        const userId = req.body?.userId;
+        if (!userId) return res.status(400).json({ success: false, error: 'MISSING_USER_ID' });
+        const userRef = db.collection('users').doc(userId);
+        await db.recursiveDelete(userRef.collection('integrations').doc('migration'));
+        await userRef.set({
+            notionMigrationAccessToken: admin.firestore.FieldValue.delete(),
+            notionMigrationBotId: admin.firestore.FieldValue.delete(),
+            notionMigrationConnectedAt: admin.firestore.FieldValue.delete(),
+            notionMigrationConnectionId: admin.firestore.FieldValue.delete(),
+            notionMigrationConnectionStatus: admin.firestore.FieldValue.delete(),
+            notionMigrationWorkspaceId: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        return res.json({ success: true });
+    } catch (error: any) {
+        console.error('[Migration Disconnect] Failed', error);
+        return res.status(500).json({ success: false, error: error?.message || 'DISCONNECT_FAILED' });
     }
 }));
 
@@ -1062,6 +1101,8 @@ interface LifeUpMigrationDbInfo {
     defaultProperty?: string;
     defaultMigration?: "none" | "move" | "replace";
     refreshContentWithDefaultTemplate?: boolean;
+    restoreTemplateContent?: boolean;
+    excludedTemplateSections?: string[];
     dbNames?: {
         "1.3"?: string;
         "1.5"?: string;
@@ -1124,7 +1165,9 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
         migration: "all",
         defaultProperty: "기본 항목",
         defaultMigration: "none",       // 기본 항목이 없을꺼임
-        refreshContentWithDefaultTemplate: true
+        refreshContentWithDefaultTemplate: true,
+        restoreTemplateContent: true,
+        excludedTemplateSections: ["프로젝트", "프로젝트 일정", "이미지 자료", "파일 자료", "하위 목표"]
     },
 
     "category": {
@@ -1141,7 +1184,12 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
     // migration "all"
 
     "vision": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
-    "project": { v13: true, v15: true, minVersion: "1.3", migration: "all", refreshContentWithDefaultTemplate: true },
+    "project": {
+        v13: true, v15: true, minVersion: "1.3", migration: "all",
+        refreshContentWithDefaultTemplate: true,
+        restoreTemplateContent: true,
+        excludedTemplateSections: ["할일", "일정", "노트", "메모", "참고 자료", "결과물", "하위 프로젝트"]
+    },
     "note": { v13: true, v15: true, minVersion: "1.3", migration: "all" },
     "contact": { v13: true, v15: true, minVersion: "1.5", migration: "all" },
 
@@ -5211,6 +5259,12 @@ class NotionService {
         }
 
         return object.url ?? "";
+    }
+
+    static async getRootPageUrl(accessToken: string, databaseId: string): Promise<string> {
+        const notion = new Client({ auth: accessToken });
+        const database: any = await notion.databases.retrieve({ database_id: databaseId });
+        return this.findRootPageUrl(notion, database);
     }
 
     // #migration
@@ -9731,10 +9785,10 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
     }
 
     // 시험 운영 안내
-    lines.push("");
-    lines.push("📢 [시험 운영 안내]");
-    lines.push("◾ 분석이 잘못될 수 있으며, '할일로', '메모로'처럼 바로 수정할 수 있습니다. 오류를 캡처해 보내주시면 개선에 큰 도움이 됩니다.");
-    lines.push("👉 오류 신고 : https://notionable.net/feedback?category=13h58R7m0A");
+    // lines.push("");
+    // lines.push("📢 [시험 운영 안내]");
+    // lines.push("◾ 분석이 잘못될 수 있으며, '할일로', '메모로'처럼 바로 수정할 수 있습니다. 오류를 캡처해 보내주시면 개선에 큰 도움이 됩니다.");
+    // lines.push("👉 오류 신고 : https://notionable.net/feedback?category=13h58R7m0A");
 
     return lines.join("\n");
 }

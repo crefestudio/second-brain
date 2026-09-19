@@ -66,6 +66,65 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         ).length;
     }
 
+    get migrationWarningResults(): any[] {
+        return this.migrationResults.filter(result => result.type === 'page-warning');
+    }
+
+    get migrationPageErrorResults(): any[] {
+        return this.migrationResults.filter(result => result.type === 'page-error');
+    }
+
+    get migrationDatabaseSummaries(): Array<{ dbName: string; total: number; completed: number; warnings: number; errors: number; status: string }> {
+        const databases = this.migrationResults.filter(result => result.type === 'database-complete');
+        return databases.map(database => {
+            const pages = this.migrationResults.filter(page =>
+                page.dbName === database.dbName &&
+                (page.type === 'page-complete' || page.type === 'page-warning' || page.type === 'page-error')
+            );
+            const warnings = pages.filter(page => page.type === 'page-warning').length;
+            const errors = pages.filter(page => page.type === 'page-error').length;
+            return {
+                dbName: database.dbName,
+                total: pages.length,
+                completed: pages.length - errors,
+                warnings,
+                errors,
+                status: errors ? 'error' : warnings ? 'warning' : 'ok'
+            };
+        });
+    }
+
+    get migrationResultTitle(): string {
+        if (!this.migrationSuccess) return '일부 데이터 이전을 완료하지 못했습니다.';
+        return this.migrationWarningResults.length ? '데이터 이전은 완료되었으며 확인이 필요한 항목이 있습니다.' : '데이터 이전을 완료했습니다.';
+    }
+
+    async openMigratedLifeup(): Promise<void> {
+        try {
+            const url = await this.userService.getMigrationTemplateRootUrl(this.userId);
+            if (url) window.open(url, '_blank', 'noopener');
+            else ToastService.error('새 라이프업 주소를 찾지 못했습니다.');
+        } catch (error) {
+            console.error('[Migration] failed to open new LifeUp', error);
+            ToastService.error('새 라이프업 주소를 불러오지 못했습니다.');
+        }
+    }
+
+    async disconnectMigrationNotion(): Promise<void> {
+        if (!window.confirm('마이그레이션 연결을 해제하면 이번 업데이트 기록이 모두 초기화됩니다. 계속할까요?')) return;
+        try {
+            if (await this.userService.disconnectMigrationNotion(this.userId)) {
+                ToastService.show('데이터 이전 연결을 해제했습니다.');
+                window.location.replace(`${window.location.pathname}${window.location.search}`);
+            } else {
+                ToastService.error('데이터 이전 연결 해제에 실패했습니다.');
+            }
+        } catch (error) {
+            console.error('[Migration] disconnect failed', error);
+            ToastService.error('데이터 이전 연결 해제에 실패했습니다.');
+        }
+    }
+
     migrationStatusLabel(status: string, isCheck = false): string {
         const labels: Record<string, string> = isCheck
             ? {

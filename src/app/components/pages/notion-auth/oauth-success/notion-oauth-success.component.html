@@ -12,10 +12,33 @@
       이 창을 닫고 원래 페이지로 돌아가주세요.
     </p>
 
-    <p class="guide" *ngIf="isPending">
-      노션 템플릿을 확인하고 있습니다. 완료되면 이 화면이 자동으로 갱신됩니다.<br>
-      보통 1~2분 정도 걸릴 수 있습니다.
-    </p>
+    <section class="connection-status" *ngIf="isPending" aria-live="polite">
+      <div class="status-heading">
+        <span class="spinner" aria-hidden="true"></span>
+        <strong *ngIf="connectionState === 'checking'">연결을 확인하는 중입니다.</strong>
+        <strong *ngIf="connectionState === 'waiting'">아직 확인되지 않았습니다.</strong>
+        <strong *ngIf="connectionState === 'delayed'">연결 확인 시간이 지연되고 있습니다.</strong>
+      </div>
+
+      <div class="progress-track" role="progressbar" aria-label="연결 확인 진행 상태"
+        [attr.aria-valuenow]="progressPercent" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-value" [style.width.%]="progressPercent"></div>
+      </div>
+
+      <p class="status-message" *ngIf="connectionState === 'checking'">
+        노션 템플릿과 API 연결 상태를 확인하고 있습니다.
+      </p>
+      <p class="status-message" *ngIf="connectionState === 'waiting'">
+        {{ secondsUntilRetry }}초 후에 다시 시도하겠습니다. ({{ pollingIntervalMs / 1000 }}초마다 자동 확인)
+      </p>
+      <p class="status-message" *ngIf="connectionState === 'delayed'">
+        확인이 완료되지 않았습니다. 원래 페이지에서 다시 연결을 시도해주세요.
+      </p>
+
+      <p class="status-meta" *ngIf="connectionState !== 'delayed'">
+        확인 {{ checkCount }}회째 · 노션 API 연결은 보통 연결 요청 후 3~5분 정도 소요됩니다.
+      </p>
+    </section>
 
     <!-- <button class="close-btn" (click)="closeWindow()">
       창 닫기

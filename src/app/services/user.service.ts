@@ -1933,6 +1933,20 @@ export class UserService {
         }
     }
 
+    async getMigrationTemplateRootUrl(userId: string): Promise<string> {
+        const response = await firstValueFrom(this.http.post<{ success: boolean; url?: string }>(
+            `${this.functionsBaseUrl}/getMigrationTemplateRootUrl`, { userId }
+        ));
+        return response.url || '';
+    }
+
+    async disconnectMigrationNotion(userId: string): Promise<boolean> {
+        const response = await firstValueFrom(this.http.post<{ success: boolean }>(
+            `${this.functionsBaseUrl}/disconnectMigrationNotion`, { userId }
+        ));
+        return response.success === true;
+    }
+
     async migrateLifeUp(userId: string, runId?: string, action: 'start' | 'resume' | 'stop' = 'start'): Promise<LifeUpMigrationResult | null> {
         if (!userId) return null;
 
