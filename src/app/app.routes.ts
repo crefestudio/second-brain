@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { SocialLoginComponent } from './components/login/social-login.component';
 
 //import { LoginPage } from './components/login/login.page';
 
@@ -51,6 +52,7 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'login', component: SocialLoginComponent },
   {
     path: '',
     redirectTo: 'workspace/home',

@@ -47,6 +47,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     migrationRestartAfter = 0;
     migrationSupportsStop = false;
     migrationStopPending = false;
+    migrationNoticeExpanded = false;
 
     get migrationCanRestart(): boolean {
         return !!this.migrationRunId && !this.migrationSuccess &&
@@ -238,7 +239,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     ) { }
 
     async ngOnInit() {
-        this.restoreStepFromHash();
+        const hasExplicitStep = this.restoreStepFromHash();
         this.migrationClock = setInterval(() => this.migrationNow = Date.now(), 1000);
 
         console.log('[Migration Check] restore step:', this.currentStep);
@@ -287,12 +288,12 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         }));
         this.subscriptions.add(this.userService.notionMigrationConnected$.subscribe(async () => {
             if (this.destroyed) return;
-            // Reconnecting deletes integrations/migration in Firestore. Reload without the
-            // step hash so no previous run, results, or completed screen remains in memory.
+            // Reconnecting deletes integrations/migration in Firestore. Clear the local
+            // migration state as well, but keep the current route and its step hash intact.
             this.resetMigrationState();
             this.resetMigrationCheckState();
-            this.currentStep = 0;
-            window.location.replace(`${window.location.pathname}${window.location.search}`);
+            this.isMigrationConnected = true;
+            this.isOpenNotionConnectWindow = false;
         }));
 
         try {
@@ -303,6 +304,11 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
                 this.restoreMigrationCheck(),
                 this.restoreMigration()
             ]);
+
+            // A #step-N URL is an explicit user choice (and may be a shared link), so do not
+            // override it. For the bare migration URL, derive the appropriate screen from the
+            // persisted connection, check, and migration state.
+            if (!hasExplicitStep) this.restoreStepFromPersistedState();
         } finally {
             this.isLoading = false;
         }
@@ -477,18 +483,35 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         }
     }
 
-    restoreStepFromHash() {
+    restoreStepFromHash(): boolean {
         const fragment = this.route.snapshot.fragment;
 
         if (!fragment?.startsWith('step-')) {
-            return;
+            return false;
         }
 
         const step = Number(fragment.replace('step-', ''));
 
         if (Number.isInteger(step) && step >= 0 && step < this.steps.length) {
             this.currentStep = step;
+            return true;
         }
+
+        return false;
+    }
+
+    private restoreStepFromPersistedState(): void {
+        if (this.migrationStarted) {
+            this.currentStep = this.migrationComplete ? 4 : 3;
+        } else if (this.migrationCheckComplete) {
+            this.currentStep = 3;
+        } else if (this.isMigrationConnected) {
+            this.currentStep = this.migrationCheckRunId ? 2 : 1;
+        } else {
+            this.currentStep = 0;
+        }
+
+        this.updateStepHash();
     }
 
     updateStepHash() {

@@ -1,49 +1,49 @@
-import { Injectable } from '@angular/core';
+// import { Injectable } from '@angular/core';
 
-@Injectable({
-    providedIn: 'root'
-})
-export class AuthBridgeService {
+// @Injectable({
+//     providedIn: 'root'
+// })
+// export class AuthBridgeService {
 
-    private readonly PARENT_ORIGIN = 'https://notionable.net';
+//     private readonly PARENT_ORIGIN = 'https://notionable.net';
 
-    async init(): Promise<void> {
+//     async init(): Promise<void> {
 
-        if (window.location.hostname === 'localhost') {
-            return;
-        }
+//         if (window.location.hostname === 'localhost') {
+//             return;
+//         }
 
-        return new Promise((resolve) => {
+//         return new Promise((resolve) => {
 
-            const timeout = setTimeout(() => {
-                window.removeEventListener('message', handler);
-                resolve();
-            }, 300);
+//             const timeout = setTimeout(() => {
+//                 window.removeEventListener('message', handler);
+//                 resolve();
+//             }, 300);
 
-            const handler = (event: MessageEvent) => {
+//             const handler = (event: MessageEvent) => {
 
-                if (event.origin !== this.PARENT_ORIGIN) return;
-                if (event.data?.type !== 'AUTH') return;
+//                 if (event.origin !== this.PARENT_ORIGIN) return;
+//                 if (event.data?.type !== 'AUTH') return;
 
-                const memberUid = event.data.memberUid;
+//                 const memberUid = event.data.memberUid;
 
-                if (memberUid) {
-                    localStorage.setItem('member_uid', memberUid);
-                } else {
-                    localStorage.removeItem('member_uid');
-                }
+//                 if (memberUid) {
+//                     localStorage.setItem('member_uid', memberUid);
+//                 } else {
+//                     localStorage.removeItem('member_uid');
+//                 }
 
-                window.removeEventListener('message', handler);
-                clearTimeout(timeout);
-                resolve();
-            };
+//                 window.removeEventListener('message', handler);
+//                 clearTimeout(timeout);
+//                 resolve();
+//             };
 
-            window.addEventListener('message', handler);
+//             window.addEventListener('message', handler);
 
-            window.parent.postMessage(
-                { type: 'CHECK_AUTH' },
-                this.PARENT_ORIGIN
-            );
-        });
-    }
-}
+//             window.parent.postMessage(
+//                 { type: 'CHECK_AUTH' },
+//                 this.PARENT_ORIGIN
+//             );
+//         });
+//     }
+// }

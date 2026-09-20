@@ -9,6 +9,7 @@ import {
 } from '@angular/router';
 
 import { filter } from 'rxjs/operators';
+import { SocialAuthService } from './services/social-auth.service';
 
 @Component({
     selector: 'app-workspace-layout',
@@ -29,7 +30,7 @@ export class WorkspaceLayoutComponent {
     mypageOpen = true;
     title = 'second-brain-app';
 
-    constructor(private router: Router) {
+    constructor(private router: Router, public auth: SocialAuthService) {
         this.currentPath = this.router.url;
 
         this.router.events
@@ -47,7 +48,7 @@ export class WorkspaceLayoutComponent {
     }
 
     get isLoggedIn(): boolean {
-        return !!localStorage.getItem('auth_token');
+        return !!this.auth.account();
     }
 
 

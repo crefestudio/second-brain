@@ -1,14 +1,12 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-
-import { UserService } from '../../../../../services/user.service';
 import { RouterModule } from '@angular/router';
+import { SocialAuthService } from '../../../../../services/social-auth.service';
 
 @Component({
     selector: 'app-profile',
     standalone: true,
-    imports: [CommonModule, FormsModule, RouterModule],
+    imports: [CommonModule, RouterModule],
     templateUrl: './profile.component.html',
     styleUrls: ['./profile.component.scss']
 })
@@ -16,88 +14,27 @@ export class ProfileComponent implements OnInit {
 
     memberUid = '';
     name = '';
-    editingName = false;
-
     email = '';
-    editingEmail = false;
-    emailError = '';
-
     phoneNumber = '';
     createdAt = '';
-    certificateExpiredAt = '';
-    hasConnectedTemplate = false;
-
-
-    constructor(
-        private userService: UserService
-    ) { }
+    provider = '';
+    constructor(private socialAuth: SocialAuthService) { }
 
     async ngOnInit(): Promise<void> {
 
-        this.memberUid = localStorage.getItem( 'member_uid') ?? '';
-        const userId = localStorage.getItem('userId');
-
-        if (!userId) {
-            this.hasConnectedTemplate = false;
-            return;
-        }
-
-        const user = await UserService.getUser(userId);       
-        this.name = user.name ?? '';
-        this.email = user.email ?? '';
-        this.phoneNumber = user.phoneNumber ?? '';
-
-        this.createdAt = this.formatDate(
-            user.createdAt
-        );
-
-        this.certificateExpiredAt = this.formatDate(
-            user.certificateExpiredAt
-        );
+        await this.socialAuth.init();
+        const account = this.socialAuth.account();
+        this.memberUid = account?.uid ?? '';
+        this.name = account?.displayName ?? '';
+        this.email = account?.email ?? '';
+        this.phoneNumber = account?.phoneNumber ?? '';
+        this.createdAt = this.formatDate(account?.metadata.creationTime);
+        this.provider = account?.providerData.map(item => item.providerId).join(', ') ?? '';
     }
 
-    private formatDate(value: any): string {
-
-        if (!value) {
-            return '';
-        }
-
-        try {
-
-            if (value.toDate) {
-                return value
-                    .toDate()
-                    .toLocaleDateString();
-            }
-
-            return new Date(value)
-                .toLocaleDateString();
-
-        } catch {
-
-            return '';
-        }
-    }
-
-    saveName() {
-        this.editingName = false;
-    }
-
-    saveEmail() {
-
-        const emailRegex =
-            /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-        if (!emailRegex.test(this.email)) {
-
-            this.emailError =
-                '올바른 이메일 형식이 아닙니다.';
-
-            return;
-        }
-
-        this.emailError = '';
-
-        this.editingEmail = false;
+    private formatDate(value?: string): string {
+        if (!value) return '';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('ko-KR');
     }
 }

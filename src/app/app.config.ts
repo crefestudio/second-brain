@@ -11,13 +11,13 @@ import {
     inject
 } from '@angular/core';
 
-import { AuthBridgeService } from './services/auth-bridge.service';
+import { SocialAuthService } from './services/social-auth.service';
 
 
 export const appConfig: ApplicationConfig = {
     providers: [
         provideAppInitializer(() => {
-            const authBridge = inject(AuthBridgeService);
+            const authBridge = inject(SocialAuthService);
             return authBridge.init();
         }),
         provideZoneChangeDetection({ eventCoalescing: true }),

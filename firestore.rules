@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Both sides of the server-managed binding must agree.
+    function ownsWorkspace(userId) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/appAccounts/$(request.auth.uid)).data.userId == userId
+        && get(/databases/$(database)/documents/users/$(userId)).data.firebaseUid == request.auth.uid;
+    }
+
+    match /appAccounts/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if ownsWorkspace(userId);
+      // Identity, credentials and purchase status are managed by the server.
+      allow list, create, delete: if false;
+      allow update: if ownsWorkspace(userId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['notionAccessToken', 'notionConnection', 'updatedAt'])
+        && !('notionAccessToken' in request.resource.data)
+        && !('notionConnection' in request.resource.data);
+
+      // Reads are scoped to one workspace; never permit client writes recursively.
+      match /{collection}/{document}/{rest=**} {
+        allow read: if ownsWorkspace(userId);
+      }
+
+      match /integrations/{integrationId} {
+        allow update: if ownsWorkspace(userId)
+          && integrationId in ['secondbrain', 'kakao-capture']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enabled', 'updatedAt'])
+          && request.resource.data.enabled is bool;
+        allow delete: if ownsWorkspace(userId) && integrationId == 'secondbrain';
+      }
+
+      match /integrations/routine/habits/{habitId} {
+        function validHabit() {
+          return request.resource.data.keys().hasOnly([
+            'icon', 'name', 'categories', 'days', 'time', 'duration',
+            'status', 'notify', 'goalId', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 500
+          && request.resource.data.categories is list
+          && request.resource.data.days is list
+          && request.resource.data.time is string
+          && request.resource.data.duration is number
+          && request.resource.data.duration >= 5
+          && request.resource.data.notify is bool
+          && request.resource.data.goalId is string
+          && request.resource.data.status in ['시작 전', '진행 중', '완료', '일시 정지'];
+        }
+        allow create: if ownsWorkspace(userId) && validHabit();
+        allow update: if ownsWorkspace(userId) && validHabit()
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if ownsWorkspace(userId);
+      }
+
+      match /integrations/routine/{collectionId}/{itemId} {
+        allow update: if ownsWorkspace(userId)
+          && collectionId in ['badges', 'trophies', 'restHistory']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dismissedAt'])
+          && request.resource.data.dismissedAt is timestamp;
+      }
+
+      match /purchases/{purchaseId} {
+        // A browser must never be able to mark its own purchase as verified.
+        allow create, update: if false;
+        allow delete: if ownsWorkspace(userId);
+      }
+    }
+
+    match /kakao_verifications/{userId} {
+      allow get: if ownsWorkspace(userId);
+      allow list, write: if false;
+    }
+
+    match /kakaoConnections/{kakaoId} {
+      allow update: if request.auth != null
+        && ownsWorkspace(resource.data.userId)
+        && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.kakaoUserId == kakaoId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enabled'])
+        && request.resource.data.enabled is bool;
+    }
+
+    // Verification codes, purchaser lists and all unlisted paths stay server-only.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

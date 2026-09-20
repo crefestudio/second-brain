@@ -1,7 +1,5 @@
 <div class="page-container">
-
   <div class="page-header">
-
     <div class="breadcrumb">
       <a routerLink="/mypage">마이페이지</a>
       <span>›</span>
@@ -9,168 +7,33 @@
     </div>
 
     <h1>프로필</h1>
-
-    <p>
-      계정의 기본 정보를 확인할 수 있습니다.
-    </p>
-
+    <p>Firebase 소셜 로그인 계정 정보를 확인할 수 있습니다.</p>
   </div>
 
   <div class="info-card">
-
     <div class="info-row">
       <span class="label">UID</span>
-      <span class="value">
-        {{ memberUid }}
-      </span>
+      <span class="value">{{ memberUid }}</span>
     </div>
-
-    @if (!hasConnectedTemplate) {
-
-      <div class="empty-state">
-
-        <div class="empty-icon">
-          🔗
-        </div>
-
-        <div class="empty-title">
-          템플릿-서비스 연결이 필요합니다.
-        </div>
-
-        <div class="empty-desc">
-          라이프업 템플릿을 연결하면 데이터 동기화 및
-          추가 기능을 사용할 수 있습니다.
-        </div>
-
-        <button
-          class="connect-btn"
-          routerLink="/workspace/mypage/subscription">
-
-          템플릿-서비스 연결하기
-
-        </button>
-      </div>
-
-    } @else {
-
-      <div class="info-row">
-
-        <span class="label">이름</span>
-
-        <div class="editable-value">
-
-          @if (!editingName) {
-
-            <span class="value">
-              {{ name }}
-            </span>
-
-            <button
-              class="icon-btn"
-              (click)="editingName = true">
-
-              ✏️
-
-            </button>
-
-          } @else {
-
-            <input
-              class="edit-input"
-              [(ngModel)]="name">
-
-            <button
-              class="save-btn"
-              (click)="saveName()">
-
-              저장
-
-            </button>
-
-          }
-
-        </div>
-
-      </div>
-
-      <div class="info-row">
-
-        <span class="label">이메일</span>
-
-        <div class="editable-value">
-
-          @if (!editingEmail) {
-
-            <span class="value">
-              {{ email }}
-            </span>
-
-            <button
-              class="icon-btn"
-              (click)="editingEmail = true">
-
-              ✏️
-
-            </button>
-
-          } @else {
-
-            <div class="edit-container">
-
-              <input
-                type="email"
-                class="edit-input"
-                [(ngModel)]="email"
-                #emailModel="ngModel"
-                email>
-
-              @if (emailError) {
-
-                <div class="error-text">
-                  {{ emailError }}
-                </div>
-
-              }
-
-            </div>
-
-            <button
-              class="save-btn"
-              (click)="saveEmail()">
-
-              저장
-
-            </button>
-
-          }
-
-        </div>
-
-      </div>
-
-      <div class="info-row">
-        <span class="label">휴대폰</span>
-        <span class="value">
-          {{ phoneNumber }}
-        </span>
-      </div>
-
-      <div class="info-row">
-        <span class="label">가입일</span>
-        <span class="value">
-          {{ createdAt }}
-        </span>
-      </div>
-
-      <div class="info-row">
-        <span class="label">인증서 만료일</span>
-        <span class="value">
-          {{ certificateExpiredAt }}
-        </span>
-      </div>
-
-    }
-
+    <div class="info-row">
+      <span class="label">이름</span>
+      <span class="value">{{ name || '-' }}</span>
+    </div>
+    <div class="info-row">
+      <span class="label">이메일</span>
+      <span class="value">{{ email || '-' }}</span>
+    </div>
+    <div class="info-row">
+      <span class="label">휴대폰</span>
+      <span class="value">{{ phoneNumber || '-' }}</span>
+    </div>
+    <div class="info-row">
+      <span class="label">가입일</span>
+      <span class="value">{{ createdAt || '-' }}</span>
+    </div>
+    <div class="info-row">
+      <span class="label">로그인 방식</span>
+      <span class="value">{{ provider || '-' }}</span>
+    </div>
   </div>
-
 </div>

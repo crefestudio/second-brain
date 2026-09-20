@@ -619,6 +619,7 @@
 }
 
 .migration-guide {
+    font-size: 13px;
     margin-top: 20px;
     padding: 18px 20px;
     background: #15191f;
@@ -651,6 +652,32 @@
     p {
         margin: 4px 0 0;
         overflow-wrap: anywhere;
+    }
+
+    .migration-notice-toggle {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 10px;
+        padding: 5px 0 0px;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        text-align: left;
+        background: transparent;
+        border: 0;
+        border-top: 1px solid #303640;
+        cursor: pointer;
+
+        span {
+            color: #9da7b5;
+            font-size: 18px;
+        }
+    }
+
+    .migration-backup-notice {
+        margin-top: 4px;
     }
 }
 

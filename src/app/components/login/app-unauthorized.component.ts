@@ -14,7 +14,7 @@ import { Component } from '@angular/core';
             </h2>
 
             <p>
-                Notionable App은 제작중입니다. 조금만 기다려주세요.
+                NotionAble App은 제작중입니다. 조금만 기다려주세요.
             </p>
 
         </div>
@@ -29,7 +29,7 @@ import { Component } from '@angular/core';
             </h2>
 
             <p>
-                Notionable App은 회원 전용 서비스입니다.
+                NotionAble App은 회원 전용 서비스입니다.
             </p>
 
         </div> -->

@@ -1,24 +1,10 @@
 import { CanActivateFn, Router } from '@angular/router';
 import { inject } from '@angular/core';
+import { SocialAuthService } from './social-auth.service';
 
-export const memberGuard: CanActivateFn = () => {
+export const memberGuard: CanActivateFn = async (_route, state) => {
     const router = inject(Router);
-
-    if (window.location.hostname !== 'app.notionable.net') {
-        return true;
-    }
-
-    const testIds = [
-        'toto791@gmail.com',
-        'crefestudio@gmail.com',
-        'mnmlogg@gmail.com'
-    ];
-
-    const memberUid = localStorage.getItem('member_uid')?.trim();
-
-    if (memberUid && testIds.includes(memberUid)) {
-        return true;
-    }
-
-    return router.createUrlTree(['/unauthorized']);
+    const auth = inject(SocialAuthService);
+    await auth.init();
+    return auth.account() ? true : router.createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
 };

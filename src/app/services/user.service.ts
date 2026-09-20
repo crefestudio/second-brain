@@ -1,7 +1,7 @@
 // src/app/services/user.service.ts
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { firestore } from '../firebase';
+import { firestore, auth } from '../firebase';
 import {
     doc, updateDoc, deleteField, collection, query, where, getDocs, setDoc, getDoc, deleteDoc, Timestamp, limit, onSnapshot, serverTimestamp, orderBy,
     startAfter, QueryDocumentSnapshot, DocumentData, getCountFromServer
@@ -492,7 +492,8 @@ export class UserService {
             const result = await firstValueFrom(
                 this.http.post<{ userId: string; accessKey: string }>(
                     `${this.functionsBaseUrl}/verifyCode`,
-                    { email, code, memberUid }
+                    { email, code, memberUid },
+                    auth.currentUser ? { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } } : {}
                 )
             );
             return result;

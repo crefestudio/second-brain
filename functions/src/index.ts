@@ -1905,9 +1905,37 @@ export const sendVerificationEmail = onRequest(
     })
 );
 
+// Resolve workspace ownership only from a verified Firebase identity.
+export const getAppSession = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    let identity: admin.auth.DecodedIdToken;
+    try {
+        identity = await admin.auth().verifyIdToken((req.headers.authorization || '').replace(/^Bearer /, ''), true);
+    } catch { return res.status(401).json({ error: 'Login required' }); }
+    const accountRef = db.collection('appAccounts').doc(identity.uid);
+    const account = await accountRef.get();
+    if (!account.exists) {
+        await accountRef.set({ createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    }
+    const userId = account.data()?.userId;
+    if (!userId) return res.json({ userId: '' });
+    const workspace = (await db.collection('users').doc(userId).get()).data();
+    if (!workspace || workspace.firebaseUid !== identity.uid) return res.status(403).json({ error: 'Account mismatch' });
+    return res.json({ userId, kakaoUserId: workspace.kakaoUserId || '', notionConnected: !!workspace.notionAccessToken });
+}));
+
 export const verifyCode = onRequest(withCors(async (req, res) => {
     try {
         const { email, code, memberUid } = req.body;
+        // Widgets can still use their email/access-key flow. Workspace account linking
+        // requires a Firebase token; a supplied memberUid is never trusted as identity.
+        let firebaseUid = '';
+        if (req.headers.authorization || memberUid) {
+            try {
+                const identity = await admin.auth().verifyIdToken((req.headers.authorization || '').replace(/^Bearer /, ''), true);
+                firebaseUid = identity.uid;
+            } catch { return res.status(401).json({ message: '로그인 후 다시 인증해주세요.' }); }
+        }
 
         if (!email || !code) {
             return res.status(200).json({
@@ -1917,7 +1945,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 
         const nomalizedEMail: string = email.trim().toLowerCase();
         const nomalizedCode = code.trim();
-        const normalizedMemberId = memberUid?.trim() || null;
+        const normalizedMemberId = null;
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(nomalizedEMail)) {
@@ -1946,6 +1974,8 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             .digest('hex');
 
         const now = admin.firestore.Timestamp.now();
+
+        if ((data.attempts || 0) >= 5) return res.status(429).json({ message: '인증 시도 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.' });
 
         if (data.expiresAt.toMillis() < now.toMillis()) {
             return res.status(200).json({
@@ -2038,7 +2068,26 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             }
         }
 
-        await docRef.delete();
+        if (firebaseUid) {
+            const accountRef = db.collection('appAccounts').doc(firebaseUid);
+            const workspaceRef = db.collection('users').doc(userId);
+            await db.runTransaction(async transaction => {
+                const [account, workspace, verification] = await Promise.all([transaction.get(accountRef), transaction.get(workspaceRef), transaction.get(docRef)]);
+                if (!verification.exists || verification.data()?.code !== hashedInput ||
+                    verification.data()?.expiresAt.toMillis() < Date.now()) {
+                    throw new Error('인증번호가 만료되었거나 이미 사용되었습니다.');
+                }
+                if ((account.data()?.userId && account.data()?.userId !== userId) ||
+                    (workspace.data()?.firebaseUid && workspace.data()?.firebaseUid !== firebaseUid)) {
+                    throw new Error('이미 다른 계정에 연결되어 있습니다. 관리자에게 문의해주세요.');
+                }
+                transaction.set(accountRef, { userId }, { merge: true });
+                transaction.update(workspaceRef, { firebaseUid });
+                transaction.delete(docRef);
+            });
+        }
+
+        if (!firebaseUid) await docRef.delete();
 
         return res.status(200).json({
             userId,

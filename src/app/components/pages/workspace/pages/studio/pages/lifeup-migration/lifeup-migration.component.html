@@ -21,7 +21,7 @@
 <!-- Notion 연결됨 -->
 <div *ngIf="userId" class="page">
     <div class="page-header">
-        <h1>🔄 라이프업 업데이트 v0.94</h1>
+        <h1>🔄 라이프업 업데이트 v0.95</h1>
 
         <div class="hero-box">
             <div class="hero-content">
@@ -355,7 +355,7 @@
                             사전 점검을 마무리했습니다.<br>
                             오류가 발견되어 이전을 권고하지 않습니다.
                             이전을 진행하기 전에 반드시 백업해주세요.
-                            이전 후 문제가 발생하면 관리자에게 문의해주세요. 
+                            이전 후 문제가 발생하면 관리자에게 문의해주세요.
                         </ng-container>
                     </div>
                 </div>
@@ -365,11 +365,11 @@
                 </div>                 -->
             </div>
             <aside class="migration-guide" aria-labelledby="migration-guide-title">
-                <h3 id="migration-guide-title">1.3 → 1.5 데이터 이전 가이드</h3>
+                <h3 id="migration-guide-title">1.3 → 1.5 데이터 이전 안내</h3>
                 <ul>
-                    <li><strong>연락처 DB:</strong> 이전 후 ‘직책 / 역할’ 필드가 생기면 ‘직책’으로 이름을 바꿔주세요.</li>
-                    <li><strong>할일 DB:</strong> ‘색상’은 시스템용이므로 추가 알림은 무시하셔도 됩니다.</li>
-                    <li><strong>참고자료 DB:</strong> ‘분류’는 시스템용이므로 추가 알림은 무시하셔도 됩니다.</li>
+                    <li>이전 버전과 새 버전의 <strong>데이터베이스 구성 및 속성 차이</strong>를 사전에 검사합니다.</li>
+                    <li>업데이트 과정에서 추가되거나 변경된 항목은 <strong>참고 사항</strong>으로 안내됩니다.</li>
+                    <li>참고 사항은 오류가 아니므로, <strong>오류가 없다면 마이그레이션을 진행하셔도 됩니다.</strong></li>
                 </ul>
             </aside>
 
@@ -422,8 +422,8 @@
                 </p>
 
                 <div class="migration-warning">
-                    ⚠️ 중단을 요청하면 현재 처리 중인 페이지를 마친 뒤 멈춥니다.<br>
-                    데이터가 많을 경우 10분 이상의 시간이 소요될 수 있습니다.
+                    ⚠️ 데이터 이전은 서버에서 진행되므로 창을 벗어나도 계속 진행됩니다.<br>
+                    언제든 다시 접속해 진행 상황을 확인할 수 있습니다.
                 </div>
 
                 <div class="migration-action">
@@ -449,24 +449,29 @@
                         <span>{{ migrationCompletedCount }} / {{ migrationTotalCount }}개 완료</span>
                         <span>
                             남은 {{ migrationRemainingCount }}개
-                            <span class="migration-error-count" *ngIf="migrationErrorCount">(오류 {{ migrationErrorCount }}개)</span>
+                            <span class="migration-error-count" *ngIf="migrationErrorCount">(오류 {{ migrationErrorCount
+                                }}개)</span>
                         </span>
                     </div>
-                    <div class="migration-progress-track" role="progressbar" aria-label="데이터 이전 진행률"
-                        aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="migrationProgress">
+                    <div class="migration-progress-track" role="progressbar" aria-label="데이터 이전 진행률" aria-valuemin="0"
+                        aria-valuemax="100" [attr.aria-valuenow]="migrationProgress">
                         <div class="migration-progress-fill" [style.width.%]="migrationProgress"></div>
                     </div>
                 </div>
                 <div class="console-content" #migrationConsole>
                     <div class="console-line" *ngFor="let item of migrationResults"
-                        [class.success]="item.status === 'ok'" [class.warning]="item.status === 'notification' || item.status === 'warning'"
+                        [class.success]="item.status === 'ok'"
+                        [class.warning]="item.status === 'notification' || item.status === 'warning'"
                         [class.error]="item.status === 'error'">
-                        <span>{{ item.status === 'ok' ? '✓' : item.status === 'error' ? '✕' : item.status === 'warning' ? '!' : '·' }}</span>
+                        <span>{{ item.status === 'ok' ? '✓' : item.status === 'error' ? '✕' : item.status === 'warning'
+                            ? '!' : '·' }}</span>
                         <span>
-                            {{ item.dbName }} {{ item.type === 'database-complete' ? '-' : '·' }} {{ item.message || item.errorMessage || item.type }}
+                            {{ item.dbName }} {{ item.type === 'database-complete' ? '-' : '·' }} {{ item.message ||
+                            item.errorMessage || item.type }}
                             <ng-container *ngIf="item.total">({{ item.current }} / {{ item.total }})</ng-container>
                         </span>
-                        <span>{{ item.status === 'ok' ? 'OK' : item.status === 'error' ? '오류' : item.status === 'warning' ? '경고' : '진행' }}</span>
+                        <span>{{ item.status === 'ok' ? 'OK' : item.status === 'error' ? '오류' : item.status ===
+                            'warning' ? '경고' : '진행' }}</span>
                     </div>
                     <div class="console-divider" *ngIf="migrationResults.length"></div>
                     <div class="console-message" *ngIf="migrationStatus === 'MIGRATING' && !migrationCounting">
@@ -479,7 +484,8 @@
                     </div>
                     <div class="console-message" *ngIf="migrationError">{{ migrationError }}</div>
                     <div class="console-message" *ngIf="migrationStatus === 'STOPPING'">현재 페이지 처리 후 중단합니다.</div>
-                    <div class="console-message" *ngIf="migrationStatus === 'STOPPED'">중단되었습니다. 재시작하면 남은 데이터부터 이어서 진행합니다.</div>
+                    <div class="console-message" *ngIf="migrationStatus === 'STOPPED'">중단되었습니다. 재시작하면 남은 데이터부터 이어서
+                        진행합니다.</div>
                     <div class="console-message" *ngIf="migrationCanRestart && migrationStatus === 'MIGRATING'">
                         일정 시간 작업 갱신이 없습니다. 재시작하여 이어서 진행할 수 있습니다.
                     </div>
@@ -487,9 +493,11 @@
             </div>
 
             <div class="check-action" *ngIf="migrationStarted">
-                <button class="primary-btn large" *ngIf="migrationStatus !== 'MIGRATING' && migrationStatus !== 'STOPPING'"
+                <button class="primary-btn large"
+                    *ngIf="migrationStatus !== 'MIGRATING' && migrationStatus !== 'STOPPING'"
                     [disabled]="!migrationCanRestart" (click)="restartMigration()">재시작</button>
-                <button class="secondary-btn large" *ngIf="migrationStatus === 'MIGRATING' || migrationStatus === 'STOPPING'" (click)="stopMigration()"
+                <button class="secondary-btn large"
+                    *ngIf="migrationStatus === 'MIGRATING' || migrationStatus === 'STOPPING'" (click)="stopMigration()"
                     [disabled]="!migrationRunId || !migrationSupportsStop || migrationStopPending || migrationStatus !== 'MIGRATING'">
                     {{ migrationStopPending || migrationStatus === 'STOPPING' ? '중단 요청 중...' : '강제 종료' }}
                 </button>
@@ -497,12 +505,27 @@
 
             <aside class="migration-guide" aria-labelledby="migration-notice-title">
                 <h3 id="migration-notice-title">데이터 이전 안내</h3>
-                <ul>
-                    <li>마이그레이션은 서버에서 진행됩니다.</li>
-                    <li>화면을 닫아도 계속 진행되며, 강제 종료를 누르면 현재 페이지 처리 후 멈춥니다.</li>
-                    <li>마지막 작업 갱신 후 5분이 지나면 재시작할 수 있습니다. 완료된 데이터는 건너뜁니다.</li>
-                    <li *ngIf="migrationStarted && !migrationSupportsStop">이전 버전 작업은 기존 실행 제한시간(최대 60분)이 지난 뒤 재시작할 수 있습니다.</li>
-                </ul>
+                <p>데이터 이전 기능은 현재 <strong>시험 운영 중</strong>입니다. 이전 과정이나 결과에 대해 궁금한 점이 있으시면 언제든 문의해주세요.</p>
+
+                <button type="button" class="migration-notice-toggle" (click)="migrationNoticeExpanded = !migrationNoticeExpanded"
+                    [attr.aria-expanded]="migrationNoticeExpanded" aria-controls="migration-notice-details">
+                    데이터 이전 시 유의사항
+                    <span aria-hidden="true">{{ migrationNoticeExpanded ? '⌃' : '⌄' }}</span>
+                </button>
+
+                <div id="migration-notice-details" *ngIf="migrationNoticeExpanded">
+                    <ul>
+                        <li><strong>1.3 이전 버전의 페이지 템플릿을 사용한 경우</strong><br>
+                            데이터 이전 과정에서 <strong>경고 메시지가 표시될 수 있습니다.</strong> 새 버전의 페이지 템플릿으로 변경하는 과정에서 기존 페이지 템플릿에 직접 작성하거나 수정한 내용은 자동으로 복원되지 않을 수 있습니다.<br>
+                            경고 메시지가 표시된 경우 백업한 원본을 확인하여 필요한 내용을 직접 복사해주세요.</li>
+                        <li><strong>페이지 템플릿이란?</strong><br>
+                            페이지를 새로 만들 때 기본으로 생성되는 형식으로, 일종의 <strong>속지</strong>와 같은 개념입니다.</li>
+                        <li><strong>묶음 할일을 사용한 경우</strong><br>
+                            할일 관리에서 <strong>묶음 할일</strong>을 사용하신 경우 기본 템플릿으로 복원될 수 있습니다. 묶음 할일을 사용 중이라면 <strong>데이터 이전을 진행하지 마시고 먼저 문의해주세요.</strong></li>
+                    </ul>
+                </div>
+
+                <!-- <p class="migration-backup-notice">데이터 이전 전에는 반드시 기존 라이프업을 <strong>복제하여 백업</strong>해주세요.</p> -->
             </aside>
 
             <!-- 
@@ -566,10 +589,12 @@
             </div>
 
             <div class="result-summary" *ngIf="true">
-                <div class="result-icon">{{ migrationSuccess ? (migrationWarningResults.length ? '!' : '✓') : '!' }}</div>
+                <div class="result-icon">{{ migrationSuccess ? (migrationWarningResults.length ? '!' : '✓') : '!' }}
+                </div>
                 <div>
                     <strong>{{ migrationResultTitle }}</strong>
-                    <span>총 <b>{{ migrationCompletedCount }}개</b>의 페이지를 처리했습니다. 경고 {{ migrationWarningResults.length }}건 · 오류 {{ migrationPageErrorResults.length }}건</span>
+                    <span>총 <b>{{ migrationCompletedCount }}개</b>의 페이지를 처리했습니다. 경고 {{ migrationWarningResults.length }}건
+                        · 오류 {{ migrationPageErrorResults.length }}건</span>
                 </div>
             </div>
 
@@ -580,8 +605,11 @@
                 <div class="result-row" *ngFor="let database of migrationDatabaseSummaries">
                     <span>{{ database.dbName }}</span>
                     <span>{{ database.completed }} / {{ database.total }}개</span>
-                    <span [class.result-ok]="database.status === 'ok'" [class.result-warning]="database.status === 'warning'" [class.result-error]="database.status === 'error'">
-                        {{ database.status === 'ok' ? '완료' : database.status === 'warning' ? '완료 · 경고 ' + database.warnings + '건' : '오류 ' + database.errors + '건' }}
+                    <span [class.result-ok]="database.status === 'ok'"
+                        [class.result-warning]="database.status === 'warning'"
+                        [class.result-error]="database.status === 'error'">
+                        {{ database.status === 'ok' ? '완료' : database.status === 'warning' ? '완료 · 경고 ' +
+                        database.warnings + '건' : '오류 ' + database.errors + '건' }}
                     </span>
                 </div>
                 <div class="result-row" *ngIf="!migrationDatabaseSummaries.length">
@@ -591,7 +619,8 @@
 
             <div class="issue-box success" *ngIf="migrationWarningResults.length">
                 <strong>확인이 필요한 경고 {{ migrationWarningResults.length }}건</strong>
-                <span *ngFor="let warning of migrationWarningResults">{{ warning.dbName }} · {{ warning.message }}</span>
+                <span *ngFor="let warning of migrationWarningResults">{{ warning.dbName }} · {{ warning.message
+                    }}</span>
             </div>
 
             <div class="issue-box error" *ngIf="migrationPageErrorResults.length">
@@ -710,6 +739,10 @@
                 축하합니다!<br>
                 이제 새로운 라이프업 1.5를 이용하시면 됩니다.
             </p>
+
+            <button class="primary-btn large" (click)="openMigratedLifeup()">
+                &nbsp;&nbsp;새 라이프업 열기&nbsp;  →&nbsp;
+            </button>
 
             <button class="primary-btn large" *ngIf="false">
                 라이프업 1.5 안내 영상 보기 ▶
