@@ -102,9 +102,10 @@
 
         <button
           class="add-btn"
+          [disabled]="isAddingHabit(habit)"
           (click)="addHabit(habit)">
 
-          + 추가하기
+          {{ isAddingHabit(habit) ? '추가 중...' : '+ 추가하기' }}
 
         </button>
 

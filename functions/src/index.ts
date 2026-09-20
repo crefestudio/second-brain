@@ -52,6 +52,7 @@ const NOTION_TOKEN = defineSecret("NOTION_TOKEN");
 const NOTION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionOAuthCallback"; // 노션에 등록되서 바꿀 수 없음
 
 const NOTION_MIGRATION_TOKEN = defineSecret("NOTION_MIGRATION_TOKEN");
+const LATPEED_WEBHOOK_SECRET = defineSecret("LATPEED_WEBHOOK_SECRET");
 const NOTION_MIGRATION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionMigrationOAuthCallback"; // 노션에 등록되서 바꿀 수 없음
 
 // A newly duplicated Notion template can take a little while to be included in
@@ -1874,6 +1875,132 @@ export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
 // 인증 이메일 발송
 // ----------------------
 const resend = new Resend(process.env.RESEND_API_KEY!);
+
+const LATPEED_TEST_EMAIL = 'toto791@gamil.com';
+const LIFEUP_PASSPORT_URL = 'https://app.notionable.net/templateDownload/LifeUp-1.3-Template-Passport.pdf';
+
+function isValidLatpeedWebhook(req: any): boolean {
+    const timestamp = String(req.get('X-Latpeed-Timestamp') || '');
+    const signature = String(req.get('X-Latpeed-Signature') || '');
+    const requestTime = Number(timestamp);
+    if (!timestamp || !signature || !Number.isFinite(requestTime) || Math.abs(Date.now() - requestTime) > 300000) {
+        return false;
+    }
+
+    // Firebase preserves the pre-parsed request body on rawBody.
+    const rawBody = Buffer.isBuffer(req.rawBody)
+        ? req.rawBody.toString('utf8')
+        : JSON.stringify(req.body || {});
+    const expected = 'sha256=' + crypto
+        .createHmac('sha256', LATPEED_WEBHOOK_SECRET.value())
+        .update(`${timestamp}.${rawBody}`)
+        .digest('hex');
+    const expectedBuffer = Buffer.from(expected, 'utf8');
+    const receivedBuffer = Buffer.from(signature, 'utf8');
+    return expectedBuffer.length === receivedBuffer.length && crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+}
+
+function formatLatpeedDate(value?: string): string {
+    const date = value ? new Date(value) : new Date();
+    if (Number.isNaN(date.getTime())) return value || '';
+    const parts = new Intl.DateTimeFormat('ko-KR', {
+        timeZone: 'Asia/Seoul', year: '2-digit', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(date).reduce<Record<string, string>>((result, part) => {
+        result[part.type] = part.value;
+        return result;
+    }, {});
+    return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function lifeupWelcomeMail(name: string, guideUrl: string): { subject: string; text: string; html: string } {
+    const text = `${name ? `${name}님, ` : ''}안녕하세요. 노셔너블입니다.
+
+라이프업에 오신 것을 환영합니다! 😊
+
+라이프업은 목표부터 프로젝트, 할 일, 기록까지 하나의 흐름으로 연결하여 나만의 방식으로 삶을 관리할 수 있도록 만든 노션 템플릿입니다.
+
+아래 구매 안내 페이지와 함께 보관용 PDF 파일을 전달드립니다.
+안내 페이지를 참고하여 라이프업을 설치하고 시작해보세요.
+
+구매 안내 페이지: ${guideUrl}
+보관용 PDF 파일: ${LIFEUP_PASSPORT_URL}
+
+처음에는 모든 기능을 익히려고 하기보다, 필요한 기능부터 하나씩 사용해보시는 것을 추천드립니다.
+
+사용 중 궁금한 점이나 불편한 점이 있다면 언제든 편하게 문의해주세요. 최대한 빠르게 도움드리겠습니다.
+
+라이프업은 앞으로도 더 편리하게 사용할 수 있도록 지속적으로 개선해 나가겠습니다.
+
+노션으로 삶을 설계하는 새로운 시작, 라이프업과 함께해보세요.
+
+Notionable 드림`;
+    return {
+        subject: '라이프업 구매 안내 및 보관용 PDF를 보내드립니다',
+        text,
+        html: text.replace(/\n/g, '<br>')
+    };
+}
+
+export const latpeedPaymentWebhook = onRequest(
+    { secrets: [LATPEED_WEBHOOK_SECRET], timeoutSeconds: 10 },
+    async (req, res) => {
+        if (req.method !== 'POST') return res.status(405).send('Method not allowed');
+        if (!isValidLatpeedWebhook(req)) return res.status(401).send('Invalid webhook signature');
+
+        const event = req.body as any;
+        const payment = event?.payment || {};
+        const amount = Number(payment.amount || 0);
+        const isPaid = (event?.type === 'NORMAL_PAYMENT' || event?.type === 'MEMBERSHIP_PAYMENT') &&
+            payment.status === 'SUCCESS' && amount > 0 && typeof payment.orderId === 'string';
+        if (!isPaid) return res.status(200).json({ received: true, processed: false });
+
+        const orderHash = crypto.createHash('sha256').update(payment.orderId).digest('hex');
+        const purchaserRef = db.collection('purchasers').doc(`latpeed_${orderHash}`);
+        const created = await db.runTransaction(async transaction => {
+            if ((await transaction.get(purchaserRef)).exists) return false;
+            transaction.set(purchaserRef, {
+                amount: `${amount.toLocaleString('ko-KR')}원`,
+                email: String(payment.email || '').trim().toLowerCase(),
+                name: String(payment.name || '').trim(),
+                notify: payment.agreements?.some((item: any) => item.answer === true) ? '예' : '아니오',
+                paymentMethod: String(payment.method || ''),
+                phone: String(payment.phoneNumber || '').trim(),
+                purchaseOption: String(payment.option || ''),
+                purchasedAt: formatLatpeedDate(payment.date),
+                status: '결제 완료',
+                templateId: 'lifeUp',
+                orderId: payment.orderId,
+                source: 'latpeed',
+                welcomeEmail: { status: 'pending', recipient: LATPEED_TEST_EMAIL },
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            return true;
+        });
+        if (!created) return res.status(200).json({ received: true, duplicate: true });
+
+        const guideUrl = process.env.LIFEUP_PURCHASE_GUIDE_URL?.trim();
+        if (!guideUrl) {
+            await purchaserRef.update({ 'welcomeEmail.status': 'pending-guide-url' });
+            return res.status(200).json({ received: true, processed: true, emailSent: false });
+        }
+
+        try {
+            const mail = lifeupWelcomeMail(String(payment.name || '').trim(), guideUrl);
+            const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: LATPEED_TEST_EMAIL, ...mail });
+            await purchaserRef.update({
+                'welcomeEmail.status': 'sent',
+                'welcomeEmail.resendId': sent.data?.id || '',
+                'welcomeEmail.sentAt': admin.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (error) {
+            await purchaserRef.update({ 'welcomeEmail.status': 'failed' });
+            logger.error('[Latpeed Webhook] welcome email failed', error);
+        }
+        return res.status(200).json({ received: true, processed: true });
+    }
+);
 
 export const sendVerificationEmail = onRequest(
     withCors(async (req, res) => {
@@ -5026,15 +5153,15 @@ class NotionService {
             const properties = (page as any).properties;
             const goalRelation = properties?.목표?.relation;
 
-            if (!Array.isArray(goalRelation)) {
-                return;
-            }
+            const normalizedGoalRelation = Array.isArray(goalRelation) && goalRelation.length > 0
+                ? goalRelation
+                : [{}];
 
             const isCompleted = properties?.완료?.checkbox === true;
-            goalRelation.forEach(
+            normalizedGoalRelation.forEach(
                 (goal: { id?: string }) => {
 
-                    const goalId = goal.id;
+                    const goalId = goal.id || '__routine_uncategorized__';
 
                     if (!goalId) {
                         return;
@@ -13549,6 +13676,29 @@ interface HabitAchievement {
 
 
 class RoutineService {
+    private static async claimRoutineLock(userId: string, lockId: string): Promise<boolean> {
+        const lockRef = db.collection('users').doc(userId)
+            .collection('integrations').doc('routine').collection('locks').doc(lockId);
+        const now = Date.now();
+
+        return db.runTransaction(async transaction => {
+            const current = await transaction.get(lockRef);
+            const leaseUntil = current.data()?.leaseUntil?.toMillis?.() ?? 0;
+            if (current.exists && leaseUntil > now) return false;
+
+            transaction.set(lockRef, {
+                leaseUntil: admin.firestore.Timestamp.fromMillis(now + 15 * 60 * 1000),
+                startedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            return true;
+        });
+    }
+
+    private static async releaseRoutineLock(userId: string, lockId: string): Promise<void> {
+        await db.collection('users').doc(userId)
+            .collection('integrations').doc('routine').collection('locks').doc(lockId).delete();
+    }
+
     static async createDailyHabitLogs(
         userId: string,
         targetDate: string,
@@ -13615,6 +13765,13 @@ class RoutineService {
                     targetDay
                 });
 
+                continue;
+            }
+
+            const lockId = `daily-${targetDate}-${habit.id}`;
+            if (!await this.claimRoutineLock(userId, lockId)) {
+                existingCount++;
+                logger.info('[Habit] 다른 실행이 이미 생성 중', { userId, habitId: habit.id, targetDate });
                 continue;
             }
 
@@ -13703,6 +13860,8 @@ class RoutineService {
                             : String(eventError)
                     });
                 }
+            } finally {
+                await this.releaseRoutineLock(userId, lockId);
             }
         }
 
@@ -13755,6 +13914,12 @@ class RoutineService {
                 ...habitDoc.data()
             } as UserHabit;
 
+            const lockId = `notion-habit-${habit.id}`;
+            if (!await this.claimRoutineLock(userId, lockId)) {
+                logger.info('[HabitSync] 다른 동기화가 진행 중', { userId, habitId: habit.id });
+                continue;
+            }
+
             try {
                 const result = await NotionService.findNotionHabit(
                     userId,
@@ -13787,6 +13952,8 @@ class RoutineService {
                         ? error.message
                         : String(error)
                 });
+            } finally {
+                await this.releaseRoutineLock(userId, lockId);
             }
         }
 

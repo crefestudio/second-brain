@@ -4,7 +4,7 @@ import { Injectable } from '@angular/core';
 import { firestore, auth } from '../firebase';
 import {
     doc, updateDoc, deleteField, collection, query, where, getDocs, setDoc, getDoc, deleteDoc, Timestamp, limit, onSnapshot, serverTimestamp, orderBy,
-    startAfter, QueryDocumentSnapshot, DocumentData, getCountFromServer
+    startAfter, QueryDocumentSnapshot, DocumentData, getCountFromServer, runTransaction
 } from 'firebase/firestore';
 
 import { firstValueFrom, Subject, Subscription } from 'rxjs';
@@ -1280,62 +1280,54 @@ export class UserService {
         try {
             const habitsRef = collection(firestore, 'users', userId, 'integrations', 'routine', 'habits');
             const snapshot = await getDocs(habitsRef);
-
             const [hour, minute] = habit.time.split(':').map(Number);
             const newStart = hour * 60 + minute;
             const newEnd = newStart + Math.max(5, habit.duration || 5);
-
             const newDays = habit.days ?? [];
+            const name = `${habit.icon ?? ''} ${habit.name.trim()}`.trim();
+            const categories = (habit.categories ?? []).filter(category => category !== '추천');
 
-            for (const doc of snapshot.docs) {
-                const existing = doc.data() as UserHabit;
+            for (const habitDoc of snapshot.docs) {
+                const existing = habitDoc.data() as UserHabit;
+                const sameDays = newDays.some(day => existing.days?.includes(day));
+                const sameHabit = existing.name === name && existing.time === habit.time &&
+                    sameDays && (existing.duration || 5) === Math.max(5, habit.duration || 5);
 
-                if (!existing.time || !existing.days?.length) {
-                    continue;
+                if (sameHabit) {
+                    return { success: false, duplicate: true, message: '이미 같은 습관이 등록되어 있습니다.' };
                 }
 
-                const sameDay = newDays.some(day => existing.days.includes(day));
-                if (!sameDay) {
-                    continue;
-                }
+                if (!existing.time || !existing.days?.length || !Number.isFinite(newStart)) continue;
 
                 const [existingHour, existingMinute] = existing.time.split(':').map(Number);
                 const existingStart = existingHour * 60 + existingMinute;
                 const existingEnd = existingStart + Math.max(5, existing.duration || 5);
 
-                if (newStart < existingEnd && newEnd > existingStart) {
-                    const nextTime = this.formatTime(existingEnd);
-
+                if (sameDays && Number.isFinite(existingStart) && newStart < existingEnd && newEnd > existingStart) {
                     return {
                         success: false,
                         duplicate: true,
-                        message: `${existing.name}과 시간이 겹칩니다. ${nextTime} 이후로 설정해주세요.`
+                        message: `${existing.name}과 시간이 겹칩니다. ${this.formatTime(existingEnd)} 이후로 설정해주세요.`
                     };
                 }
             }
 
-            const name = `${habit.icon ?? ''} ${habit.name.trim()}`.trim();
-            const categories = (habit.categories ?? []).filter(category => category !== '추천');
-            const habitRef = doc(habitsRef);
-
-            await setDoc(habitRef, {
-                icon: habit.icon ?? '',
-                name,
-                categories,
-                days: habit.days ?? [],
-                time: habit.time,
-                duration: Math.max(5, habit.duration || 5),
-                status: '진행 중',
-                notify: habit.notify ?? true,
-                goalId: habit.goalId ?? '',
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
+            // A semantic, deterministic document ID makes two simultaneous identical
+            // registrations address the same document. The transaction then lets only
+            // one request create it.
+            const habitRef = doc(habitsRef, this.makeHabitId({ name, time: habit.time, duration: habit.duration, days: newDays, goalId: habit.goalId }));
+            return await runTransaction(firestore, async transaction => {
+                if ((await transaction.get(habitRef)).exists()) {
+                    return { success: false, duplicate: true, message: '이미 같은 습관이 등록되어 있습니다.' };
+                }
+                transaction.set(habitRef, {
+                    icon: habit.icon ?? '', name, categories, days: newDays, time: habit.time,
+                    duration: Math.max(5, habit.duration || 5), status: '진행 중',
+                    notify: habit.notify ?? true, goalId: habit.goalId ?? '',
+                    createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+                });
+                return { success: true, id: habitRef.id };
             });
-
-            return {
-                success: true,
-                id: habitRef.id
-            };
 
         } catch (error) {
             console.error('addUserHabit error:', error);
@@ -1350,6 +1342,15 @@ export class UserService {
         const displayHour = hour % 12 || 12;
 
         return `${period} ${displayHour}시 ${minute.toString().padStart(2, '0')}분`;
+    }
+
+    private static makeHabitId(value: { name: string; time: string; duration?: number; days: string[]; goalId?: string }): string {
+        const source = [value.name, value.time, Math.max(5, value.duration || 5), [...value.days].sort().join(','), value.goalId || ''].join('|');
+        let hash = 2166136261;
+        for (let index = 0; index < source.length; index++) {
+            hash = Math.imul(hash ^ source.charCodeAt(index), 16777619);
+        }
+        return `habit-${(hash >>> 0).toString(36)}`;
     }
 
     static async getUserHabits(userId: string, goalId?: string): Promise<UserHabit[]> {

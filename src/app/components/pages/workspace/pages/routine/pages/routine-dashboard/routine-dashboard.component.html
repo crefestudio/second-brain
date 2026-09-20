@@ -105,6 +105,13 @@
                         (click)="selectGoal('')">
                         전체
                     </button>
+                    @if (hasUncategorizedHabits) {
+                    <button type="button" class="goal-chip goal-all"
+                        [class.goal-selected]="selectedGoalId === uncategorizedGoalId"
+                        (click)="selectGoal(uncategorizedGoalId)">
+                        미분류
+                    </button>
+                    }
                     @for(goal of goals; track goal.id; let i = $index) {
                     <button type="button" class="goal-chip" [style.--goal-color]="getGoalColor(i)"
                         [class.goal-selected]="selectedGoalId === goal.id"

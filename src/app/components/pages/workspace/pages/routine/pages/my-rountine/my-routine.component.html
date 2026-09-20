@@ -67,7 +67,15 @@
                     전체
                 </button>
 
-                @for(goal of goals; track goal.id; let i = $index) {
+                @if (hasUncategorizedHabits) {
+                <button type="button" class="goal-chip goal-all"
+                    [class.goal-selected]="selectedGoal === uncategorizedGoalId"
+                    (click)="selectGoal(uncategorizedGoalId)">
+                    미분류
+                </button>
+                }
+
+                @for(goal of routineGoals; track goal.id; let i = $index) {
                 <button type="button" class="goal-chip" [style.--goal-color]="getGoalColor(i)"
                     [class.goal-selected]="selectedGoal === goal.id" (click)="selectGoal(goal.id)">
                     {{ goal.name }}
@@ -226,9 +234,9 @@
                         </select>
                     </div>
                 </div>
-                <button type="button" class="save-btn" (click)="saveHabit()">
+                <button type="button" class="save-btn" [disabled]="isCreatingHabit" (click)="saveHabit()">
 
-                    {{ editingHabit.id ? '저장하기' : '습관 추가하기' }}
+                    {{ isCreatingHabit ? '추가 중...' : (editingHabit.id ? '저장하기' : '습관 추가하기') }}
 
                 </button>
 

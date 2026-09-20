@@ -127,6 +127,7 @@ export class RoutineFindComponent {
     userId: string = '';
     kakaoUserId: string = '';
     notionAccessToken: string = '';
+    private addingHabits = new Set<any>();
 
     async updateSession() {
         await this.authService.updateSession();
@@ -153,6 +154,7 @@ export class RoutineFindComponent {
     }
 
     async addHabit(habit: any) {
+        if (this.addingHabits.has(habit)) return;
         if (!this.memberUid) {
             ToastService.show('로그인이 필요합니다.');
             return;
@@ -168,15 +170,19 @@ export class RoutineFindComponent {
             return;
         }
 
-        const result = await UserService.addUserHabit(this.userId, habit);
-
-        if (result.success) {
-            ToastService.show('내 루틴에 습관이 추가되었습니다.');
-        } else if (result.duplicate) {
-            ToastService.warning(result.message || '기존 습관과 시간이 겹칩니다.');
-        } else {
-            ToastService.error('습관 추가에 실패했습니다.');
+        this.addingHabits.add(habit);
+        try {
+            const result = await UserService.addUserHabit(this.userId, habit);
+            if (result.success) ToastService.show('내 루틴에 습관이 추가되었습니다.');
+            else if (result.duplicate) ToastService.warning(result.message || '기존 습관과 시간이 겹칩니다.');
+            else ToastService.error('습관 추가에 실패했습니다.');
+        } finally {
+            this.addingHabits.delete(habit);
         }
+    }
+
+    isAddingHabit(habit: any): boolean {
+        return this.addingHabits.has(habit);
     }
 
     get filteredHabits() {

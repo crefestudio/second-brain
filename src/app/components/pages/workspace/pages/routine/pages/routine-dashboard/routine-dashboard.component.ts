@@ -83,6 +83,8 @@ export class RoutineDashboardComponent implements OnInit {
     hourHeightIndex = 0;
 
     goals: Goal[] = [];
+    readonly uncategorizedGoalId = '__routine_uncategorized__';
+    hasUncategorizedHabits = false;
 
     ///////////////////////////////////////////////////
 
@@ -150,7 +152,31 @@ export class RoutineDashboardComponent implements OnInit {
         }
 
         try {
-            this.goals = await this.userService.getNotionGoals(this.userId);
+            const [allGoals, habits] = await Promise.all([
+                this.userService.getNotionGoals(this.userId),
+                UserService.getUserHabits(this.userId)
+            ]);
+            const routineGoalIds = new Set(
+                habits
+                    .map(habit => habit.goalId)
+                    .filter((goalId): goalId is string => Boolean(goalId))
+            );
+
+            // 대시보드는 루틴이 연결된 목표만 탐색 대상으로 보여준다.
+            this.goals = allGoals.filter(goal => routineGoalIds.has(goal.id));
+            this.hasUncategorizedHabits = habits.some(habit => !habit.goalId);
+
+            if (
+                this.selectedGoalId &&
+                this.selectedGoalId !== this.uncategorizedGoalId &&
+                !routineGoalIds.has(this.selectedGoalId)
+            ) {
+                this.selectGoal('');
+            }
+
+            if (this.selectedGoalId === this.uncategorizedGoalId && !this.hasUncategorizedHabits) {
+                this.selectGoal('');
+            }
 
             // if (result?.success) {
             //     this.goals = result.goals ?? [];

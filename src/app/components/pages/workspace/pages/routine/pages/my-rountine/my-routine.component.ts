@@ -46,6 +46,7 @@ interface CalendarMonth {
 export class MyRoutineComponent implements OnInit {
 
     isLoading = true;
+    isCreatingHabit = false;
 
     habits: UserHabit[] = [];
     filteredHabits: UserHabit[] = [];
@@ -86,6 +87,9 @@ export class MyRoutineComponent implements OnInit {
     hourHeightIndex = 0;
 
     goals: NotionGoal[] = [];
+    routineGoals: NotionGoal[] = [];
+    readonly uncategorizedGoalId = '__routine_uncategorized__';
+    hasUncategorizedHabits = false;
 
     toggleCalendarZoom() {
         this.hourHeightIndex =
@@ -120,6 +124,7 @@ export class MyRoutineComponent implements OnInit {
 
     async loadHabits() {
         this.habits = await UserService.getUserHabits(this.userId);
+        this.refreshRoutineGoals();
         this.refreshFilteredHabits();
 
         _log('loadHabits =>', this.habits);
@@ -132,6 +137,7 @@ export class MyRoutineComponent implements OnInit {
 
         try {
             this.goals = await this.userService.getNotionGoals(this.userId);
+            this.refreshRoutineGoals();
 
             // if (result?.success) {
             //     this.goals = result.goals ?? [];
@@ -147,7 +153,39 @@ export class MyRoutineComponent implements OnInit {
         this.refreshFilteredHabits();
     }
 
+    /**
+     * 화면의 "내 목표"에는 실제로 루틴이 연결된 목표만 표시한다.
+     * goals는 추가·수정 모달의 전체 목표 선택지를 위해 그대로 유지한다.
+     */
+    private refreshRoutineGoals(): void {
+        const routineGoalIds = new Set(
+            this.habits
+                .map(habit => habit.goalId)
+                .filter((goalId): goalId is string => Boolean(goalId))
+        );
+
+        this.routineGoals = this.goals.filter(goal => routineGoalIds.has(goal.id));
+        this.hasUncategorizedHabits = this.habits.some(habit => !habit.goalId);
+
+        if (
+            this.selectedGoal &&
+            this.selectedGoal !== this.uncategorizedGoalId &&
+            !routineGoalIds.has(this.selectedGoal)
+        ) {
+            this.selectedGoal = '';
+        }
+
+        if (this.selectedGoal === this.uncategorizedGoalId && !this.hasUncategorizedHabits) {
+            this.selectedGoal = '';
+        }
+    }
+
     private refreshFilteredHabits(): void {
+        if (this.selectedGoal === this.uncategorizedGoalId) {
+            this.filteredHabits = this.habits.filter(habit => !habit.goalId);
+            return;
+        }
+
         this.filteredHabits = this.selectedGoal
             ? this.habits.filter(habit => habit.goalId === this.selectedGoal)
             : this.habits;
@@ -284,6 +322,8 @@ export class MyRoutineComponent implements OnInit {
         this.habits = this.habits.filter(
             item => item.id !== this.deleteTargetHabit!.id
         );
+        this.refreshRoutineGoals();
+        this.refreshFilteredHabits();
 
         this.isDeleteConfirmOpen = false;
         this.deleteTargetHabit = null;
@@ -344,6 +384,7 @@ export class MyRoutineComponent implements OnInit {
     }
 
     async createHabit() {
+        if (this.isCreatingHabit) return;
         if (!this.memberUid) {
             ToastService.show('로그인이 필요합니다.');
             return;
@@ -359,21 +400,21 @@ export class MyRoutineComponent implements OnInit {
             return;
         }
 
-        const result = await UserService.addUserHabit(
-            this.userId,
-            this.editingHabit!
-        );
+        this.isCreatingHabit = true;
+        try {
+            const result = await UserService.addUserHabit(this.userId, this.editingHabit!);
 
-        if (result.success) {
-            this.editingHabit = null;
-            await this.loadHabits();
-            ToastService.show('내 루틴에 습관이 추가되었습니다.');
-        } else if (result.duplicate) {
-            ToastService.warning(
-                result.message || '기존 습관과 시간이 겹칩니다.'
-            );
-        } else {
-            ToastService.error('습관 추가에 실패했습니다.');
+            if (result.success) {
+                this.editingHabit = null;
+                await this.loadHabits();
+                ToastService.show('내 루틴에 습관이 추가되었습니다.');
+            } else if (result.duplicate) {
+                ToastService.warning(result.message || '기존 습관과 시간이 겹칩니다.');
+            } else {
+                ToastService.error('습관 추가에 실패했습니다.');
+            }
+        } finally {
+            this.isCreatingHabit = false;
         }
     }
 
