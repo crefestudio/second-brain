@@ -1901,8 +1901,39 @@ export const getCareAccess = onRequest(withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     try {
         const identity = await getCareIdentity(req);
-        return res.json({ isAdmin: identity.isAdmin, email: identity.email });
+        return res.json({ isAdmin: identity.isAdmin, email: identity.email, isPremium: await carePremium(identity.uid) });
     } catch { return res.status(401).json({ error: '로그인을 다시 확인해주세요.' }); }
+}));
+
+function premiumOption(option: unknown): boolean {
+    return typeof option === 'string' && /커스터마이징|프리미엄/.test(option);
+}
+
+async function carePremium(uid: string): Promise<boolean> {
+    const account = (await db.collection('appAccounts').doc(uid).get()).data();
+    if (!account?.userId) return false;
+    const ref = db.collection('users').doc(account.userId);
+    const workspace = (await ref.get()).data();
+    if (workspace?.firebaseUid !== uid) return false;
+    const purchase = (await ref.collection('purchases').doc('lifeUp').get()).data();
+    const premium = purchase?.verified === true && premiumOption(purchase?.purchaser?.purchaseOption);
+    await ref.set({ memberType: premium ? 'premium' : 'standard' }, { merge: true });
+    return premium;
+}
+
+export const downloadCareAttachment = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        const { requestId, attachmentId } = req.body || {};
+        if (!/^[a-zA-Z0-9_-]+$/.test(requestId || '') || !/^[a-zA-Z0-9_-]+$/.test(attachmentId || '')) return res.status(400).json({ error: 'INVALID_ID' });
+        const request = (await db.collection('careRequests').doc(requestId).get()).data();
+        if (!request || (!identity.isAdmin && request.ownerId !== identity.uid)) return res.status(403).json({ error: 'FORBIDDEN' });
+        const attachment = request.attachments?.find((item: any) => item.id === attachmentId);
+        if (!attachment) return res.status(404).json({ error: 'NOT_FOUND' });
+        const [buffer] = await admin.storage().bucket().file(`careRequests/${requestId}/${attachmentId}`).download();
+        return res.json({ data: buffer.toString('base64') });
+    } catch { return res.status(500).json({ error: '첨부파일을 내려받지 못했습니다.' }); }
 }));
 
 function careRequestDto(id: string, data: FirebaseFirestore.DocumentData) {
@@ -1923,18 +1954,46 @@ export const createCareRequest = onRequest(withCors(async (req, res) => {
         const type = String(req.body?.type || '').trim();
         const title = String(req.body?.title || '').trim();
         const content = String(req.body?.content || '').trim();
+        if (!['개선 의견', '오류 신고', '사용 문의', '라이프업 활용 상담', '템플릿 업데이트 요청'].includes(type)) return res.status(400).json({ error: 'INVALID_TYPE' });
+        if (type === '템플릿 업데이트 요청' && !await carePremium(identity.uid)) return res.status(403).json({ error: '죄송합니다. 이 요청은 프리미엄 서비스에만 지원됩니다.' });
         if (!type || !title || !content || title.length > 120 || content.length > 5000) {
             return res.status(400).json({ error: 'INVALID_REQUEST' });
         }
         const requestRef = db.collection('careRequests').doc();
+        const files = req.body?.attachments || [];
+        if (!Array.isArray(files) || files.length > 5) return res.status(400).json({ error: '첨부파일은 최대 5개입니다.' });
+        let totalSize = 0;
+        const attachments = files.map((file: any) => {
+            if (typeof file.name !== 'string' || file.name.length > 200 || typeof file.data !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.data)) throw new Error('잘못된 첨부파일입니다.');
+            const buffer = Buffer.from(file.data, 'base64');
+            totalSize += buffer.length;
+            return { id: crypto.randomUUID(), name: file.name, size: buffer.length, buffer };
+        });
+        if (totalSize > 20 * 1024 * 1024) return res.status(400).json({ error: '첨부파일 합계는 20MB 이하여야 합니다.' });
+        const uploaded: string[] = [];
+        try {
+            for (const file of attachments) {
+                const path = `careRequests/${requestRef.id}/${file.id}`;
+                await admin.storage().bucket().file(path).save(file.buffer, { metadata: { contentType: 'application/octet-stream' } });
+                uploaded.push(path);
+            }
         const now = admin.firestore.FieldValue.serverTimestamp();
-        await requestRef.set({
+        const batch = db.batch();
+        const metadata = attachments.map(({ id, name, size }) => ({ id, name, size }));
+        batch.set(requestRef, {
+            attachments: metadata,
             ownerId: identity.uid, ownerEmail: identity.email, type, title, content,
             status: '접수', creditHours: 0, createdAt: now, updatedAt: now
         });
-        await requestRef.collection('messages').add({
+        batch.set(requestRef.collection('messages').doc(), {
+            attachments: metadata,
             authorRole: 'user', authorEmail: identity.email, content, createdAt: now
         });
+        await batch.commit();
+        } catch (error) {
+            await Promise.allSettled(uploaded.map(path => admin.storage().bucket().file(path).delete()));
+            throw error;
+        }
         try {
             await resend.emails.send({
                 from: 'Notionable <noreply@notionable.net>', to: Array.from(CARE_ADMIN_EMAILS),
@@ -1995,9 +2054,10 @@ export const sendCareMessage = onRequest(withCors(async (req, res) => {
         const requestSnapshot = await requestRef.get();
         if (!requestSnapshot.exists) return res.status(404).json({ error: 'NOT_FOUND' });
         const request = requestSnapshot.data()!;
-        if (!identity.isAdmin && request.ownerId !== identity.uid) return res.status(403).json({ error: 'FORBIDDEN' });
-        const authorRole = identity.isAdmin ? 'admin' : 'user';
-        const status = identity.isAdmin ? '답변 완료' : '접수';
+        const adminReply = req.body?.adminView === true;
+        if (adminReply ? !identity.isAdmin : request.ownerId !== identity.uid) return res.status(403).json({ error: 'FORBIDDEN' });
+        const authorRole = adminReply ? 'admin' : 'user';
+        const status = adminReply ? '답변 완료' : '접수';
         const now = admin.firestore.FieldValue.serverTimestamp();
         await requestRef.collection('messages').add({ authorRole, authorEmail: identity.email, content, createdAt: now });
         await requestRef.update({ status, updatedAt: now });
@@ -2421,6 +2481,11 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
                 purchaser: purchaserSnapshot.docs[0].data(),
                 verifiedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+            if (templateId === 'lifeUp') {
+                await db.collection('users').doc(userId).set({
+                    memberType: premiumOption(purchaserSnapshot.docs[0].data().purchaseOption) ? 'premium' : 'standard'
+                }, { merge: true });
+            }
         }
 
         if (!firebaseUid) await docRef.delete();

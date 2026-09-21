@@ -61,6 +61,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
     isLifeupPurchaser: boolean = false;
     purchaseInfo: any = null;
+    purchaseEmailVerified = false;
 
     showPurchaseDetail = false;
     showWorkspaceDetail = false;
@@ -141,7 +142,8 @@ export class AgentConnectComponentComponent implements OnInit {
 
         this.isShowCannotFindPurcherInfo = false;
 
-        this.isVerifying = true;
+        if (this.isVerifying) return;
+        this.errorMessage = '';
         const value = this.verifyValue.trim();
 
         if (!value) {
@@ -174,8 +176,9 @@ export class AgentConnectComponentComponent implements OnInit {
             }
         }
 
+        this.isVerifying = true;
         try {
-            const purchaserInfo: any | null = await this.userService.verifyPurchaser(TEMPLATE_KEY_LIFEUP, email, phone); // 여기서 로컬호스트에 저장함
+            const purchaserInfo: any | null = await this.userService.verifyPurchaser(TEMPLATE_KEY_LIFEUP, email, phone);
             _log('submitVerification purchaserInfo =>', purchaserInfo);
             if (!purchaserInfo) {
                 //this.errorMessage = '구매정보를 찾을 수 없습니다.';
@@ -187,7 +190,12 @@ export class AgentConnectComponentComponent implements OnInit {
             // if (this.userId) {
             //     await UserService.savePurchaserInfo(this.userId, TEMPLATE_KEY_LIFEUP, purchaserInfo);
             // } 
-            this.updatePurchaseInfo();
+            // A lookup confirms a purchase exists, but does not verify ownership.
+            this.purchaseInfo = purchaserInfo;
+            this.isLifeupPurchaser = true;
+            this.purchaseEmailVerified = false;
+            this.isRequestMailCheck = false;
+            this.codeArray = Array(6).fill('');
             ToastService.show('구매 정보가 확인되었습니다.');
             this.requestPurchaserCheck = false;
         } catch (e) {
@@ -223,7 +231,9 @@ export class AgentConnectComponentComponent implements OnInit {
             const result = await UserService.updatePurchaseInfo(this.userId);
             this.purchaseInfo = result.purchaseInfo;
             this.isLifeupPurchaser = result.isPurchaser;
+            this.purchaseEmailVerified = result.purchaseInfo?.verified === true;
         } else {
+            this.purchaseEmailVerified = false;
             // 로컬호스트에서 가져옴
             let purchaseInfo = UserService.getPurchaseInfoFromLocalStorage(TEMPLATE_KEY_LIFEUP);
             if (purchaseInfo && purchaseInfo.email) {
@@ -246,6 +256,9 @@ export class AgentConnectComponentComponent implements OnInit {
         UserService.deletePurchaseInfoLocalStorage(TEMPLATE_KEY_LIFEUP);
         this.purchaseInfo = null;
         this.isLifeupPurchaser = false;
+        this.purchaseEmailVerified = false;
+        this.isRequestMailCheck = false;
+        this.codeArray = Array(6).fill('');
     }
 
 
@@ -279,6 +292,7 @@ export class AgentConnectComponentComponent implements OnInit {
         const email = this.email;
         if (!email) {
             this.errorMessage = '인증 이메일을 확인 할 수 없습니다. 관리자에게 문의 바랍니다.';
+            this.isEmailSending = false;
             return;
         }
 
@@ -395,7 +409,8 @@ export class AgentConnectComponentComponent implements OnInit {
             const result: any = await this.userService.verifyCode(
                 this.email,
                 this.getVerificationCode(),
-                this.memberUid
+                this.memberUid,
+                TEMPLATE_KEY_LIFEUP
             );
 
             _log('submitCertificationNumber result =>', result);
@@ -437,14 +452,15 @@ export class AgentConnectComponentComponent implements OnInit {
 
             this.userId = result.userId;
 
-            if (this.purchaseInfo) {
-                await UserService.savePurchaserInfo(
-                    this.userId,
-                    TEMPLATE_KEY_LIFEUP,
-                    this.purchaseInfo
-                );
-            }
-
+            // verifyCode persists the verified purchase and memberType on the server.
+            await this.updateSession();
+            await this.updatePurchaseInfo();
+            this.isRequestMailCheck = false;
+            this.codeArray = Array(6).fill('');
+            ToastService.show('구매 이메일 인증이 완료되었습니다.');
+        } catch (error) {
+            console.error('Purchase verification failed', error);
+            this.errorMessage = '인증 상태를 확인하지 못했습니다. 다시 시도해주세요.';
         } finally {
             this.isVerifying = false;
         }

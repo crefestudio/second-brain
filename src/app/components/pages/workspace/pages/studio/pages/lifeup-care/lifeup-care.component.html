@@ -86,7 +86,7 @@
                     </div>
                 </div>
 
-                <button class="service-btn">
+                <button class="service-btn" (click)="openRequestForm('오류 신고')">
                     신고하기 →
                 </button>
             </div>
@@ -102,7 +102,7 @@
                     </div>
                 </div>
 
-                <button class="service-btn">
+                <button class="service-btn" (click)="openRequestForm('사용 문의')">
                     문의하기 →
                 </button>
             </div>
@@ -118,7 +118,7 @@
                     </div>
                 </div>
 
-                <button class="service-btn">
+                <button class="service-btn" (click)="openRequestForm('라이프업 활용 상담')">
                     상담 신청 →
                 </button>
             </div>
@@ -152,10 +152,10 @@
                     <div class="service-description">
                         라이프업을 1.3에서 1.5로 관리자 위탁 업데이트합니다.
                     </div>
-                    <div class="credit-info">프리미엄 · 크레딧 2H 사용</div>
+                    <div class="credit-info">프리미엄 전용 · 현재 0H</div>
                 </div>
 
-                <button class="service-btn premium-btn" routerLink="/workspace/studio/migration">
+                <button class="service-btn premium-btn" (click)="openRequestForm('템플릿 업데이트 요청')">
                     신청하기 →
                 </button>
             </div>
@@ -173,7 +173,7 @@
                     <!-- <div class="credit-info">프리미엄 · 1H</div> -->
                 </div>
 
-                <button class="service-btn premium-btn">
+                <button class="service-btn premium-btn" type="button" (click)="showUnavailableServiceNotice()">
                     신청하기 →
                 </button>
             </div>
@@ -192,7 +192,7 @@
                     <!-- <div class="credit-info">프리미엄 · 1H</div> -->
                 </div>
 
-                <button class="service-btn premium-btn">
+                <button class="service-btn premium-btn" type="button" (click)="showUnavailableServiceNotice()">
                     신청하기 →
                 </button>
             </div>
@@ -222,8 +222,30 @@
         } @empty { <p class="care-empty">표시할 요청이 없습니다.</p> }
     </section>
 
+    @if (premiumNotice) {
+        <div class="care-modal-backdrop" (click)="premiumNotice = false">
+            <section class="care-modal" role="dialog" aria-modal="true" aria-label="프리미엄 서비스 안내" (click)="$event.stopPropagation()">
+                <button type="button" class="care-modal-close" aria-label="닫기" (click)="premiumNotice = false">×</button>
+                <h2>프리미엄 서비스 안내</h2>
+                <p>죄송합니다. 이 요청은 프리미엄 서비스에만 지원됩니다.</p>
+                <a class="service-btn" href="https://notionable.net/price" target="_blank" rel="noopener">프리미엄 서비스 알아보기 →</a>
+            </section>
+        </div>
+    }
     @if (selectedType) {
-    <div class="care-modal-backdrop" (click)="closeModal()"><section class="care-modal" (click)="$event.stopPropagation()"><button class="care-modal-close" type="button" (click)="closeModal()">×</button><h2>{{ selectedType }} 접수</h2><p>개선이 필요한 점을 알려주세요. 접수 후 내 요청 현황에서 답변을 확인할 수 있습니다.</p><label>제목<input [(ngModel)]="requestTitle" maxlength="120"></label><label>내용<textarea [(ngModel)]="requestContent" rows="7" maxlength="5000"></textarea></label>@if (error) { <p class="care-error">{{ error }}</p> }<div class="care-modal-actions"><button class="service-btn" type="button" (click)="closeModal()">취소</button><button class="service-btn submit" type="button" [disabled]="isSubmitting" (click)="submitRequest()">{{ isSubmitting ? '접수 중…' : '접수하기' }}</button></div></section></div>
+    <div class="care-modal-backdrop" (click)="closeModal()">
+        <section class="care-modal" role="dialog" aria-modal="true" aria-labelledby="care-form-title" (click)="$event.stopPropagation()">
+            <button class="care-modal-close" type="button" (click)="closeModal()" aria-label="닫기">×</button>
+            <h2 id="care-form-title">{{ selectedType }} 접수</h2><p>{{ requestHint }}</p>
+            <label>제목<input [(ngModel)]="requestTitle" maxlength="120" [disabled]="isSubmitting"></label>
+            <label>내용<textarea [(ngModel)]="requestContent" rows="7" maxlength="5000" [disabled]="isSubmitting"></textarea></label>
+            <label>이미지·파일 첨부<input type="file" multiple (change)="chooseFiles($event)" [disabled]="isSubmitting"></label>
+            <small>이미지·동영상을 포함해 최대 5개, 합계 20MB까지 첨부할 수 있습니다.</small>
+            @for (file of files; track $index) { <p>{{ file.name }}</p> }
+            @if (error) { <p class="care-error" role="alert">{{ error }}</p> }
+            <div class="care-modal-actions"><button class="service-btn" type="button" (click)="closeModal()">취소</button><button class="service-btn submit" type="button" [disabled]="isSubmitting" (click)="submitRequest()">{{ isSubmitting ? '접수 중…' : '접수하기' }}</button></div>
+        </section>
+    </div>
     }
     @if (selectedRequest) {
     <div class="care-modal-backdrop" (click)="closeModal()">
@@ -237,10 +259,13 @@
                         <strong>{{ message.authorRole === 'admin' ? '관리자' : '요청자' }}</strong>
                         <small> · {{ message.createdAt | date:'MM.dd HH:mm' }}</small>
                         <p>{{ message.content }}</p>
+                        @for (file of message.attachments || []; track file.id) {
+                            <button type="button" class="service-btn" (click)="downloadAttachment(file)">📎 {{ file.name }}</button>
+                        }
                     </div>
                 }
             </div>
-            <label for="care-reply">{{ isAdmin ? '관리자 답변' : '추가 메시지' }}</label>
+            <label for="care-reply">{{ adminView ? '관리자 답변' : '추가 메시지' }}</label>
             <textarea id="care-reply" [(ngModel)]="messageContent" rows="3" maxlength="5000" [disabled]="isSubmitting" placeholder="메시지를 입력하세요."></textarea>
             @if (error) { <p class="care-error" role="alert">{{ error }}</p> }
             <div class="care-modal-actions"><button class="service-btn submit" type="button" [disabled]="isSubmitting || !messageContent.trim()" (click)="sendMessage()">{{ isSubmitting ? '전송 중…' : '보내기' }}</button></div>

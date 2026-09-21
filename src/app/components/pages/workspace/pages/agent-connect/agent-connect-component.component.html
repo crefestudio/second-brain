@@ -121,7 +121,7 @@
         <tr>
 
           <td class="status-cell">
-            @if(userId && isLifeupPurchaser) {
+            @if(userId && purchaseEmailVerified) {
             <span class="badge success">
               완료
             </span>
@@ -142,7 +142,7 @@
               <span class="text-muted">
                 구매 정보 확인이 필요합니다.
               </span>
-              } @else if (userId) {
+              } @else if (userId && purchaseEmailVerified) {
               <div class="verified-email">
                 ✓ 라이프봇 사용자 ID&nbsp;&nbsp;:&nbsp;&nbsp;{{userId}}
               </div>&nbsp;&nbsp;
@@ -391,7 +391,7 @@
       <tbody>
         <tr>
           <td class="status-cell">
-            @if(userId && isLifeupPurchaser && notionAccessToken) {
+            @if(userId && purchaseEmailVerified && notionAccessToken) {
             <span class="badge success">
               완료
             </span>
@@ -406,7 +406,7 @@
           </td>
           <td class="action-cell">
             <div class="verify-wrap">
-              @if (!userId || !isLifeupPurchaser) {
+              @if (!userId || !purchaseEmailVerified) {
               <span class="text-muted">
                 먼저 Step 1단계를 진행해주세요.
               </span>
@@ -439,7 +439,7 @@
         </tr>
         <tr>
           <td class="status-cell">
-            @if(kakaoUserId && userId && isLifeupPurchaser && notionAccessToken) {
+            @if(kakaoUserId && userId && purchaseEmailVerified && notionAccessToken) {
             <span class="badge success">
               완료
             </span>
@@ -454,7 +454,7 @@
           </td>
           <td class="action-cell">
             <div class="verify-wrap">
-              @if (!userId || !isLifeupPurchaser) {
+              @if (!userId || !purchaseEmailVerified) {
               <span class="text-muted">
                 먼저 Step 1단계를 진행해주세요.
               </span>
@@ -463,7 +463,7 @@
                 먼저 <span class="link-text">노션 템플릿 연결</span>을 진행해주세요.
               </span>
               }
-              @else if (kakaoUserId && userId && isLifeupPurchaser) {
+              @else if (kakaoUserId && userId && purchaseEmailVerified) {
               <div class="verified-email">
                 연결됨
                 <button class="remove-btn" (click)="onClickDisconnectKakaoBtn()">
@@ -517,7 +517,7 @@
   </div>
   @if (
   userId &&
-  isLifeupPurchaser &&
+  purchaseEmailVerified &&
   kakaoUserId &&
   notionAccessToken
   ) {
