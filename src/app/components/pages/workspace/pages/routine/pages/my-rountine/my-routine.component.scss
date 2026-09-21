@@ -195,6 +195,15 @@
     border-right: 0;
 }
 
+.day-header.sunday {
+    color: #f87171;
+}
+
+.day-header.today {
+    color: #fff;
+    background: #2563eb36;
+}
+
 .calendar-body {
     display: grid;
     grid-template-columns: 64px repeat(7, minmax(0, 1fr));
@@ -226,6 +235,10 @@
 
 .day-column:last-child {
     border-right: 0;
+}
+
+.day-column.today {
+    background: rgba(37, 99, 235, 0.07);
 }
 
 .hour-line {

@@ -97,6 +97,12 @@ export class MyRoutineComponent implements OnInit {
 
         this.hourHeight = this.hourHeightLevels[this.hourHeightIndex];
     }
+
+    isToday(day: string): boolean {
+        const dayIndex = new Date().getDay();
+        const today = ['일', '월', '화', '수', '목', '금', '토'][dayIndex];
+        return day === today;
+    }
     /////////////////////////
 
     editingHabit: UserHabit | null = null;

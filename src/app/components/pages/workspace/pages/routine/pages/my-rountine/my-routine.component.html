@@ -84,7 +84,8 @@
 
                 <div class="time-header"></div>
 
-                <div *ngFor="let day of days" class="day-header">
+                <div *ngFor="let day of days" class="day-header" [class.sunday]="day === '일'"
+                    [class.today]="isToday(day)">
                     {{ day }}
                 </div>
 
@@ -103,7 +104,7 @@
                 </div>
 
                 <!-- 요일별 영역 -->
-                <div *ngFor="let day of days" class="day-column">
+                <div *ngFor="let day of days" class="day-column" [class.today]="isToday(day)">
 
                     <!-- 시간선 -->
                     <div *ngFor="let hour of getHours()" class="hour-line">

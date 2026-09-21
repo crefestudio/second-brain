@@ -100,7 +100,7 @@
     }
 
     summary:hover { color: #fff; }
-    &[open] summary { margin-bottom: 16px; }
+    &[open] summary { margin-bottom: 8px; }
 }
 
 .routine-dashboard-guide-content {
@@ -112,7 +112,7 @@
     h2 { margin: 0 0 20px; font-size: 22px; }
     h3 { margin: 28px 0 8px; font-size: 17px; }
     h4 { margin: 18px 0 2px; font-size: 14px; }
-    p { margin: 6px 0; }
+    p { margin: 6px 0 20px;  }
     ol { margin: 8px 0; padding-left: 24px; }
     li + li { margin-top: 5px; }
     code { padding: 2px 5px; border-radius: 4px; background: rgba(255, 255, 255, .08); color: #fff; }

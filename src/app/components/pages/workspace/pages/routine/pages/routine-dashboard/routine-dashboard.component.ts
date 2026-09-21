@@ -352,6 +352,21 @@ export class RoutineDashboardComponent implements OnInit {
         return this.goalColors[index % this.goalColors.length];
     }
 
+    importingStats: 'all' | 'today' | null = null;
+
+    async importHabitStats(scope: 'all' | 'today'): Promise<void> {
+        if (this.importingStats) return;
+        this.importingStats = scope;
+        try {
+            const result = await this.userService.reconcileMyHabitStats(scope);
+            if (!result.success) throw new Error('IMPORT_FAILED');
+            await this.reloadAllData();
+            ToastService.show(`${result.checkedDays}일의 기록을 확인하고 ${result.changedDays}일의 기록을 수정했습니다. 보상은 변경되지 않습니다.`);
+        } catch {
+            ToastService.error('기록 가져오기를 완료하지 못했습니다. 잠시 후 다시 시도해주세요.');
+        } finally { this.importingStats = null; }
+    }
+
     async prepareTodayRoutine(): Promise<void> {
         if (!this.userId) return;
 

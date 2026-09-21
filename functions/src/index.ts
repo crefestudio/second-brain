@@ -5429,9 +5429,33 @@ class NotionService {
     }
 
     // Notion Habit Log에서 일일 통계 조회
+    static async getHabitLogsForReconciliation(userId: string, today: string, scope: 'all' | 'today'): Promise<any[]> {
+        const accessToken = (await db.collection('users').doc(userId).get()).data()?.notionAccessToken;
+        if (!accessToken) throw new Error('NOTION_NOT_CONNECTED');
+        const databaseId = await this.resolveDatabaseId(accessToken, userId, 'habit log');
+        const dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
+        const notion = new Client({ auth: accessToken });
+        const range = habitDayRange(today);
+        const pages: any[] = [];
+        let cursor: string | undefined;
+        do {
+            const response: any = await notion.dataSources.query({
+                data_source_id: dataSourceId, page_size: 100, start_cursor: cursor,
+                filter: { and: [
+                    { property: '날짜', date: { before: range.end } },
+                    ...(scope === 'today' ? [{ property: '날짜', date: { on_or_after: range.start } }] : [])
+                ] }
+            });
+            pages.push(...response.results);
+            cursor = response.has_more ? response.next_cursor : undefined;
+        } while (cursor);
+        return pages;
+    }
+
     static async getDailyHabitStats(
         userId: string,
-        targetDate: string
+        targetDate: string,
+        suppliedLogs?: any[]
     ): Promise<{
         total: number;
         completed: number;
@@ -5447,7 +5471,8 @@ class NotionService {
             userId,
             targetDate
         });
-
+        const habitLogs: any[] = suppliedLogs ? [...suppliedLogs] : [];
+        if (suppliedLogs === undefined) {
 
         // --------------------------------
         // Notion 인증
@@ -5500,7 +5525,6 @@ class NotionService {
         // --------------------------------
         // Habit Log 조회
         // --------------------------------
-        const habitLogs: any[] = [];
         let startCursor: string | undefined = undefined;
 
         do {
@@ -5538,7 +5562,7 @@ class NotionService {
                 : undefined;
 
         } while (startCursor);
-
+        }
 
         logger.info(
             '[NotionHabitStats] Habit Log 조회 완료',
@@ -13750,6 +13774,26 @@ export interface RecordMyDailyHabitStatsResult {
     today?: DailyHabitStatsResult;
 }
 
+export const reconcileMyHabitStats = onRequest({ region: 'asia-northeast3', timeoutSeconds: 540, memory: '512MiB' }, withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ success: false });
+    let identity: admin.auth.DecodedIdToken;
+    try {
+        identity = await admin.auth().verifyIdToken(String(req.headers.authorization || '').replace(/^Bearer /, ''), true);
+    } catch { return res.status(401).json({ success: false }); }
+    const userId = (await db.collection('appAccounts').doc(identity.uid).get()).data()?.userId;
+    if (!userId || (await db.collection('users').doc(userId).get()).data()?.firebaseUid !== identity.uid) {
+        return res.status(403).json({ success: false });
+    }
+    const scope = req.body?.scope;
+    if (scope !== 'all' && scope !== 'today') return res.status(400).json({ success: false });
+    try {
+        return res.json({ success: true, ...await RoutineService.reconcileHabitStats(userId, scope) });
+    } catch (error) {
+        logger.error('[HabitReconciliation] failed', { userId, error });
+        return res.status(500).json({ success: false, message: '기록 가져오기를 완료하지 못했습니다. 다시 시도해주세요.' });
+    }
+}));
+
 // #routine
 export const createDailyHabitLogs = onSchedule({
     schedule: '40 23 * * *',
@@ -14071,6 +14115,43 @@ interface HabitAchievement {
 
 
 class RoutineService {
+    static async reconcileHabitStats(userId: string, scope: 'all' | 'today') {
+        const lockId = 'habit-stats-summary';
+        if (!await this.claimRoutineLock(userId, lockId)) throw new Error('HABIT_STATS_IN_PROGRESS');
+        try {
+            const { targetDate: today } = getTargetDay(0);
+            // Finish every Notion page before changing statistics: a failed query is never an empty database.
+            const pages = await NotionService.getHabitLogsForReconciliation(userId, today, scope);
+            const byDate = new Map<string, any[]>();
+            for (const page of pages) {
+                const start = page.properties?.날짜?.date?.start;
+                if (!start) throw new Error('INVALID_HABIT_DATE');
+                const date = start.length === 10 ? start : new Date(new Date(start).getTime() + 9 * 3600000).toISOString().slice(0, 10);
+                if (date > today || (scope === 'today' && date !== today)) continue;
+                byDate.set(date, [...(byDate.get(date) || []), page]);
+            }
+            const routine = db.collection('users').doc(userId).collection('integrations').doc('routine');
+            const [existing, existingGoals] = await Promise.all([
+                routine.collection('dailyStats').where('date', scope === 'today' ? '==' : '<=', today).get(),
+                routine.collection('goalDailyStats').where('date', scope === 'today' ? '==' : '<=', today).get()
+            ]);
+            const dates = new Set<string>([...byDate.keys(), ...existing.docs.map(doc => doc.id),
+                ...existingGoals.docs.map(doc => doc.data().date as string), today]);
+            let changedDays = 0;
+            let checkedDays = 0;
+            for (const date of [...dates].sort()) {
+                if (scope === 'today' && date !== today) continue;
+                const result = await this.recordDailyHabitStatsUnlocked(userId, date, byDate.get(date) || []);
+                checkedDays++;
+                if (result.status !== 'unchanged') changedDays++;
+            }
+            await this.processHabitStatsUnlocked(userId, today, false);
+            await routine.collection('reconciliations').add({ scope, checkedDays, changedDays,
+                completedAt: admin.firestore.FieldValue.serverTimestamp(), rewardsChanged: false });
+            return { checkedDays, changedDays };
+        } finally { await this.releaseRoutineLock(userId, lockId); }
+    }
+
     private static async claimRoutineLock(userId: string, lockId: string): Promise<boolean> {
         const lockRef = db.collection('users').doc(userId)
             .collection('integrations').doc('routine').collection('locks').doc(lockId);
@@ -14372,18 +14453,24 @@ class RoutineService {
     }
 
     // 습관 통계 기록
-    // 습관 통계 기록
     static async recordDailyHabitStats(
         userId: string,
         targetDate: string
     ): Promise<DailyHabitStatsResult> {
+        const lockId = 'habit-stats-summary';
+        if (!await this.claimRoutineLock(userId, lockId)) throw new Error('HABIT_STATS_IN_PROGRESS');
+        try { return await this.recordDailyHabitStatsUnlocked(userId, targetDate); }
+        finally { await this.releaseRoutineLock(userId, lockId); }
+    }
+
+    private static async recordDailyHabitStatsUnlocked(userId: string, targetDate: string, suppliedLogs?: any[]): Promise<DailyHabitStatsResult> {
         if (!userId) {
             throw new Error('Missing userId');
         }
 
         logger.info('[HabitStats] 시작', { userId, targetDate });
 
-        const result = await NotionService.getDailyHabitStats(userId, targetDate);
+        const result = await NotionService.getDailyHabitStats(userId, targetDate, suppliedLogs);
         const { total, completed, goalStats } = result;
 
         const statsRef = db
@@ -14401,7 +14488,7 @@ class RoutineService {
             existingData?.total !== total ||
             existingData?.completed !== completed;
 
-        const status: DailyHabitStatsResult['status'] = !existingDoc.exists
+        let status: DailyHabitStatsResult['status'] = !existingDoc.exists
             ? 'created'
             : isChanged
                 ? 'updated'
@@ -14412,6 +14499,10 @@ class RoutineService {
             date: targetDate,
             total,
             completed,
+            // Preserve the pre-repair reward basis even across repeated repairs and later scheduled runs.
+            rewardBasis: suppliedLogs !== undefined
+                ? existingData?.rewardBasis ?? { completed: existingData?.completed ?? 0, useRest: existingData?.useRest === true }
+                : admin.firestore.FieldValue.delete(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, {
             merge: true
@@ -14426,6 +14517,11 @@ class RoutineService {
 
         // A goal can be removed or changed in Notion after the first aggregation.
         const previousGoals = await goalDailyStatsCollection.where('date', '==', targetDate).get();
+        const oldGoals = new Map(previousGoals.docs.map(doc => [doc.data().goalId, doc.data()]));
+        if (status === 'unchanged' && (
+            Object.entries(goalStats).some(([id, stat]) => oldGoals.get(id)?.total !== stat.total || oldGoals.get(id)?.completed !== stat.completed) ||
+            previousGoals.docs.some(doc => !goalStats[doc.data().goalId] && (doc.data().total !== 0 || doc.data().completed !== 0))
+        )) status = 'updated';
         for (const previous of previousGoals.docs) {
             if (!goalStats[previous.data().goalId]) {
                 batch.set(previous.ref, { total: 0, completed: 0, useRest: false,
@@ -14554,7 +14650,7 @@ class RoutineService {
         }
     }
 
-    private static async processHabitStatsUnlocked(userId: string, targetDate: string): Promise<void> {
+    private static async processHabitStatsUnlocked(userId: string, targetDate: string, awardRewards = true): Promise<void> {
         if (!userId) {
             throw new Error('Missing userId');
         }
@@ -14629,7 +14725,7 @@ class RoutineService {
             stat => stat.date === targetDate
         );
 
-        if (targetStat) {
+        if (targetStat && awardRewards && !targetStat.rewardBasis) {
             const completed = targetStat.completed ?? 0;
             const useRest = targetStat.useRest === true;
             const useRestId = `use_${targetDate}`;
@@ -14707,6 +14803,28 @@ class RoutineService {
         let currentStreak = 0;
         let previousDate: string | null = null;
 
+        let rewardStreak = 0;
+        let rewardLongestStreak = 0;
+        let rewardCompleted = 0;
+        let rewardPreviousDate: string | null = null;
+        for (const stat of stats) {
+            const basis = stat.rewardBasis ?? stat;
+            rewardCompleted += basis.completed ?? 0;
+            if ((basis.completed ?? 0) > 0 || basis.useRest === true) {
+                rewardStreak = rewardPreviousDate && this.isNextDay(rewardPreviousDate, stat.date) ? rewardStreak + 1 : 1;
+                rewardLongestStreak = Math.max(rewardLongestStreak, rewardStreak);
+                rewardPreviousDate = stat.date;
+                const rewardId = `reward_${stat.date}_${rewardStreak}`;
+                if (awardRewards && rewardStreak % 5 === 0 && !existingRestHistory.has(rewardId)) {
+                    batch.set(restHistoryRef.doc(rewardId), { date: stat.date, type: 'reward', amount: 1,
+                        streak: rewardStreak, message: `${rewardStreak}일 꾸준히 달성`,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp() });
+                    existingRestHistory.add(rewardId);
+                    restTokens++;
+                }
+            } else { rewardStreak = 0; rewardPreviousDate = null; }
+        }
+
         for (const stat of stats) {
             const date = stat.date;
             const completed = stat.completed ?? 0;
@@ -14741,27 +14859,6 @@ class RoutineService {
             // ========================================================
             // 5일 단위 휴식권 지급
             // ========================================================
-
-            if (currentStreak > 0 && currentStreak % 5 === 0) {
-                const rewardId = `reward_${date}_${currentStreak}`;
-
-                if (!existingRestHistory.has(rewardId)) {
-                    batch.set(
-                        restHistoryRef.doc(rewardId),
-                        {
-                            date,
-                            type: 'reward',
-                            amount: 1,
-                            streak: currentStreak,
-                            message: `${currentStreak}일 꾸준히 달성`,
-                            createdAt: admin.firestore.FieldValue.serverTimestamp()
-                        }
-                    );
-
-                    existingRestHistory.add(rewardId);
-                    restTokens++;
-                }
-            }
 
             previousDate = date;
         }
@@ -14853,7 +14950,8 @@ class RoutineService {
                 : 0;
 
             batch.set(
-                summaryRef.doc(goalId),
+                // Firestore reserves document IDs matching __.*__.
+                summaryRef.doc(goalId === '__routine_uncategorized__' ? 'routine_uncategorized' : goalId),
                 {
                     currentStreak: goalCurrentStreak,
                     longestStreak: goalLongestStreak,
@@ -14871,7 +14969,7 @@ class RoutineService {
 
         for (const badge of this.BADGE_THRESHOLDS) {
             if (
-                totalCompleted >= badge.value &&
+                awardRewards && rewardCompleted >= badge.value &&
                 !existingBadges.has(badge.code)
             ) {
                 batch.set(
@@ -14894,7 +14992,7 @@ class RoutineService {
 
         for (const trophy of this.TROPHY_THRESHOLDS) {
             if (
-                longestStreak >= trophy.value &&
+                awardRewards && rewardLongestStreak >= trophy.value &&
                 !existingTrophies.has(trophy.code)
             ) {
                 batch.set(

@@ -158,6 +158,9 @@ interface LifeUpMigrationResult {
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
+// `reconcileMyHabitStats` is deployed in asia-northeast3. It must not use the
+// default us-central1 base URL, which returns a non-CORS 404 response.
+const habitStatsFunctionsBaseUrl = 'https://asia-northeast3-notionable-secondbrain.cloudfunctions.net';
 @Injectable({
     providedIn: 'root',
 })
@@ -1516,7 +1519,8 @@ export class UserService {
         }
 
         try {
-            const summaryId = goalId || 'all';
+            // Match the backend mapping: Firestore reserves IDs matching __.*__.
+            const summaryId = goalId === '__routine_uncategorized__' ? 'routine_uncategorized' : goalId || 'all';
 
             const summaryRef = doc(
                 firestore,
@@ -1942,6 +1946,14 @@ export class UserService {
             console.error('checkLifeUpMigration failed', error);
             return null;
         }
+    }
+
+    async reconcileMyHabitStats(scope: 'all' | 'today'): Promise<{ success: boolean; checkedDays: number; changedDays: number }> {
+        if (!auth.currentUser) throw new Error('LOGIN_REQUIRED');
+        return firstValueFrom(this.http.post<{ success: boolean; checkedDays: number; changedDays: number }>(
+            `${habitStatsFunctionsBaseUrl}/reconcileMyHabitStats`, { scope },
+            { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } }
+        ));
     }
 
     async getMigrationTemplateRootUrl(userId: string): Promise<string> {
