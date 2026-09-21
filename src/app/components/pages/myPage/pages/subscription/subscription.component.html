@@ -86,7 +86,7 @@
           <td>
             @if (isLifeupPurchaser && purchaseInfo.email) {
 
-            <button class="verify-btn" (click)="downloadTemplate()">
+            <button class="verify-btn" (click)="router.navigate(['/download/lifeup'])">
               다운로드
             </button>
 

@@ -36,6 +36,7 @@ import { ProfileComponent } from './components/pages/myPage/pages/profile/profil
 import { SecurityComponent } from './components/pages/myPage/pages/security/security.component';
 import { SubscriptionComponent } from './components/pages/myPage/pages/subscription/subscription.component';
 import { NotificationComponent } from './components/pages/myPage/pages/notification/notification.component';
+import { LifeupDownloadComponent } from './components/pages/myPage/pages/lifeup-download/lifeup-download.component';
 
 import { WorkspaceLayoutComponent } from './workspace-layout.component';
 import { WidgetLayoutComponent } from './widget-layout.component';
@@ -53,6 +54,11 @@ import { AgentConnectComponentComponent } from './components/pages/workspace/pag
 
 export const routes: Routes = [
   { path: 'login', component: SocialLoginComponent },
+  {
+    path: 'download/lifeup',
+    component: LifeupDownloadComponent,
+    canActivate: [memberGuard]
+  },
   {
     path: '',
     redirectTo: 'workspace/home',

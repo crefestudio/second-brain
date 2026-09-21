@@ -48,6 +48,8 @@ export function hashContent(text: string): string {
 admin.initializeApp();
 const db = admin.firestore();
 
+//https://us-central1-notionable-secondbrain.cloudfunctions.net/latpeedPaymentWebhook
+
 const NOTION_TOKEN = defineSecret("NOTION_TOKEN");
 const NOTION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionOAuthCallback"; // 노션에 등록되서 바꿀 수 없음
 
@@ -1878,6 +1880,7 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 
 const LATPEED_TEST_EMAIL = 'toto791@gamil.com';
 const LIFEUP_PASSPORT_URL = 'https://app.notionable.net/templateDownload/LifeUp-1.3-Template-Passport.pdf';
+const LIFEUP_PURCHASE_GUIDE_URL = 'https://notionable.net';
 
 function isValidLatpeedWebhook(req: any): boolean {
     const timestamp = String(req.get('X-Latpeed-Timestamp') || '');
@@ -1938,22 +1941,31 @@ Notionable 드림`;
     return {
         subject: '라이프업 구매 안내 및 보관용 PDF를 보내드립니다',
         text,
-        html: text.replace(/\n/g, '<br>')
+        html: `<div style="margin:0;background:#f5f7fb;padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#243047"><div style="max-width:620px;margin:auto;background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:36px 30px;box-sizing:border-box"><div style="font-weight:700;color:#718096;font-size:14px">🧠 Notionable</div><h1 style="margin:12px 0 16px;color:#172033;font-size:28px;line-height:1.35">라이프업에 오신 것을<br>환영합니다! 😊</h1><p style="line-height:1.7">라이프업과 함께 목표부터 프로젝트, 할 일과 기록까지 나만의 방식으로 삶을 관리해보세요.</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">📥 라이프업 1.5 다운로드</h2><p style="line-height:1.7">아래 구매 안내 페이지에서 <strong>라이프업 1.5를 다운로드하고 설치 방법 및 사용 가이드</strong>를 확인하실 수 있습니다.</p><a href="${guideUrl}" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 다운로드 및 구매 안내 →</a><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 받기</h2><p style="line-height:1.7">라이프업 1.5 구매 고객을 대상으로 <strong>라이프봇 1년 무료 이용권 이벤트</strong>를 진행합니다.</p><p style="line-height:1.7">카카오톡 AI 비서, 세컨드브레인, 루틴 관리 등 라이프봇 기능을 정식 오픈 전까지 무료로 이용하실 수 있습니다.</p><a href="https://notionable.net/store/?idx=1#prod_detail_review" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 리뷰 작성하기 →</a><p style="line-height:1.7">리뷰를 남겨주신 분께 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">📄 보관용 PDF</h2><p style="line-height:1.7">구매 내역 확인을 위한 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p><a href="${LIFEUP_PASSPORT_URL}" style="display:inline-block;background:#eef3f9;color:#243047;padding:12px 16px;border:1px solid #cbd7e6;border-radius:8px;text-decoration:none;font-weight:700">보관용 PDF 열기 →</a><p style="margin:32px 0 0;color:#718096;line-height:1.7">Notionable 드림</p></div></div>`
     };
 }
 
 export const latpeedPaymentWebhook = onRequest(
     { secrets: [LATPEED_WEBHOOK_SECRET], timeoutSeconds: 10 },
     async (req, res) => {
-        if (req.method !== 'POST') return res.status(405).send('Method not allowed');
-        if (!isValidLatpeedWebhook(req)) return res.status(401).send('Invalid webhook signature');
+        if (req.method !== 'POST') {
+            res.status(405).send('Method not allowed');
+            return;
+        }
+        if (!isValidLatpeedWebhook(req)) {
+            res.status(401).send('Invalid webhook signature');
+            return;
+        }
 
         const event = req.body as any;
         const payment = event?.payment || {};
         const amount = Number(payment.amount || 0);
         const isPaid = (event?.type === 'NORMAL_PAYMENT' || event?.type === 'MEMBERSHIP_PAYMENT') &&
             payment.status === 'SUCCESS' && amount > 0 && typeof payment.orderId === 'string';
-        if (!isPaid) return res.status(200).json({ received: true, processed: false });
+        if (!isPaid) {
+            res.status(200).json({ received: true, processed: false });
+            return;
+        }
 
         const orderHash = crypto.createHash('sha256').update(payment.orderId).digest('hex');
         const purchaserRef = db.collection('purchasers').doc(`latpeed_${orderHash}`);
@@ -1978,16 +1990,13 @@ export const latpeedPaymentWebhook = onRequest(
             });
             return true;
         });
-        if (!created) return res.status(200).json({ received: true, duplicate: true });
-
-        const guideUrl = process.env.LIFEUP_PURCHASE_GUIDE_URL?.trim();
-        if (!guideUrl) {
-            await purchaserRef.update({ 'welcomeEmail.status': 'pending-guide-url' });
-            return res.status(200).json({ received: true, processed: true, emailSent: false });
+        if (!created) {
+            res.status(200).json({ received: true, duplicate: true });
+            return;
         }
 
         try {
-            const mail = lifeupWelcomeMail(String(payment.name || '').trim(), guideUrl);
+            const mail = lifeupWelcomeMail(String(payment.name || '').trim(), LIFEUP_PURCHASE_GUIDE_URL);
             const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: LATPEED_TEST_EMAIL, ...mail });
             await purchaserRef.update({
                 'welcomeEmail.status': 'sent',
@@ -1998,7 +2007,7 @@ export const latpeedPaymentWebhook = onRequest(
             await purchaserRef.update({ 'welcomeEmail.status': 'failed' });
             logger.error('[Latpeed Webhook] welcome email failed', error);
         }
-        return res.status(200).json({ received: true, processed: true });
+        res.status(200).json({ received: true, processed: true });
     }
 );
 
@@ -2053,7 +2062,7 @@ export const getAppSession = onRequest(withCors(async (req, res) => {
 
 export const verifyCode = onRequest(withCors(async (req, res) => {
     try {
-        const { email, code, memberUid } = req.body;
+        const { email, code, memberUid, templateId } = req.body;
         // Widgets can still use their email/access-key flow. Workspace account linking
         // requires a Firebase token; a supplied memberUid is never trusted as identity.
         let firebaseUid = '';
@@ -2212,6 +2221,26 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
                 transaction.update(workspaceRef, { firebaseUid });
                 transaction.delete(docRef);
             });
+        }
+
+        if (templateId) {
+            const purchaserSnapshot = await db.collection('purchasers')
+                .where('templateId', '==', templateId)
+                .where('email', '==', nomalizedEMail)
+                .limit(1)
+                .get();
+
+            if (purchaserSnapshot.empty) {
+                return res.status(200).json({
+                    message: '구매 정보를 찾을 수 없습니다. 구매 이메일을 확인해주세요.'
+                });
+            }
+
+            await db.collection('users').doc(userId).collection('purchases').doc(templateId).set({
+                verified: true,
+                purchaser: purchaserSnapshot.docs[0].data(),
+                verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
         }
 
         if (!firebaseUid) await docRef.delete();

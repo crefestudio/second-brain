@@ -485,14 +485,19 @@ export class UserService {
     }
 
     // 인증번호 확인
-    async verifyCode(email: string, code: string, memberUid?: string): Promise<{ userId: string, accessKey: string, message?: string } | null> {
+    async verifyCode(
+        email: string,
+        code: string,
+        memberUid?: string,
+        templateId?: string
+    ): Promise<{ userId: string, accessKey: string, message?: string } | null> {
         if (!email || !code) return null;
 
         try {
             const result = await firstValueFrom(
                 this.http.post<{ userId: string; accessKey: string }>(
                     `${this.functionsBaseUrl}/verifyCode`,
-                    { email, code, memberUid },
+                    { email, code, memberUid, templateId },
                     auth.currentUser ? { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } } : {}
                 )
             );

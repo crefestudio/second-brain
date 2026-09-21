@@ -1,0 +1,98 @@
+<main class="download-page">
+    @if (isLoading) {
+    <div class="state-card">구매 정보를 확인하고 있습니다.</div>
+    } @else {
+    <article class="download-card">
+        <div class="brand-header">
+            <img class="brand-logo" src="/assets/images/logo_notionable.png" alt="Notionable">
+        </div>
+
+        @if (!isPurchaser) {
+        <section class="verification-section">
+            <h1>아직 라이프업 구매 인증이 되지 않았습니다.</h1>
+            <p>간단한 구매 인증을 완료해 주세요.<br>한 번만 인증하면 라이프업 업데이트와 사용 안내는 물론, <strong><br>
+                    라이프봇을 비롯한 다양한 연동·자동화 서비스</strong>를 더욱 편리하게 이용하실 수 있습니다.</p>
+            <p>앞으로 더 편리하고 다양한 라이프업 서비스를 이용하실 수 있도록 도와드리겠습니다. 😊</p>
+            @if (verificationStep === 'intro') {
+            <button type="button" class="third-btn large" (click)="startVerification()">라이프업 구매 인증하기
+                <span>→</span></button>
+            } @else if (verificationStep === 'lookup') {
+            <div class="verification-form">
+                <label for="purchase-lookup">구매 이메일 또는 휴대폰 번호</label>
+                <input id="purchase-lookup" [(ngModel)]="verificationValue" [disabled]="isVerifying"
+                    placeholder="example@email.com 또는 01012345678" (keyup.enter)="verifyPurchase()">
+                <button type="button" class="primary-button" [disabled]="isVerifying" (click)="verifyPurchase()">{{
+                    isVerifying ? '확인 중...' : '구매 정보 확인하기' }}</button>
+            </div>
+            } @else {
+            <div class="verification-form">
+                <label for="purchase-code">{{ purchaserEmail }}로 보낸 인증번호</label>
+                <input id="purchase-code" [(ngModel)]="verificationCode" [disabled]="isVerifying" inputmode="numeric"
+                    maxlength="6" placeholder="인증번호 6자리" (keyup.enter)="confirmVerification()">
+                <button type="button" class="primary-button" [disabled]="isVerifying" (click)="confirmVerification()">{{
+                    isVerifying ? '인증 중...' : '구매 인증 완료하기' }}</button>
+            </div>
+            }
+            @if (verificationError) { <p class="verification-error">{{ verificationError }}</p> }
+        </section>
+        } @else {
+        <h1>라이프업과 함께하는 새로운 시작을<br>환영합니다. 🎉</h1>
+        <p class="intro">라이프업과 함께 목표부터 프로젝트, 일상과 기록까지 나만의 방식으로 삶을 관리해보세요.</p>
+        <section>
+            <h2>📥 라이프업 1.5 다운로드</h2>
+            <p>아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.</p>
+            <a class="primary-button" [href]="downloadUrl" target="_blank" rel="noopener">라이프업 1.5 다운로드
+                <span>→</span></a>
+            <a class="template-video-link" href="https://www.youtube.com/shorts/QnR_gnGWOQE" target="_blank"
+                rel="noopener">노션 라이프업 템플릿 설치 안내 영상 보기 <span>↗</span></a>
+        </section>
+        <section class="pdf-section">
+            <h2>📄 보관용 PDF</h2>
+            <p>설치 링크를 이용안내를 담은 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p>
+            <a class="secondary-btn large" [href]="passportUrl" target="_blank" rel="noopener">
+                보관용 PDF 열기 <span>→</span>
+            </a>
+        </section>
+        <section class="lifeup-class-section">
+            <h2>🎓 라이프업 클래스</h2>
+            <p>템플릿을 처음 사용하신다면, 라이프업 클래스의 사용 가이드 영상부터 천천히 따라 해보세요.<br>노션 기초 사용법 영상도 함께 준비했으니, 하나씩 보며 내 라이프업을 시작해보세요.</p>
+            <img class="lifeup-class-guide" src="/assets/images/lifeup-class-guide.png" alt="라이프업 클래스 사용 가이드 화면">
+        </section>
+        }
+
+        <section class="lifeupbot-promo">
+            <h2>🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기</h2>
+            <p>라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아,<br><strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.</p>
+            <details class="lifeupbot-details">
+                <summary>라이프봇 리뷰 이벤트 안내</summary>
+                <p>
+                    <strong>라이프봇</strong>은 새롭게 시작한 라이프업 자동화 서비스로,
+                    라이프업 템플릿을 더 편리하게 사용하고 꾸준히 활용할 수 있도록 도와드립니다.
+                </p>
+                <p>
+                    현재 <strong>카카오톡 AI 비서, 루틴 코치, 템플릿 자동 업데이트, 세컨드브레인 그래프</strong> 등
+                    다양한 기능을 이용하실 수 있으며, 앞으로도 라이프업 활용에 도움이 되는 기능을 계속 추가해 나갈 예정입니다.
+                </p>
+                <p>
+                    라이프봇은 현재 시험 운영 기간으로 무료 제공 중이며, 정식 오픈 후에는 유료 서비스로 전환될 예정입니다.
+                    지금 라이프업 1.5를 구매하고 리뷰를 남겨주신 분께는 감사의 마음을 담아,
+                    정식 오픈 후에도 <strong>라이프봇을 1년 동안 무료로 이용할 수 있는 혜택</strong>을 드립니다.
+                </p><br>
+                <button class="secondary-btn large" routerLink="/workspace/home">라이프봇 알아보기 <span>→</span></button>
+            </details>
+
+            <!-- 이벤트 종료 시 이 review-event 블록만 제거하면 됩니다. -->
+            <div class="review-event">
+                <p class="review-copy"><strong>라이프업 1.5</strong>를 직접 사용해보신 후 상품 페이지에 솔직한 리뷰를 남겨주세요.<br>짧은 사용 후기부터 좋았던 점,
+                    아쉬운
+                    점, 바라는 점까지 어떤 내용이든 좋습니다. 😊</p>
+                <p class="review-photo-copy">라이프업을 사용한 화면을 사진으로 함께 남겨주시면, 다른 분들께도 큰 도움이 됩니다. 😊</p>
+                <a class="primary-btn large" [href]="reviewUrl" target="_blank" rel="noopener">라이프업 1.5 리뷰 작성하기
+                    <span>→</span></a>
+                <p class="reward">리뷰를 남겨주신 분께 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁</p>
+                <p class="review-notice">⚠️ 결제처 ‘래피드’가 아닌, 위 작성하기 버튼으로 이동한 노셔너블 홈페이지 상품에 리뷰를 남겨주세요.</p>
+            </div>
+        </section>
+    </article>
+    }
+</main>
