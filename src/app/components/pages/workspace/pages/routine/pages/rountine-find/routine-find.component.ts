@@ -104,6 +104,7 @@ export class RoutineFindComponent {
 
     constructor(
         private authService: AuthService,
+        private userService: UserService,
         private toastService: ToastService
         // private activateRouter: ActivatedRoute,
         // private router: Router
@@ -173,7 +174,11 @@ export class RoutineFindComponent {
         this.addingHabits.add(habit);
         try {
             const result = await UserService.addUserHabit(this.userId, habit);
-            if (result.success) ToastService.show('내 루틴에 습관이 추가되었습니다.');
+            if (result.success) {
+                const sync = await this.userService.syncMyHabitsWithUserId(this.userId, result.id);
+                if (sync.success) ToastService.show('습관이 추가되고 노션에 동기화되었습니다.');
+                else ToastService.warning('습관은 저장됐지만 노션 동기화에 실패했습니다. 루틴 동기화를 다시 실행해주세요.');
+            }
             else if (result.duplicate) ToastService.warning(result.message || '기존 습관과 시간이 겹칩니다.');
             else ToastService.error('습관 추가에 실패했습니다.');
         } finally {

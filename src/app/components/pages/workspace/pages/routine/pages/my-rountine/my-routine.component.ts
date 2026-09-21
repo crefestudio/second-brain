@@ -360,6 +360,7 @@ export class MyRoutineComponent implements OnInit {
     }
 
     async updateHabit() {
+        const habitId = this.editingHabit!.id;
         const result = await UserService.updateUserHabit(
             this.userId,
             this.editingHabit!
@@ -380,7 +381,9 @@ export class MyRoutineComponent implements OnInit {
         this.editingHabit = null;
         await this.loadHabits();
 
-        ToastService.show('습관이 수정되었습니다.');
+        const sync = await this.userService.syncMyHabitsWithUserId(this.userId, habitId);
+        if (sync.success) ToastService.show('습관이 수정되고 노션에 동기화되었습니다.');
+        else ToastService.warning('습관은 저장됐지만 노션 동기화에 실패했습니다. 루틴 동기화를 다시 실행해주세요.');
     }
 
     async createHabit() {
@@ -407,7 +410,9 @@ export class MyRoutineComponent implements OnInit {
             if (result.success) {
                 this.editingHabit = null;
                 await this.loadHabits();
-                ToastService.show('내 루틴에 습관이 추가되었습니다.');
+                const sync = await this.userService.syncMyHabitsWithUserId(this.userId, result.id);
+                if (sync.success) ToastService.show('습관이 추가되고 노션에 동기화되었습니다.');
+                else ToastService.warning('습관은 저장됐지만 노션 동기화에 실패했습니다. 루틴 동기화를 다시 실행해주세요.');
             } else if (result.duplicate) {
                 ToastService.warning(result.message || '기존 습관과 시간이 겹칩니다.');
             } else {
@@ -452,8 +457,18 @@ export class MyRoutineComponent implements OnInit {
             return;
         }
 
+        const sync = await this.userService.syncMyHabitsWithUserId(this.userId);
+        if (!sync.success) {
+            ToastService.error('노션의 습관 정보를 맞추지 못했습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+
         const result = await this.userService.createMyDailyHabitLogsWithUserId(this.userId);
 
+        if (result.failedCount || result.pendingCount) {
+            ToastService.warning(`새 기록 ${result.createdCount}개, 기존 기록 ${result.existingCount}개, 실패 ${result.failedCount || 0}개, 처리 중 ${result.pendingCount || 0}개입니다. 잠시 후 다시 확인해주세요.`);
+            return;
+        }
         if (!result.success) {
             ToastService.error('습관 추가에 실패했습니다.');
             return;
@@ -461,61 +476,28 @@ export class MyRoutineComponent implements OnInit {
 
         if (result.createdCount > 0 && result.existingCount > 0) {
             ToastService.show(
-                `새 습관 ${result.createdCount}개가 추가되었습니다.\n` +
-                `동일한 습관 ${result.existingCount}개는 이미 있어 새로 추가하지 않았습니다.`
+                `노션 습관 ${sync.createdCount}개를 추가하고 ${sync.updatedCount}개를 확인했습니다.\n` +
+                `오늘 일정 ${result.createdCount}개를 추가했고, ${result.existingCount}개는 이미 있습니다.`
             );
 
         } else if (result.createdCount > 0) {
             ToastService.show(
-                `새 습관 ${result.createdCount}개가 추가되었습니다.`
+                `노션 습관 ${sync.createdCount}개를 추가하고 ${sync.updatedCount}개를 확인했습니다.\n` +
+                `오늘 일정 ${result.createdCount}개를 추가했습니다.`
             );
 
         } else if (result.existingCount > 0) {
             ToastService.show(
-                `이미 동일한 ${result.existingCount}개 습관이 있어 새로 추가하지 않았습니다.`
+                `노션 습관을 확인했습니다. 오늘 일정 ${result.existingCount}개는 이미 있습니다.`
             );
 
         } else {
             ToastService.show(
-                '추가할 습관이 없습니다.'
+                '노션 습관을 확인했습니다. 오늘 추가할 일정은 없습니다.'
             );
         }
     }
 
-    async onSyncHabits(): Promise<void> {
-        if (!this.userId) {
-            return;
-        }
-
-        const result = await this.userService.syncMyHabitsWithUserId(this.userId);
-
-        if (!result.success) {
-            ToastService.error('내 루틴 동기화에 실패했습니다.');
-            return;
-        }
-
-        if (result.createdCount > 0 && result.updatedCount > 0) {
-            ToastService.show(
-                `새 루틴 ${result.createdCount}개가 추가되고\n` +
-                `기존 루틴 ${result.updatedCount}개가 업데이트되었습니다.`
-            );
-
-        } else if (result.createdCount > 0) {
-            ToastService.show(
-                `새 루틴 ${result.createdCount}개가 추가되었습니다.`
-            );
-
-        } else if (result.updatedCount > 0) {
-            ToastService.show(
-                `모든 루틴이 이미 동기화되어 있습니다.`
-            );
-
-        } else {
-            ToastService.show(
-                '동기화할 루틴이 없습니다.'
-            );
-        }
-    }
 }
 
 

@@ -352,6 +352,27 @@ export class RoutineDashboardComponent implements OnInit {
         return this.goalColors[index % this.goalColors.length];
     }
 
+    async prepareTodayRoutine(): Promise<void> {
+        if (!this.userId) return;
+
+        const sync = await this.userService.syncMyHabitsWithUserId(this.userId);
+        if (!sync.success) {
+            ToastService.error('노션의 습관 정보를 맞추지 못했습니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+
+        const result = await this.userService.createMyDailyHabitLogsWithUserId(this.userId);
+        if (!result.success || result.failedCount || result.pendingCount) {
+            ToastService.warning(`노션 습관을 확인했습니다. 오늘 일정 생성: ${result.createdCount}개, 기존: ${result.existingCount}개, 실패 또는 처리 중: ${(result.failedCount || 0) + (result.pendingCount || 0)}개`);
+            return;
+        }
+
+        ToastService.show(
+            `노션 습관 ${sync.createdCount}개를 추가하고 ${sync.updatedCount}개를 확인했습니다.\n` +
+            `오늘 일정 ${result.createdCount}개를 추가했고, ${result.existingCount}개는 이미 있습니다.`
+        );
+    }
+
     async onRecordMyDailyHabitStatsWithUserId(): Promise<void> {
         if (!this.userId) {
             return;

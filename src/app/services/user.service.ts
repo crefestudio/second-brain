@@ -1215,6 +1215,8 @@ export class UserService {
         success: boolean;
         createdCount: number;
         existingCount: number;
+        failedCount?: number;
+        pendingCount?: number;
     }> {
         try {
             const result = await firstValueFrom(
@@ -1222,6 +1224,8 @@ export class UserService {
                     success: boolean;
                     createdCount: number;
                     existingCount: number;
+                    failedCount?: number;
+                    pendingCount?: number;
                 }>(
                     `${this.functionsBaseUrl}/createMyDailyHabitLogsWithUserId`,
                     { userId }
@@ -1244,7 +1248,7 @@ export class UserService {
         }
     }
 
-    async syncMyHabitsWithUserId(userId: string): Promise<{
+    async syncMyHabitsWithUserId(userId: string, habitId?: string): Promise<{
         success: boolean;
         createdCount: number;
         updatedCount: number;
@@ -1257,7 +1261,7 @@ export class UserService {
                     updatedCount: number;
                 }>(
                     `${this.functionsBaseUrl}/syncMyHabitsWithUserId`,
-                    { userId }
+                    { userId, ...(habitId ? { habitId } : {}) }
                 )
             );
 

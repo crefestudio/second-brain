@@ -33,28 +33,67 @@
 
     <div class="Habit-page" [style.--hour-height.px]="hourHeight">
         <div class="habit-dashboard">
-            <div>
-                <h1>루틴 대시보드</h1>
-                <p>지난 1년간의 꾸준함을 한눈에 확인하세요.</p>
+            <section class="routine-dashboard-intro" aria-labelledby="routine-dashboard-title">
+                <h1 id="routine-dashboard-title">🔄 루틴 관리</h1>
+                <div class="routine-dashboard-hero">
+                    <div class="routine-dashboard-hero-title">매일의 좋은 습관을 꾸준히 이어가세요. 😊</div>
+                    <p><strong>내 루틴</strong>은 반복하고 싶은 습관을 목표와 연결하고, 나만의 생활 패턴으로 관리하는 공간입니다.</p>
 
-                <div class="habit-guide">
-                    <button type="button" class="habit-guide-toggle" (click)="showHabitGuide = !showHabitGuide">
-                        <span class="habit-guide-arrow" [class.open]="showHabitGuide">></span>
-                        <span>루틴 서비스 가이드</span>
-                    </button>
+                    <details class="routine-dashboard-guide">
+                        <summary>루틴 관리 이용 가이드</summary>
+                        <div class="routine-dashboard-guide-content">
+                            <h2>루틴 관리 이용 가이드</h2>
+                            <h3>루틴 관리는?</h3>
+                            <p>루틴 관리는 매일 반복하는 습관을 만들고, 목표에 맞는 주간 패턴으로 관리하는 공간입니다. 운동, 독서, 영어 공부처럼 꾸준히 하고 싶은 일을 등록하면 라이프봇이 오늘 해야 할 습관을 라이프업 노션 템플릿에 추가해드립니다.</p>
 
-                    <div class="habit-guide-content" *ngIf="showHabitGuide">
-                        <div>▪ 습관 기록은 매일 오전 12시 10분에 자동으로 업데이트되며, 자동 업데이트에서는 전날의 기록을 반영합니다.</div>
-                        <div class="habit-guide-action">
-                            ▪ 지금 기록을 가져오면 오늘과 어제의 기록을 반영합니다. 어제 이전의 기록은 통계에 반영되지 않습니다.
-                            <button type="button" class="inline-action-btn"
-                                (click)="onRecordMyDailyHabitStatsWithUserId()">
-                                오늘 기록 가져오기
-                            </button>
+                            <h3>습관, 루틴, 목표는 무엇이 다른가요?</h3>
+                            <div class="routine-table-wrap"><table><thead><tr><th>구분</th><th>의미</th><th>예시</th></tr></thead><tbody>
+                                <tr><td>습관</td><td>반복해서 하는 하나의 일</td><td>런닝머신, 물 마시기, 영어 공부</td></tr>
+                                <tr><td>루틴</td><td>습관을 요일과 시간에 맞춰 구성한 주간 패턴</td><td>월·수·금 저녁 7시 런닝머신</td></tr>
+                                <tr><td>목표</td><td>습관을 연결하는 라이프업의 목표</td><td>다이어트, 건강, 성장</td></tr>
+                            </tbody></table></div>
+                            <p>예를 들어 <code>다이어트</code> 목표에 런닝머신과 물 마시기를 연결하면, 목표를 위한 습관을 한눈에 확인할 수 있습니다.</p>
+
+                            <h3>라이프봇과 노션은 역할이 달라요</h3>
+                            <div class="routine-table-wrap"><table><thead><tr><th>구분</th><th>하는 일</th></tr></thead><tbody>
+                                <tr><td>라이프봇 내 루틴</td><td>습관 만들기, 목표 연결, 요일·시간 설정, 통계 관리</td></tr>
+                                <tr><td>라이프업 노션 템플릿</td><td>오늘의 습관 확인, 완료 체크, 기록 작성</td></tr>
+                            </tbody></table></div>
+                            <p>반복 규칙은 라이프봇에서 설정하고, 노션에서는 오늘 해야 할 일을 실행하고 기록하는 데 집중해주세요.</p>
+
+                            <h3>처음에는 이렇게 시작하세요</h3>
+                            <h4>1. 습관 갤러리에서 습관을 골라보세요</h4>
+                            <p>습관 갤러리에서 필요한 습관을 선택해 나만의 루틴에 추가하세요. 원하는 습관이 없다면 직접 새 습관을 만들 수도 있습니다.</p>
+                            <h4>2. 요일과 시간을 설정하세요</h4>
+                            <p>습관을 언제 할지 정합니다.</p>
+                            <ul>
+                                <li>런닝머신: 월·수·금 오후 7시</li>
+                                <li>영어 공부: 화·목 오후 8시</li>
+                                <li>물 마시기: 매일 오전 7시 30분</li>
+                                <li>하루 6,000보 걷기: 매일 종일</li>
+                            </ul>
+                            <h4>3. 목표에 습관을 연결하세요</h4>
+                            <p>습관을 목표에 연결하면 목표별 루틴을 더 쉽게 관리할 수 있습니다. 예를 들어 <code>다이어트</code> 목표에 런닝머신과 물 마시기를 연결하면, 다이어트를 위한 습관만 따로 모아볼 수 있습니다.</p>
+                            <h4>4. 노션에 루틴을 반영하세요</h4>
+                            <p>만든 루틴은 라이프봇이 매일 밤 11:40에 연결된 라이프업 노션 템플릿에 다음 날 일정으로 자동 반영합니다.</p>
+                            <div class="routine-dashboard-action">
+                                <strong>지금 바로 노션에 반영하기</strong>
+                                <p>매일 밤 11:40에 다음 날 일정이 자동 추가됩니다. 오늘 일정을 바로 추가하거나 새 템플릿에 현재 루틴을 반영하려면 아래 버튼을 눌러주세요.</p>
+                                <button type="button" class="inline-action-btn" (click)="prepareTodayRoutine()">내 루틴 노션에 반영하기</button>
+                                <p class="routine-dashboard-note">현재 등록된 습관 정보를 내 라이프업 노션 템플릿에 반영하고, 오늘의 습관 일정도 함께 추가합니다.</p>
+                                <p class="routine-dashboard-note">새 라이프업 템플릿을 연결했거나 기존 템플릿을 변경했다면 처음 한 번은 꼭 눌러주세요. 이미 등록된 일정은 중복으로 만들지 않고, 변경된 습관 정보는 최신 내용으로 업데이트합니다.</p>
+                            </div>
+
+                            <h3>통계는 라이프봇이 관리합니다</h3>
+                            <p>노션에서 완료한 습관 기록은 라이프봇이 가져와 습관별 완료율, 연속 실천 일수, 목표별 실천 현황과 완료 캘린더에 반영합니다.</p>
+                            <h3>자주 묻는 질문</h3>
+                            <h4>노션에 습관이 보이지 않아요</h4><p><strong>내 루틴 노션에 반영하기</strong>를 누르면 현재 등록된 습관 전체를 노션에 반영합니다.</p>
+                            <h4>오늘 만든 습관을 바로 하고 싶어요</h4><p>같은 버튼을 누르면 오늘의 습관 일정도 바로 추가됩니다.</p>
+                            <h4>노션에서 습관 정보를 직접 바꿔도 되나요?</h4><p>노션에서는 완료 체크와 기록만 해주세요. 이름, 요일, 시간, 목표 연결은 라이프봇 내 루틴에서 수정해야 합니다.</p>
                         </div>
-                    </div>
+                    </details>
                 </div>
-            </div>
+            </section>
 
             @if (newRestAndAchievements.length > 0) {
             <div class="achievement-notifications">

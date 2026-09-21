@@ -52,6 +52,101 @@
     margin-bottom: 24px;
 }
 
+/* Studio dashboard visual language for the routine introduction. */
+.routine-dashboard-intro {
+    margin-bottom: 30px;
+
+    h1 {
+        margin: 0 0 22px;
+        color: #fff;
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+}
+
+.routine-dashboard-hero {
+    padding: 28px 32px;
+    border: 1px solid rgba(122, 162, 247, .15);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(122, 162, 247, .08), rgba(122, 162, 247, .03));
+
+    > p {
+        margin: 0;
+        color: #b6beca;
+        font-size: 15px;
+        line-height: 1.8;
+    }
+
+    strong { color: #fff; }
+}
+
+.routine-dashboard-hero-title {
+    margin-bottom: 4px;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.routine-dashboard-guide {
+    margin-top: 20px;
+
+    summary {
+        width: fit-content;
+        color: #d6e5f7;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    summary:hover { color: #fff; }
+    &[open] summary { margin-bottom: 16px; }
+}
+
+.routine-dashboard-guide-content {
+    color: #b4bcc9;
+    font-size: 15px;
+    line-height: 1.8;
+
+    h2, h3, h4 { color: #fff; }
+    h2 { margin: 0 0 20px; font-size: 22px; }
+    h3 { margin: 28px 0 8px; font-size: 17px; }
+    h4 { margin: 18px 0 2px; font-size: 14px; }
+    p { margin: 6px 0; }
+    ol { margin: 8px 0; padding-left: 24px; }
+    li + li { margin-top: 5px; }
+    code { padding: 2px 5px; border-radius: 4px; background: rgba(255, 255, 255, .08); color: #fff; }
+}
+
+.routine-table-wrap {
+    overflow-x: auto;
+    margin: 12px 0;
+
+    table { width: 100%; min-width: 500px; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 9px 10px; border: 1px solid rgba(255, 255, 255, .12); text-align: left; }
+    th { color: #fff; background: rgba(255, 255, 255, .05); }
+}
+
+.routine-dashboard-action {
+    margin: 20px 0;
+    padding: 18px;
+    border: 1px solid rgba(122, 162, 247, .18);
+    border-radius: 12px;
+    background: rgba(24, 28, 35, .72);
+}
+
+.routine-dashboard-note { color: #8b949e; font-size: 12px; }
+
+/* This comes after the generic dashboard heading rule, so the title keeps its gap. */
+.habit-dashboard .routine-dashboard-intro h1 {
+    margin: 0 0 22px;
+}
+
+.routine-dashboard-guide-content ul {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
 .habit-dashboard h1 {
     margin: 0;
     font-size: 36px;

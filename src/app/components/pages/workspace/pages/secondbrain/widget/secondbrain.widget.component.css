@@ -465,11 +465,6 @@ toast
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-.view-wrapper.app-mode .toast {
-  bottom: 150px;
-  left: calc(50% + 121px);
-}
-
 .toast.show {
   opacity: 1;
   transform: translate(-50%, 0);

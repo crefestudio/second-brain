@@ -26,6 +26,7 @@ import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime,
 // notion
 import { Client } from "@notionhq/client";
 import { executeMigration, MigrationConflict, migrationErrorMessage } from './lifeup-migration-runner';
+import { habitDayRange, uniqueHabitLogs } from './routine-utils';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
@@ -1905,8 +1906,70 @@ export const getCareAccess = onRequest(withCors(async (req, res) => {
     } catch { return res.status(401).json({ error: '로그인을 다시 확인해주세요.' }); }
 }));
 
-function premiumOption(option: unknown): boolean {
-    return typeof option === 'string' && /커스터마이징|프리미엄/.test(option);
+type LifeupMemberType = 'standard' | 'premium';
+type PurchaserRecord = { id: string; data: any };
+
+/**
+ * 옵션명은 판매 시점마다 달라질 수 있어 이름 전체가 아니라 등급 키워드를 우선 사용한다.
+ * 프리미엄 키워드는 기존 회원의 승격 상품에도 사용되므로 다른 조건보다 먼저 확인한다.
+ */
+function lifeupMemberType(purchase: { purchaseOption?: unknown; amount?: unknown }): LifeupMemberType | null {
+    const option = typeof purchase.purchaseOption === 'string'
+        ? purchase.purchaseOption.replace(/\s+/g, '').toLowerCase()
+        : '';
+    const amount = typeof purchase.amount === 'number'
+        ? purchase.amount
+        : Number(String(purchase.amount ?? '').replace(/[^0-9]/g, ''));
+
+    if (/프리미엄|커스터마이징/.test(option)) return 'premium';
+    if (amount === 0) return null;
+    // 무료 패스는 라이프업 유료 구매 인증 대상이 아니다.
+    if (/할일관리/.test(option)) return null;
+    // 기존 '라이프업 1.3 올인원' 등 별도 등급 키워드가 없는 유료 구매는 일반 회원으로 처리한다.
+    return 'standard';
+}
+
+function membershipRank(memberType: LifeupMemberType): number {
+    return ({ standard: 1, premium: 2 } as const)[memberType];
+}
+
+function purchaserTimestamp(purchaser: any): number {
+    const createdAt = purchaser?.createdAt;
+    if (createdAt && typeof createdAt.toMillis === 'function') return createdAt.toMillis();
+
+    const matched = typeof purchaser?.purchasedAt === 'string'
+        ? purchaser.purchasedAt.match(/(\d{2,4})\.(\d{1,2})\.(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?/) : null;
+    if (!matched) return 0;
+    const year = Number(matched[1]) < 100 ? 2000 + Number(matched[1]) : Number(matched[1]);
+    return Date.UTC(year, Number(matched[2]) - 1, Number(matched[3]), Number(matched[4] || 0), Number(matched[5] || 0));
+}
+
+function selectBestPurchaser(records: PurchaserRecord[]): PurchaserRecord | null {
+    return records.filter(record => lifeupMemberType(record.data) !== null).reduce<PurchaserRecord | null>((best, candidate) => {
+        if (!best) return candidate;
+        const candidateType = lifeupMemberType(candidate.data);
+        const bestType = lifeupMemberType(best.data);
+        if (!candidateType) return best;
+        if (!bestType) return candidate;
+        const candidateRank = membershipRank(candidateType);
+        const bestRank = membershipRank(bestType);
+        if (candidateRank !== bestRank) return candidateRank > bestRank ? candidate : best;
+        return purchaserTimestamp(candidate.data) > purchaserTimestamp(best.data) ? candidate : best;
+    }, null);
+}
+
+async function findPurchaserRecords(templateId: string, email?: string, phone?: string): Promise<PurchaserRecord[]> {
+    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedPhone = phone?.trim();
+    const field = normalizedEmail ? 'email' : 'phone';
+    const value = normalizedEmail || normalizedPhone;
+    if (!value) return [];
+
+    const snapshot = await db.collection('purchasers')
+        .where('templateId', '==', templateId)
+        .where(field, '==', value)
+        .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
 }
 
 async function carePremium(uid: string): Promise<boolean> {
@@ -1915,10 +1978,41 @@ async function carePremium(uid: string): Promise<boolean> {
     const ref = db.collection('users').doc(account.userId);
     const workspace = (await ref.get()).data();
     if (workspace?.firebaseUid !== uid) return false;
-    const purchase = (await ref.collection('purchases').doc('lifeUp').get()).data();
-    const premium = purchase?.verified === true && premiumOption(purchase?.purchaser?.purchaseOption);
-    await ref.set({ memberType: premium ? 'premium' : 'standard' }, { merge: true });
+    const purchaseRef = ref.collection('purchases').doc('lifeUp');
+    const purchase = (await purchaseRef.get()).data();
+    if (purchase?.verified !== true) return false;
+
+    const records = await findPurchaserRecords('lifeUp', purchase?.purchaser?.email);
+    const best = selectBestPurchaser(records);
+    const purchaser = best?.data || purchase.purchaser;
+    const memberType = lifeupMemberType(purchaser || {});
+    if (!memberType) return false;
+    const premium = memberType === 'premium';
+    await Promise.all([
+        ref.set({ memberType }, { merge: true }),
+        best ? purchaseRef.set({ purchaser, purchaserIds: records.map(record => record.id), memberType, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }) : Promise.resolve()
+    ]);
     return premium;
+}
+
+async function promoteExistingLifeupMembers(email: string, purchaserId: string, purchaser: any): Promise<void> {
+    if (!email || lifeupMemberType(purchaser) !== 'premium') return;
+    const users = await db.collection('users').where('email', '==', email).get();
+    if (users.empty) return;
+
+    const batch = db.batch();
+    for (const user of users.docs) {
+        batch.set(user.ref, { memberType: 'premium', memberTypeUpdatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        batch.set(user.ref.collection('purchases').doc('lifeUp'), {
+            verified: true,
+            purchaser,
+            purchaserIds: admin.firestore.FieldValue.arrayUnion(purchaserId),
+            memberType: 'premium',
+            upgradedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+    }
+    await batch.commit();
 }
 
 export const downloadCareAttachment = onRequest(withCors(async (req, res) => {
@@ -2103,6 +2197,21 @@ function formatLatpeedDate(value?: string): string {
     return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
+function latpeedAmount(value: unknown): number {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const normalized = String(value ?? '').replace(/[^0-9.-]/g, '');
+    const amount = Number(normalized);
+    return Number.isFinite(amount) ? amount : 0;
+}
+
+function latpeedPurchaseOption(payment: any): string {
+    const option = payment?.option ?? payment?.optionName ?? payment?.productOption ??
+        payment?.product?.option ?? payment?.product?.optionName ?? '';
+    if (typeof option === 'string' || typeof option === 'number') return String(option);
+    if (Array.isArray(option)) return option.map(item => typeof item === 'string' ? item : item?.name || item?.label || item?.value || '').filter(Boolean).join(' ');
+    return String(option?.name || option?.label || option?.value || option?.title || '');
+}
+
 function legacyLifeupWelcomeMail(name: string, guideUrl: string): { subject: string; text: string; html: string } {
     const text = `${name ? `${name}님, ` : ''}안녕하세요. 노셔너블입니다.
 
@@ -2204,7 +2313,7 @@ export const latpeedPaymentWebhook = onRequest(
 
         const event = req.body as any;
         const payment = event?.payment || {};
-        const amount = Number(payment.amount || 0);
+        const amount = latpeedAmount(payment.amount);
         const isPaid = (event?.type === 'NORMAL_PAYMENT' || event?.type === 'MEMBERSHIP_PAYMENT') &&
             payment.status === 'SUCCESS' && amount > 0 && typeof payment.orderId === 'string';
         if (!isPaid) {
@@ -2214,22 +2323,28 @@ export const latpeedPaymentWebhook = onRequest(
 
         const orderHash = crypto.createHash('sha256').update(payment.orderId).digest('hex');
         const purchaserRef = db.collection('purchasers').doc(`latpeed_${orderHash}`);
+        const purchaser = {
+            amount: `${amount.toLocaleString('ko-KR')}원`,
+            email: String(payment.email || '').trim().toLowerCase(),
+            name: String(payment.name || '').trim(),
+            notify: payment.agreements?.some((item: any) => item.answer === true) ? '예' : '아니오',
+            paymentMethod: String(payment.method || ''),
+            phone: String(payment.phoneNumber || '').trim(),
+            purchaseOption: latpeedPurchaseOption(payment),
+            purchasedAt: formatLatpeedDate(payment.date),
+            status: '결제 완료',
+            templateId: 'lifeUp',
+            orderId: payment.orderId,
+            source: 'latpeed'
+        };
+        const memberType = lifeupMemberType(purchaser);
         const created = await db.runTransaction(async transaction => {
             if ((await transaction.get(purchaserRef)).exists) return false;
             transaction.set(purchaserRef, {
-                amount: `${amount.toLocaleString('ko-KR')}원`,
-                email: String(payment.email || '').trim().toLowerCase(),
-                name: String(payment.name || '').trim(),
-                notify: payment.agreements?.some((item: any) => item.answer === true) ? '예' : '아니오',
-                paymentMethod: String(payment.method || ''),
-                phone: String(payment.phoneNumber || '').trim(),
-                purchaseOption: String(payment.option || ''),
-                purchasedAt: formatLatpeedDate(payment.date),
-                status: '결제 완료',
-                templateId: 'lifeUp',
-                orderId: payment.orderId,
-                source: 'latpeed',
-                welcomeEmail: { status: 'pending', recipient: LATPEED_TEST_EMAIL },
+                ...purchaser,
+                memberType,
+                purchaseEligible: memberType !== null,
+                welcomeEmail: { status: memberType ? 'pending' : 'skipped', recipient: memberType ? LATPEED_TEST_EMAIL : '' },
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
@@ -2238,6 +2353,18 @@ export const latpeedPaymentWebhook = onRequest(
         if (!created) {
             res.status(200).json({ received: true, duplicate: true });
             return;
+        }
+
+        if (!memberType) {
+            res.status(200).json({ received: true, processed: true, eligible: false });
+            return;
+        }
+
+        try {
+            await promoteExistingLifeupMembers(purchaser.email, purchaserRef.id, purchaser);
+        } catch (error) {
+            // 결제 기록은 이미 저장했으므로 승격 실패가 결제 훅의 성공 응답을 막지 않게 한다.
+            logger.error('[Latpeed Webhook] premium member upgrade failed', error);
         }
 
         try {
@@ -2374,6 +2501,19 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             });
         }
 
+        // 유료 구매 대상인지 먼저 확인한다. 무료 패스는 여기서 종료되어 userId를 만들지 않는다.
+        let purchaserRecords: PurchaserRecord[] = [];
+        let bestPurchaser: PurchaserRecord | null = null;
+        if (templateId) {
+            purchaserRecords = await findPurchaserRecords(templateId, nomalizedEMail);
+            bestPurchaser = selectBestPurchaser(purchaserRecords);
+            if (!bestPurchaser) {
+                return res.status(200).json({
+                    message: '유료 라이프업 구매 정보를 찾을 수 없습니다. 구매 이메일을 확인해주세요.'
+                });
+            }
+        }
+
         // 인증 성공
         // 위젯 모드에서는 memberId가 없고,
         // 홈페이지 워크스페이스 모드에서는 memberId가 전달됩니다.
@@ -2469,26 +2609,17 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         }
 
         if (templateId) {
-            const purchaserSnapshot = await db.collection('purchasers')
-                .where('templateId', '==', templateId)
-                .where('email', '==', nomalizedEMail)
-                .limit(1)
-                .get();
-
-            if (purchaserSnapshot.empty) {
-                return res.status(200).json({
-                    message: '구매 정보를 찾을 수 없습니다. 구매 이메일을 확인해주세요.'
-                });
-            }
-
             await db.collection('users').doc(userId).collection('purchases').doc(templateId).set({
                 verified: true,
-                purchaser: purchaserSnapshot.docs[0].data(),
+                purchaser: bestPurchaser!.data,
+                purchaserIds: purchaserRecords.map(record => record.id),
+                memberType: templateId === 'lifeUp' ? lifeupMemberType(bestPurchaser!.data) : 'standard',
                 verifiedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
             if (templateId === 'lifeUp') {
                 await db.collection('users').doc(userId).set({
-                    memberType: premiumOption(purchaserSnapshot.docs[0].data().purchaseOption) ? 'premium' : 'standard'
+                    memberType: lifeupMemberType(bestPurchaser!.data),
+                    memberTypeUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
             }
         }
@@ -4922,6 +5053,22 @@ class NotionService {
             logDatabaseId
         );
 
+        const receiptRef = db.collection('users').doc(userId).collection('integrations')
+            .doc('routine').collection('dailyLogReceipts').doc(`${todayDate}-${habit.id}`);
+        const receipt = (await receiptRef.get()).data();
+        if (receipt?.dataSourceId === logDataSourceId && receipt.pageId) {
+            // Retrieve by ID instead of relying on immediate query visibility.
+            // Permission errors must propagate, rather than creating another page.
+            const page = await notion.pages.retrieve({ page_id: receipt.pageId });
+            if ('archived' in page && !page.archived && !page.in_trash) {
+                return { created: false, pageId: page.id };
+            }
+        }
+        const saveReceipt = (pageId: string) => receiptRef.set({
+            pageId, dataSourceId: logDataSourceId, habitId: habit.id, date: todayDate,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
         // Habit DB
         const habitDatabaseId = await this.resolveDatabaseId(
             accessToken,
@@ -4949,15 +5096,9 @@ class NotionService {
             }
         });
 
-        if (habitResult.results.length === 0) {
-            logger.error('[NotionHabitLog] 연결할 Habit 없음', {
-                habitId: habit.id
-            });
-
-            throw new Error('NOTION_HABIT_NOT_FOUND');
-        }
-
-        const habitPageId = habitResult.results[0].id;
+        // Missing parents are repaired under the same lock used by manual sync.
+        const habitPageId = habitResult.results[0]?.id ||
+            (await RoutineService.syncHabit(userId, habit)).pageId;
 
         logger.info('[NotionHabitLog] Habit 조회 완료', {
             habitId: habit.id,
@@ -4965,6 +5106,7 @@ class NotionService {
         });
 
         // 같은 날짜의 Habit Log 중복 확인
+        const dayRange = habitDayRange(todayDate);
         const existing = await notion.dataSources.query({
             data_source_id: logDataSourceId,
             filter: {
@@ -4978,13 +5120,13 @@ class NotionService {
                     {
                         property: '날짜',
                         date: {
-                            on_or_after: `${todayDate}T00:00:00+09:00`
+                            on_or_after: dayRange.start
                         }
                     },
                     {
                         property: '날짜',
                         date: {
-                            before: `${todayDate}T23:59:59+09:00`
+                            before: dayRange.end
                         }
                     }
                 ]
@@ -4999,6 +5141,7 @@ class NotionService {
                 date: todayDate,
                 pageId
             });
+            await saveReceipt(pageId);
 
             return {
                 created: false,
@@ -5084,6 +5227,7 @@ class NotionService {
                 date: todayDate,
                 pageId: page.id
             });
+            await saveReceipt(page.id);
 
             return {
                 created: true,
@@ -5351,9 +5495,7 @@ class NotionService {
         // --------------------------------
         // 날짜 범위
         // --------------------------------
-        const startDate = new Date(`${targetDate}T00:00:00+09:00`);
-        const nextDate = new Date(startDate);
-        nextDate.setDate(nextDate.getDate() + 1);
+        const dayRange = habitDayRange(targetDate);
 
         // --------------------------------
         // Habit Log 조회
@@ -5373,14 +5515,14 @@ class NotionService {
                                 property: '날짜',
                                 date: {
                                     on_or_after:
-                                        startDate.toISOString()
+                                        dayRange.start
                                 }
                             },
                             {
                                 property: '날짜',
                                 date: {
                                     before:
-                                        nextDate.toISOString()
+                                        dayRange.end
                                 }
                             }
                         ]
@@ -5411,8 +5553,9 @@ class NotionService {
         // --------------------------------
         // 전체 통계
         // --------------------------------
-        const total = habitLogs.length;
-        const completed = habitLogs.filter(page => {
+        const uniqueLogs = uniqueHabitLogs(habitLogs);
+        const total = uniqueLogs.length;
+        const completed = uniqueLogs.filter(page => {
             const properties = (page as any).properties;
             return (
                 properties?.완료?.checkbox === true
@@ -5428,7 +5571,7 @@ class NotionService {
             completed: number;
         }> = {};
 
-        habitLogs.forEach(page => {
+        uniqueLogs.forEach(page => {
             const properties = (page as any).properties;
             const goalRelation = properties?.목표?.relation;
 
@@ -9169,44 +9312,14 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
         const normalizedEmail = email?.trim().toLowerCase();
         const normalizedPhone = phone?.trim();
 
-        let purchaserData: any = null;
-        let purchaserId: string | null = null;
-
-        // 이메일 조회
-        if (normalizedEmail) {
-            const emailQuerySnap = await db.collection('purchasers')
-                .where('templateId', '==', templateId)
-                .where('email', '==', normalizedEmail)
-                .limit(1)
-                .get();
-
-            if (!emailQuerySnap.empty) {
-                const purchaserDoc = emailQuerySnap.docs[0];
-
-                if (purchaserDoc) {
-                    purchaserId = purchaserDoc.id;
-                    purchaserData = purchaserDoc.data();
-                }
-            }
+        // 한 사람이 여러 옵션을 구매했을 수 있으므로, 이메일 우선 조회 후 최고 등급 구매를 선택한다.
+        let purchaserRecords = await findPurchaserRecords(templateId, normalizedEmail);
+        if (!purchaserRecords.length && normalizedPhone) {
+            purchaserRecords = await findPurchaserRecords(templateId, undefined, normalizedPhone);
         }
-
-        // 전화번호 조회 (이메일로 못 찾았을 경우)
-        if (!purchaserData && normalizedPhone) {
-            const phoneQuerySnap = await db.collection('purchasers')
-                .where('templateId', '==', templateId)
-                .where('phone', '==', normalizedPhone)
-                .limit(1)
-                .get();
-
-            if (!phoneQuerySnap.empty) {
-                const purchaserDoc = phoneQuerySnap.docs[0];
-
-                if (purchaserDoc) {
-                    purchaserId = purchaserDoc.id;
-                    purchaserData = purchaserDoc.data();
-                }
-            }
-        }
+        const bestPurchaser = selectBestPurchaser(purchaserRecords);
+        const purchaserData = bestPurchaser?.data || null;
+        const purchaserId = bestPurchaser?.id || null;
 
         if (!purchaserData) {
             return res.status(200).json({
@@ -13676,7 +13789,7 @@ export const createDailyHabitLogs = onSchedule({
 
 // #routine
 export const recordDailyHabitStats = onSchedule({
-    schedule: '10 0 * * *',
+    schedule: '10 0,6,12,18 * * *',
     timeZone: 'Asia/Seoul',
     region: 'asia-northeast3',
     timeoutSeconds: 540,
@@ -13790,7 +13903,7 @@ export const recordMyDailyHabitStatsWithUserId = onRequest(
     })
 );
 
-export const createMyDailyHabitLogsWithUserId = onRequest(withCors(async (req, res) => {
+export const createMyDailyHabitLogsWithUserId = onRequest({ timeoutSeconds: 540 }, withCors(async (req, res) => {
     try {
         logger.info('[HabitTest] ===== 시작 =====');
 
@@ -13826,12 +13939,11 @@ export const createMyDailyHabitLogsWithUserId = onRequest(withCors(async (req, r
         });
 
         res.json({
-            success: true,
+            success: result.failedCount === 0 && result.pendingCount === 0,
             userId,
             targetDate,
             targetDay,
-            createdCount: result.createdCount,
-            existingCount: result.existingCount
+            ...result
         });
     } catch (error) {
         logger.error('[HabitTest] 실행 실패', {
@@ -13845,7 +13957,7 @@ export const createMyDailyHabitLogsWithUserId = onRequest(withCors(async (req, r
     }
 }));
 
-export const syncMyHabitsWithUserId = onRequest(withCors(async (req, res) => {
+export const syncMyHabitsWithUserId = onRequest({ timeoutSeconds: 540 }, withCors(async (req, res) => {
     try {
         logger.info('[HabitSync] ===== 시작 =====');
 
@@ -13863,7 +13975,12 @@ export const syncMyHabitsWithUserId = onRequest(withCors(async (req, res) => {
             userId
         });
 
-        const result = await RoutineService.syncMyHabits(userId);
+        const habitId = req.body?.habitId;
+        if (habitId !== undefined && (typeof habitId !== 'string' || !habitId || habitId.includes('/'))) {
+            res.status(400).json({ success: false, message: '올바른 habitId가 필요합니다.' });
+            return;
+        }
+        const result = await RoutineService.syncMyHabits(userId, habitId);
 
         logger.info('[HabitSync] 사용자 처리 완료', {
             userId,
@@ -13871,10 +13988,9 @@ export const syncMyHabitsWithUserId = onRequest(withCors(async (req, res) => {
         });
 
         res.json({
-            success: true,
+            success: result.failedCount === 0,
             userId,
-            createdCount: result.createdCount,
-            updatedCount: result.updatedCount
+            ...result
         });
 
     } catch (error) {
@@ -13985,6 +14101,8 @@ class RoutineService {
     ): Promise<{
         createdCount: number;
         existingCount: number;
+        failedCount: number;
+        pendingCount: number;
     }> {
         if (!userId) {
             throw new Error('Missing userId');
@@ -13992,6 +14110,8 @@ class RoutineService {
 
         let createdCount = 0;
         let existingCount = 0;
+        let failedCount = 0;
+        let pendingCount = 0;
 
         logger.info('[Habit] 시작', {
             userId,
@@ -14020,8 +14140,8 @@ class RoutineService {
         for (const habitDoc of snapshot.docs) {
 
             const habit = {
-                id: habitDoc.id,
-                ...habitDoc.data()
+                ...habitDoc.data(),
+                id: habitDoc.id
             } as UserHabit;
 
             logger.info('[Habit] 습관 확인', {
@@ -14049,7 +14169,7 @@ class RoutineService {
 
             const lockId = `daily-${targetDate}-${habit.id}`;
             if (!await this.claimRoutineLock(userId, lockId)) {
-                existingCount++;
+                pendingCount++;
                 logger.info('[Habit] 다른 실행이 이미 생성 중', { userId, habitId: habit.id, targetDate });
                 continue;
             }
@@ -14087,7 +14207,9 @@ class RoutineService {
                             `실행 시간 = ${habit.time}`,
                             `반복주기 = ${habit.days.join(', ')}`
                         ].join('\n')
-                    });
+                    }).catch(error => logger.error('[Habit] 생성 완료 Event 기록 실패', {
+                        userId, habitId: habit.id, error: String(error)
+                    }));
 
                 } else {
                     existingCount++;
@@ -14113,6 +14235,7 @@ class RoutineService {
                         ? error.message
                         : String(error)
                 });
+                failedCount++;
 
                 try {
                     await writeUserEvent(userId, {
@@ -14149,18 +14272,38 @@ class RoutineService {
             targetDate,
             targetDay,
             createdCount,
-            existingCount
+            existingCount,
+            failedCount,
+            pendingCount
         });
 
         return {
             createdCount,
-            existingCount
+            existingCount,
+            failedCount,
+            pendingCount
         };
     }
 
-    static async syncMyHabits(userId: string): Promise<{
+    static async syncHabit(userId: string, habit: UserHabit): Promise<{ created: boolean; pageId: string }> {
+        const lockId = `notion-habit-${habit.id}`;
+        if (!await this.claimRoutineLock(userId, lockId)) throw new Error('HABIT_SYNC_IN_PROGRESS');
+        try {
+            const existing = await NotionService.findNotionHabit(userId, habit.id!);
+            if (existing) {
+                const result = await NotionService.updateNotionHabit(userId, habit);
+                return { created: false, pageId: result.pageId };
+            }
+            return await NotionService.createNotionHabit(userId, habit);
+        } finally {
+            await this.releaseRoutineLock(userId, lockId);
+        }
+    }
+
+    static async syncMyHabits(userId: string, habitId?: string): Promise<{
         createdCount: number;
         updatedCount: number;
+        failedCount: number;
     }> {
         if (!userId) {
             throw new Error('Missing userId');
@@ -14168,6 +14311,7 @@ class RoutineService {
 
         let createdCount = 0;
         let updatedCount = 0;
+        let failedCount = 0;
 
         logger.info('[HabitSync] 시작', {
             userId
@@ -14180,7 +14324,10 @@ class RoutineService {
             .doc('routine')
             .collection('habits');
 
-        const snapshot = await habitsRef.get();
+        const snapshot = await (habitId
+            ? habitsRef.where(admin.firestore.FieldPath.documentId(), '==', habitId)
+            : habitsRef).get();
+        if (habitId && snapshot.empty) throw new Error('HABIT_NOT_FOUND');
 
         logger.info('[HabitSync] 루틴 조회 완료', {
             userId,
@@ -14189,40 +14336,17 @@ class RoutineService {
 
         for (const habitDoc of snapshot.docs) {
             const habit = {
-                id: habitDoc.id,
-                ...habitDoc.data()
+                ...habitDoc.data(),
+                id: habitDoc.id
             } as UserHabit;
 
-            const lockId = `notion-habit-${habit.id}`;
-            if (!await this.claimRoutineLock(userId, lockId)) {
-                logger.info('[HabitSync] 다른 동기화가 진행 중', { userId, habitId: habit.id });
-                continue;
-            }
-
             try {
-                const result = await NotionService.findNotionHabit(
-                    userId,
-                    habit.id!
-                );
-
-                if (result) {
-                    await NotionService.updateNotionHabit(
-                        userId,
-                        habit
-                    );
-
-                    updatedCount++;
-
-                } else {
-                    await NotionService.createNotionHabit(
-                        userId,
-                        habit
-                    );
-
-                    createdCount++;
-                }
+                const result = await this.syncHabit(userId, habit);
+                if (result.created) createdCount++;
+                else updatedCount++;
 
             } catch (error) {
+                failedCount++;
                 logger.error('[HabitSync] 루틴 동기화 실패', {
                     userId,
                     habitId: habit.id,
@@ -14231,8 +14355,6 @@ class RoutineService {
                         ? error.message
                         : String(error)
                 });
-            } finally {
-                await this.releaseRoutineLock(userId, lockId);
             }
         }
 
@@ -14244,7 +14366,8 @@ class RoutineService {
 
         return {
             createdCount,
-            updatedCount
+            updatedCount,
+            failedCount
         };
     }
 
@@ -14284,7 +14407,8 @@ class RoutineService {
                 ? 'updated'
                 : 'unchanged';
 
-        await statsRef.set({
+        const batch = db.batch();
+        batch.set(statsRef, {
             date: targetDate,
             total,
             completed,
@@ -14300,7 +14424,14 @@ class RoutineService {
             .doc('routine')
             .collection('goalDailyStats');
 
-        const batch = db.batch();
+        // A goal can be removed or changed in Notion after the first aggregation.
+        const previousGoals = await goalDailyStatsCollection.where('date', '==', targetDate).get();
+        for (const previous of previousGoals.docs) {
+            if (!goalStats[previous.data().goalId]) {
+                batch.set(previous.ref, { total: 0, completed: 0, useRest: false,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            }
+        }
 
         for (const [goalId, stat] of Object.entries(goalStats)) {
             batch.set(
@@ -14414,6 +14545,16 @@ class RoutineService {
     //////////////////////////////////////////////////
     // 습관 통계 처리
     static async processHabitStats(userId: string, targetDate: string): Promise<void> {
+        const lockId = 'habit-stats-summary';
+        if (!await this.claimRoutineLock(userId, lockId)) throw new Error('HABIT_STATS_IN_PROGRESS');
+        try {
+            await this.processHabitStatsUnlocked(userId, targetDate);
+        } finally {
+            await this.releaseRoutineLock(userId, lockId);
+        }
+    }
+
+    private static async processHabitStatsUnlocked(userId: string, targetDate: string): Promise<void> {
         if (!userId) {
             throw new Error('Missing userId');
         }
@@ -14438,8 +14579,8 @@ class RoutineService {
             trophiesSnapshot,
             restHistorySnapshot
         ] = await Promise.all([
-            dailyStatsRef.orderBy('date', 'asc').get(),
-            goalDailyStatsRef.orderBy('date', 'asc').get(),
+            dailyStatsRef.where('date', '<=', targetDate).orderBy('date', 'asc').get(),
+            goalDailyStatsRef.where('date', '<=', targetDate).orderBy('date', 'asc').get(),
             badgesRef.get(),
             trophiesRef.get(),
             restHistoryRef.get()
@@ -14493,7 +14634,25 @@ class RoutineService {
             const useRest = targetStat.useRest === true;
             const useRestId = `use_${targetDate}`;
 
+            // A later completion must return a rest token consumed by an earlier run.
+            const spentRest = restHistory.find(item => item.id === useRestId);
+            if (completed > 0 && useRest && spentRest?.amount === -1) {
+                batch.update(dailyStatsRef.doc(targetStat.id), { useRest: false });
+                batch.update(restHistoryRef.doc(useRestId), {
+                    amount: 0, message: '완료 기록 반영으로 휴식권 반환',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                targetStat.useRest = false;
+                restTokens++;
+                for (const goalStat of goalStats) {
+                    if (goalStat.date !== targetDate) continue;
+                    batch.update(goalDailyStatsRef.doc(goalStat.id), { useRest: false });
+                    goalStat.useRest = false;
+                }
+            }
+
             if (
+                targetStat.total > 0 &&
                 completed <= 0 &&
                 !useRest &&
                 restTokens > 0 &&
