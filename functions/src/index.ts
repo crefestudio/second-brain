@@ -1881,6 +1881,131 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 // Keep payment-webhook emails pointed at the test inbox until the production
 // recipient flow is enabled.
 const LATPEED_TEST_EMAIL = 'toto791@gmail.com';
+const CARE_ADMIN_EMAILS = new Set([
+    'toto791@gmail.com',
+    'crefestudio@gmail.com'
+]);
+
+type CareIdentity = { uid: string; email: string; isAdmin: boolean };
+
+async function getCareIdentity(req: any): Promise<CareIdentity> {
+    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!token) throw new Error('LOGIN_REQUIRED');
+    const decoded = await admin.auth().verifyIdToken(token, true);
+    const account = await admin.auth().getUser(decoded.uid);
+    const email = String(account.email || '').trim().toLowerCase();
+    return { uid: decoded.uid, email, isAdmin: account.emailVerified && CARE_ADMIN_EMAILS.has(email) };
+}
+
+export const getCareAccess = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        return res.json({ isAdmin: identity.isAdmin, email: identity.email });
+    } catch { return res.status(401).json({ error: '로그인을 다시 확인해주세요.' }); }
+}));
+
+function careRequestDto(id: string, data: FirebaseFirestore.DocumentData) {
+    return {
+        id,
+        type: data.type || '', title: data.title || '', content: data.content || '',
+        status: data.status || '접수', creditHours: Number(data.creditHours || 0),
+        ownerId: data.ownerId || '', ownerEmail: data.ownerEmail || '',
+        createdAt: data.createdAt?.toMillis?.() || null,
+        updatedAt: data.updatedAt?.toMillis?.() || null
+    };
+}
+
+export const createCareRequest = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+        const identity = await getCareIdentity(req);
+        const type = String(req.body?.type || '').trim();
+        const title = String(req.body?.title || '').trim();
+        const content = String(req.body?.content || '').trim();
+        if (!type || !title || !content || title.length > 120 || content.length > 5000) {
+            return res.status(400).json({ error: 'INVALID_REQUEST' });
+        }
+        const requestRef = db.collection('careRequests').doc();
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        await requestRef.set({
+            ownerId: identity.uid, ownerEmail: identity.email, type, title, content,
+            status: '접수', creditHours: 0, createdAt: now, updatedAt: now
+        });
+        await requestRef.collection('messages').add({
+            authorRole: 'user', authorEmail: identity.email, content, createdAt: now
+        });
+        try {
+            await resend.emails.send({
+                from: 'Notionable <noreply@notionable.net>', to: Array.from(CARE_ADMIN_EMAILS),
+                subject: `[라이프업 케어] 새 요청: ${title}`,
+                text: `${identity.email} 님이 ${type} 요청을 접수했습니다.\n\n${content}`
+            });
+        } catch (error) { logger.error('[Care] admin notification failed', error); }
+        return res.status(201).json({ id: requestRef.id });
+    } catch (error: any) {
+        return res.status(error?.message === 'LOGIN_REQUIRED' ? 401 : 500).json({ error: error?.message || 'CREATE_FAILED' });
+    }
+}));
+
+export const listCareRequests = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+        const identity = await getCareIdentity(req);
+        const adminView = req.body?.adminView === true;
+        if (adminView && !identity.isAdmin) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
+        const snapshot = adminView
+            ? await db.collection('careRequests').get()
+            : await db.collection('careRequests').where('ownerId', '==', identity.uid).get();
+        const requests = snapshot.docs.map(item => careRequestDto(item.id, item.data()))
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        return res.json({ isAdmin: identity.isAdmin, requests });
+    } catch (error: any) {
+        return res.status(error?.message === 'LOGIN_REQUIRED' ? 401 : 500).json({ error: error?.message || 'LIST_FAILED' });
+    }
+}));
+
+export const getCareRequest = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+        const identity = await getCareIdentity(req);
+        const requestId = String(req.body?.requestId || '');
+        const requestRef = db.collection('careRequests').doc(requestId);
+        const requestSnapshot = await requestRef.get();
+        if (!requestSnapshot.exists) return res.status(404).json({ error: 'NOT_FOUND' });
+        const data = requestSnapshot.data()!;
+        if (!identity.isAdmin && data.ownerId !== identity.uid) return res.status(403).json({ error: 'FORBIDDEN' });
+        const messages = (await requestRef.collection('messages').orderBy('createdAt').get()).docs.map(item => ({
+            id: item.id, ...item.data(), createdAt: item.data().createdAt?.toMillis?.() || null
+        }));
+        return res.json({ request: careRequestDto(requestId, data), messages, isAdmin: identity.isAdmin });
+    } catch (error: any) {
+        return res.status(error?.message === 'LOGIN_REQUIRED' ? 401 : 500).json({ error: error?.message || 'GET_FAILED' });
+    }
+}));
+
+export const sendCareMessage = onRequest(withCors(async (req, res) => {
+    try {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+        const identity = await getCareIdentity(req);
+        const requestId = String(req.body?.requestId || '');
+        const content = String(req.body?.content || '').trim();
+        if (!requestId || !content || content.length > 5000) return res.status(400).json({ error: 'INVALID_MESSAGE' });
+        const requestRef = db.collection('careRequests').doc(requestId);
+        const requestSnapshot = await requestRef.get();
+        if (!requestSnapshot.exists) return res.status(404).json({ error: 'NOT_FOUND' });
+        const request = requestSnapshot.data()!;
+        if (!identity.isAdmin && request.ownerId !== identity.uid) return res.status(403).json({ error: 'FORBIDDEN' });
+        const authorRole = identity.isAdmin ? 'admin' : 'user';
+        const status = identity.isAdmin ? '답변 완료' : '접수';
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        await requestRef.collection('messages').add({ authorRole, authorEmail: identity.email, content, createdAt: now });
+        await requestRef.update({ status, updatedAt: now });
+        return res.status(201).json({ success: true });
+    } catch (error: any) {
+        return res.status(error?.message === 'LOGIN_REQUIRED' ? 401 : 500).json({ error: error?.message || 'MESSAGE_FAILED' });
+    }
+}));
 const LIFEUP_PASSPORT_URL = 'https://app.notionable.net/templateDownload/LifeUp-1.3-Template-Passport.pdf';
 const LIFEUP_PURCHASE_GUIDE_URL = 'https://notionable.net';
 

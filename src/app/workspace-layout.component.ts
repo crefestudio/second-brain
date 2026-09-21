@@ -1,4 +1,5 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
+import { CareRequestService } from './services/care-request.service';
 import { CommonModule } from '@angular/common';
 import {
   Router,
@@ -22,7 +23,14 @@ import { SocialAuthService } from './services/social-auth.service';
     templateUrl: './workspace-layout.component.html',
     styleUrl: './workspace-layout.component.scss'
 })
-export class WorkspaceLayoutComponent {
+export class WorkspaceLayoutComponent implements OnInit {
+    isCareAdmin = false;
+    adminOpen = true;
+    async ngOnInit() {
+        await this.auth.init();
+        try { this.isCareAdmin = (await this.care.access()).isAdmin; }
+        catch { this.isCareAdmin = false; }
+    }
     currentPath = '/service';
 
     serviceOpen = true;
@@ -30,7 +38,7 @@ export class WorkspaceLayoutComponent {
     mypageOpen = true;
     title = 'second-brain-app';
 
-    constructor(private router: Router, public auth: SocialAuthService) {
+    constructor(private router: Router, public auth: SocialAuthService, private care: CareRequestService) {
         this.currentPath = this.router.url;
 
         this.router.events

@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../../../../../services/auth.service';
+import { CareRequestService } from '../../../../../../../services/care-request.service';
 import { _log } from '../../../../../../../lib/cf-common/cf-common';
 
 @Component({
@@ -18,21 +19,7 @@ export class StudioDashboardComponent implements OnInit {
     kakaoUserId: string = '';
     notionAccessToken: string = '';
 
-    // 임시 데이터
-    requests = [
-        {
-            status: '진행중',
-            statusClass: 'pending',
-            type: '문의',
-            title: '라이프업에서 이 기능을 어떻게 사용하나요?'
-        },
-        {
-            status: '완료',
-            statusClass: 'success',
-            type: '요청',
-            title: '라이프업 구조 변경 요청'
-        }
-    ];
+    requests: Array<{ id: string; status: string; statusClass: string; type: string; title: string }> = [];
     
     activities = [
         {
@@ -51,7 +38,7 @@ export class StudioDashboardComponent implements OnInit {
 
     credit = 0;
 
-    constructor(private authService: AuthService) {
+    constructor(private authService: AuthService, private careRequests: CareRequestService) {
     }
 
     async ngOnInit() {
@@ -73,6 +60,16 @@ export class StudioDashboardComponent implements OnInit {
         this.userId = this.authService.getUserId();
         this.kakaoUserId = this.authService.getKakaoUserId();
         this.notionAccessToken = this.authService.getNotionAccessToken();
+        if (this.userId) {
+            const result = await this.careRequests.list();
+            this.requests = result.requests.slice(0, 3).map(request => ({
+                id: request.id,
+                status: request.status,
+                statusClass: request.status === '답변 완료' ? 'success' : 'pending',
+                type: request.type,
+                title: request.title
+            }));
+        }
 
         _log(
             'updateSession memberUid, userId, kakaoUserId, notionAccessToken =>',

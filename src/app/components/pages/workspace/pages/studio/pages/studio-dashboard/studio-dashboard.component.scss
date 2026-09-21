@@ -118,6 +118,14 @@
     border-bottom: none;
 }
 
+.request-item {
+    cursor: pointer;
+}
+
+.request-item:hover {
+    background: rgb(122 162 247 / 8%);
+}
+
 .item-info {
     display: flex;
     align-items: center;

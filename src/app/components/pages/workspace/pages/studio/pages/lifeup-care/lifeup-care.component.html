@@ -7,7 +7,9 @@
 </div>
 } @else {
 <!-- Notion 연결 안 됨 -->
-<div *ngIf="!userId" class="notificaton-box">
+@if (error) { <p class="care-error" role="alert">{{ error }}</p> }
+@if (requestLoading) { <p role="status">대화를 불러오는 중입니다…</p> }
+<div *ngIf="!userId && !adminView" class="notificaton-box">
     <div class="notificaton-icon">🔗</div>
     <h2>라이프업 템플릿 구매인증이 필요합니다</h2>
     <p>
@@ -20,7 +22,8 @@
 </div>
 
 <!-- Notion 연결됨 -->
-<div *ngIf="userId" class="page">
+<div *ngIf="userId || (adminView && isAdmin)" class="page">
+    @if (!adminView) {
     <div class="page-header">
         <h1>❤️ 라이프업 케어</h1>
         <div class="studio-notice lifeup-update-notice">
@@ -67,7 +70,7 @@
                     </div>
                 </div>
 
-                <button class="service-btn">
+                <button class="service-btn" (click)="openRequestForm('개선 의견')">
                     의견 보내기 →
                 </button>
             </div>
@@ -145,15 +148,15 @@
                 <div class="service-icon">🔄</div>
 
                 <div class="service-content">
-                    <div class="service-title">템플릿 업데이트 요청</div>
+                    <div class="service-title">템플릿 수동 업데이트 요청</div>
                     <div class="service-description">
-                        라이프업을 1.3에서 1.5로 업데이트합니다.
+                        라이프업을 1.3에서 1.5로 관리자 위탁 업데이트합니다.
                     </div>
                     <div class="credit-info">프리미엄 · 크레딧 2H 사용</div>
                 </div>
 
                 <button class="service-btn premium-btn" routerLink="/workspace/studio/migration">
-                    업데이트 →
+                    신청하기 →
                 </button>
             </div>
 
@@ -190,7 +193,7 @@
                 </div>
 
                 <button class="service-btn premium-btn">
-                    복구 신청 →
+                    신청하기 →
                 </button>
             </div>
 
@@ -198,6 +201,54 @@
 
     </section>
 
+    }
+    <section class="care-request-list">
+        <div class="section-header">
+            <h2>{{ adminView ? '라이프업 케어 · 전체 접수 현황' : '내 요청 현황' }}</h2>
+            <p>요청을 선택하면 대화창이 열립니다. 총 {{ requests.length }}건</p>
+        </div>
+        @if (adminView) {
+            <label>요청 검색 <input [(ngModel)]="search" placeholder="제목, 이메일, 종류, 상태 검색"></label>
+        }
+        @for (request of visibleRequests; track request.id) {
+            <button type="button" class="care-request-row" (click)="openRequest(request)" [disabled]="requestLoading">
+                <span>{{ request.status }}</span><strong>{{ request.type }}</strong><span>{{ request.title }}</span>
+                @if (adminView) {
+                    <small>요청자: {{ request.ownerEmail || '이메일 없음' }}</small>
+                    <small>접수: {{ request.createdAt | date:'yyyy.MM.dd HH:mm' }} · 최근 활동: {{ request.updatedAt | date:'yyyy.MM.dd HH:mm' }}</small>
+                    <small>사용 크레딧: {{ request.creditHours }}H · 요청 ID: {{ request.id }}</small>
+                }
+            </button>
+        } @empty { <p class="care-empty">표시할 요청이 없습니다.</p> }
+    </section>
+
+    @if (selectedType) {
+    <div class="care-modal-backdrop" (click)="closeModal()"><section class="care-modal" (click)="$event.stopPropagation()"><button class="care-modal-close" type="button" (click)="closeModal()">×</button><h2>{{ selectedType }} 접수</h2><p>개선이 필요한 점을 알려주세요. 접수 후 내 요청 현황에서 답변을 확인할 수 있습니다.</p><label>제목<input [(ngModel)]="requestTitle" maxlength="120"></label><label>내용<textarea [(ngModel)]="requestContent" rows="7" maxlength="5000"></textarea></label>@if (error) { <p class="care-error">{{ error }}</p> }<div class="care-modal-actions"><button class="service-btn" type="button" (click)="closeModal()">취소</button><button class="service-btn submit" type="button" [disabled]="isSubmitting" (click)="submitRequest()">{{ isSubmitting ? '접수 중…' : '접수하기' }}</button></div></section></div>
+    }
+    @if (selectedRequest) {
+    <div class="care-modal-backdrop" (click)="closeModal()">
+        <section class="care-modal care-thread" role="dialog" aria-modal="true" aria-labelledby="care-thread-title" (click)="$event.stopPropagation()" (keydown.escape)="closeModal()">
+            <button class="care-modal-close" type="button" (click)="closeModal()" aria-label="대화 닫기">×</button>
+            <h2 id="care-thread-title">{{ selectedRequest.title }}</h2>
+            <p>{{ selectedRequest.type }} · {{ selectedRequest.status }} · 0H</p>
+            <div class="care-messages">
+                @for (message of messages; track message.id) {
+                    <div class="care-message" [class.admin]="message.authorRole === 'admin'">
+                        <strong>{{ message.authorRole === 'admin' ? '관리자' : '요청자' }}</strong>
+                        <small> · {{ message.createdAt | date:'MM.dd HH:mm' }}</small>
+                        <p>{{ message.content }}</p>
+                    </div>
+                }
+            </div>
+            <label for="care-reply">{{ isAdmin ? '관리자 답변' : '추가 메시지' }}</label>
+            <textarea id="care-reply" [(ngModel)]="messageContent" rows="3" maxlength="5000" [disabled]="isSubmitting" placeholder="메시지를 입력하세요."></textarea>
+            @if (error) { <p class="care-error" role="alert">{{ error }}</p> }
+            <div class="care-modal-actions"><button class="service-btn submit" type="button" [disabled]="isSubmitting || !messageContent.trim()" (click)="sendMessage()">{{ isSubmitting ? '전송 중…' : '보내기' }}</button></div>
+        </section>
+    </div>
+    }
+
+    @if (!adminView) {
     <section class="guide">
 
         <div class="guide-card">
@@ -243,6 +294,7 @@
         </div>
 
     </section>
+    }
 
 </div>
 }

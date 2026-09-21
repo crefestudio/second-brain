@@ -304,6 +304,16 @@
 
     </div>
 
+    @if (isCareAdmin) {
+      <div class="menu-group">
+        <div class="menu-item collapsible" role="button" tabindex="0" (click)="adminOpen = !adminOpen" (keydown.enter)="adminOpen = !adminOpen">
+          <span>관리도구</span><span class="arrow" [class.open]="adminOpen">⌵</span>
+        </div>
+        @if (adminOpen) {
+          <div class="submenu"><a routerLink="/workspace/admin/lifeup-care" routerLinkActive="active" class="submenu-item">라이프업 케어</a></div>
+        }
+      </div>
+    }
   </aside>
 
   <div class="content">

@@ -83,6 +83,11 @@ export const routes: Routes = [
         component: WorkspaceComponent
       },
       {
+        path: 'admin/lifeup-care',
+        component: LifeupCareComponent,
+        data: { adminView: true }
+      },
+      {
         path: 'connect',
         component: AgentConnectComponentComponent
       },
