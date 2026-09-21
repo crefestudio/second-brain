@@ -74,6 +74,11 @@ export const routes: Routes = [
     canActivate: [memberGuard],
     children: [
       {
+        path: '',
+        redirectTo: 'home',
+        pathMatch: 'full'
+      },
+      {
         path: 'home',
         component: WorkspaceComponent
       },

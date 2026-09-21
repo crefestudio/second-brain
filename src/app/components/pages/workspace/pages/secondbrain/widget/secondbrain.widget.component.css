@@ -18,7 +18,7 @@
 }
 
 .view-wrapper.app-mode {
-  height: calc(100dvh - 125px);
+  height: 100dvh;
   min-height: 0;
 }
 
@@ -467,7 +467,7 @@ toast
 
 .view-wrapper.app-mode .toast {
   bottom: 150px;
-  left: calc(50% + 147px);
+  left: calc(50% + 121px);
 }
 
 .toast.show {

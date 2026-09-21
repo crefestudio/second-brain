@@ -1878,7 +1878,9 @@ export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
 // ----------------------
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
-const LATPEED_TEST_EMAIL = 'toto791@gamil.com';
+// Keep payment-webhook emails pointed at the test inbox until the production
+// recipient flow is enabled.
+const LATPEED_TEST_EMAIL = 'toto791@gmail.com';
 const LIFEUP_PASSPORT_URL = 'https://app.notionable.net/templateDownload/LifeUp-1.3-Template-Passport.pdf';
 const LIFEUP_PURCHASE_GUIDE_URL = 'https://notionable.net';
 
@@ -1916,7 +1918,7 @@ function formatLatpeedDate(value?: string): string {
     return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
-function lifeupWelcomeMail(name: string, guideUrl: string): { subject: string; text: string; html: string } {
+function legacyLifeupWelcomeMail(name: string, guideUrl: string): { subject: string; text: string; html: string } {
     const text = `${name ? `${name}님, ` : ''}안녕하세요. 노셔너블입니다.
 
 라이프업에 오신 것을 환영합니다! 😊
@@ -1942,6 +1944,59 @@ Notionable 드림`;
         subject: '라이프업 구매 안내 및 보관용 PDF를 보내드립니다',
         text,
         html: `<div style="margin:0;background:#f5f7fb;padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#243047"><div style="max-width:620px;margin:auto;background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:36px 30px;box-sizing:border-box"><div style="font-weight:700;color:#718096;font-size:14px">🧠 Notionable</div><h1 style="margin:12px 0 16px;color:#172033;font-size:28px;line-height:1.35">라이프업에 오신 것을<br>환영합니다! 😊</h1><p style="line-height:1.7">라이프업과 함께 목표부터 프로젝트, 할 일과 기록까지 나만의 방식으로 삶을 관리해보세요.</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">📥 라이프업 1.5 다운로드</h2><p style="line-height:1.7">아래 구매 안내 페이지에서 <strong>라이프업 1.5를 다운로드하고 설치 방법 및 사용 가이드</strong>를 확인하실 수 있습니다.</p><a href="${guideUrl}" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 다운로드 및 구매 안내 →</a><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 받기</h2><p style="line-height:1.7">라이프업 1.5 구매 고객을 대상으로 <strong>라이프봇 1년 무료 이용권 이벤트</strong>를 진행합니다.</p><p style="line-height:1.7">카카오톡 AI 비서, 세컨드브레인, 루틴 관리 등 라이프봇 기능을 정식 오픈 전까지 무료로 이용하실 수 있습니다.</p><a href="https://notionable.net/store/?idx=1#prod_detail_review" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 리뷰 작성하기 →</a><p style="line-height:1.7">리뷰를 남겨주신 분께 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">📄 보관용 PDF</h2><p style="line-height:1.7">구매 내역 확인을 위한 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p><a href="${LIFEUP_PASSPORT_URL}" style="display:inline-block;background:#eef3f9;color:#243047;padding:12px 16px;border:1px solid #cbd7e6;border-radius:8px;text-decoration:none;font-weight:700">보관용 PDF 열기 →</a><p style="margin:32px 0 0;color:#718096;line-height:1.7">Notionable 드림</p></div></div>`
+    };
+}
+
+// Retain the previous copy temporarily while the new purchase email is tested.
+void legacyLifeupWelcomeMail;
+
+function escapeEmailHtml(value: string): string {
+    return value.replace(/[&<>'"]/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[character]!));
+}
+
+function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject: string; text: string; html: string } {
+    const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '';
+    const reviewUrl = 'https://notionable.net/store/?idx=1';
+    const lifeupbotUrl = 'https://app.notionable.net/workspace/home';
+
+    return {
+        subject: '라이프업 1.5 구매 안내 및 보관용 PDF를 보내드립니다',
+        text: `${customerName?.trim() ? `${customerName.trim()}님,\n` : ''}라이프업과 함께하는 새로운 시작을 환영합니다. 🎉\n\n라이프업 1.5 다운로드: ${downloadUrl}\n보관용 PDF: ${LIFEUP_PASSPORT_URL}\n리뷰 작성: ${reviewUrl}`,
+        html: `<div style="margin:0;background:#f5f6f8;padding:32px 16px;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f;box-sizing:border-box">
+            <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden">
+                <div style="padding:32px 32px 40px">
+                    <a href="https://notionable.net" target="_blank" style="display:inline-block;text-decoration:none;"><img src="https://notionable.net/assets/images/logo_notionable.png" alt="Notionable" width="150" style="display:block;border:0;margin:0 0 24px"></a>
+                    <h1 style="margin:0 0 16px;font-size:26px;line-height:1.45;color:#171717;">${greetingName}<br>라이프업과 함께하는 새로운 시작을 환영합니다. 🎉</h1>
+                    <p style="margin:0;font-size:16px;line-height:1.8;color:#555;">라이프업과 함께 목표부터 프로젝트, 일상과 기록까지 나만의 방식으로 삶을 관리해보세요.</p>
+                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+                    <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">📥 라이프업 1.5 다운로드</h2>
+                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.</p>
+                    <a href="${downloadUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 다운로드 →</a>
+                    <p style="margin:16px 0 0"><a href="https://www.youtube.com/shorts/QnR_gnGWOQE" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>
+                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+                    <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">📄 보관용 PDF</h2>
+                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">설치 링크와 이용 안내를 담은 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p>
+                    <a href="${LIFEUP_PASSPORT_URL}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-size:15px;font-weight:700;text-decoration:none;">보관용 PDF 열기 →</a>
+                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+                    <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🎓 라이프업 클래스</h2>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">템플릿을 처음 사용하신다면, 라이프업 클래스의 사용 가이드 영상부터 천천히 따라 해보세요. 노션 기초 사용법 영상도 함께 준비했습니다.</p>
+                    <img src="https://notionable.net/assets/images/lifeup-class-guide.png" alt="라이프업 클래스 사용 가이드 화면" width="576" style="display:block;width:100%;height:auto;border:0;border-radius:10px">
+                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+                    <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기</h2>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아, <strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.</p>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;"><strong>라이프봇</strong>은 라이프업 템플릿을 더 편리하게 사용하고 꾸준히 활용할 수 있도록 도와드리는 자동화 서비스입니다.</p>
+                    <a href="${lifeupbotUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">라이프봇 알아보기 →</a>
+                    <div style="margin-top:24px;padding:24px;background:#f8faff;border-radius:12px">
+                        <p style="margin:0 0 12px;font-size:15px;line-height:1.8;color:#333;"><strong>라이프업 1.5</strong>를 직접 사용해보신 후 상품 페이지에 솔직한 리뷰를 남겨주세요.</p>
+                        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#666;">라이프업을 사용한 화면을 사진으로 함께 남겨주시면, 다른 분들께도 큰 도움이 됩니다. 😊</p>
+                        <a href="${reviewUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 리뷰 작성하기 →</a>
+                        <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#777;">⚠️ 결제처 ‘래피드’가 아닌, 위 버튼으로 이동한 노셔너블 홈페이지 상품에 리뷰를 남겨주세요.</p>
+                    </div>
+                </div>
+            </div>
+        </div>`
     };
 }
 
