@@ -371,6 +371,19 @@
       <div class="graph-container" #graphContainer>
       </div>
 
+      <nav *ngIf="!isWidgetMode" class="graph-type-menu" aria-label="그래프 종류">
+        <button type="button" class="graph-type-menu-item"
+          [class.active]="currGraphType === 'note-keyword'"
+          (click)="onClickSelectGraphType('note-keyword')">
+          노트-키워드 그래프
+        </button>
+        <button type="button" class="graph-type-menu-item"
+          [class.active]="currGraphType === 'keyword-only'"
+          (click)="onClickSelectGraphType('keyword-only')">
+          키워드 그래프
+        </button>
+      </nav>
+
       <!-- 메뉴 -->
       <div class="graph-menu" *ngIf="isMenuOpen" (click)="$event.stopPropagation()">
         <!-- 창 열기 -->

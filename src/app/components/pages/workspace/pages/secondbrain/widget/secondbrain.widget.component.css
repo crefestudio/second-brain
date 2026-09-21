@@ -168,6 +168,65 @@
   height: 100%;
 }
 
+/* App-mode graph selector: visually aligned with the routine sub-menu. */
+.graph-type-menu {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  background: rgba(37, 37, 39, 0.68);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transform: translateX(-50%);
+  opacity: 0.9;
+}
+
+.graph-type-menu-item {
+  min-width: 128px;
+  height: 33px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.graph-type-menu-item:hover {
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.graph-type-menu-item.active {
+  color: #6d99f2;
+  background: rgba(58, 58, 60, 0.82);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 480px) {
+  .graph-type-menu {
+    top: 10px;
+    max-width: calc(100% - 24px);
+  }
+
+  .graph-type-menu-item {
+    min-width: 0;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+}
+
 
 /* 메뉴 컨테이너 - Apple / Notion style */
 .graph-menu {
@@ -463,6 +522,12 @@ toast
   word-break: break-word;
 
   transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+/* `position: fixed` is relative to the viewport. In the workspace, shift by
+   half of the 242px sidebar so the toast is centered in the content area. */
+.view-wrapper.app-mode .toast {
+  left: calc(50% + 121px);
 }
 
 .toast.show {
