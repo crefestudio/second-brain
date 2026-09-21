@@ -2148,7 +2148,7 @@ function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject
 
     return {
         subject: '라이프업 1.5 구매 안내 및 보관용 PDF를 보내드립니다',
-        text: `${customerName?.trim() ? `${customerName.trim()}님,\n` : ''}라이프업과 함께하는 새로운 시작을 환영합니다. 🎉\n\n라이프업 1.5 다운로드: ${downloadUrl}\n보관용 PDF: ${LIFEUP_PASSPORT_URL}\n리뷰 작성: ${reviewUrl}`,
+        text: `${customerName?.trim() ? `${customerName.trim()}님,\n` : ''}라이프업과 함께하는 새로운 시작을 환영합니다. 🎉\n\n라이프업 1.5 다운로드: ${downloadUrl}\n보관용 PDF: ${LIFEUP_PASSPORT_URL}\n리뷰 작성: ${reviewUrl}\n\n라이프업 케어\n사용 문의, 오류 신고, 업데이트 소식 확인부터 라이프업 활용 상담까지 편하게 확인하고 요청하실 수 있습니다.\nhttps://app.notionable.net/workspace/care`,
         html: `<div style="margin:0;background:#f5f6f8;padding:32px 16px;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f;box-sizing:border-box">
             <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden">
                 <div style="padding:32px 32px 40px">
@@ -2168,6 +2168,11 @@ function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject
                     <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🎓 라이프업 클래스</h2>
                     <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">템플릿을 처음 사용하신다면, 라이프업 클래스의 사용 가이드 영상부터 천천히 따라 해보세요. 노션 기초 사용법 영상도 함께 준비했습니다.</p>
                     <img src="https://notionable.net/assets/images/lifeup-class-guide.png" alt="라이프업 클래스 사용 가이드 화면" width="576" style="display:block;width:100%;height:auto;border:0;border-radius:10px">
+                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+                    <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🛡️ 라이프업 케어</h2>
+                    <p style="margin:0 0 12px;font-size:15px;line-height:1.8;color:#555;">라이프업을 사용하시면서 궁금한 점이 있거나 도움이 필요하신가요?</p>
+                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">사용 문의, 오류 신고, 업데이트 소식 확인부터 라이프업 활용 상담까지<br><strong>라이프업 케어</strong>에서 편하게 확인하고 요청하실 수 있습니다.</p>
+                    <a href="https://app.notionable.net/workspace/care" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-size:15px;font-weight:700;text-decoration:none;">라이프업 케어로 이동하기 →</a>
                     <div style="height:1px;background:#eceef1;margin:32px 0"></div>
                     <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기</h2>
                     <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아, <strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.</p>

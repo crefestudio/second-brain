@@ -2,11 +2,11 @@ import { AfterViewChecked, Component, ElementRef, OnDestroy, OnInit, QueryList, 
 import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { RouterLink, ActivatedRoute } from '@angular/router';
-import { AuthService } from '../../../../../../../services/auth.service';
-import { _log } from '../../../../../../../lib/cf-common/cf-common';
-import { ToastService } from '../../../../../../../services/toast.service';
-import { UserService } from '../../../../../../../services/user.service';
-import { NACommonService } from '../../../../../../../services/common.service';
+import { AuthService } from '../../../../../../services/auth.service';
+import { _log } from '../../../../../../lib/cf-common/cf-common';
+import { ToastService } from '../../../../../../services/toast.service';
+import { UserService } from '../../../../../../services/user.service';
+import { NACommonService } from '../../../../../../services/common.service';
 
 @Component({
     selector: 'app-lifeup-migration',

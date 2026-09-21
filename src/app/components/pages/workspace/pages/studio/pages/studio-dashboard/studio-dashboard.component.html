@@ -51,7 +51,7 @@
             <div class="dashboard-content">
 
                 @for (request of requests; track request.title) {
-                <div class="dashboard-item request-item" routerLink="/workspace/studio/care" [queryParams]="{ requestId: request.id }" role="link" tabindex="0" (keydown.enter)="$any($event.target).click()">
+                <div class="dashboard-item request-item" routerLink="/workspace/care" [queryParams]="{ requestId: request.id }" role="link" tabindex="0" (keydown.enter)="$any($event.target).click()">
                     <div class="item-info">
                         <span class="badge" [ngClass]="request.statusClass">
                             {{ request.status }}
@@ -69,7 +69,7 @@
             </div>
 
             <div class="dashboard-footer">
-                <button class="connect-btn" routerLink="/workspace/studio/care">
+                <button class="connect-btn" routerLink="/workspace/care">
                     요청 현황 보기 →
                 </button>
             </div>

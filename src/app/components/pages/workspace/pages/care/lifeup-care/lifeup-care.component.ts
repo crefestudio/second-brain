@@ -2,9 +2,9 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { AuthService } from '../../../../../../../services/auth.service';
-import { CareAttachment, CareMessage, CareRequest, CareRequestService } from '../../../../../../../services/care-request.service';
-import { ToastService } from '../../../../../../../services/toast.service';
+import { AuthService } from '../../../../../../services/auth.service';
+import { CareAttachment, CareMessage, CareRequest, CareRequestService } from '../../../../../../services/care-request.service';
+import { ToastService } from '../../../../../../services/toast.service';
 
 @Component({
     selector: 'app-lifeup-care',
