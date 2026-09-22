@@ -24,21 +24,7 @@
 <div class="app-body">
 
   <aside class="sidebar">
-    <details class="account-menu" #accountMenu (keydown.escape)="accountMenu.open = false">
-      <summary><img src="/favicon.ico" alt="" width="38" height="38">
-        <strong>{{ auth.account()?.displayName || 'NotionAble' }}</strong>
-        <span style="margin:0px 6px 3px 6px">⌵</span></summary>
-      <div class="account-dropdown">
-        @if (auth.account(); as account) {
-          <div class="account-info"><strong>{{ account.displayName || '내 계정' }}</strong><small>{{ account.email }}</small></div>
-          <a routerLink="/mypage/profile" (click)="accountMenu.open = false">계정 설정</a>
-          <button type="button" [disabled]="auth.busy()" (click)="auth.logout()">로그아웃</button>
-        } @else {
-          <a routerLink="/login">로그인 / 회원가입</a>
-        }
-        @if (auth.error()) { <p role="alert">{{ auth.error() }}</p> }
-      </div>
-    </details>
+    <div class="sidebar-navigation">
 
     <!-- 라이프업 -->
 
@@ -321,6 +307,25 @@
         }
       </div>
     }
+    </div>
+    <div class="sidebar-account">
+      <details class="account-menu" #accountMenu (keydown.escape)="accountMenu.open = false">
+        <summary><img src="/favicon.ico" alt="" width="28" height="28">
+          <strong>{{ auth.account()?.displayName || auth.account()?.email || 'NotionAble' }}</strong>
+          <span class="account-chevron" aria-hidden="true">⌃</span>
+        </summary>
+        <div class="account-dropdown">
+          @if (auth.account(); as account) {
+            <div class="account-info"><strong>{{ account.displayName || '내 계정' }}</strong><small>{{ account.email }}</small></div>
+            <a routerLink="/mypage/profile" (click)="accountMenu.open = false">계정 설정</a>
+            <button type="button" [disabled]="auth.busy()" (click)="auth.logout()">로그아웃</button>
+          } @else {
+            <a routerLink="/login" (click)="accountMenu.open = false">로그인 / 회원가입</a>
+          }
+          @if (auth.error()) { <p role="alert">{{ auth.error() }}</p> }
+        </div>
+      </details>
+    </div>
   </aside>
 
   <div class="content">

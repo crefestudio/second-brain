@@ -53,6 +53,7 @@ export class AppComponent implements OnInit {
             .pipe(filter(event => event instanceof NavigationEnd))
             .subscribe(() => {
                 this.currentPath = this.router.url;
+                this.notifyEmbedRouteChange();
             });
     }
 
@@ -87,6 +88,14 @@ export class AppComponent implements OnInit {
 
         void this.swUpdate.checkForUpdate();
         window.setInterval(() => void this.swUpdate.checkForUpdate(), 5 * 60 * 1000);
+    }
+
+    private notifyEmbedRouteChange(): void {
+        if (window.parent === window) return;
+        window.parent.postMessage({
+            type: 'APP_ROUTE_CHANGED',
+            path: this.currentPath
+        }, 'https://notionable.net');
     }
 
 

@@ -27,6 +27,7 @@ import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime,
 import { Client } from "@notionhq/client";
 import { executeMigration, MigrationConflict, migrationErrorMessage } from './lifeup-migration-runner';
 import { habitDayRange, uniqueHabitLogs } from './routine-utils';
+import { createPurchaseLogin, PurchaseLoginError } from './purchase-login';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
@@ -2302,11 +2303,46 @@ function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject
 export const latpeedPaymentWebhook = onRequest(
     { secrets: [LATPEED_WEBHOOK_SECRET], timeoutSeconds: 10 },
     async (req, res) => {
+        // One ID per delivery, including free purchases, retries and rejected requests.
+        const deliveryId = crypto.randomUUID();
+        const startedAt = Date.now();
+        const scalar = (value: unknown) => typeof value === 'string'
+            ? value.slice(0, 500)
+            : typeof value === 'number' || typeof value === 'boolean' ? value : null;
+        const receivedPayment = req.body?.payment;
+        let outcome = 'processing';
+        let emailStatus = 'not_attempted';
+        logger.info('[Latpeed Webhook] received', {
+            deliveryId,
+            method: req.method,
+            eventType: scalar(req.body?.type),
+            orderId: scalar(receivedPayment?.orderId),
+            paymentStatus: scalar(receivedPayment?.status),
+            rawAmount: scalar(receivedPayment?.amount),
+            paymentDate: scalar(receivedPayment?.date),
+            purchaseOption: latpeedPurchaseOption(receivedPayment).slice(0, 500),
+            bodyFields: Object.keys(req.body || {}).slice(0, 50),
+            paymentFields: Object.keys(receivedPayment || {}).slice(0, 50),
+            bodyBytes: Buffer.isBuffer(req.rawBody) ? req.rawBody.length : null,
+            bodySha256: Buffer.isBuffer(req.rawBody)
+                ? crypto.createHash('sha256').update(req.rawBody).digest('hex') : null
+        });
+        res.once('finish', () => {
+            logger.info('[Latpeed Webhook] completed', {
+                deliveryId,
+                outcome: outcome === 'processing' ? 'processing_error' : outcome,
+                emailStatus,
+                httpStatus: res.statusCode,
+                durationMs: Date.now() - startedAt
+            });
+        });
         if (req.method !== 'POST') {
+            outcome = 'method_not_allowed';
             res.status(405).send('Method not allowed');
             return;
         }
         if (!isValidLatpeedWebhook(req)) {
+            outcome = 'invalid_signature';
             res.status(401).send('Invalid webhook signature');
             return;
         }
@@ -2317,6 +2353,10 @@ export const latpeedPaymentWebhook = onRequest(
         const isPaid = (event?.type === 'NORMAL_PAYMENT' || event?.type === 'MEMBERSHIP_PAYMENT') &&
             payment.status === 'SUCCESS' && amount > 0 && typeof payment.orderId === 'string';
         if (!isPaid) {
+            outcome = !['NORMAL_PAYMENT', 'MEMBERSHIP_PAYMENT'].includes(event?.type)
+                ? 'unsupported_event'
+                : payment.status !== 'SUCCESS' ? 'payment_not_successful'
+                : amount <= 0 ? 'zero_or_invalid_amount' : 'missing_order_id';
             res.status(200).json({ received: true, processed: false });
             return;
         }
@@ -2351,11 +2391,13 @@ export const latpeedPaymentWebhook = onRequest(
             return true;
         });
         if (!created) {
+            outcome = 'duplicate';
             res.status(200).json({ received: true, duplicate: true });
             return;
         }
 
         if (!memberType) {
+            outcome = 'ineligible_purchase';
             res.status(200).json({ received: true, processed: true, eligible: false });
             return;
         }
@@ -2370,18 +2412,66 @@ export const latpeedPaymentWebhook = onRequest(
         try {
             const mail = lifeupWelcomeMail(String(payment.name || '').trim(), LIFEUP_PURCHASE_GUIDE_URL);
             const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: LATPEED_TEST_EMAIL, ...mail });
+            emailStatus = sent.error ? 'provider_rejected' : 'sent';
             await purchaserRef.update({
                 'welcomeEmail.status': 'sent',
                 'welcomeEmail.resendId': sent.data?.id || '',
                 'welcomeEmail.sentAt': admin.firestore.FieldValue.serverTimestamp()
             });
         } catch (error) {
+            emailStatus = 'failed';
             await purchaserRef.update({ 'welcomeEmail.status': 'failed' });
             logger.error('[Latpeed Webhook] welcome email failed', error);
         }
+        outcome = 'processed';
         res.status(200).json({ received: true, processed: true });
     }
 );
+
+const purchaseLogin = createPurchaseLogin({
+    db, auth: admin.auth(),
+    send: async (email, code) => {
+        const result = await resend.emails.send({
+            from: 'Notionable <noreply@notionable.net>', to: email,
+            subject: 'NotionAble 앱 로그인 인증번호',
+            text: `앱 로그인 인증번호: ${code}\n유효시간은 10분입니다. 본인이 요청하지 않았다면 입력하거나 공유하지 마세요.`
+        });
+        if (result.error) throw new Error('LOGIN_EMAIL_DELIVERY_FAILED');
+    },
+    purchase: async email => {
+        const records = await findPurchaserRecords('lifeUp', email);
+        const best = selectBestPurchaser(records);
+        return best ? { purchaser: best.data, purchaserIds: records.map(record => record.id),
+            memberType: lifeupMemberType(best.data)! } : null;
+    }
+});
+
+export const requestPurchaseLoginCode = onRequest(withCors(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({ message: 'POST required' });
+    try {
+        await purchaseLogin.request(req.body?.email, req.ip || '');
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(error instanceof PurchaseLoginError ? error.status : 500).json({
+            message: error instanceof PurchaseLoginError ? error.message : '인증 메일을 보내지 못했습니다. 잠시 후 다시 시도해주세요.'
+        });
+    }
+}));
+
+export const verifyPurchaseLoginCode = onRequest(withCors(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({ message: 'POST required' });
+    try { return res.json(await purchaseLogin.verify(req.body?.email, req.body?.code)); }
+    catch (error) {
+        if (!(error instanceof PurchaseLoginError)) logger.error('[PurchaseLogin] failed', {
+            code: (error as { code?: string })?.code || 'INTERNAL_ERROR'
+        });
+        return res.status(error instanceof PurchaseLoginError ? error.status : 500).json({
+            message: error instanceof PurchaseLoginError ? error.message : '로그인을 완료하지 못했습니다. 인증번호를 다시 요청해주세요.'
+        });
+    }
+}));
 
 export const sendVerificationEmail = onRequest(
     withCors(async (req, res) => {

@@ -56,8 +56,7 @@ export const routes: Routes = [
   { path: 'login', component: SocialLoginComponent },
   {
     path: 'download/lifeup',
-    component: LifeupDownloadComponent,
-    canActivate: [memberGuard]
+    component: LifeupDownloadComponent
   },
   {
     path: '',

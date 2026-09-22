@@ -18,7 +18,7 @@
 }
 
 .view-wrapper.app-mode {
-  height: 100dvh;
+  height: 100%;
   min-height: 0;
 }
 
@@ -30,7 +30,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .error-message {
@@ -500,9 +502,10 @@
 toast
 */
 .toast {
-  position: fixed;
+  position: absolute;
   z-index: 100;
-  bottom: 24px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  max-width: calc(100% - 32px);
   left: 50%;
   transform: translate(-50%, 10px);
 
@@ -522,12 +525,6 @@ toast
   word-break: break-word;
 
   transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-/* `position: fixed` is relative to the viewport. In the workspace, shift by
-   half of the 242px sidebar so the toast is centered in the content area. */
-.view-wrapper.app-mode .toast {
-  left: calc(50% + 121px);
 }
 
 .toast.show {

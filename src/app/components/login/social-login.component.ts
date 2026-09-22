@@ -1,14 +1,32 @@
 import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { SocialAuthService } from '../../services/social-auth.service';
 
 @Component({
-    selector: 'app-social-login', standalone: true,
+    selector: 'app-social-login', standalone: true, imports: [FormsModule],
     template: `
         <main>
             <img class="brand-icon" src="/favicon.ico" width="76" height="76" alt="NotionAble App">
             <h1>Notionable App</h1>
-            <p class="intro">내 템플릿을 연결하고, 자동화하고, 더 편리하게 관리하세요.<br><br>처음 로그인하면 계정이 자동으로 생성됩니다.</p>
+            <p class="intro">구매 이메일을 인증하고 마이웹을 시작하세요.<br>다음 방문에는 저장된 로그인 상태로 연결됩니다.</p>
+            @if (!auth.account()) {
+                <form class="purchase-login" (ngSubmit)="verifyPurchase()">
+                    <label for="purchase-email">라이프업 구매 이메일</label>
+                    <input id="purchase-email" name="purchaseEmail" type="email" autocomplete="email"
+                        required maxlength="254" [(ngModel)]="purchaseEmail" [disabled]="auth.busy()"
+                        (ngModelChange)="codeSent = false; purchaseCode = ''">
+                    <button type="button" class="continue-button" [disabled]="auth.busy() || !purchaseEmail.trim()"
+                        (click)="sendPurchaseCode()">{{ codeSent ? '인증번호 다시 받기' : '인증번호 받기' }}</button>
+                    @if (codeSent) {
+                        <label for="purchase-code">이메일 인증번호</label>
+                        <input id="purchase-code" name="purchaseCode" inputmode="numeric" autocomplete="one-time-code"
+                            required pattern="[0-9]{6}" maxlength="6" [(ngModel)]="purchaseCode" [disabled]="auth.busy()">
+                        <button class="continue-button" type="submit" [disabled]="auth.busy() || purchaseCode.length !== 6">인증하고 시작하기</button>
+                    }
+                </form>
+                <p class="hint">또는 기존 소셜 계정으로 로그인</p>
+            }
             <div class="login-buttons">
                 <button class="google-button" [disabled]="auth.busy()" (click)="login('google')">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.57-2.77c-.98.66-2.24 1.06-3.71 1.06-2.87 0-5.3-1.94-6.17-4.55H2.14v2.84A11 11 0 0 0 12 23Z"/><path fill="#FBBC05" d="M5.83 14.09A6.6 6.6 0 0 1 5.49 12c0-.72.12-1.42.34-2.09V7.07H2.14A11 11 0 0 0 1 12c0 1.77.42 3.45 1.14 4.93l3.69-2.84Z"/><path fill="#EA4335" d="M12 5.36c1.62 0 3.06.56 4.2 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1a11 11 0 0 0-9.86 6.07l3.69 2.84C6.7 7.3 9.13 5.36 12 5.36Z"/></svg>
@@ -20,8 +38,9 @@ import { SocialAuthService } from '../../services/social-auth.service';
                 </button>
             </div>
             @if (auth.busy()) { <p role="status">로그인 확인 중…</p> }
+            @if (auth.notice()) { <p role="status">{{ auth.notice() }}</p> }
             @if (auth.error()) { <p role="alert">@for (line of errorLines; track line) { {{ line }}<br> }</p> }
-            <p class="hint">기존 구매 내역은 로그인 후 구매 이메일로 연결할 수 있습니다.</p>
+            <p class="hint">다른 기기 이용 시 다시 인증이 필요합니다.</p>
             @if (auth.account()) { <button class="continue-button" (click)="continue()">계속하기</button><button class="logout-button" (click)="auth.logout()">로그아웃</button> }
         </main>
     `,
@@ -32,6 +51,9 @@ import { SocialAuthService } from '../../services/social-auth.service';
         h1{margin:0;color:#fff;font-size:25px;font-weight:700;letter-spacing:-.4px}
         p{color:#a5a8b0;line-height:1.65;font-size:13px}.intro{margin:3px 0 8px}
         .login-buttons{display:grid;gap:9px}
+        .purchase-login{text-align:left;margin:22px 0}.purchase-login label{display:block;margin:14px 0 6px;font-size:13px;color:#c5c8d0}
+        .purchase-login input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #4b5060;border-radius:8px;background:#1d2028;color:#fff;font:inherit}
+        .purchase-login input:focus{outline:2px solid #74a7f5;outline-offset:2px}
         button{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:42px;padding:9px 14px;border-radius:8px;cursor:pointer;font:600 13px inherit;transition:.18s}
         .google-button{background:rgba(37,99,235,.2);border:1px solid #315da9;color:#74a7f5}.google-button:hover{background:#2d72b5;border-color:#4389ca;color:#fff}
         .google-button svg{width:18px;height:18px;background:#fff;border-radius:50%;padding:2px;box-sizing:border-box}
@@ -41,6 +63,9 @@ import { SocialAuthService } from '../../services/social-auth.service';
     `]
 })
 export class SocialLoginComponent {
+    purchaseEmail = '';
+    purchaseCode = '';
+    codeSent = false;
     auth = inject(SocialAuthService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
@@ -51,12 +76,22 @@ export class SocialLoginComponent {
             : [message];
     }
     async login(provider: 'google' | 'apple') { if (await this.auth.login(provider)) await this.continue(); }
+    async sendPurchaseCode() {
+        if (await this.auth.requestPurchaseCode(this.purchaseEmail)) this.codeSent = true;
+    }
+    async verifyPurchase() {
+        if (this.codeSent && await this.auth.loginWithPurchase(this.purchaseEmail, this.purchaseCode)) {
+            this.purchaseCode = '';
+            await this.continue();
+        }
+    }
     async continue() {
         let session: any;
         try { session = await this.auth.session(); }
         catch { this.auth.error.set('계정 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
         if (!session) return;
         const path = this.route.snapshot.queryParamMap.get('returnUrl') ?? '';
-        void this.router.navigateByUrl(/^\/(workspace|mypage)(\/|$)/.test(path) ? path : session.userId ? '/workspace/home' : '/workspace/connect');
+        const allowedReturnPath = /^\/(workspace|mypage)(\/|$)/.test(path) || /^\/download\/lifeup(?:[?#]|$)/.test(path);
+        void this.router.navigateByUrl(allowedReturnPath ? path : session.userId ? '/workspace/home' : '/workspace/connect');
     }
 }

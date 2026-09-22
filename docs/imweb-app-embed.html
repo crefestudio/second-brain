@@ -1,0 +1,98 @@
+<!-- 아임웹 /app 페이지의 코드 위젯에 전체를 붙여 넣습니다.
+     앱은 구매 이메일 인증 또는 Google 로그인으로 Firebase 세션을 만듭니다.
+     아임웹 memberUID만으로 자동 로그인하지 않습니다. -->
+<div id="notionable-app-shell" style="width:100%; height:100dvh; min-height:0; overflow:hidden;">
+  <iframe id="notionable-app"
+    title="NotionAble 마이웹"
+    style="width:100%; height:100%; min-height:0; border:0; display:block;"
+    allow="clipboard-write">
+  </iframe>
+</div>
+<script>
+(() => {
+  const APP_ORIGIN = 'https://app.notionable.net';
+  const DEFAULT_PATH = '/workspace/home';
+
+  const PATH_SEGMENT = /^[a-zA-Z0-9-]+$/;
+  function pathSegments(params) {
+    const sub = params.get('sub');
+    const sub2 = params.get('sub2');
+    if (sub2 && !sub) return null;
+    const segments = [sub, sub2].filter(Boolean);
+    return segments.every(segment => PATH_SEGMENT.test(segment)) ? segments : null;
+  }
+  function resolvePath(search) {
+    const params = new URLSearchParams(search);
+    const menu = params.get('menu');
+    const page = params.get('page');
+    const segments = pathSegments(params);
+    if (!segments || (menu && page)) return DEFAULT_PATH;
+    if (menu && PATH_SEGMENT.test(menu)) return '/workspace/' + [menu, ...segments].join('/');
+    if (page && PATH_SEGMENT.test(page)) return '/' + [page, ...segments].join('/');
+    return DEFAULT_PATH;
+  }
+  function resolveSearch(path) {
+    const cleanPath = typeof path === 'string' ? path.split(/[?#]/, 1)[0] : '';
+    if (cleanPath === '/workspace/home') return '';
+    const parts = cleanPath.split('/').filter(Boolean);
+    if (!parts.length || parts.length > 4 || !parts.every(part => PATH_SEGMENT.test(part))) return null;
+    const [first, ...segments] = parts;
+    const query = new URLSearchParams();
+    if (first === 'workspace') {
+      const menu = segments.shift();
+      if (!menu) return null;
+      query.set('menu', menu);
+    } else {
+      query.set('page', first);
+    }
+    if (segments[0]) query.set('sub', segments[0]);
+    if (segments[1]) query.set('sub2', segments[1]);
+    return '?' + query.toString();
+  }
+  const frame = document.getElementById('notionable-app');
+  const shell = document.getElementById('notionable-app-shell');
+  // 홈페이지 헤더 아래부터 현재 보이는 화면의 바닥까지 사용합니다.
+  // 부모 문서의 스크롤을 강제로 막지 않아 다른 메뉴와 푸터는 접근 가능합니다.
+  function fitViewport() {
+    const viewport = window.visualViewport;
+    const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+    shell.style.height = Math.max(0, Math.floor(bottom - Math.max(0, shell.getBoundingClientRect().top))) + 'px';
+  }
+  let resizePending = false;
+  function scheduleFit() {
+    if (resizePending) return;
+    resizePending = true;
+    window.requestAnimationFrame(() => { resizePending = false; fitViewport(); });
+  }
+  fitViewport();
+  window.addEventListener('resize', scheduleFit);
+  window.addEventListener('scroll', scheduleFit, { passive: true });
+  window.addEventListener('load', scheduleFit);
+  window.visualViewport?.addEventListener('resize', scheduleFit);
+  window.visualViewport?.addEventListener('scroll', scheduleFit);
+  // 회원 식별 정보 전달용입니다. Firebase 로그인 증명으로 사용하지 않습니다.
+  // 기존 공통 스크립트의 CHECK_AUTH 리스너는 제거하고 이 리스너만 사용하세요.
+  window.addEventListener('message', (event) => {
+    if (event.origin !== APP_ORIGIN || event.source !== frame.contentWindow) return;
+    if (event.data?.type === 'CHECK_AUTH') {
+      const uid = window.MEMBER_UID;
+      const memberUid = typeof uid === 'string' ? uid.trim() || null
+        : typeof uid === 'number' && Number.isFinite(uid) && uid > 0 ? String(uid) : null;
+      frame.contentWindow.postMessage({ type: 'AUTH', memberUid }, APP_ORIGIN);
+      return;
+    }
+    if (event.data?.type === 'APP_ROUTE_CHANGED') {
+      const search = resolveSearch(event.data.path);
+      if (search === null) return;
+      const next = window.location.pathname + search;
+      if (window.location.search !== search) window.history.replaceState(null, '', next);
+    }
+  });
+  function navigate() {
+    const next = APP_ORIGIN + resolvePath(window.location.search);
+    if (frame.getAttribute('src') !== next) frame.setAttribute('src', next);
+  }
+  navigate();
+  window.addEventListener('popstate', navigate);
+})();
+</script>

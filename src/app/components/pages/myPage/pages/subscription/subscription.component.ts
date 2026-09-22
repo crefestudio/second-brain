@@ -35,20 +35,20 @@ export class SubscriptionComponent implements OnInit {
         private userService: UserService
     ) { }
 
-    services = [
-        {
-            serviceName: 'Notion AI 업무 시스템',
-            purchaseVerified: true,
-            apiConnected: true,
-            templateInfo: '영업 CRM + 고객관리'
-        },
-        {
-            serviceName: '콘텐츠 자동화 시스템',
-            purchaseVerified: true,
-            apiConnected: false,
-            templateInfo: '블로그 자동 발행'
-        }
-    ];
+    // services = [
+    //     {
+    //         serviceName: 'Notion AI 업무 시스템',
+    //         purchaseVerified: true,
+    //         apiConnected: true,
+    //         templateInfo: '영업 CRM + 고객관리'
+    //     },
+    //     {
+    //         serviceName: '콘텐츠 자동화 시스템',
+    //         purchaseVerified: true,
+    //         apiConnected: false,
+    //         templateInfo: '블로그 자동 발행'
+    //     }
+    // ];
 
 
     async ngOnInit() {
@@ -60,6 +60,10 @@ export class SubscriptionComponent implements OnInit {
         const result = await UserService.updatePurchaseInfo(this.userId);
         this.purchaseInfo = result.purchaseInfo;
         this.isLifeupPurchaser = result.isPurchaser;
+    }
+
+    get serviceGrade(): string {
+        return this.purchaseInfo?.memberType === 'premium' ? '프리미엄' : '일반';
     }
 
 
@@ -78,31 +82,25 @@ export class SubscriptionComponent implements OnInit {
     }
 
     submitVerification() {
-
         if (!this.verifyValue.trim()) {
-
             alert('구매 시 등록한 이메일 입력해주세요.');
             return;
-
         }
 
         alert('확인 신청이 접수되었습니다.');
-
         this.requestMode = false;
     }
 
     cancelVerification() {
-
         this.verifyValue = '';
-
         this.requestMode = false;
     }
 
-    downloadTemplate(): void {
-        const link = document.createElement('a');
-        link.href = '/templateDownload/LifeUp-1.3-Template-Passport.pdf';
-        link.download = 'Life Up 1.3 템프릿 패스포트.pdf';
-        link.click();
-    }
+    // downloadTemplate(): void {
+    //     const link = document.createElement('a');
+    //     link.href = '/templateDownload/LifeUp-1.3-Template-Passport.pdf';
+    //     link.download = 'Life Up 1.3 템프릿 패스포트.pdf';
+    //     link.click();
+    // }
 
 }

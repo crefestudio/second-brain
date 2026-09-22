@@ -1,15 +1,11 @@
 <div class="page-container">
-
   <div class="page-header">
-
     <div class="breadcrumb">
       <a routerLink="/mypage">마이페이지</a>
       <span>›</span>
       <span>구매 정보</span>
     </div>
-
     <h1>구매 정보</h1>
-
     <p>
       구매한 템플릿 및 현재 이용 중인 구독 정보를 확인합니다.
     </p>
@@ -29,15 +25,15 @@
       <thead>
         <tr>
           <th>템플릿</th>
-          <!-- <th>구매 일자</th> -->
+          <th>서비스 등급</th>          
+          <th>상세정보</th>
+          <th>다운로드</th>
           <th>구매 확인
             &nbsp;
             <span class="help-icon">ⓘ
               <span class="tooltip">--</span>
             </span>
           </th>
-          <th>상세정보</th>
-          <th>다운로드</th>
           <th>라이프봇 연결</th>
         </tr>
       </thead>
@@ -45,25 +41,7 @@
       <tbody>
         <tr>
           <td>라이프업</td>
-
-          <td>
-            @if (isLifeupPurchaser && purchaseInfo.email) {
-            <span class="badge success">
-              확인됨
-            </span>
-            } @else {
-            <div class="verify-wrap">
-              <span class="badge pending">
-                미확인
-              </span>
-              &nbsp;
-              <button class="verify-btn" (click)="router.navigate(['/workspace/connect'])">
-                구매 확인
-              </button>
-            </div>
-            }
-          </td>
-
+          <td>{{ serviceGrade }}</td>        
           <td>
             @if (isLifeupPurchaser && purchaseInfo.email) {
 
@@ -99,6 +77,24 @@
             }
           </td>
 
+           <td>
+            @if (isLifeupPurchaser && purchaseInfo.email) {
+            <span class="badge success">
+              확인됨
+            </span>
+            } @else {
+            <div class="verify-wrap">
+              <span class="badge pending">
+                미확인
+              </span>
+              &nbsp;
+              <button class="verify-btn" (click)="router.navigate(['/workspace/connect'])">
+                구매 확인
+              </button>
+            </div>
+            }
+          </td>
+
           <td>
             @if ( userId && isLifeupPurchaser && kakaoUserId && notionAccessToken) {
             <span class="badge success">
@@ -117,7 +113,7 @@
         @if(showPurchaseDetail) {
         <tr class="purchase-detail-row">
 
-          <td colspan="5">
+          <td colspan="6">
             <table class="purchase-detail-table">
               <tbody>
                 <tr>

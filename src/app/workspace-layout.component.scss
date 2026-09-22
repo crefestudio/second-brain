@@ -1,7 +1,9 @@
 :host {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
     background: #111;
     color: #fff;
 }
@@ -64,14 +66,19 @@
 .account-menu {
     font-size: 15px;
     position: relative;
-    margin-bottom: 10px;
-    summary { display: flex; align-items: center; gap: 0px; padding: 6px 8px 6px 1px; cursor: pointer; list-style: none; border-radius: 10px; color: #eee; }
+    summary { display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; list-style: none; border-radius: 8px; color: #eee; }
+    summary img { flex-shrink: 0; }
+    summary strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    summary:focus-visible { outline: 2px solid #7aa2f7; outline-offset: 2px; }
+    &[open] summary { background: #24262b; }
+    &[open] .account-chevron { transform: rotate(180deg); }
     summary::-webkit-details-marker { display: none; }
     summary:hover { background: #24262b; }
     summary span { margin-left: auto; }
     .account-dropdown { 
         font-size: 14px;
-        position: absolute; top: 100%; left: 0; right: 0; z-index: 100; padding: 8px 6px 10px; background: #1a1b1e; border: 1px solid #41434a; border-radius: 10px; box-shadow: 0 12px 30px #0008; }
+        position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 100; padding: 8px 6px 10px; background: #1a1b1e; border: 1px solid #41434a; border-radius: 8px; box-shadow: 0 -8px 30px #0008;
+        max-height: max(0px, calc(100dvh - 110px)); overflow-y: auto; box-sizing: border-box; }
     .account-info { padding: 7px 8px; overflow-wrap: anywhere; }
     small { display: block; color: #aaa; margin-top: 0px; }
     a, button { display: block; box-sizing: border-box; width: 100%; padding: 7px 8px; background: transparent; color: #ddd; text-align: left; border: 0; border-radius: 6px; cursor: pointer; text-decoration: none; font: inherit; }
@@ -80,16 +87,34 @@
 }
 
 .sidebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     flex: 0 0 210px;
     background: #181818;
     border-right: 1px solid #2a2a2a;
+    padding: 0;
+    flex-basis: 242px;
+    min-width: 0;
+}
+
+.sidebar-navigation {
+    flex: 1;
+    min-height: 0;
     padding: 16px;
     overflow-y: auto;
+}
+
+.sidebar-account {
+    flex-shrink: 0;
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+    border-top: 1px solid #2a2a2a;
 }
 
 .content {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     padding: 0;
     overflow-y: auto;
 }

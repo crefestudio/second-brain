@@ -682,7 +682,8 @@ export class UserService {
         return {
             templateId: purchaseSnap.id,
             ...data?.purchaser ?? null,
-            verified: data.verified
+            verified: data.verified,
+            memberType: data.memberType
         };
     }
 

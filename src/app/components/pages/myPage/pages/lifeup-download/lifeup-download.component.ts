@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
+import { SocialAuthService } from '../../../../../services/social-auth.service';
 
 @Component({
     selector: 'app-lifeup-download',
@@ -21,26 +22,31 @@ export class LifeupDownloadComponent implements OnInit {
     purchaserEmail = '';
     isVerifying = false;
     verificationError = '';
+    private verificationUid: string | null = null;
 
-    readonly downloadUrl = 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e1eea79fd8c805f8efdf9db34862c43?source=copy_link';
+    readonly downloadUrl = 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e3eea79fd8c80b39dc7e4aa9c8982ec?source=copy_link';
     readonly reviewUrl = 'https://notionable.net/store/?idx=1';
-    readonly passportUrl = '/templateDownload/LifeUp-1.3-Template-Passport.pdf';
+    readonly passportUrl = '/templateDownload/LifeUp1.5.pdf';
 
     constructor(
         private readonly authService: AuthService,
         private readonly userService: UserService,
-        private readonly router: Router
+        private readonly router: Router,
+        private readonly socialAuth: SocialAuthService
     ) {}
 
     async ngOnInit(): Promise<void> {
         try {
             await this.loadPurchaseInfo();
+        } catch {
+            this.verificationError = '구매 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.';
         } finally {
             this.isLoading = false;
         }
     }
 
     private async loadPurchaseInfo(): Promise<void> {
+        this.isPurchaser = false;
         await this.authService.updateSession();
         const userId = this.authService.getUserId();
 
@@ -49,7 +55,7 @@ export class LifeupDownloadComponent implements OnInit {
         }
 
         const result = await UserService.updatePurchaseInfo(userId);
-        this.isPurchaser = result.isPurchaser;
+        this.isPurchaser = result.isPurchaser && result.purchaseInfo?.verified === true;
     }
 
     goToPurchaseInfo(): void {
@@ -62,44 +68,41 @@ export class LifeupDownloadComponent implements OnInit {
     }
 
     async verifyPurchase(): Promise<void> {
+        if (this.isVerifying) return;
         const value = this.verificationValue.trim();
         const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-        const digits = value.replace(/\D/g, '');
-        const phone = digits.length === 11 && digits.startsWith('010')
-            ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
-            : undefined;
 
-        if (!isEmail && !phone) {
-            this.verificationError = '구매하실 때 사용한 이메일 또는 휴대폰 번호를 입력해주세요.';
+        if (!isEmail) {
+            this.verificationError = '구매하실 때 사용한 이메일을 입력해주세요.';
             return;
         }
 
         this.isVerifying = true;
         this.verificationError = '';
         try {
-            const purchaser = await this.userService.verifyPurchaser(
-                'lifeUp',
-                isEmail ? value.toLowerCase() : undefined,
-                phone
-            );
-            if (!purchaser?.email) {
-                this.verificationError = '구매 정보를 찾을 수 없습니다. 입력 정보를 확인해주세요.';
-                return;
-            }
-
-            this.purchaserEmail = purchaser.email;
-            const sent = await this.userService.sendVerificationEmail(this.purchaserEmail);
+            await this.socialAuth.init();
+            this.verificationUid = this.socialAuth.account()?.uid ?? null;
+            this.purchaserEmail = value.toLowerCase();
+            // Existing signed-in accounts link the purchase without switching identities.
+            const sent = this.verificationUid
+                ? await this.userService.sendVerificationEmail(this.purchaserEmail)
+                : await this.socialAuth.requestPurchaseCode(this.purchaserEmail);
             if (!sent) {
-                this.verificationError = '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.';
+                this.verificationError = this.verificationUid ? '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
+                    : this.socialAuth.error();
                 return;
             }
+            this.verificationCode = '';
             this.verificationStep = 'code';
+        } catch {
+            this.verificationError = '인증 메일을 보내지 못했습니다. 잠시 후 다시 시도해주세요.';
         } finally {
             this.isVerifying = false;
         }
     }
 
     async confirmVerification(): Promise<void> {
+        if (this.isVerifying) return;
         if (!/^\d{6}$/.test(this.verificationCode)) {
             this.verificationError = '이메일로 받은 인증번호 6자리를 입력해주세요.';
             return;
@@ -108,20 +111,31 @@ export class LifeupDownloadComponent implements OnInit {
         this.isVerifying = true;
         this.verificationError = '';
         try {
-            const result = await this.userService.verifyCode(
-                this.purchaserEmail,
-                this.verificationCode,
-                this.authService.getMemberUid(),
-                'lifeUp'
-            );
-            if (!result?.userId) {
-                this.verificationError = result?.message || '구매 인증에 실패했습니다.';
+            if ((this.socialAuth.account()?.uid ?? null) !== this.verificationUid) {
+                this.verificationError = '로그인 상태가 변경되었습니다. 새로고침 후 다시 인증해주세요.';
                 return;
             }
-
-            await this.authService.updateSession();
-            this.isPurchaser = true;
+            if (this.verificationUid) {
+                const result = await this.userService.verifyCode(
+                    this.purchaserEmail, this.verificationCode, this.verificationUid, 'lifeUp'
+                );
+                if (!result?.userId) {
+                    this.verificationError = result?.message || '구매 인증에 실패했습니다.';
+                    return;
+                }
+            } else if (!await this.socialAuth.loginWithPurchase(this.purchaserEmail, this.verificationCode)) {
+                this.verificationError = this.socialAuth.error();
+                return;
+            }
+            await this.loadPurchaseInfo();
+            if (!this.isPurchaser) {
+                this.verificationError = '인증한 계정의 구매 정보를 확인할 수 없습니다. 새로고침 후 다시 확인해주세요.';
+                return;
+            }
+            this.verificationCode = '';
             this.verificationStep = 'intro';
+        } catch {
+            this.verificationError = '구매 정보를 확인하지 못했습니다. 새로고침 후 다시 시도해주세요.';
         } finally {
             this.isVerifying = false;
         }
