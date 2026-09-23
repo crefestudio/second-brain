@@ -1909,10 +1909,20 @@ export const getCareAccess = onRequest(withCors(async (req, res) => {
 
 type LifeupMemberType = 'standard' | 'premium';
 type PurchaserRecord = { id: string; data: any; memberType?: LifeupMemberType };
+const LIFEUP_TEST_PURCHASER_EMAILS = new Set([
+    'mnmlogg@gmail.com',
+    'ryuryuu030@naver.com',
+    'toto791@gmail.com'
+]);
+
+function isLifeupTestPurchase(purchaseOption: unknown): boolean {
+    const option = String(purchaseOption ?? '').replace(/\s+/g, '').toLowerCase();
+    return option.includes('[테스트]') || option.includes('[test]');
+}
 
 function lifeupEffectiveAmount(purchase: { purchaseOption?: unknown; amount?: unknown }): number {
     const rawAmount = typeof purchase.amount === 'number' ? purchase.amount : Number(String(purchase.amount ?? '').replace(/[^0-9]/g, ''));
-    return String(purchase.purchaseOption ?? '').replace(/\s+/g, '').includes('[테스트]') ? 10_000 : rawAmount;
+    return isLifeupTestPurchase(purchase.purchaseOption) ? 10_000 : rawAmount;
 }
 
 /**
@@ -2369,7 +2379,7 @@ export const latpeedPaymentWebhook = onRequest(
             : typeof value === 'number' || typeof value === 'boolean' ? value : null;
         const receivedPayment = req.body?.payment;
         const receivedPurchaseOption = latpeedPurchaseOption(receivedPayment);
-        const isTestPurchase = receivedPurchaseOption.includes('[테스트]');
+        const isTestPurchase = isLifeupTestPurchase(receivedPurchaseOption);
         const receivedAmount = latpeedAmount(receivedPayment?.amount);
         // Test products are intentionally free in Latpeed. Store them as a paid purchase
         // so the normal purchase, entitlement, and test-email flows can be exercised.
@@ -2416,13 +2426,16 @@ export const latpeedPaymentWebhook = onRequest(
         const event = req.body as any;
         const payment = event?.payment || {};
         const purchaseOption = latpeedPurchaseOption(payment);
-        const amount = purchaseOption.includes('[테스트]') ? 10_000 : latpeedAmount(payment.amount);
+        const purchaserEmail = String(payment.email || '').trim().toLowerCase();
+        const isAllowedTestPurchaser = !isTestPurchase || LIFEUP_TEST_PURCHASER_EMAILS.has(purchaserEmail);
+        const amount = isTestPurchase ? 10_000 : latpeedAmount(payment.amount);
         const isPaid = (event?.type === 'NORMAL_PAYMENT' || event?.type === 'MEMBERSHIP_PAYMENT') &&
-            payment.status === 'SUCCESS' && amount > 0 && typeof payment.orderId === 'string';
+            payment.status === 'SUCCESS' && amount > 0 && typeof payment.orderId === 'string' && isAllowedTestPurchaser;
         if (!isPaid) {
             outcome = !['NORMAL_PAYMENT', 'MEMBERSHIP_PAYMENT'].includes(event?.type)
                 ? 'unsupported_event'
                 : payment.status !== 'SUCCESS' ? 'payment_not_successful'
+                : !isAllowedTestPurchaser ? 'test_email_not_allowed'
                 : amount <= 0 ? 'zero_or_invalid_amount' : 'missing_order_id';
             res.status(200).json({ received: true, processed: false });
             return;
@@ -2432,7 +2445,7 @@ export const latpeedPaymentWebhook = onRequest(
         const purchaserRef = db.collection('purchasers').doc(`latpeed_${orderHash}`);
         const purchaser = {
             amount: `${amount.toLocaleString('ko-KR')}원`,
-            email: String(payment.email || '').trim().toLowerCase(),
+            email: purchaserEmail,
             name: String(payment.name || '').trim(),
             notify: latpeedMarketingConsent(payment) ? '예' : '아니오',
             paymentMethod: String(payment.method || ''),
@@ -2703,7 +2716,7 @@ function csvFieldMatches(field: keyof PurchaserCsvRow, webhook: any, csv: Purcha
     if (field === 'phone') return csvPhone(webhook[field]) === csvPhone(csv[field]);
     // Test purchases are intentionally normalized to 10,000 won by the webhook flow,
     // while the CSV correctly preserves the source payment amount as 0 won.
-    if (field === 'amount' && csvComparable(webhook.purchaseOption).includes('[테스트]') && csvComparable(csv.purchaseOption).includes('[테스트]')) return true;
+    if (field === 'amount' && isLifeupTestPurchase(webhook.purchaseOption) && isLifeupTestPurchase(csv.purchaseOption)) return true;
     return csvComparable(webhook[field]) === csvComparable(csv[field]);
 }
 function purchaserCsvKey(value: { email?: unknown; phone?: unknown; purchasedAt?: unknown; purchaseOption?: unknown }): string {

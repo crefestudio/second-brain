@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
 const context = {};
-vm.runInNewContext(ts.transpileModule(source.slice(source.indexOf('function lifeupEffectiveAmount('), source.indexOf('async function findPurchaserRecords(')), {}).outputText, context);
+vm.runInNewContext(ts.transpileModule(source.slice(source.indexOf('const LIFEUP_TEST_PURCHASER_EMAILS'), source.indexOf('async function findPurchaserRecords(')), {}).outputText, context);
 const record = (id, option, date, amount = '10,000원') => ({ id, data: { purchaseOption: option, amount, purchasedAt: date } });
 test('zero amounts are excluded before premium keywords; paid options follow product keywords', () => {
     for (const option of ['라이프업', '라이프업 프리미엄', '커스터마이징']) {

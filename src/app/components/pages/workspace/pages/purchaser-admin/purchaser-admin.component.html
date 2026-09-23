@@ -10,6 +10,7 @@
       @if (csvMessage) { <p class="csv-message">{{ csvMessage }}</p> }
     </header>
     <div class="filter-card">
+      <label>구매자 검색 <input [(ngModel)]="search" placeholder="이메일, 이름, 휴대폰 번호, 상품 옵션 검색"></label>
       <label>정렬 <select [(ngModel)]="sortKey"><option value="purchasedAt">구매 일시</option><option value="email">이메일</option><option value="phone">전화번호</option></select></label>
       <label>서비스 등급 <select [(ngModel)]="memberFilter"><option value="all">전체</option><option value="standard">일반</option><option value="premium">프리미엄</option></select></label>
       <label>상품 옵션 <select [(ngModel)]="productOptionFilter"><option value="all">전체</option><option value="standard">라이프업 - 일반</option><option value="premium">라이프업 - 프리미엄</option><option value="upgrade">프리미엄 승격</option></select></label>
