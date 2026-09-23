@@ -15,6 +15,10 @@ import { _log } from '../../../../../lib/cf-common/cf-common';
     styleUrls: ['./subscription.component.scss']
 })
 export class SubscriptionComponent implements OnInit {
+    isLoading = true;
+    purchases: any[] = [];
+    expandedPurchaseId = '';
+    loadError = '';
     requestMode = false;
     verifyValue = '';
 
@@ -52,14 +56,23 @@ export class SubscriptionComponent implements OnInit {
 
 
     async ngOnInit() {
-        await this.updateSession();
-        await this.updatePurchaseInfo();
+        try {
+            await this.updateSession();
+            await this.updatePurchaseInfo();
+        } catch (error) {
+            this.loadError = '구매 내역을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.';
+            console.error('구매 정보를 불러오지 못했습니다.', error);
+        } finally {
+            this.isLoading = false;
+        }
     }
 
     async updatePurchaseInfo() {
-        const result = await UserService.updatePurchaseInfo(this.userId);
-        this.purchaseInfo = result.purchaseInfo;
-        this.isLifeupPurchaser = result.isPurchaser;
+        this.purchases = await this.userService.getPurchaseHistory();
+    }
+
+    purchaseDate(purchasedAt: unknown): string {
+        return String(purchasedAt || '').split(/[ T]/)[0];
     }
 
     get serviceGrade(): string {

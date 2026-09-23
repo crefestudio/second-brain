@@ -303,7 +303,10 @@
           <span>관리도구</span><span class="arrow" [class.open]="adminOpen">⌵</span>
         </div>
         @if (adminOpen) {
-          <div class="submenu"><a routerLink="/workspace/admin/lifeup-care" routerLinkActive="active" class="submenu-item">라이프업 케어</a></div>
+          <div class="submenu">
+            <a routerLink="/workspace/admin/lifeup-care" routerLinkActive="active" class="submenu-item">라이프업 케어</a>
+            <a routerLink="/workspace/admin/purchasers" routerLinkActive="active" class="submenu-item">구매자 관리</a>
+          </div>
         }
       </div>
     }

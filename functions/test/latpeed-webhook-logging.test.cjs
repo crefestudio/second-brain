@@ -10,7 +10,7 @@ const ts = require('typescript');
 const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
 const handlerSource = source.slice(source.indexOf('export const latpeedPaymentWebhook ='),
     source.indexOf('const purchaseLogin ='));
-function setup(validSignature = true, duplicate = false) {
+function setup(validSignature = true, duplicate = false, purchaseOption = 'test option') {
     const logs = [];
     let databaseCalls = 0;
     const context = {
@@ -19,8 +19,8 @@ function setup(validSignature = true, duplicate = false) {
         logger: { info: (message, data) => logs.push({ message, ...data }) },
         isValidLatpeedWebhook: () => validSignature,
         latpeedAmount: value => Number(value) || 0,
-        latpeedPurchaseOption: () => 'test option',
-        formatLatpeedDate: () => '', lifeupMemberType: () => 'standard',
+        latpeedPurchaseOption: () => purchaseOption,
+        formatLatpeedDate: () => '', lifeupMemberType: () => 'standard', isLifeupUpgrade: () => false,
         db: {
             collection: () => { databaseCalls++; return { doc: () => ({}) }; },
             runTransaction: async () => !duplicate
@@ -85,4 +85,15 @@ test('duplicate paid deliveries are recorded without repeating downstream proces
     assert.equal(response.body.duplicate, true);
     assert.equal(app.logs[1].outcome, 'duplicate');
     assert.equal(app.logs[1].emailStatus, 'not_attempted');
+});
+
+test('free [테스트] purchases use the paid test amount and enter the normal purchase flow', async () => {
+    const app = setup(true, true, '[테스트] 라이프업 1.5 올인원 - 얼리버드 특별 할인 판매');
+    const response = await app.send(payment(0));
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.duplicate, true);
+    assert.equal(app.logs[0].rawAmount, 0);
+    assert.equal(app.logs[0].effectiveAmount, 10_000);
+    assert.equal(app.logs[0].isTestPurchase, true);
+    assert.equal(app.logs[1].outcome, 'duplicate');
 });

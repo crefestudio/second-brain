@@ -1,4 +1,4 @@
-import { AfterViewChecked, Component, ElementRef, OnDestroy, OnInit, QueryList, ViewChildren } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, inject, OnDestroy, OnInit, QueryList, ViewChildren } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { RouterLink, ActivatedRoute } from '@angular/router';
@@ -7,6 +7,7 @@ import { _log } from '../../../../../../lib/cf-common/cf-common';
 import { ToastService } from '../../../../../../services/toast.service';
 import { UserService } from '../../../../../../services/user.service';
 import { NACommonService } from '../../../../../../services/common.service';
+import { APP_CONFIG } from '../../../../../../config/app-config.token';
 
 @Component({
     selector: 'app-lifeup-migration',
@@ -16,6 +17,7 @@ import { NACommonService } from '../../../../../../services/common.service';
     styleUrl: './lifeup-migration.component.scss'
 })
 export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChecked {
+    readonly lifeUpReleaseUrls = inject(APP_CONFIG).lifeUpReleaseUrls;
     @ViewChildren('migrationConsole') private migrationConsoles!: QueryList<ElementRef<HTMLElement>>;
     private consoleItemCounts = new WeakMap<HTMLElement, number>();
 

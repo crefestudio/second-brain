@@ -655,6 +655,15 @@ export class UserService {
     //     return purchaseSnap.exists();
     // }
 
+    async getPurchaseHistory(): Promise<any[]> {
+        if (!auth.currentUser) throw new Error('Login required');
+        const result = await firstValueFrom(this.http.post<{ purchases: any[] }>(
+            `${this.functionsBaseUrl}/getPurchaseHistory`, {},
+            { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } }
+        ));
+        return result.purchases;
+    }
+
     static async getPurchaseInfo(
         userId: string,
         templateId: string

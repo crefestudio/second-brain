@@ -11,7 +11,10 @@ function setup(signedIn = false) {
     let failure = false;
     const calls = [];
     const context = { exports: {}, require: name => name === '@angular/core'
-        ? { Component: () => target => target }
+        ? { Component: () => target => target, inject: () => ({
+            lifeUpReleaseUrls: { '1.5': 'https://example.test/lifeup-1.5' },
+            lifeUpPassportUrls: { '1.5': '/templateDownload/LifeUp1.5.pdf' }
+        }) }
         : name.endsWith('/user.service') ? { UserService: {
             updatePurchaseInfo: async () => ({ isPurchaser: true, purchaseInfo: { verified } })
         } } : {} };

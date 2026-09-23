@@ -1,0 +1,27 @@
+@if (isLoading) {
+  <div class="page-loading"><div class="loading-spinner"></div><p>구매자 정보를 불러오는 중입니다.</p></div>
+} @else if (errorMessage) {
+  <div class="page-container"><div class="empty-state"><h1>구매자 관리</h1><p>{{ errorMessage }}</p></div></div>
+} @else {
+  <div class="page-container">
+    <header class="page-header">
+      <div class="breadcrumb">관리도구 <span>›</span> 구매자 관리</div>
+      <div class="header-row"><div><h1>구매자 관리</h1><p>라이프업 구매 및 구매 인증 현황을 확인합니다.</p></div><label class="csv-btn" [class.loading]="isValidatingCsv">{{ isValidatingCsv ? 'CSV 대조 중…' : 'CSV 등록' }}<input type="file" accept=".csv,text/csv" (change)="onCsvSelected($event)" [disabled]="isValidatingCsv"></label></div>
+      @if (csvMessage) { <p class="csv-message">{{ csvMessage }}</p> }
+    </header>
+    <div class="filter-card">
+      <label>정렬 <select [(ngModel)]="sortKey"><option value="purchasedAt">구매 일시</option><option value="email">이메일</option><option value="phone">전화번호</option></select></label>
+      <label>서비스 등급 <select [(ngModel)]="memberFilter"><option value="all">전체</option><option value="standard">일반</option><option value="premium">프리미엄</option></select></label>
+      <label>상품 옵션 <select [(ngModel)]="productOptionFilter"><option value="all">전체</option><option value="standard">라이프업 - 일반</option><option value="premium">라이프업 - 프리미엄</option><option value="upgrade">프리미엄 승격</option></select></label>
+      <label>등록 상태 <select [(ngModel)]="registrationFilter"><option value="all">전체</option><option value="webhook">래피드훅</option><option value="file_added">파일 추가</option><option value="file_verified">파일 검증</option><option value="file_mismatch">파일 불일치</option></select></label>
+      <label>알림 여부 <select [(ngModel)]="notifyFilter"><option value="all">전체</option><option value="yes">예</option><option value="no">아니오</option></select></label>
+      <span class="count">{{ filteredPurchasers.length }}명</span>
+    </div>
+    <div class="table-card"><table class="service-table"><thead><tr><th>구매 일시</th><th>이름</th><th>이메일</th><th>휴대폰 번호</th><th>상품 옵션</th><th>서비스 등급</th><th>등록 상태</th><th>상세 보기</th></tr></thead><tbody>
+      @for (purchaser of filteredPurchasers; track purchaser.id) {
+        <tr><td>{{ purchaser.purchasedAt || '-' }}</td><td>{{ purchaser.name || '-' }}</td><td>{{ purchaser.email || '-' }}</td><td>{{ purchaser.phone || '-' }}</td><td>{{ productOptionLabel(purchaser) }}</td><td><span class="badge" [class.premium]="purchaser.memberType === 'premium'" [class.standard]="purchaser.memberType === 'standard'">{{ serviceLabel(purchaser) }}</span></td><td><span class="badge registration" [class.file-verified]="registration(purchaser) === 'file_verified'" [class.file-mismatch]="registration(purchaser) === 'file_mismatch'" [class.file-added]="registration(purchaser) === 'file_added'">{{ registrationLabel(purchaser) }}</span></td><td><button class="detail-btn" (click)="toggleDetail(purchaser)">{{ selectedPurchaser?.id === purchaser.id ? '닫기' : '상세 보기' }}</button></td></tr>
+        @if (selectedPurchaser?.id === purchaser.id) { <tr class="detail-row"><td colspan="8"><div class="detail-card"><h2>구매 상세 정보</h2>@if (issues(purchaser).length) { <section class="issues"><strong>이슈</strong><ul>@for (issue of issues(purchaser); track issue) { <li>{{ issue }}</li> }</ul></section> }<dl>@for (entry of detailEntries(purchaser); track entry.key) { <div><dt>{{ entry.key }}</dt><dd>{{ entry.value }}</dd></div> }</dl></div></td></tr> }
+      } @empty { <tr><td colspan="8" class="empty-cell">조건에 맞는 구매자가 없습니다.</td></tr> }
+    </tbody></table></div>
+  </div>
+}

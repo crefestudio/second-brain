@@ -1,10 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
 import { SocialAuthService } from '../../../../../services/social-auth.service';
+import { APP_CONFIG } from '../../../../../config/app-config.token';
 
 @Component({
     selector: 'app-lifeup-download',
@@ -24,9 +25,9 @@ export class LifeupDownloadComponent implements OnInit {
     verificationError = '';
     private verificationUid: string | null = null;
 
-    readonly downloadUrl = 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e3eea79fd8c80b39dc7e4aa9c8982ec?source=copy_link';
+    readonly downloadUrl = inject(APP_CONFIG).lifeUpReleaseUrls['1.5'];
     readonly reviewUrl = 'https://notionable.net/store/?idx=1';
-    readonly passportUrl = '/templateDownload/LifeUp1.5.pdf';
+    readonly passportUrl = inject(APP_CONFIG).lifeUpPassportUrls['1.5'];
 
     constructor(
         private readonly authService: AuthService,

@@ -30,6 +30,12 @@ export const appConfig: ApplicationConfig = {
             provide: APP_CONFIG,
             useValue: {
                 functionsBaseUrl: 'https://us-central1-notionable-secondbrain.cloudfunctions.net',
+                lifeUpReleaseUrls: {
+                    '1.5': 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e3eea79fd8c80b39dc7e4aa9c8982ec?source=copy_link',
+                },
+                lifeUpPassportUrls: {
+                    '1.5': '/templateDownload/LifeUp1.5.pdf',
+                },
             },
         },
     ]
