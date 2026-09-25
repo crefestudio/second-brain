@@ -1,4 +1,5 @@
 import { createHash, randomInt, randomUUID } from 'crypto';
+import { nanoid } from 'nanoid';
 import type * as admin from 'firebase-admin';
 
 export class PurchaseLoginError extends Error {
@@ -104,7 +105,7 @@ export function createPurchaseLogin(deps: Dependencies) {
             }
             if (account.disabled) throw new PurchaseLoginError(403, '사용이 중지된 계정입니다. 관리자에게 문의해주세요.');
             const uid = account.uid;
-            const userId = existing?.id || 'purchase_' + key.slice(0, 32);
+            const userId = existing?.id || nanoid(6);
             const workspaceRef = db.collection('users').doc(userId);
             const accountRef = db.collection('appAccounts').doc(uid);
             await db.runTransaction(async tx => {
@@ -113,6 +114,11 @@ export function createPurchaseLogin(deps: Dependencies) {
                 ]);
                 const currentWorkspace = workspace.data() || {};
                 const currentBinding = binding.data() || {};
+                if (currentBinding.deletionStatus === 'pending') throw new PurchaseLoginError(409, '회원 탈퇴 처리 중입니다.');
+                // A randomly generated widget address must never overwrite another workspace.
+                if (!existing && workspace.exists) {
+                    throw new PurchaseLoginError(409, '워크스페이스 주소가 중복되었습니다. 다시 인증해주세요.');
+                }
                 if (currentMatches.docs.some(doc => doc.id !== userId) ||
                     (currentWorkspace.firebaseUid && currentWorkspace.firebaseUid !== uid) ||
                     (currentBinding.userId && currentBinding.userId !== userId)) {

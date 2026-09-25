@@ -8,6 +8,7 @@ export type ProfileSettings = { displayName: string; email: string; phoneNumber:
 export class ProfileSettingsService {
     private readonly baseUrl = inject(APP_CONFIG).functionsBaseUrl;
     async get(): Promise<ProfileSettings> { return this.request('getMyProfileSettings'); }
+    async deleteAccount(): Promise<void> { await this.request('deleteMyAccount', { confirmDeletion: true, confirmation: '탈퇴' }); }
     async save(displayName: string, marketingConsent: boolean): Promise<Pick<ProfileSettings, 'displayName' | 'marketingConsent'>> { return this.request('updateMyProfileSettings', { displayName, marketingConsent }); }
     private async request(endpoint: string, body: Record<string, unknown> = {}): Promise<any> {
         const token = await auth.currentUser?.getIdToken();

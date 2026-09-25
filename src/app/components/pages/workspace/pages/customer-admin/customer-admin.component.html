@@ -12,15 +12,23 @@
     <div class="filter-card">
       <label>고객 검색<input [(ngModel)]="search" placeholder="이름, 휴대폰 번호, 이메일"></label>
       <label>정렬<select disabled><option>구매 일시</option></select></label>
-      <label>서비스<select [(ngModel)]="memberFilter"><option value="all">전체</option><option value="standard">일반</option><option value="premium">프리미엄</option><option value="none">비구매자</option></select></label>
-      <label>알림 동의 여부<select [(ngModel)]="notifyFilter"><option value="all">전체</option><option value="yes">동의</option><option value="no">미동의/미응답</option></select></label>
+      <label>서비스 타입<select [(ngModel)]="memberFilter"><option value="all">전체</option><option value="standard">일반</option><option value="premium">프리미엄</option><option value="none">비구매자</option></select></label>
+      <label>회원 여부<select [(ngModel)]="membershipFilter"><option value="all">전체</option><option value="premium">프리미엄 회원</option><option value="standard">일반 회원</option><option value="none">비회원</option></select></label>
+      <label>알림 동의 여부<select [(ngModel)]="notifyFilter"><option value="all">전체</option><option value="yes">동의</option><option value="no">미동의/미응답</option><option value="blocked">차단</option></select></label>
       <span class="count">{{ filteredCustomers.length }}명 · {{ selectedIds.size }}명 선택</span>
     </div>
-    <div class="table-card"><table class="service-table"><thead><tr><th><input type="checkbox" [checked]="allVisibleSelected" (change)="toggleAll()" aria-label="전체 선택"></th><th>구매 일시</th><th>이름</th><th>휴대폰 번호 🔑</th><th>이메일</th><th>서비스 등급</th><th>알림 동의 여부</th><th>상세 보기</th></tr></thead><tbody>
+    <div class="mail-toolbar">
+      <label>메일 템플릿<select [(ngModel)]="mailTemplate"><option value="standard-purchaser-welcome">기존 일반 구매자 메일</option><option value="standard-purchaser-update">구매자(일반) 업데이트 안내</option><option value="premium-purchaser-welcome">프리미엄 구매자 안내</option></select></label>
+      <button type="button" class="mail-send-btn" [disabled]="!selectedIds.size || isSendingMail" (click)="sendSelectedMail()">{{ isSendingMail ? '발송 중…' : '메일 발송하기' }}</button>
+      @if (selectedNonConsentingCount) { <span class="mail-warning">⚠ 알림 비동의/미응답 {{ selectedNonConsentingCount }}명</span> }
+      @if (selectedBlockedCount) { <span class="mail-blocked">수신 차단 {{ selectedBlockedCount }}명 제외</span> }
+      @if (mailMessage) { <span class="mail-message">{{ mailMessage }}</span> }
+    </div>
+    <div class="table-card"><table class="service-table"><thead><tr><th><input type="checkbox" [checked]="allVisibleSelected" (change)="toggleAll()" aria-label="전체 선택"></th><th>구매 일시</th><th>이름</th><th>휴대폰 번호</th><th>이메일</th><th>서비스 타입</th><th>회원 여부</th><th>알림 동의 여부</th><th>상세 보기</th></tr></thead><tbody>
       @for (customer of filteredCustomers; track customer.id) {
-        <tr><td><input type="checkbox" [checked]="selectedIds.has(customer.id)" (change)="toggle(customer)" [attr.aria-label]="customer.name || customer.phoneDisplay || '고객 선택'"></td><td>{{ customer.purchasedAt || '-' }}</td><td>{{ customer.name || '-' }}</td><td>{{ customer.phoneDisplay || customer.phone || '-' }}</td><td class="emails">{{ (customer.emails || []).join(', ') || '-' }}</td><td><span class="badge" [class.premium]="customer.memberType === 'premium'" [class.standard]="customer.memberType === 'standard'" [class.none]="!customer.memberType">{{ serviceLabel(customer) }}</span></td><td>{{ customer.notificationConsent || '미응답' }}</td><td><button class="detail-btn" (click)="toggleDetail(customer)">{{ selectedCustomer?.id === customer.id ? '닫기' : '상세 보기' }}</button></td></tr>
-        @if (selectedCustomer?.id === customer.id) { <tr class="detail-row"><td colspan="8"><div class="detail-card"><h2>고객 상세 정보</h2><dl>@for (entry of detailEntries(customer); track entry.key) { <div><dt>{{ entry.key }}</dt><dd>{{ entry.value }}</dd></div> }</dl></div></td></tr> }
-      } @empty { <tr><td colspan="8" class="empty-cell">조건에 맞는 고객이 없습니다.</td></tr> }
+        <tr><td><input type="checkbox" [checked]="selectedIds.has(customer.id)" (change)="toggle(customer)" [attr.aria-label]="customer.name || customer.phoneDisplay || '고객 선택'"></td><td>{{ customer.purchasedAt || '-' }}</td><td>{{ customer.name || '-' }}</td><td>{{ customer.phoneDisplay || customer.phone || '-' }}</td><td class="emails">{{ (customer.emails || []).join(', ') || '-' }}</td><td><span class="badge" [class.premium]="customer.memberType === 'premium'" [class.standard]="customer.memberType === 'standard'" [class.none]="!customer.memberType">{{ serviceLabel(customer) }}</span></td><td>{{ membershipLabel(customer) }}</td><td>{{ customer.notificationConsent || '미응답' }}</td><td><button class="detail-btn" (click)="toggleDetail(customer)">{{ selectedCustomer?.id === customer.id ? '닫기' : '상세 보기' }}</button></td></tr>
+        @if (selectedCustomer?.id === customer.id) { <tr class="detail-row"><td colspan="9"><div class="detail-card"><h2>고객 상세 정보</h2><dl>@for (entry of detailEntries(customer); track entry.key) { <div><dt>{{ entry.key }}</dt><dd>{{ entry.value }}</dd></div> }</dl></div></td></tr> }
+      } @empty { <tr><td colspan="9" class="empty-cell">조건에 맞는 고객이 없습니다.</td></tr> }
     </tbody></table></div>
   </div>
 }

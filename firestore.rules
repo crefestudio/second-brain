@@ -4,6 +4,7 @@ service cloud.firestore {
     // Both sides of the server-managed binding must agree.
     function ownsWorkspace(userId) {
       return request.auth != null
+        && get(/databases/$(database)/documents/appAccounts/$(request.auth.uid)).data.get('deletionStatus', '') != 'pending'
         && get(/databases/$(database)/documents/appAccounts/$(request.auth.uid)).data.userId == userId
         && get(/databases/$(database)/documents/users/$(userId)).data.firebaseUid == request.auth.uid;
     }

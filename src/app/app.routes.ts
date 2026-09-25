@@ -46,6 +46,7 @@ import { LifeupCareComponent } from './components/pages/workspace/pages/care/lif
 import { PurchaserAdminComponent } from './components/pages/workspace/pages/purchaser-admin/purchaser-admin.component';
 import { CustomerAdminComponent } from './components/pages/workspace/pages/customer-admin/customer-admin.component';
 import { MemberAdminComponent } from './components/pages/workspace/pages/member-admin/member-admin.component';
+import { UnsubscribeComponent } from './components/pages/unsubscribe/unsubscribe.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
 //import { UpdateComponent } from './components/pages/life-up/pages/update/update.component';
@@ -56,6 +57,7 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'unsubscribe', component: UnsubscribeComponent },
   { path: 'login', component: SocialLoginComponent },
   {
     path: 'download/lifeup',

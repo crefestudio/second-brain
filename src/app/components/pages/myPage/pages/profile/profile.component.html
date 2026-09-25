@@ -3,6 +3,25 @@
   @if (isLoading) { <div class="empty-state">프로필 정보를 불러오는 중입니다.</div> } @else {
     <section class="info-card"><h2>기본 계정 정보</h2><div class="info-row editable"><label for="profileName">프로필명</label><div><input id="profileName" [(ngModel)]="profileName" maxlength="80" placeholder="프로필명"><small>서비스에서 표시되는 이름입니다.</small></div></div><div class="info-row"><span class="label">이메일</span><span class="value">{{ email || '-' }}</span></div><div class="info-row"><span class="label">휴대폰</span><span class="value">{{ phoneNumber || '-' }}</span></div><div class="info-row"><span class="label">가입일</span><span class="value">{{ createdAt }}</span></div><div class="info-row"><span class="label">로그인 방식</span><span class="value">{{ provider || '-' }}</span></div></section>
     <section class="info-card notification-card"><h2>서비스 알림 설정</h2><div class="notification-item required"><div><strong>서비스 이용 안내 (필수)</strong><p>업데이트, 계정·연결 상태, 요청 답변 등 서비스 이용에 필요한 내용을 안내해 드립니다.</p></div><span>필수</span></div><label class="notification-item consent"><input type="checkbox" [(ngModel)]="marketingConsent"><div><strong>마케팅 알림 수신 동의 (선택)</strong><p>신규 상품, 이벤트, 할인 및 특별 혜택 소식을 받습니다.</p></div></label></section>
-    @if (errorMessage) { <p class="message error">{{ errorMessage }}</p> } @if (successMessage) { <p class="message success">{{ successMessage }}</p> }<button class="save-btn" (click)="save()" [disabled]="isSaving">{{ isSaving ? '저장 중…' : '저장' }}</button>
+    @if (errorMessage) { <p class="message error">{{ errorMessage }}</p> } @if (successMessage) { <p class="message success">{{ successMessage }}</p> }<button class="save-btn" (click)="save()" [disabled]="isSaving || isDeleting">{{ isSaving ? '저장 중…' : '저장' }}</button>
+    <footer class="account-deletion">
+      <button type="button" class="withdraw-link" (click)="showDeletion = !showDeletion" [disabled]="isDeleting" [attr.aria-expanded]="showDeletion" aria-controls="deletion-panel">회원 탈퇴</button>
+      @if (showDeletion) {
+        <section id="deletion-panel" class="deletion-panel" aria-labelledby="deletion-title">
+          <h2 id="deletion-title">회원 탈퇴 및 데이터 삭제</h2>
+          <p class="deletion-warning"><strong>삭제한 데이터는 복구할 수 없습니다.</strong> 재가입해도 기존 기록과 위젯 주소는 복원되지 않습니다.</p>
+          <ul><li>로그인 계정, 프로필과 계정 설정</li><li>본인 소유 워크스페이스 전체와 하위 데이터: 루틴·기록·구매 인증·서비스 연결 정보 등</li><li>카카오 연결·인증 정보, 고객지원 요청·대화·첨부파일</li></ul>
+          <p>기존 위젯 주소와 서비스 연결은 사용할 수 없게 됩니다. 노션에 저장된 원본 페이지, 결제·구매 원장은 삭제하지 않습니다. 고객관리 기록은 마케팅 수신 거부 상태로 유지합니다. 탈퇴는 환불 또는 외부 결제·구독 취소를 대신하지 않습니다.</p>
+          <fieldset [disabled]="isDeleting">
+            <label class="deletion-agreement"><input type="checkbox" [(ngModel)]="deletionAgreed"> 위 삭제 범위와 복구 불가 안내를 확인했으며 데이터 삭제 및 회원 탈퇴에 동의합니다.</label>
+            <label for="deletion-confirmation">확인을 위해 <strong>탈퇴</strong>를 입력해주세요.</label>
+            <input id="deletion-confirmation" [(ngModel)]="deletionConfirmation" autocomplete="off" placeholder="탈퇴">
+          </fieldset>
+          @if (deletionError) { <p class="message error" role="alert">{{ deletionError }}</p> }
+          <button type="button" class="delete-button" (click)="deleteAccount()" [disabled]="isDeleting || isSaving || !deletionAgreed || deletionConfirmation !== '탈퇴'">{{ isDeleting ? '데이터 삭제 중…' : '데이터 삭제 및 회원 탈퇴' }}</button>
+          <button type="button" class="withdraw-link" (click)="showDeletion = false; deletionAgreed = false; deletionConfirmation = ''" [disabled]="isDeleting">취소</button>
+        </section>
+      }
+    </footer>
   }
 </div>

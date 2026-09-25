@@ -78,6 +78,7 @@ test('new purchaser gets reciprocal ownership and a Firebase token', async () =>
     await h.service.request(email, 'ip');
     await h.service.verify(email, h.sent[0].code);
     const binding = h.data.get('appAccounts/new-firebase-user');
+    assert.match(binding.userId, /^[A-Za-z0-9_-]{6}$/);
     assert.equal(h.data.get('users/' + binding.userId).firebaseUid, 'new-firebase-user');
     assert.equal(h.data.get('users/' + binding.userId).accessKey, undefined);
 });

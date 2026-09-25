@@ -28,6 +28,7 @@ import { Client } from "@notionhq/client";
 import { executeMigration, MigrationConflict, migrationErrorMessage } from './lifeup-migration-runner';
 import { habitDayRange, uniqueHabitLogs } from './routine-utils';
 import { createPurchaseLogin, PurchaseLoginError } from './purchase-login';
+import { deleteAccountData } from './account-deletion';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
@@ -1883,6 +1884,11 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 // Keep payment-webhook emails pointed at the test inbox until the production
 // recipient flow is enabled.
 const LATPEED_ADMIN_EMAIL = 'toto791@gmail.com';
+const APP_PUBLIC_URL = 'https://app.notionable.net';
+function withUnsubscribe(mail: { subject: string; text: string; html: string }): { subject: string; text: string; html: string } {
+    const footer = `<p style="margin:24px 0 0;color:#6b7280;font-size:12px"><a href="${APP_PUBLIC_URL}/unsubscribe" style="color:#6b7280">마케팅 알림 수신 차단</a></p>`;
+    return { ...mail, text: `${mail.text}\n\n마케팅 알림 수신 차단: ${APP_PUBLIC_URL}/unsubscribe`, html: `${mail.html}${footer}` };
+}
 const ADMIN_EMAILS = new Set([
     'toto791@gmail.com',
     'crefestudio@gmail.com'
@@ -1894,6 +1900,7 @@ async function getCareIdentity(req: any): Promise<CareIdentity> {
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (!token) throw new Error('LOGIN_REQUIRED');
     const decoded = await admin.auth().verifyIdToken(token, true);
+    if ((await db.collection('appAccounts').doc(decoded.uid).get()).data()?.deletionStatus === 'pending') throw new Error('ACCOUNT_DELETION_PENDING');
     const account = await admin.auth().getUser(decoded.uid);
     const email = String(account.email || '').trim().toLowerCase();
     return { uid: decoded.uid, email, isAdmin: account.emailVerified && ADMIN_EMAILS.has(email) };
@@ -1970,8 +1977,10 @@ function selectBestPurchaser(records: PurchaserRecord[]): PurchaserRecord | null
         return purchaserTimestamp(candidate.data) > purchaserTimestamp(best.data) ? candidate : best;
     }, null);
     if (!best) return null;
-    return { ...best, memberType: records.some(record => isLifeupUpgrade(record.data))
-        ? 'premium' : lifeupMemberType(best.data)! };
+    return {
+        ...best, memberType: records.some(record => isLifeupUpgrade(record.data))
+            ? 'premium' : lifeupMemberType(best.data)!
+    };
 }
 
 async function findPurchaserRecords(templateId: string, email?: string, phone?: string): Promise<PurchaserRecord[]> {
@@ -2092,19 +2101,19 @@ export const createCareRequest = onRequest(withCors(async (req, res) => {
                 await admin.storage().bucket().file(path).save(file.buffer, { metadata: { contentType: 'application/octet-stream' } });
                 uploaded.push(path);
             }
-        const now = admin.firestore.FieldValue.serverTimestamp();
-        const batch = db.batch();
-        const metadata = attachments.map(({ id, name, size }) => ({ id, name, size }));
-        batch.set(requestRef, {
-            attachments: metadata,
-            ownerId: identity.uid, ownerEmail: identity.email, type, title, content,
-            status: '접수', creditHours: 0, createdAt: now, updatedAt: now
-        });
-        batch.set(requestRef.collection('messages').doc(), {
-            attachments: metadata,
-            authorRole: 'user', authorEmail: identity.email, content, createdAt: now
-        });
-        await batch.commit();
+            const now = admin.firestore.FieldValue.serverTimestamp();
+            const batch = db.batch();
+            const metadata = attachments.map(({ id, name, size }) => ({ id, name, size }));
+            batch.set(requestRef, {
+                attachments: metadata,
+                ownerId: identity.uid, ownerEmail: identity.email, type, title, content,
+                status: '접수', creditHours: 0, createdAt: now, updatedAt: now
+            });
+            batch.set(requestRef.collection('messages').doc(), {
+                attachments: metadata,
+                authorRole: 'user', authorEmail: identity.email, content, createdAt: now
+            });
+            await batch.commit();
         } catch (error) {
             await Promise.allSettled(uploaded.map(path => admin.storage().bucket().file(path).delete()));
             throw error;
@@ -2182,7 +2191,6 @@ export const sendCareMessage = onRequest(withCors(async (req, res) => {
     }
 }));
 const LIFEUP_PASSPORT_URL = 'https://app.notionable.net/templateDownload/LifeUp1.5.pdf';
-const LIFEUP_PURCHASE_GUIDE_URL = 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e3eea79fd8c80b39dc7e4aa9c8982ec?source=copy_link';
 
 function isValidLatpeedWebhook(req: any): boolean {
     const timestamp = String(req.get('X-Latpeed-Timestamp') || '');
@@ -2288,12 +2296,29 @@ function escapeEmailHtml(value: string): string {
     }[character]!));
 }
 
+type LifeupEmailTemplateId = 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome';
+const LIFEUP_EMAIL_TEMPLATES: ReadonlyArray<{ id: LifeupEmailTemplateId; name: string }> = [
+    { id: 'standard-purchaser-update', name: '기존 일반 구매자 업데이트 안내' }
+    { id: 'standard-purchaser-welcome', name: '[자동 발송] 일반 구매자 / 구매 시' },
+    { id: 'premium-purchaser-welcome', name: '[자동 발송] 프리미엄 구매자 / 구매 시'},
+];
+const LIFEUP_EMAIL_VARIABLES = {
+    lifeupbotUrl: 'https://notionable.net/app',
+    lifeupCareUrl: 'https://notionable.net/app?menu=care',
+    lifeupMigrationUrl: 'https://notionable.net/app?menu=care&sub=migration',
+    lifeupStudioUrl: 'https://notionable.net/app?menu=studio&sub=dashboard',
+    kakaoConnectUrl: 'https://notionable.net/app?menu=connect',
+
+    keyYoutubeUrl: 'https://www.youtube.com/watch?v=ndXuFRxa8sM',
+    installYoutubeUrl: 'https://www.youtube.com/shorts/QnR_gnGWOQE',
+    lifeupPassportUrl: 'https://app.notionable.net/templateDownload/LifeUp1.5.pdf',
+    lifeupTemplateReleaseUrl: 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e3eea79fd8c80b39dc7e4aa9c8982ec?source=copy_link',
+    reviewUrl: 'https://notionable.net/store/?idx=1'
+} as const;
+
 function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject: string; text: string; html: string } {
     const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '';
-    const reviewUrl = 'https://notionable.net/store/?idx=1';
-    const lifeupCareUrl = 'https://notionable.net/app?menu=care';
-    const lifeupbotUrl = 'https://notionable.net/app';
-    const kakaoConnectUrl = 'https://notionable.net/app?menu=connect';
+    const { reviewUrl, lifeupCareUrl, lifeupbotUrl, kakaoConnectUrl } = LIFEUP_EMAIL_VARIABLES;
 
     return {
         subject: '라이프업 1.5 구매 안내 및 보관용 PDF를 보내드립니다',
@@ -2344,12 +2369,155 @@ function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject
     };
 }
 
+function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subject: string; text: string; html: string } {
+    const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '안녕하세요,';
+    const {
+        lifeupMigrationUrl, keyYoutubeUrl, installYoutubeUrl,
+        lifeupPassportUrl, lifeupTemplateReleaseUrl, kakaoConnectUrl
+    } = LIFEUP_EMAIL_VARIABLES;
+
+    // Keep the supplied update HTML and the welcome-mail sections verbatim.
+    const html = `
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>라이프업 1.5 업데이트 안내</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f6f8;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f6f8;">
+        <tr>
+            <td align="center" style="padding:32px 16px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;">
+                    <tr>
+                        <td align="center" style="padding:32px 32px 24px;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 7px 0 0;font-size:16px;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">🧠</a></td><td valign="middle" style="padding:0;font-size:18px;font-weight:700;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">Notionable</a></td></tr></table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 32px 40px;">
+                            <h1 style="margin:0 0 16px;font-size:26px;line-height:1.45;color:#171717;">
+                                ${greetingName}<br>라이프업 잘 이용하고 계신가요? 😊
+                            </h1>
+                            <p style="margin:0;font-size:16px;line-height:1.8;color:#555;">
+                                새로운 업데이트 소식과 함께 오랜만에 인사드립니다.
+                            </p>
+                            <p style="margin:16px 0 0;font-size:16px;line-height:1.8;color:#555;">
+                                라이프업 1.5가 새롭게 공개되었습니다. 기존의 목표·프로젝트·할 일·기록 관리 흐름은 그대로 유지하면서,
+                                라이프업을 더 편리하게 활용할 수 있는 <strong>라이프봇</strong>과 새로운 기능들을 추가했습니다.
+                            </p>
+
+                            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+                            <h2 style="margin:0 0 16px;font-size:20px;color:#171717;">✨ 라이프업 1.5 주요 업데이트</h2>
+
+                            <p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#555;">
+                                <strong>카카오톡 라이프봇</strong><br>
+                                카카오톡에 할 일, 일정, 메모, 자료를 보내면 라이프업에 알아서 정리해 드립니다.
+                            </p>
+                            <p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#555;">
+                                <strong>내 루틴</strong><br>
+                                반복할 습관과 루틴을 관리하고, 오늘의 실천 기록을 쌓을 수 있습니다.
+                            </p>
+                            <p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#555;">
+                                <strong>모바일 전용 뷰</strong><br>
+                                모바일에서도 오늘·내일의 할 일과 일정을 더 빠르게 확인하고 추가할 수 있습니다.
+                            </p>
+                            <p style="margin:0;font-size:15px;line-height:1.8;color:#555;">
+                                <strong>라이프업 App</strong><br>
+                                내 템플릿을 연결하여 자동화 비서, 루틴, 업데이트 등 한곳에서 관리할 수 있습니다.
+                            </p>
+
+                            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📥</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프업 1.5 다운로드</td></tr></table>
+                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.</p>
+                    <a href="${lifeupTemplateReleaseUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 다운로드 →</a>
+                    <p style="margin:16px 0 0"><a href="${installYoutubeUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>
+                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📄</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">보관용 PDF</td></tr></table>
+                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">설치 링크와 이용 안내를 담은 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p>
+                    <a href="${lifeupPassportUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-size:15px;font-weight:700;text-decoration:none;">보관용 PDF 열기 →</a>
+                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">💬</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">카카오톡 라이프봇</td></tr></table>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">이제 늘 쓰는 카카오톡으로 할 일, 일정, 아이디어, 필요한 자료까지 바로 기록해보세요.<br>카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.</p>
+                    <a href="${kakaoConnectUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#fee500;border-radius:8px;color:#191919;font-size:15px;font-weight:700;text-decoration:none;">카카오톡 연결하기 →</a>
+
+                            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+                            <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🔄 라이프업 1.3 → 1.5 업데이트 안내</h2>
+                            <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
+                                라이프업 <strong>1.3 버전을 사용 중이시라면</strong>, 스튜디오에서 제공하는 데이터 이전 기능을 통해
+                                1.5 버전으로 업데이트하실 수 있습니다.
+                            </p>
+                            <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
+                                먼저 기존 라이프업을 복제해 백업한 뒤, 안내에 따라 1.3과 1.5를 연결하면 데이터를 이전할 수 있습니다.
+                            </p>
+                            <a href="${lifeupMigrationUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5로 업데이트하기 →</a>
+                            <div style="margin-top:18px;padding:16px 18px;background:#fff8eb;border-radius:10px;">
+                                <p style="margin:0;font-size:13px;line-height:1.7;color:#795b1e;">
+                                    ⚠️ 아쉽게도 <strong>1.3 이전 버전은 자동 데이터 이전을 지원하지 않습니다.</strong><br>
+                                    이 경우 새 버전으로 새롭게 시작하시는 것을 추천드립니다. 기존 데이터를 꼭 옮겨야 한다면,
+                                    라이프업 프리미엄 구매 고객에 한해 수동 이전을 도와드릴 수 있습니다.
+                                </p>
+                            </div>
+
+                            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+                            <h2 style="margin:0 0 8px;font-size:20px;color:#171717;">🎁 기존 구매자 감사 이벤트</h2>
+                            <h3 style="margin:0 0 16px;font-size:17px;line-height:1.5;color:#2563eb;">유튜브 댓글 작성하고 라이프봇 1년 무료 이용권 받기</h3>
+                            <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
+                                기존 라이프업 사용자분들을 위한 작은 이벤트를 준비했습니다.
+                            </p>
+                            <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
+                                아래 영상을 보신 뒤, 유튜브 댓글로 <strong>라이프업 1.5와 라이프봇에 대한 솔직한 의견,
+                                기대되는 점, 바라는 점 또는 응원의 한마디</strong>를 짧게 남겨주세요.
+                            </p>
+                            <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
+                                댓글을 남겨주신 분께는 감사의 마음을 담아, 정식 오픈 후에도 사용할 수 있는
+                                <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁
+                            </p>
+
+                            <div style="padding:22px;background:#f8faff;border-radius:12px;">
+                                <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#333;">참여 방법</p>
+                                <p style="margin:0;font-size:14px;line-height:1.8;color:#555;">
+                                    1. 아래 라이프봇 소개 영상을 열어주세요.<br>
+                                    2. 영상 댓글로 라이프봇에 대한 의견을 남겨주세요.<br>
+                                    &nbsp;&nbsp;&nbsp;사용해 본 느낌, 기대되는 점, 바라는 점, 응원의 한마디 모두 좋습니다. 😊
+                                </p>
+                                <a href="${keyYoutubeUrl}" target="_blank" style="display:inline-block;margin-top:18px;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프봇 소개 영상 보고 댓글 남기기 →</a>
+                            </div>
+
+                            <p style="margin:20px 0 0;font-size:14px;line-height:1.8;color:#666;">
+                                기존 라이프업 사용자분들의 의견은 라이프봇을 더 좋은 서비스로 만드는 데 큰 도움이 됩니다.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    `;
+    // Derive the text alternative from the same copy, including link destinations.
+    const text = html
+        .replace(/<head>[\s\S]*?<\/head>/i, '')
+        .replace(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
+        .replace(/<br\s*\/?>|<\/p>|<\/h[1-6]>|<\/tr>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+        .split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+    return { subject: '라이프업 1.5 업데이트 안내', text, html };
+}
+
 function lifeupPremiumWelcomeMail(customerName: string): { subject: string; text: string; html: string } {
     const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '';
-    const lifeupbotUrl = 'https://notionable.net/app';
-    const lifeupCareUrl = 'https://notionable.net/app?menu=care';
-    const lifeupUpdateUrl = 'https://notionable.net/app?menu=care&sub=migration';
-    const lifeupStudioUrl = 'https://notionable.net/app?menu=studio&sub=dashboard';
+    const { lifeupbotUrl, lifeupCareUrl, lifeupMigrationUrl, lifeupStudioUrl } = LIFEUP_EMAIL_VARIABLES;
+    const lifeupUpdateUrl = lifeupMigrationUrl;
     const button = (href: string, label: string, primary = false) => `<a href="${href}" target="_blank" style="display:inline-block;padding:${primary ? '14px 20px;background:#1d4ed8;color:#ffffff' : '13px 19px;border:1px solid #d1d5db;color:#374151'};border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;">${label} →</a>`;
     const heading = (icon: string, title: string) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">${icon}</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">${title}</td></tr></table>`;
     const divider = '<div style="height:1px;background:#eceef1;margin:32px 0"></div>';
@@ -2362,7 +2530,7 @@ function lifeupPremiumWelcomeMail(customerName: string): { subject: string; text
             <p style="margin:0;font-size:16px;line-height:1.8;color:#555;">라이프업 프리미엄은 템플릿을 더욱 편리하게 활용하고, 내 방식에 맞춰 계속 발전시켜 갈 수 있도록 돕는 멤버십입니다.</p><p style="margin:16px 0 0;font-size:16px;line-height:1.8;color:#555;">구매하신 프리미엄 혜택과 이용 방법을 안내드립니다.</p>${divider}
             ${heading('🤖', '라이프봇 1년 무료 이용')}<p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업을 더 편리하게 활용할 수 있는 자동화 서비스, <strong>라이프봇 1년 무료 이용권</strong>을 제공합니다.</p><p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">카카오톡 AI 비서, 루틴 코치, 템플릿 자동 업데이트, 세컨드브레인 그래프 등 현재 제공 중인 기능은 물론, 앞으로 추가되는 기능도 이용하실 수 있습니다.</p><div style="margin:0 0 18px;padding:14px 16px;background:#f8faff;border-radius:10px;font-size:14px;line-height:1.7;color:#555;">라이프봇은 현재 시험 운영 중이며, 이용 기간은 <strong style="color:#1d4ed8;">정식 오픈일부터 1년간</strong> 적용됩니다.</div>${button(lifeupbotUrl, '라이프봇 둘러보기')}${divider}
             ${heading('🛡️', '프리미엄 라이프업 케어')}<p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업을 사용하시면서 궁금한 점이 있거나 도움이 필요하시면 <strong>라이프업 케어</strong>에서 편하게 문의해 주세요.</p><ul style="margin:0 0 16px;padding:0 0 0 20px;font-size:15px;line-height:1.9;color:#555;"><li>사용 방법과 활용 관련 문의</li><li>템플릿 오류 및 깨짐 현상 확인</li><li>내 업무·생활 방식에 맞춘 활용 상담</li><li>개선 의견과 필요한 기능 제안</li></ul><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">프리미엄 멤버의 요청은 우선 확인하여 안내드립니다.<br>라이프업 스튜디오에서 케어 요청과 커스터마이징 진행 상황, 이용 내역을 한곳에서 관리하실 수 있습니다.</p>${button(lifeupCareUrl, '라이프업 케어 둘러보기')}${divider}
-            ${heading('🔄', '라이프업 업데이트 지원')}<p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업은 새로운 기능과 개선 사항을 반영해 계속 업데이트됩니다.</p><p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">새 버전이 제공되면 자동 업데이트가 가능한 경우 <strong>데이터 이전 기능을 통해 업데이트</strong>하실 수 있도록 안내드립니다.</p><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">직접 진행하기 어려운 경우에는 프리미엄 혜택으로 <strong>수동 업데이트 지원</strong>을 요청하실 수 있습니다.</p>${button(lifeupUpdateUrl, '라이프업 업데이트 보기')}${divider}
+            ${heading('🔄', '라이프업 업데이트 지원')}<p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업은 새로운 기능과 개선 사항을 반영해 계속 업데이트됩니다.</p><p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">새 버전이 제공되면 자동 업데이트가 가능한 경우 <strong>데이터 이전 기능을 통해 업데이트</strong>하실 수 있도록 안내드립니다.</p><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">직접 진행하기 어려운 경우에는 프리미엄 혜택으로 <strong>수동 업데이트 지원</strong>을 요청하실 수 있습니다.</p>${button(lifeupMigrationUrl, '라이프업 업데이트 보기')}${divider}
             ${heading('🛠️', '커스터마이징 지원')}<p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">프리미엄 멤버에게는 <strong>1년간 총 10시간의 커스터마이징 지원</strong>이 제공됩니다.</p><p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">프로젝트·할 일·노트 템플릿 구성부터 영역 메뉴, 위젯, 자동화까지 라이프업을 내 방식에 맞게 바꾸는 작업을 요청하실 수 있습니다.</p><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">요청 내용을 확인한 뒤 작업 가능 여부와 예상 소요 시간을 먼저 안내드리며, 동의 후 커스터마이징 시간을 차감해 진행합니다.</p>${button(lifeupStudioUrl, '라이프업 스튜디오 둘러보기', true)}<div style="margin-top:32px;padding:22px 24px;background:#f8faff;border-radius:12px"><p style="margin:0;font-size:15px;line-height:1.8;color:#555;">라이프업을 더 편리하고 오래 활용하실 수 있도록 꾸준히 돕겠습니다.</p></div><p style="margin:28px 0 0;font-size:14px;line-height:1.7;color:#777;">감사합니다.<br>노셔너블 드림</p>
         </div></div></div>`
     };
@@ -2435,8 +2603,8 @@ export const latpeedPaymentWebhook = onRequest(
             outcome = !['NORMAL_PAYMENT', 'MEMBERSHIP_PAYMENT'].includes(event?.type)
                 ? 'unsupported_event'
                 : payment.status !== 'SUCCESS' ? 'payment_not_successful'
-                : !isAllowedTestPurchaser ? 'test_email_not_allowed'
-                : amount <= 0 ? 'zero_or_invalid_amount' : 'missing_order_id';
+                    : !isAllowedTestPurchaser ? 'test_email_not_allowed'
+                        : amount <= 0 ? 'zero_or_invalid_amount' : 'missing_order_id';
             res.status(200).json({ received: true, processed: false });
             return;
         }
@@ -2512,10 +2680,10 @@ export const latpeedPaymentWebhook = onRequest(
         }
 
         if (!upgradeOnly) {
-            const mail = lifeupWelcomeMail(String(payment.name || '').trim(), LIFEUP_PURCHASE_GUIDE_URL);
+            const mail = lifeupWelcomeMail(String(payment.name || '').trim(), LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl);
             const deliveryResults = await Promise.all(welcomeRecipients.map(async recipient => {
                 try {
-                    const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: recipient.email, ...mail });
+                    const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: recipient.email, ...withUnsubscribe(mail) });
                     if (sent.error) return { ...recipient, status: 'failed', error: String(sent.error.message || 'PROVIDER_REJECTED') };
                     return { ...recipient, status: 'sent', resendId: sent.data?.id || '' };
                 } catch (error) {
@@ -2536,7 +2704,7 @@ export const latpeedPaymentWebhook = onRequest(
             const premiumMail = lifeupPremiumWelcomeMail(String(payment.name || '').trim());
             const premiumDeliveries = await Promise.all(welcomeRecipients.map(async recipient => {
                 try {
-                    const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: recipient.email, ...premiumMail });
+                    const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: recipient.email, ...withUnsubscribe(premiumMail) });
                     return sent.error
                         ? { ...recipient, status: 'failed', error: String(sent.error.message || 'PROVIDER_REJECTED') }
                         : { ...recipient, status: 'sent', resendId: sent.data?.id || '' };
@@ -2572,8 +2740,10 @@ const purchaseLogin = createPurchaseLogin({
     purchase: async email => {
         const records = await findPurchaserRecords('lifeUp', email);
         const best = selectBestPurchaser(records);
-        return best ? { purchaser: best.data, purchaserIds: records.map(record => record.id),
-            memberType: best.memberType! } : null;
+        return best ? {
+            purchaser: best.data, purchaserIds: records.map(record => record.id),
+            memberType: best.memberType!
+        } : null;
     }
 });
 
@@ -2677,9 +2847,11 @@ export const listLifeupPurchasers = onRequest(withCors(async (req, res) => {
         const purchasers = snapshot.docs.filter(doc => isLifeupPaidPurchase(doc.data())).map(doc => {
             const data = doc.data();
             const memberType = lifeupMemberType(data);
-            return { id: doc.id, ...data, memberType,
+            return {
+                id: doc.id, ...data, memberType,
                 purchaseEligible: data.purchaseEligible ?? (memberType !== null && !isLifeupUpgrade(data)),
-                upgradeOnly: data.upgradeOnly ?? isLifeupUpgrade(data) };
+                upgradeOnly: data.upgradeOnly ?? isLifeupUpgrade(data)
+            };
         });
         return res.json({ purchasers });
     } catch (error) {
@@ -2787,6 +2959,34 @@ async function findCustomerRefByEmail(email: string): Promise<admin.firestore.Do
     return (await findCustomerRefsByEmail(email))[0] || null;
 }
 
+// A deleted account must no longer remain in the customer audience. Customer
+// records may deliberately group several emails under one phone number, so only
+// remove the departing email when another one remains.
+async function removeCustomerEmailForDeletedAccount(email: string): Promise<void> {
+    const normalized = customerEmail(email);
+    if (!normalized) return;
+    const refs = await findCustomerRefsByEmail(normalized);
+    await db.runTransaction(async transaction => {
+        const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
+        snapshots.forEach((snapshot, index) => {
+            if (!snapshot.exists) return;
+            const data = snapshot.data() || {};
+            const listed = Array.isArray(data.emails) ? data.emails.map(customerEmail) : [];
+            const legacy = customerEmail(data.email);
+            const remaining = [...new Set([...listed, ...(legacy ? [legacy] : [])].filter(value => value && value !== normalized))];
+            if (!remaining.length) {
+                transaction.delete(refs[index]);
+                return;
+            }
+            transaction.set(refs[index], {
+                emails: remaining,
+                email: legacy === normalized ? remaining[0] : data.email,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+    });
+}
+
 async function setCurrentCustomerConsent(email: string, consent: boolean, source: 'purchase' | 'csv' | 'account'): Promise<void> {
     const normalized = customerEmail(email);
     if (!normalized) return;
@@ -2806,10 +3006,10 @@ async function setCurrentCustomerConsent(email: string, consent: boolean, source
             const emails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
             // An account owner's later choice must never be undone by a CSV reimport
             // or an old purchase webhook.
-            if (explicit === undefined && source !== 'account' && existing.notificationConsentSource === 'account') return;
+            if ((existing.notificationBlocked && source !== 'account') || (explicit === undefined && source !== 'account' && existing.notificationConsentSource === 'account')) return;
             transaction.set(refs[index], {
                 templateId: 'lifeUp', emails: [...new Set([...emails, normalized])],
-                notificationConsent: (explicit ?? consent) ? '예' : '아니오', notificationConsentSource: explicit === undefined ? source : 'account',
+                notificationConsent: (explicit ?? consent) ? '예' : '아니오', notificationConsentSource: explicit === undefined ? source : 'account', notificationBlocked: false,
                 notificationConsentUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
@@ -2848,13 +3048,14 @@ export const importLifeupCustomersCsv = onRequest(withCors(async (req, res) => {
                 const existing = (await transaction.get(ref)).data() || {};
                 const preferences = await Promise.all(preferenceRefs.map(ref => transaction.get(ref)));
                 const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
+                if (existing.notificationBlocked && explicit === undefined) return;
                 const existingEmails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
                 transaction.set(ref, {
                     templateId: 'lifeUp', phone, phoneDisplay: newest.phone || existing.phoneDisplay || phone,
                     name: newest.name || existing.name || '', emails: [...new Set([...existingEmails, ...emails])],
                     purchasedAt: newest.purchasedAt || existing.purchasedAt || '', source: 'csv',
                     notificationConsent: explicit !== undefined ? (explicit ? '예' : '아니오') : existing.notificationConsentSource === 'account' || newest.notificationConsent === undefined ? existing.notificationConsent || '미응답' : newest.notificationConsent ? '예' : '아니오',
-                    notificationConsentSource: explicit !== undefined ? 'account' : existing.notificationConsentSource || 'csv',
+                    notificationConsentSource: explicit !== undefined ? 'account' : existing.notificationConsentSource || 'csv', notificationBlocked: false,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
@@ -2892,14 +3093,105 @@ export const listLifeupCustomers = onRequest(withCors(async (req, res) => {
             const refs = await memberPreferenceRefs([...(Array.isArray(data.emails) ? data.emails : []), data.email]);
             const preferences = await Promise.all(refs.map(ref => ref.get()));
             const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
-            return { id: doc.id, ...data, memberType: grades.get(customerPhone(data.phone)) || null,
-                notificationConsent: explicit === undefined ? data.notificationConsent || '미응답' : explicit ? '예' : '아니오' };
+            const memberType = grades.get(customerPhone(data.phone)) || null;
+            return {
+                id: doc.id, ...data, memberType, membership: preferences.length ? memberType === 'premium' ? 'premium' : 'standard' : 'none',
+                notificationConsent: data.notificationBlocked && !preferences.length ? '차단' : explicit === undefined ? data.notificationConsent || '미응답' : explicit ? '예' : '아니오'
+            };
         }));
         return res.json({ customers });
     } catch (error) {
         logger.error('Customer admin list failed', error);
         return res.status(500).json({ error: 'CUSTOMER_LIST_FAILED' });
     }
+}));
+
+// Admin-only delivery for the customer-management toolbar.  "차단" means all
+// notifications are prohibited, while a marketing opt-out can be explicitly
+// acknowledged by an administrator before sending this existing purchaser mail.
+export const sendLifeupCustomerMail = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        if (!identity.isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+        const requestedCustomerIds: unknown[] = Array.isArray(req.body?.customerIds) ? req.body.customerIds : [];
+        const customerIds: string[] = [...new Set(requestedCustomerIds.map(id => String(id || '').trim()).filter(Boolean))];
+        const template = String(req.body?.template || 'standard-purchaser-welcome');
+        const confirmNonConsenting = req.body?.confirmNonConsenting === true;
+        if (!customerIds.length || customerIds.length > 100) return res.status(400).json({ error: 'CUSTOMER_SELECTION_REQUIRED' });
+        if (!LIFEUP_EMAIL_TEMPLATES.some(item => item.id === template)) return res.status(400).json({ error: 'UNKNOWN_MAIL_TEMPLATE' });
+
+        const snapshots = await db.getAll(...customerIds.map(id => db.collection('customers').doc(id)));
+        const recipients = new Map<string, { name: string; customerIds: string[]; nonConsenting: boolean; blocked: boolean }>();
+        for (const snapshot of snapshots) {
+            if (!snapshot.exists || snapshot.data()?.templateId !== 'lifeUp') continue;
+            const customer = snapshot.data() || {};
+            const emails = [...new Set([...(Array.isArray(customer.emails) ? customer.emails : []), customer.email].map(customerEmail).filter(Boolean))];
+            const preferences = await Promise.all((await memberPreferenceRefs(emails)).map(ref => ref.get()));
+            const explicit = explicitMemberConsent(preferences.map(preference => preference.data() || {}));
+            const consent = explicit === undefined ? String(customer.notificationConsent || '미응답') : explicit ? '예' : '아니오';
+            const blocked = Boolean(customer.notificationBlocked) && !preferences.length;
+            for (const email of emails) {
+                const current = recipients.get(email) || { name: String(customer.name || ''), customerIds: [], nonConsenting: false, blocked: false };
+                current.name ||= String(customer.name || '');
+                current.customerIds.push(snapshot.id);
+                current.nonConsenting ||= consent !== '예';
+                current.blocked ||= blocked;
+                recipients.set(email, current);
+            }
+        }
+        const deliverable = [...recipients.entries()].filter(([, recipient]) => !recipient.blocked);
+        const nonConsentingCount = deliverable.filter(([, recipient]) => recipient.nonConsenting).length;
+        const blockedCount = [...recipients.values()].filter(recipient => recipient.blocked).length;
+        if (!confirmNonConsenting && nonConsentingCount) {
+            return res.json({ requiresConsentConfirmation: true, recipientCount: deliverable.length, nonConsentingCount, blockedCount });
+        }
+
+        const results = await Promise.all(deliverable.map(async ([email, recipient]) => {
+            try {
+                const mail = withUnsubscribe(template === 'standard-purchaser-update'
+                    ? lifeupStandardPurchaserUpdateMailDetailed(recipient.name)
+                    : template === 'premium-purchaser-welcome'
+                        ? lifeupPremiumWelcomeMail(recipient.name)
+                        : lifeupWelcomeMail(recipient.name, LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl));
+                const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: email, ...mail });
+                return { sent: !sent.error, customerIds: recipient.customerIds };
+            } catch (error) {
+                logger.error('Customer admin mail delivery failed', { customerIds: recipient.customerIds, error });
+                return { sent: false, customerIds: recipient.customerIds };
+            }
+        }));
+        const sentCount = results.filter(result => result.sent).length;
+        await db.collection('customerMailDeliveries').add({
+            template, customerIds, recipientCount: deliverable.length, sentCount,
+            nonConsentingCount, blockedCount, sentBy: identity.uid, sentAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return res.json({ sentCount, failedCount: deliverable.length - sentCount, blockedCount, nonConsentingCount });
+    } catch (error) {
+        logger.error('Customer admin mail send failed', error);
+        return res.status(500).json({ error: 'CUSTOMER_MAIL_SEND_FAILED' });
+    }
+}));
+
+export const unsubscribeMarketing = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const email = customerEmail(req.body?.email); const phone = customerPhone(req.body?.phone);
+    if (!email && !phone) return res.status(400).json({ error: '이메일 또는 휴대폰 번호를 입력해주세요.' });
+    try {
+        const memberEmail = email && await admin.auth().getUserByEmail(email).then(() => true).catch(() => false);
+        const memberPhone = phone && await admin.auth().getUserByPhoneNumber(`+82${phone.replace(/^0/, '')}`).then(() => true).catch(() => false);
+        if (memberEmail || memberPhone) return res.json({ member: true });
+        const snapshot = await db.collection('customers').where('templateId', '==', 'lifeUp').get();
+        const refs = snapshot.docs.filter(doc => {
+            const data = doc.data();
+            return !!(email && [...(Array.isArray(data.emails) ? data.emails : []), data.email].some(value => customerEmail(value) === email)) || !!(phone && customerPhone(data.phone) === phone);
+        }).map(doc => doc.ref);
+        await Promise.all(refs.map(ref => ref.set({
+            notificationConsent: '아니오', notificationConsentSource: 'blocked', notificationBlocked: true,
+            notificationBlockedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true })));
+        return res.json({ member: false, blocked: true });
+    } catch (error) { logger.error('Marketing unsubscribe failed', error); return res.status(500).json({ error: '수신 차단을 완료하지 못했습니다.' }); }
 }));
 
 // A purchaser is also a customer, but never the other way around. This keeps
@@ -2981,10 +3273,18 @@ export const getAppSession = onRequest(withCors(async (req, res) => {
     } catch { return res.status(401).json({ error: 'Login required' }); }
     const accountRef = db.collection('appAccounts').doc(identity.uid);
     const account = await accountRef.get();
+    if (account.data()?.deletionStatus === 'pending') return res.status(409).json({ error: 'ACCOUNT_DELETION_PENDING' });
     if (!account.exists) {
         await accountRef.set({ createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     }
-    const userId = account.data()?.userId;
+    // Recover stale/manual bindings from verified ownership. This is deliberately
+    // not a transaction: session lookup must remain fast during login.
+    const binding = account.data() || {};
+    const owned = await db.collection('users').where('firebaseUid', '==', identity.uid).limit(2).get();
+    const current = owned.docs.find(doc => doc.id === binding.userId);
+    if (!current && owned.size > 1) return res.status(409).json({ error: 'AMBIGUOUS_WORKSPACE_BINDING' });
+    const userId = current?.id || owned.docs[0]?.id || '';
+    if (binding.userId !== userId) await accountRef.set({ userId: userId || admin.firestore.FieldValue.delete() }, { merge: true });
     if (!userId) return res.json({ userId: '' });
     const workspace = (await db.collection('users').doc(userId).get()).data();
     if (!workspace || workspace.firebaseUid !== identity.uid) return res.status(403).json({ error: 'Account mismatch' });
@@ -3016,14 +3316,21 @@ export const getMyProfileSettings = onRequest(withCors(async (req, res) => {
         const appAccount = (await accountRef.get()).data() || {};
         const hasExplicitConsent = typeof appAccount.marketingConsent === 'boolean' && appAccount.marketingConsentSource === 'user';
         const customerRef = await findCustomerRefByEmail(identity.email);
-        const customer = customerRef ? (await customerRef.get()).data() : null;
+        let customer = customerRef ? (await customerRef.get()).data() : null;
+        // A public block is only for nonmembers. Once the customer has an account,
+        // release the block and retain a marketing opt-out in the member flow.
+        const blockedCustomer = customer;
+        if (blockedCustomer?.notificationBlocked) {
+            await setCurrentCustomerConsent(identity.email, false, 'account');
+            customer = { ...blockedCustomer, notificationConsent: '아니오', notificationConsentSource: 'account', notificationBlocked: false };
+        }
         const hasCustomerConsent = customer?.notificationConsent === '예' || customer?.notificationConsent === '아니오';
         const marketingConsent = hasExplicitConsent ? appAccount.marketingConsent : hasCustomerConsent
-            ? customer.notificationConsent === '예' : await initialMarketingConsent(identity.email);
+            ? customer?.notificationConsent === '예' : await initialMarketingConsent(identity.email);
         return res.json({
             displayName: account.displayName || '', email: account.email || '', phoneNumber: account.phoneNumber || '',
             createdAt: account.metadata.creationTime || '', providers: account.providerData.map(provider => provider.providerId),
-            marketingConsent, marketingConsentSource: hasExplicitConsent ? 'user' : hasCustomerConsent ? customer.notificationConsentSource || 'import' : 'none',
+            marketingConsent, marketingConsentSource: hasExplicitConsent ? 'user' : hasCustomerConsent ? customer?.notificationConsentSource || 'import' : 'none',
             marketingConsentRequired: !hasExplicitConsent && !hasCustomerConsent
         });
     } catch (error) {
@@ -3052,6 +3359,32 @@ export const updateMyProfileSettings = onRequest(withCors(async (req, res) => {
     }
 }));
 
+export const deleteMyAccount = onRequest({ timeoutSeconds: 540 }, withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (req.body?.confirmDeletion !== true || req.body?.confirmation !== '탈퇴') {
+        return res.status(400).json({ error: '복구 불가 안내에 동의하고 탈퇴를 입력해주세요.' });
+    }
+    let identity: admin.auth.DecodedIdToken;
+    try {
+        identity = await admin.auth().verifyIdToken(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''), true);
+    } catch { return res.status(401).json({ error: '다시 로그인한 후 탈퇴해주세요.' }); }
+    if (!identity.auth_time || Date.now() / 1000 - identity.auth_time > 600) {
+        return res.status(401).json({ error: '안전을 위해 로그아웃 후 다시 로그인하고 10분 이내에 탈퇴해주세요.' });
+    }
+    try {
+        await deleteAccountData(db, admin.auth(), identity.uid,
+            async requestId => { await admin.storage().bucket().deleteFiles({ prefix: `careRequests/${requestId}/` }); },
+            async email => {
+                await removeCustomerEmailForDeletedAccount(email);
+                await db.collection('appLoginChallenges').doc(crypto.createHash('sha256').update(email).digest('hex')).delete();
+            }, async workspaceId => { await admin.storage().bucket().deleteFiles({ prefix: `tmp/${workspaceId}/` }); });
+        return res.json({ deleted: true });
+    } catch (error) {
+        logger.error('Account deletion failed', { uid: identity.uid, error });
+        return res.status(500).json({ error: '탈퇴 처리가 완료되지 않았습니다. 일부 데이터가 삭제되었을 수 있습니다. 다시 시도하거나 고객지원에 문의해주세요.' });
+    }
+}));
+
 // Firebase Auth is the source of truth for service members. appAccounts stores
 // only service-specific preferences such as the marketing-consent override.
 export const listAppMembers = onRequest(withCors(async (req, res) => {
@@ -3072,10 +3405,9 @@ export const listAppMembers = onRequest(withCors(async (req, res) => {
         const members: any[] = []; let pageToken: string | undefined;
         do {
             const page = await admin.auth().listUsers(1000, pageToken);
-            const [preferenceDocs, workspaceSnapshots, workspaceEmailSnapshots] = await Promise.all([
+            const [preferenceDocs, workspaceSnapshots] = await Promise.all([
                 Promise.all(page.users.map(user => db.collection('appAccounts').doc(user.uid).get())),
-                Promise.all(page.users.map(user => db.collection('users').where('firebaseUid', '==', user.uid).get())),
-                Promise.all(page.users.map(user => db.collection('users').where('email', '==', customerEmail(user.email)).get()))
+                Promise.all(page.users.map(user => db.collection('users').where('firebaseUid', '==', user.uid).get()))
             ]);
             page.users.forEach((user, index) => {
                 const preference = preferenceDocs[index].data() || {};
@@ -3083,8 +3415,7 @@ export const listAppMembers = onRequest(withCors(async (req, res) => {
                 // Only IDs of existing /users documents are workspace IDs.
                 // appAccounts.userId is a binding that may be stale.
                 const workspaceIds = [...new Set([
-                    ...workspaceSnapshots[index].docs.map(doc => doc.id),
-                    ...workspaceEmailSnapshots[index].docs.map(doc => doc.id)
+                    ...workspaceSnapshots[index].docs.map(doc => doc.id)
                 ])];
                 members.push({ id: user.uid, profileName: user.displayName || preference.profileName || '', email: user.email || '', phoneNumber: user.phoneNumber || '', workspaceIds, createdAt: user.metadata.creationTime || '', marketingConsent: preference.marketingConsentSource === 'user' ? preference.marketingConsent === true : importedConsent.get(email)?.value || false });
             });
@@ -3094,6 +3425,57 @@ export const listAppMembers = onRequest(withCors(async (req, res) => {
     } catch (error) {
         logger.error('Member admin list failed', error);
         return res.status(500).json({ error: 'MEMBER_LIST_FAILED' });
+    }
+}));
+
+// Returns a deliberately small, non-secret view of a workspace root document
+// for the member-administration screen. Workspace IDs are /users document IDs.
+export const getWorkspaceAdminDetails = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        if (!identity.isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+
+        const workspaceId = String(req.body?.workspaceId || '').trim();
+        if (!workspaceId || workspaceId.length > 100) return res.status(400).json({ error: 'INVALID_WORKSPACE_ID' });
+
+        const snapshot = await db.collection('users').doc(workspaceId).get();
+        if (!snapshot.exists) return res.status(404).json({ error: 'WORKSPACE_NOT_FOUND' });
+
+        const data = snapshot.data() || {};
+        const templateInfo = data.lifeupTemplateInfo && typeof data.lifeupTemplateInfo === 'object'
+            ? data.lifeupTemplateInfo as Record<string, unknown>
+            : null;
+        const pageUrls = templateInfo?.pageUrls && typeof templateInfo.pageUrls === 'object'
+            ? Object.values(templateInfo.pageUrls as Record<string, unknown>).filter(Boolean)
+            : [];
+        const timestamp = (value: unknown): string => {
+            if (value && typeof (value as { toDate?: unknown }).toDate === 'function') return (value as admin.firestore.Timestamp).toDate().toISOString();
+            return typeof value === 'string' ? value : '';
+        };
+
+        return res.json({
+            workspaceId,
+            createdAt: timestamp(data.createdAt),
+            email: String(data.email || ''),
+            firebaseUid: String(data.firebaseUid || ''),
+            imwebMemberId: String(data.imwebMemberId || ''),
+            kakaoUserId: String(data.kakaoUserId || ''),
+            lifeupTemplateInfo: templateInfo ? {
+                name: String(templateInfo.name || templateInfo.templateName || templateInfo.title || 'LifeUp'),
+                pageCount: pageUrls.length,
+                connected: true
+            } : null,
+            memberId: String(data.memberId || ''),
+            memberType: String(data.memberType || ''),
+            // Never expose the OAuth credential itself through an admin UI.
+            notionAccessTokenSet: Boolean(data.notionAccessToken),
+            notionConnectionId: String(data.notionConnectionId || ''),
+            updatedAt: timestamp(data.updatedAt)
+        });
+    } catch (error) {
+        logger.error('Workspace admin detail failed', error);
+        return res.status(500).json({ error: 'WORKSPACE_DETAIL_FAILED' });
     }
 }));
 
@@ -3192,7 +3574,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 
         if (userQuerySnap.empty || userQuerySnap.docs.length === 0) {
             // 기존 userId가 없는 경우 새로 생성
-            userId = nanoid();
+            userId = nanoid(6);
 
             const userData: any = {
                 email: nomalizedEMail,
@@ -3204,7 +3586,8 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
                 userData.imwebMemberId = normalizedMemberId;
             }
 
-            await db.collection('users').doc(userId).set(userData);
+            // Fail on an ID collision instead of overwriting an existing widget workspace.
+            await db.collection('users').doc(userId).create(userData);
 
             accessKeyData = await UserService.createAndSetUserAccessKey(userId);
 
@@ -3259,6 +3642,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             const workspaceRef = db.collection('users').doc(userId);
             await db.runTransaction(async transaction => {
                 const [account, workspace, verification] = await Promise.all([transaction.get(accountRef), transaction.get(workspaceRef), transaction.get(docRef)]);
+                if (account.data()?.deletionStatus === 'pending') throw new Error('ACCOUNT_DELETION_PENDING');
                 if (!verification.exists || verification.data()?.code !== hashedInput ||
                     verification.data()?.expiresAt.toMillis() < Date.now()) {
                     throw new Error('인증번호가 만료되었거나 이미 사용되었습니다.');
@@ -6106,10 +6490,12 @@ class NotionService {
         do {
             const response: any = await notion.dataSources.query({
                 data_source_id: dataSourceId, page_size: 100, start_cursor: cursor,
-                filter: { and: [
-                    { property: '날짜', date: { before: range.end } },
-                    ...(scope === 'today' ? [{ property: '날짜', date: { on_or_after: range.start } }] : [])
-                ] }
+                filter: {
+                    and: [
+                        { property: '날짜', date: { before: range.end } },
+                        ...(scope === 'today' ? [{ property: '날짜', date: { on_or_after: range.start } }] : [])
+                    ]
+                }
             });
             pages.push(...response.results);
             cursor = response.has_more ? response.next_cursor : undefined;
@@ -6139,94 +6525,94 @@ class NotionService {
         const habitLogs: any[] = suppliedLogs ? [...suppliedLogs] : [];
         if (suppliedLogs === undefined) {
 
-        // --------------------------------
-        // Notion 인증
-        // --------------------------------
+            // --------------------------------
+            // Notion 인증
+            // --------------------------------
 
-        const userDoc = await db
-            .collection('users')
-            .doc(userId)
-            .get();
+            const userDoc = await db
+                .collection('users')
+                .doc(userId)
+                .get();
 
-        const userData = userDoc.data();
+            const userData = userDoc.data();
 
-        const accessToken = userData?.notionAccessToken;
-        if (!accessToken) {
-            throw new Error(
-                'Notion accessToken이 없습니다.'
-            );
-        }
-
-        const notion = new Client({ auth: accessToken });
-
-        // --------------------------------
-        // Habit Log DB 조회
-        // --------------------------------
-
-        const databaseId =
-            await this.resolveDatabaseId(
-                accessToken,
-                userId,
-                'habit log'
-            );
-
-        const dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
-
-        logger.info('[NotionHabitStats] Notion DB resolved',
-            {
-                userId,
-                databaseId,
-                dataSourceId,
-                targetDate
+            const accessToken = userData?.notionAccessToken;
+            if (!accessToken) {
+                throw new Error(
+                    'Notion accessToken이 없습니다.'
+                );
             }
-        );
 
+            const notion = new Client({ auth: accessToken });
 
-        // --------------------------------
-        // 날짜 범위
-        // --------------------------------
-        const dayRange = habitDayRange(targetDate);
+            // --------------------------------
+            // Habit Log DB 조회
+            // --------------------------------
 
-        // --------------------------------
-        // Habit Log 조회
-        // --------------------------------
-        let startCursor: string | undefined = undefined;
+            const databaseId =
+                await this.resolveDatabaseId(
+                    accessToken,
+                    userId,
+                    'habit log'
+                );
 
-        do {
-            const response: any =
-                await notion.dataSources.query({
-                    data_source_id: dataSourceId,
-                    start_cursor: startCursor,
-                    page_size: 100,
-                    filter: {
-                        and: [
-                            {
-                                property: '날짜',
-                                date: {
-                                    on_or_after:
-                                        dayRange.start
-                                }
-                            },
-                            {
-                                property: '날짜',
-                                date: {
-                                    before:
-                                        dayRange.end
-                                }
-                            }
-                        ]
-                    }
-                });
+            const dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
 
-            habitLogs.push(
-                ...response.results
+            logger.info('[NotionHabitStats] Notion DB resolved',
+                {
+                    userId,
+                    databaseId,
+                    dataSourceId,
+                    targetDate
+                }
             );
 
-            startCursor = response.has_more
-                ? response.next_cursor ?? undefined
-                : undefined;
 
-        } while (startCursor);
+            // --------------------------------
+            // 날짜 범위
+            // --------------------------------
+            const dayRange = habitDayRange(targetDate);
+
+            // --------------------------------
+            // Habit Log 조회
+            // --------------------------------
+            let startCursor: string | undefined = undefined;
+
+            do {
+                const response: any =
+                    await notion.dataSources.query({
+                        data_source_id: dataSourceId,
+                        start_cursor: startCursor,
+                        page_size: 100,
+                        filter: {
+                            and: [
+                                {
+                                    property: '날짜',
+                                    date: {
+                                        on_or_after:
+                                            dayRange.start
+                                    }
+                                },
+                                {
+                                    property: '날짜',
+                                    date: {
+                                        before:
+                                            dayRange.end
+                                    }
+                                }
+                            ]
+                        }
+                    });
+
+                habitLogs.push(
+                    ...response.results
+                );
+
+                startCursor = response.has_more
+                    ? response.next_cursor ?? undefined
+                    : undefined;
+
+            } while (startCursor);
         }
 
         logger.info(
@@ -14801,7 +15187,7 @@ class RoutineService {
                 routine.collection('goalDailyStats').where('date', scope === 'today' ? '==' : '<=', today).get()
             ]);
             const dates = new Set<string>([...byDate.keys(), ...existing.docs.map(doc => doc.id),
-                ...existingGoals.docs.map(doc => doc.data().date as string), today]);
+            ...existingGoals.docs.map(doc => doc.data().date as string), today]);
             let changedDays = 0;
             let checkedDays = 0;
             for (const date of [...dates].sort()) {
@@ -14811,8 +15197,10 @@ class RoutineService {
                 if (result.status !== 'unchanged') changedDays++;
             }
             await this.processHabitStatsUnlocked(userId, today, false);
-            await routine.collection('reconciliations').add({ scope, checkedDays, changedDays,
-                completedAt: admin.firestore.FieldValue.serverTimestamp(), rewardsChanged: false });
+            await routine.collection('reconciliations').add({
+                scope, checkedDays, changedDays,
+                completedAt: admin.firestore.FieldValue.serverTimestamp(), rewardsChanged: false
+            });
             return { checkedDays, changedDays };
         } finally { await this.releaseRoutineLock(userId, lockId); }
     }
@@ -15189,8 +15577,10 @@ class RoutineService {
         )) status = 'updated';
         for (const previous of previousGoals.docs) {
             if (!goalStats[previous.data().goalId]) {
-                batch.set(previous.ref, { total: 0, completed: 0, useRest: false,
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+                batch.set(previous.ref, {
+                    total: 0, completed: 0, useRest: false,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
             }
         }
 
@@ -15481,9 +15871,11 @@ class RoutineService {
                 rewardPreviousDate = stat.date;
                 const rewardId = `reward_${stat.date}_${rewardStreak}`;
                 if (awardRewards && rewardStreak % 5 === 0 && !existingRestHistory.has(rewardId)) {
-                    batch.set(restHistoryRef.doc(rewardId), { date: stat.date, type: 'reward', amount: 1,
+                    batch.set(restHistoryRef.doc(rewardId), {
+                        date: stat.date, type: 'reward', amount: 1,
                         streak: rewardStreak, message: `${rewardStreak}일 꾸준히 달성`,
-                        createdAt: admin.firestore.FieldValue.serverTimestamp() });
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
                     existingRestHistory.add(rewardId);
                     restTokens++;
                 }

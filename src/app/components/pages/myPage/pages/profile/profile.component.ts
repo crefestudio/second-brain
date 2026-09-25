@@ -7,6 +7,18 @@ import { SocialAuthService } from '../../../../../services/social-auth.service';
 
 @Component({ selector: 'app-profile', standalone: true, imports: [CommonModule, FormsModule, RouterModule], templateUrl: './profile.component.html', styleUrls: ['./profile.component.scss'] })
 export class ProfileComponent implements OnInit {
+    showDeletion = false; deletionAgreed = false; deletionConfirmation = ''; isDeleting = false; deletionError = '';
+    async deleteAccount(): Promise<void> {
+        if (this.isDeleting || this.isSaving || !this.deletionAgreed || this.deletionConfirmation !== '탈퇴') return;
+        this.isDeleting = true; this.deletionError = '';
+        try {
+            await this.profileSettings.deleteAccount();
+            window.alert('회원 탈퇴와 데이터 삭제가 완료되었습니다.');
+            await this.socialAuth.logout();
+        } catch (error) {
+            this.deletionError = error instanceof Error ? error.message : '탈퇴를 완료하지 못했습니다.';
+        } finally { this.isDeleting = false; }
+    }
     isLoading = true; isSaving = false; errorMessage = ''; successMessage = '';
     profileName = ''; email = ''; phoneNumber = ''; createdAt = ''; provider = ''; marketingConsent = false; marketingConsentRequired = false; consentSelected = false;
     constructor(private readonly profileSettings: ProfileSettingsService, private readonly socialAuth: SocialAuthService) {}

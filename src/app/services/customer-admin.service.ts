@@ -4,7 +4,7 @@ import { auth } from '../firebase';
 
 export type LifeupCustomer = {
     id: string; name?: string; phone?: string; phoneDisplay?: string; emails?: string[];
-    purchasedAt?: string; notificationConsent?: '예' | '아니오' | '미응답';
+    purchasedAt?: string; notificationConsent?: '예' | '아니오' | '미응답' | '차단'; membership?: 'premium' | 'standard' | 'none';
     memberType?: 'standard' | 'premium' | null; [key: string]: unknown;
 };
 
@@ -18,6 +18,10 @@ export class CustomerAdminService {
 
     async importCsv(csv: string): Promise<{ csvCount: number; customerCount: number; skippedRows: number }> {
         return this.request('importLifeupCustomersCsv', { csv });
+    }
+
+    async sendSelectedMail(customerIds: string[], template: 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome', confirmNonConsenting = false): Promise<{ requiresConsentConfirmation?: boolean; recipientCount?: number; nonConsentingCount?: number; blockedCount?: number; sentCount?: number; failedCount?: number }> {
+        return this.request('sendLifeupCustomerMail', { customerIds, template, confirmNonConsenting });
     }
 
     private async request(endpoint: string, body: Record<string, unknown> = {}): Promise<any> {
