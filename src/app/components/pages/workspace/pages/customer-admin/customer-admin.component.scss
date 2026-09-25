@@ -1,0 +1,4 @@
+@use '../purchaser-admin/purchaser-admin.component.scss';
+.emails { max-width: 280px; white-space: normal !important; word-break: break-all; }
+.badge.none { color:#9ca3af; background:rgba(156,163,175,.12); }
+.filter-card select:disabled { opacity:.75; cursor:default; }

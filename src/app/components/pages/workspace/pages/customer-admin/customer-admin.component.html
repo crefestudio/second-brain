@@ -1,0 +1,26 @@
+@if (isLoading) {
+  <div class="page-loading">고객 정보를 불러오는 중입니다.</div>
+} @else if (errorMessage) {
+  <div class="page-container"><div class="empty-state"><h1>고객 관리</h1><p>{{ errorMessage }}</p></div></div>
+} @else {
+  <div class="page-container">
+    <header class="page-header">
+      <div class="breadcrumb">관리도구 <span>›</span> 고객 관리</div>
+      <div class="header-row"><div><h1>고객 관리</h1><p>마케팅 대상 고객을 휴대폰 번호 기준으로 관리합니다.</p></div><label class="csv-btn" [class.loading]="isImporting">{{ isImporting ? 'CSV 등록 중…' : 'CSV 등록' }}<input type="file" accept=".csv,text/csv" (change)="onCsvSelected($event)" [disabled]="isImporting"></label></div>
+      @if (csvMessage) { <p class="csv-message">{{ csvMessage }}</p> }
+    </header>
+    <div class="filter-card">
+      <label>고객 검색<input [(ngModel)]="search" placeholder="이름, 휴대폰 번호, 이메일"></label>
+      <label>정렬<select disabled><option>구매 일시</option></select></label>
+      <label>서비스<select [(ngModel)]="memberFilter"><option value="all">전체</option><option value="standard">일반</option><option value="premium">프리미엄</option><option value="none">비구매자</option></select></label>
+      <label>알림 동의 여부<select [(ngModel)]="notifyFilter"><option value="all">전체</option><option value="yes">동의</option><option value="no">미동의/미응답</option></select></label>
+      <span class="count">{{ filteredCustomers.length }}명 · {{ selectedIds.size }}명 선택</span>
+    </div>
+    <div class="table-card"><table class="service-table"><thead><tr><th><input type="checkbox" [checked]="allVisibleSelected" (change)="toggleAll()" aria-label="전체 선택"></th><th>구매 일시</th><th>이름</th><th>휴대폰 번호 🔑</th><th>이메일</th><th>서비스 등급</th><th>알림 동의 여부</th><th>상세 보기</th></tr></thead><tbody>
+      @for (customer of filteredCustomers; track customer.id) {
+        <tr><td><input type="checkbox" [checked]="selectedIds.has(customer.id)" (change)="toggle(customer)" [attr.aria-label]="customer.name || customer.phoneDisplay || '고객 선택'"></td><td>{{ customer.purchasedAt || '-' }}</td><td>{{ customer.name || '-' }}</td><td>{{ customer.phoneDisplay || customer.phone || '-' }}</td><td class="emails">{{ (customer.emails || []).join(', ') || '-' }}</td><td><span class="badge" [class.premium]="customer.memberType === 'premium'" [class.standard]="customer.memberType === 'standard'" [class.none]="!customer.memberType">{{ serviceLabel(customer) }}</span></td><td>{{ customer.notificationConsent || '미응답' }}</td><td><button class="detail-btn" (click)="toggleDetail(customer)">{{ selectedCustomer?.id === customer.id ? '닫기' : '상세 보기' }}</button></td></tr>
+        @if (selectedCustomer?.id === customer.id) { <tr class="detail-row"><td colspan="8"><div class="detail-card"><h2>고객 상세 정보</h2><dl>@for (entry of detailEntries(customer); track entry.key) { <div><dt>{{ entry.key }}</dt><dd>{{ entry.value }}</dd></div> }</dl></div></td></tr> }
+      } @empty { <tr><td colspan="8" class="empty-cell">조건에 맞는 고객이 없습니다.</td></tr> }
+    </tbody></table></div>
+  </div>
+}

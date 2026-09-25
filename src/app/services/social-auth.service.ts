@@ -38,6 +38,12 @@ export class SocialAuthService {
         if (!response.ok) throw new Error('Session lookup failed');
         return auth.currentUser?.uid === user.uid ? response.json() : null;
     }
+    async refreshAccount(): Promise<void> {
+        const user = auth.currentUser;
+        if (!user) return;
+        await user.reload();
+        this.account.set(auth.currentUser);
+    }
     private async purchaseRequest(endpoint: string, payload: { email: string; code?: string }): Promise<any> {
         const response = await fetch(`${this.config.functionsBaseUrl}/${endpoint}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)

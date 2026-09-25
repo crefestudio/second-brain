@@ -304,8 +304,10 @@
         </div>
         @if (adminOpen) {
           <div class="submenu">
-            <a routerLink="/workspace/admin/lifeup-care" routerLinkActive="active" class="submenu-item">라이프업 케어</a>
+            <a routerLink="/workspace/admin/members" routerLinkActive="active" class="submenu-item">회원 관리</a>
             <a routerLink="/workspace/admin/purchasers" routerLinkActive="active" class="submenu-item">구매자 관리</a>
+            <a routerLink="/workspace/admin/customers" routerLinkActive="active" class="submenu-item">고객 관리</a>
+            <a routerLink="/workspace/admin/lifeup-care" routerLinkActive="active" class="submenu-item">라이프업 케어</a>
           </div>
         }
       </div>
@@ -320,7 +322,7 @@
         <div class="account-dropdown">
           @if (auth.account(); as account) {
             <div class="account-info"><strong>{{ account.displayName || '내 계정' }}</strong><small>{{ account.email }}</small></div>
-            <a routerLink="/mypage/profile" (click)="accountMenu.open = false">계정 설정</a>
+            <a routerLink="/mypage/profile" (click)="accountMenu.open = false">프로필 설정</a>
             <button type="button" [disabled]="auth.busy()" (click)="auth.logout()">로그아웃</button>
           } @else {
             <a routerLink="/login" (click)="accountMenu.open = false">로그인 / 회원가입</a>

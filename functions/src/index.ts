@@ -2328,7 +2328,7 @@ function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject
                     <div style="height:1px;background:#eceef1;margin:32px 0"></div>
 
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">🎁</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기</td></tr></table>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아, <strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.</p>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아, <strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.(~10/31)</p>
                     <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;"><strong>라이프봇</strong>은 라이프업 템플릿을 더 편리하게 사용하고 꾸준히 활용할 수 있도록 도와드리는 자동화 서비스입니다.</p>
                     <a href="${lifeupbotUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">라이프봇 알아보기 →</a>
                     <div style="margin-top:24px;padding:24px;background:#f8faff;border-radius:12px">
@@ -2690,6 +2690,7 @@ export const listLifeupPurchasers = onRequest(withCors(async (req, res) => {
 }));
 
 type PurchaserCsvRow = { name: string; email: string; phone: string; purchaseOption: string; notify: string; status: string; amount: string; purchasedAt: string; paymentMethod: string };
+type CustomerCsvRow = PurchaserCsvRow & { notificationConsent?: boolean };
 
 function parsePurchaserCsv(csv: string): PurchaserCsvRow[] {
     const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false;
@@ -2722,6 +2723,207 @@ function csvFieldMatches(field: keyof PurchaserCsvRow, webhook: any, csv: Purcha
 function purchaserCsvKey(value: { email?: unknown; phone?: unknown; purchasedAt?: unknown; purchaseOption?: unknown }): string {
     return [csvComparable(value.email), csvPhone(value.phone), csvComparable(value.purchasedAt), csvComparable(value.purchaseOption)].join('|');
 }
+
+function parseCustomerCsv(csv: string): CustomerCsvRow[] {
+    const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false;
+    for (let index = 0; index < csv.length; index += 1) {
+        const char = csv[index];
+        if (char === '"') { if (quoted && csv[index + 1] === '"') { cell += char; index += 1; } else quoted = !quoted; }
+        else if (char === ',' && !quoted) { row.push(cell.trim()); cell = ''; }
+        else if ((char === '\n' || char === '\r') && !quoted) {
+            if (char === '\r' && csv[index + 1] === '\n') index += 1;
+            row.push(cell.trim()); if (row.some(value => value)) rows.push(row); row = []; cell = '';
+        } else cell += char;
+    }
+    row.push(cell.trim()); if (row.some(value => value)) rows.push(row);
+    if (rows.length < 2) return [];
+    const headers = rows[0];
+    const consentIndex = headers.findIndex(header => header.includes('안내') && header.includes('?'));
+    return rows.slice(1).filter(values => values.length >= 8).map(values => ({
+        name: values[0] || '', email: values[1] || '', phone: values[2] || '', purchaseOption: values[3] || '',
+        notify: values[4] || '', status: values[5] || '', amount: values[6] || '', purchasedAt: values[7] || '', paymentMethod: values[8] || '',
+        notificationConsent: consentIndex >= 0 ? customerHasNotification(values[consentIndex]) : undefined
+    }));
+}
+
+function customerPhone(value: unknown): string { return String(value ?? '').replace(/\D/g, ''); }
+function customerEmail(value: unknown): string { return String(value ?? '').trim().toLowerCase(); }
+function customerHasNotification(value: unknown): boolean {
+    return ['예', 'yes', 'y', 'true', '1'].includes(csvComparable(value));
+}
+function customerDocumentId(phone: string): string {
+    return `phone_${crypto.createHash('sha256').update(phone).digest('hex')}`;
+}
+function customerEmailDocumentId(email: string): string {
+    return `email_${crypto.createHash('sha256').update(email).digest('hex')}`;
+}
+
+// Explicit member preferences are authoritative; customer consent is a projection.
+async function memberPreferenceRefs(emails: string[]): Promise<admin.firestore.DocumentReference[]> {
+    const unique = [...new Set(emails.map(customerEmail).filter(Boolean))];
+    const refs: admin.firestore.DocumentReference[] = [];
+    for (let offset = 0; offset < unique.length; offset += 100) {
+        const result = await admin.auth().getUsers(unique.slice(offset, offset + 100).map(email => ({ email })));
+        refs.push(...result.users.map(user => db.collection('appAccounts').doc(user.uid)));
+    }
+    return refs;
+}
+
+function explicitMemberConsent(preferences: admin.firestore.DocumentData[]): boolean | undefined {
+    const explicit = preferences.filter(data => data.marketingConsentSource === 'user' && typeof data.marketingConsent === 'boolean');
+    explicit.sort((a, b) => (b.marketingConsentUpdatedAt?.toMillis?.() || 0) - (a.marketingConsentUpdatedAt?.toMillis?.() || 0));
+    return explicit[0]?.marketingConsent;
+}
+
+async function findCustomerRefsByEmail(email: string): Promise<admin.firestore.DocumentReference[]> {
+    const normalized = customerEmail(email);
+    if (!normalized) return [];
+    const snapshot = await db.collection('customers').where('templateId', '==', 'lifeUp').get();
+    return snapshot.docs.filter(doc => [...(Array.isArray(doc.data().emails) ? doc.data().emails : []), doc.data().email]
+        .some(value => customerEmail(value) === normalized)).map(doc => doc.ref);
+}
+
+async function findCustomerRefByEmail(email: string): Promise<admin.firestore.DocumentReference | null> {
+    return (await findCustomerRefsByEmail(email))[0] || null;
+}
+
+async function setCurrentCustomerConsent(email: string, consent: boolean, source: 'purchase' | 'csv' | 'account'): Promise<void> {
+    const normalized = customerEmail(email);
+    if (!normalized) return;
+    // Update every matching record. Older imports can contain separate customer
+    // documents for the same email (for example, after a phone-number change).
+    // Updating only the first result leaves the row shown in customer management
+    // with an obsolete consent value.
+    const refs = await findCustomerRefsByEmail(normalized);
+    const preferenceRefs = await memberPreferenceRefs([normalized]);
+    if (!refs.length) refs.push(db.collection('customers').doc(customerEmailDocumentId(normalized)));
+    await db.runTransaction(async transaction => {
+        const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
+        const preferences = await Promise.all(preferenceRefs.map(ref => transaction.get(ref)));
+        const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
+        snapshots.forEach((snapshot, index) => {
+            const existing = snapshot.data() || {};
+            const emails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
+            // An account owner's later choice must never be undone by a CSV reimport
+            // or an old purchase webhook.
+            if (explicit === undefined && source !== 'account' && existing.notificationConsentSource === 'account') return;
+            transaction.set(refs[index], {
+                templateId: 'lifeUp', emails: [...new Set([...emails, normalized])],
+                notificationConsent: (explicit ?? consent) ? '예' : '아니오', notificationConsentSource: explicit === undefined ? source : 'account',
+                notificationConsentUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+    });
+}
+
+// Customers are a marketing audience. They intentionally remain separate from
+// purchasers so that a free CSV entry can never be mistaken for a purchase.
+export const importLifeupCustomersCsv = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        if (!identity.isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+        const rows = parseCustomerCsv(String(req.body?.csv || ''));
+        if (!rows.length) return res.status(400).json({ error: 'CSV_FORMAT_INVALID' });
+
+        const grouped = new Map<string, CustomerCsvRow[]>();
+        let skippedRows = 0;
+        for (const row of rows) {
+            const phone = customerPhone(row.phone);
+            if (!phone) { skippedRows += 1; continue; }
+            const entries = grouped.get(phone) || [];
+            entries.push(row);
+            grouped.set(phone, entries);
+        }
+
+        for (const [phone, entries] of grouped) {
+            const newest = [...entries].sort((a, b) => purchaserTimestamp(b) - purchaserTimestamp(a))[0];
+            const emails = [...new Set(entries.map(row => customerEmail(row.email)).filter(Boolean))];
+            const ref = await findCustomerRefByEmail(emails[0] || '') || db.collection('customers').doc(customerDocumentId(phone));
+            const previous = (await ref.get()).data() || {};
+            const preferenceRefs = await memberPreferenceRefs([...emails, ...(previous.emails || [])]);
+            await db.runTransaction(async transaction => {
+                const existing = (await transaction.get(ref)).data() || {};
+                const preferences = await Promise.all(preferenceRefs.map(ref => transaction.get(ref)));
+                const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
+                const existingEmails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
+                transaction.set(ref, {
+                    templateId: 'lifeUp', phone, phoneDisplay: newest.phone || existing.phoneDisplay || phone,
+                    name: newest.name || existing.name || '', emails: [...new Set([...existingEmails, ...emails])],
+                    purchasedAt: newest.purchasedAt || existing.purchasedAt || '', source: 'csv',
+                    notificationConsent: explicit !== undefined ? (explicit ? '예' : '아니오') : existing.notificationConsentSource === 'account' || newest.notificationConsent === undefined ? existing.notificationConsent || '미응답' : newest.notificationConsent ? '예' : '아니오',
+                    notificationConsentSource: explicit !== undefined ? 'account' : existing.notificationConsentSource || 'csv',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            });
+            if (newest.notificationConsent !== undefined) {
+                await Promise.all(emails.map(email => setCurrentCustomerConsent(email, newest.notificationConsent!, 'csv')));
+            }
+        }
+        return res.json({ csvCount: rows.length, customerCount: grouped.size, skippedRows });
+    } catch (error) {
+        logger.error('Customer CSV import failed', error);
+        return res.status(500).json({ error: 'CUSTOMER_CSV_IMPORT_FAILED' });
+    }
+}));
+
+export const listLifeupCustomers = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        if (!identity.isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+        const [customerSnapshot, purchaserSnapshot] = await Promise.all([
+            db.collection('customers').where('templateId', '==', 'lifeUp').get(),
+            db.collection('purchasers').where('templateId', '==', 'lifeUp').get()
+        ]);
+        const grades = new Map<string, LifeupMemberType>();
+        for (const doc of purchaserSnapshot.docs) {
+            const phone = customerPhone(doc.data().phone);
+            const grade = lifeupMemberType(doc.data());
+            if (!phone || !grade) continue;
+            if (grades.get(phone) === 'premium') continue;
+            grades.set(phone, grade);
+        }
+        const customers = await Promise.all(customerSnapshot.docs.map(async doc => {
+            const data = doc.data();
+            const refs = await memberPreferenceRefs([...(Array.isArray(data.emails) ? data.emails : []), data.email]);
+            const preferences = await Promise.all(refs.map(ref => ref.get()));
+            const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
+            return { id: doc.id, ...data, memberType: grades.get(customerPhone(data.phone)) || null,
+                notificationConsent: explicit === undefined ? data.notificationConsent || '미응답' : explicit ? '예' : '아니오' };
+        }));
+        return res.json({ customers });
+    } catch (error) {
+        logger.error('Customer admin list failed', error);
+        return res.status(500).json({ error: 'CUSTOMER_LIST_FAILED' });
+    }
+}));
+
+// A purchaser is also a customer, but never the other way around. This keeps
+// free customer CSV rows away from authentication and entitlement checks.
+export const addLifeupPurchaserToCustomers = onDocumentCreated('purchasers/{purchaserId}', async event => {
+    const purchaser = event.data?.data();
+    if (!purchaser || purchaser.templateId !== 'lifeUp') return;
+    const phone = customerPhone(purchaser.phone);
+    if (!phone) return;
+    const email = customerEmail(purchaser.email);
+    const ref = await findCustomerRefByEmail(email) || db.collection('customers').doc(customerDocumentId(phone));
+    await db.runTransaction(async transaction => {
+        const existing = (await transaction.get(ref)).data() || {};
+        const emails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
+        transaction.set(ref, {
+            templateId: 'lifeUp', phone, phoneDisplay: purchaser.phone || existing.phoneDisplay || phone,
+            name: purchaser.name || existing.name || '', emails: [...new Set([...emails, ...(email ? [email] : [])])],
+            purchasedAt: purchaser.purchasedAt || existing.purchasedAt || '', source: existing.source || 'purchaser',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+    });
+    await setCurrentCustomerConsent(email, customerHasNotification(purchaser.notify), 'purchase');
+});
 
 export const validateLifeupPurchaserCsv = onRequest(withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
@@ -2787,6 +2989,112 @@ export const getAppSession = onRequest(withCors(async (req, res) => {
     const workspace = (await db.collection('users').doc(userId).get()).data();
     if (!workspace || workspace.firebaseUid !== identity.uid) return res.status(403).json({ error: 'Account mismatch' });
     return res.json({ userId, kakaoUserId: workspace.kakaoUserId || '', notionConnected: !!workspace.notionAccessToken });
+}));
+
+async function initialMarketingConsent(email: string): Promise<boolean> {
+    const [purchasers, customers] = await Promise.all([
+        db.collection('purchasers').where('templateId', '==', 'lifeUp').where('email', '==', email).get(),
+        db.collection('customers').where('templateId', '==', 'lifeUp').get()
+    ]);
+    const candidates: Array<{ value: boolean; updatedAt: number }> = [];
+    for (const doc of purchasers.docs) candidates.push({ value: customerHasNotification(doc.data().notify), updatedAt: doc.data().updatedAt?.toMillis?.() || 0 });
+    for (const doc of customers.docs) {
+        const emails = Array.isArray(doc.data().emails) ? doc.data().emails.map(customerEmail) : [];
+        if (emails.includes(email)) candidates.push({ value: doc.data().notificationConsent === '예', updatedAt: doc.data().updatedAt?.toMillis?.() || 0 });
+    }
+    return candidates.sort((a, b) => b.updatedAt - a.updatedAt)[0]?.value || false;
+}
+
+// A profile preference is the user's explicit choice and always takes priority
+// over a purchase hook or a subsequently imported customer CSV.
+export const getMyProfileSettings = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        const account = await admin.auth().getUser(identity.uid);
+        const accountRef = db.collection('appAccounts').doc(identity.uid);
+        const appAccount = (await accountRef.get()).data() || {};
+        const hasExplicitConsent = typeof appAccount.marketingConsent === 'boolean' && appAccount.marketingConsentSource === 'user';
+        const customerRef = await findCustomerRefByEmail(identity.email);
+        const customer = customerRef ? (await customerRef.get()).data() : null;
+        const hasCustomerConsent = customer?.notificationConsent === '예' || customer?.notificationConsent === '아니오';
+        const marketingConsent = hasExplicitConsent ? appAccount.marketingConsent : hasCustomerConsent
+            ? customer.notificationConsent === '예' : await initialMarketingConsent(identity.email);
+        return res.json({
+            displayName: account.displayName || '', email: account.email || '', phoneNumber: account.phoneNumber || '',
+            createdAt: account.metadata.creationTime || '', providers: account.providerData.map(provider => provider.providerId),
+            marketingConsent, marketingConsentSource: hasExplicitConsent ? 'user' : hasCustomerConsent ? customer.notificationConsentSource || 'import' : 'none',
+            marketingConsentRequired: !hasExplicitConsent && !hasCustomerConsent
+        });
+    } catch (error) {
+        logger.error('Profile settings lookup failed', error);
+        return res.status(401).json({ error: 'LOGIN_REQUIRED' });
+    }
+}));
+
+export const updateMyProfileSettings = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        const displayName = String(req.body?.displayName || '').trim();
+        const marketingConsent = req.body?.marketingConsent;
+        if (!displayName || displayName.length > 80 || typeof marketingConsent !== 'boolean') return res.status(400).json({ error: 'INVALID_PROFILE_SETTINGS' });
+        await admin.auth().updateUser(identity.uid, { displayName });
+        await db.collection('appAccounts').doc(identity.uid).set({
+            profileName: displayName, profileUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            marketingConsent, marketingConsentSource: 'user', marketingConsentUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        await setCurrentCustomerConsent(identity.email, marketingConsent, 'account');
+        return res.json({ displayName, marketingConsent });
+    } catch (error) {
+        logger.error('Profile settings update failed', error);
+        return res.status(500).json({ error: 'PROFILE_SETTINGS_UPDATE_FAILED' });
+    }
+}));
+
+// Firebase Auth is the source of truth for service members. appAccounts stores
+// only service-specific preferences such as the marketing-consent override.
+export const listAppMembers = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        if (!identity.isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+        const customerSnapshot = await db.collection('customers').where('templateId', '==', 'lifeUp').get();
+        const importedConsent = new Map<string, { value: boolean; updatedAt: number }>();
+        const addConsent = (email: string, value: boolean, updatedAt: number) => {
+            const normalized = customerEmail(email); const existing = importedConsent.get(normalized);
+            if (normalized && (!existing || updatedAt >= existing.updatedAt)) importedConsent.set(normalized, { value, updatedAt });
+        };
+        customerSnapshot.docs.forEach(doc => {
+            const data = doc.data(); const updatedAt = data.updatedAt?.toMillis?.() || 0;
+            (Array.isArray(data.emails) ? data.emails : []).forEach((email: unknown) => addConsent(String(email || ''), data.notificationConsent === '예', updatedAt));
+        });
+        const members: any[] = []; let pageToken: string | undefined;
+        do {
+            const page = await admin.auth().listUsers(1000, pageToken);
+            const [preferenceDocs, workspaceSnapshots, workspaceEmailSnapshots] = await Promise.all([
+                Promise.all(page.users.map(user => db.collection('appAccounts').doc(user.uid).get())),
+                Promise.all(page.users.map(user => db.collection('users').where('firebaseUid', '==', user.uid).get())),
+                Promise.all(page.users.map(user => db.collection('users').where('email', '==', customerEmail(user.email)).get()))
+            ]);
+            page.users.forEach((user, index) => {
+                const preference = preferenceDocs[index].data() || {};
+                const email = customerEmail(user.email);
+                // Only IDs of existing /users documents are workspace IDs.
+                // appAccounts.userId is a binding that may be stale.
+                const workspaceIds = [...new Set([
+                    ...workspaceSnapshots[index].docs.map(doc => doc.id),
+                    ...workspaceEmailSnapshots[index].docs.map(doc => doc.id)
+                ])];
+                members.push({ id: user.uid, profileName: user.displayName || preference.profileName || '', email: user.email || '', phoneNumber: user.phoneNumber || '', workspaceIds, createdAt: user.metadata.creationTime || '', marketingConsent: preference.marketingConsentSource === 'user' ? preference.marketingConsent === true : importedConsent.get(email)?.value || false });
+            });
+            pageToken = page.pageToken;
+        } while (pageToken);
+        return res.json({ members });
+    } catch (error) {
+        logger.error('Member admin list failed', error);
+        return res.status(500).json({ error: 'MEMBER_LIST_FAILED' });
+    }
 }));
 
 export const verifyCode = onRequest(withCors(async (req, res) => {

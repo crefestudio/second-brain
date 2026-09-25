@@ -44,6 +44,8 @@ import { EventLogComponent } from './components/pages/workspace/pages/event-log/
 import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/studio/pages/lifeup-template-settings/lifeup-template-settings.component';
 import { LifeupCareComponent } from './components/pages/workspace/pages/care/lifeup-care/lifeup-care.component';
 import { PurchaserAdminComponent } from './components/pages/workspace/pages/purchaser-admin/purchaser-admin.component';
+import { CustomerAdminComponent } from './components/pages/workspace/pages/customer-admin/customer-admin.component';
+import { MemberAdminComponent } from './components/pages/workspace/pages/member-admin/member-admin.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
 //import { UpdateComponent } from './components/pages/life-up/pages/update/update.component';
@@ -90,6 +92,14 @@ export const routes: Routes = [
       {
         path: 'admin/purchasers',
         component: PurchaserAdminComponent
+      },
+      {
+        path: 'admin/customers',
+        component: CustomerAdminComponent
+      },
+      {
+        path: 'admin/members',
+        component: MemberAdminComponent
       },
       {
         path: 'connect',

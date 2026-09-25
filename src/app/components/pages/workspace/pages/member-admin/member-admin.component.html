@@ -1,0 +1,11 @@
+@if (isLoading) {
+  <div class="page-loading">회원 정보를 불러오는 중입니다.</div>
+} @else if (errorMessage) {
+  <div class="page-container"><div class="empty-state"><h1>회원 관리</h1><p>{{ errorMessage }}</p></div></div>
+} @else {
+  <div class="page-container">
+    <header class="page-header"><div class="breadcrumb">관리도구 <span>›</span> 회원 관리</div><h1>회원 관리</h1><p>Firebase Auth 계정 기준의 서비스 회원 목록입니다.</p></header>
+    <div class="filter-card"><label>회원 검색<input [(ngModel)]="search" placeholder="프로필명, 이메일, 휴대폰 번호, 워크스페이스 ID"></label><label>마케팅 알림 수신 동의<select [(ngModel)]="consentFilter"><option value="all">전체</option><option value="yes">동의</option><option value="no">미동의</option></select></label><span class="count">{{ filteredMembers.length }}명</span></div>
+    <div class="table-card"><table class="service-table"><thead><tr><th>가입일</th><th>프로필명</th><th>이메일 🔑</th><th>휴대폰 번호</th><th>워크스페이스 IDs</th><th>마케팅 알림 수신 동의</th></tr></thead><tbody>@for (member of filteredMembers; track member.id) { <tr><td>{{ formatDate(member.createdAt) }}</td><td>{{ member.profileName || '-' }}</td><td>{{ member.email || '-' }}</td><td>{{ member.phoneNumber || '-' }}</td><td>{{ member.workspaceIds.length ? member.workspaceIds.join(', ') : '-' }}</td><td><span class="badge" [class.success]="member.marketingConsent" [class.none]="!member.marketingConsent">{{ member.marketingConsent ? '동의' : '미동의' }}</span></td></tr> } @empty { <tr><td colspan="6" class="empty-cell">조건에 맞는 회원이 없습니다.</td></tr> }</tbody></table></div>
+  </div>
+}
