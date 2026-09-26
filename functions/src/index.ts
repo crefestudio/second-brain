@@ -2313,7 +2313,7 @@ const LIFEUP_EMAIL_VARIABLES = {
     installYoutubeUrl: 'https://www.youtube.com/shorts/QnR_gnGWOQE',
     lifeupPassportUrl: 'https://app.notionable.net/templateDownload/LifeUp1.5.pdf',
     lifeupTemplateReleaseUrl: 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e3eea79fd8c80b39dc7e4aa9c8982ec?source=copy_link',
-    reviewUrl: 'https://notionable.net/store/?idx=1'
+    reviewUrl: 'https://notionable.net/lifeup-review'
 } as const;
 
 function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject: string; text: string; html: string } {

@@ -26,7 +26,7 @@ export class LifeupDownloadComponent implements OnInit {
     private verificationUid: string | null = null;
 
     readonly downloadUrl = inject(APP_CONFIG).lifeUpReleaseUrls['1.5'];
-    readonly reviewUrl = 'https://notionable.net/store/?idx=1';
+    readonly reviewUrl = 'https://notionable.net/lifeup-review';
     readonly passportUrl = inject(APP_CONFIG).lifeUpPassportUrls['1.5'];
 
     constructor(
