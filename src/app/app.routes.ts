@@ -30,6 +30,7 @@ import { RoutineFindComponent } from './components/pages/workspace/pages/routine
 import { MyRoutineComponent } from './components/pages/workspace/pages/routine/pages/my-rountine/my-routine.component';
 import { RoutineDashboardComponent } from './components/pages/workspace/pages/routine/pages/routine-dashboard/routine-dashboard.component';
 import { AutoManagerComponent } from './components/pages/workspace/pages/auto-manager/auto-manager.component';
+import { AutoComponent } from './components/pages/workspace/pages/auto/auto.component';
 
 import { MyPageComponent } from './components/pages/myPage/myPage.component';
 import { ProfileComponent } from './components/pages/myPage/pages/profile/profile.component';
@@ -182,15 +183,18 @@ export const routes: Routes = [
       },
       {
         path: 'auto',
-        component: AutoManagerComponent
+        component: AutoComponent,
+        children: [
+          { path: '', redirectTo: 'manage', pathMatch: 'full' },
+          { path: 'manage', component: AutoManagerComponent },
+          { path: 'log', component: EventLogComponent },
+          { path: 'log/:agentId', component: EventLogComponent }
+        ]
       },
       {
         path: 'event-log',
-        component: EventLogComponent
-      },
-      {
-        path: 'event-log/:agentId',
-        component: EventLogComponent
+        redirectTo: 'auto/log',
+        pathMatch: 'full'
       },
 
       //   {

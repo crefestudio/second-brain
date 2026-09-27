@@ -245,8 +245,8 @@ export class EventLogComponent {
 
         await this.router.navigate(
             agentId
-                ? ['/workspace/event-log', agentId]
-                : ['/workspace/event-log']
+                ? ['/workspace/auto/log', agentId]
+                : ['/workspace/auto/log']
         );
 
         this.logs = [];

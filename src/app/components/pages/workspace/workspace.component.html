@@ -4,7 +4,7 @@
             ⚡ 라이프봇 데시보드
         </h1>
         <div class="hero-box">
-            <button class="template-link-btn" routerLink="/workspace/auto">
+            <button class="template-link-btn" routerLink="/workspace/auto/manage">
                 자동화 비서 관리 →
             </button>
 
@@ -99,7 +99,7 @@
         <!-- 자동화 비서 -->
 
         <div class="dashboard-card">
-            <div class="dashboard-title" routerLink="/workspace/auto" style="cursor: pointer;">
+            <div class="dashboard-title" routerLink="/workspace/auto/manage" style="cursor: pointer;">
                 자동화 비서 동작 상태
             </div>
             <div class="dashboard-content">
@@ -120,7 +120,7 @@
                 </div>
             </div>
             <div class="dashboard-footer">
-                <button class="connect-btn" routerLink="/workspace/auto">
+                <button class="connect-btn" routerLink="/workspace/auto/manage">
                     자동화 비서 관리하기
                 </button>
             </div>
@@ -150,7 +150,7 @@
                 <div class="dashboard-item">
                     <span>TOTAL</span>
 
-                    <button class="count-btn" routerLink="/workspace/event-log">
+                    <button class="count-btn" routerLink="/workspace/auto/log">
                         {{totalCount}}
                     </button>
                 </div>
@@ -158,7 +158,7 @@
                 <div class="dashboard-item">
                     <span>카카오톡 AI 비서</span>
 
-                    <button class="count-btn" routerLink="/workspace/event-log/kakao-capture">
+                    <button class="count-btn" routerLink="/workspace/auto/log/kakao-capture">
                         {{kakaoCount}}
                     </button>
                 </div>
@@ -166,7 +166,7 @@
                 <div class="dashboard-item">
                     <span>세컨드브레인 키워드 추출</span>
 
-                    <button class="count-btn" routerLink="/workspace/event-log/secondbrain">
+                    <button class="count-btn" routerLink="/workspace/auto/log/secondbrain">
                         {{secondbrainCount}}
                     </button>
                 </div>

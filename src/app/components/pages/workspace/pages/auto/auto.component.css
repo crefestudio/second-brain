@@ -1,0 +1,8 @@
+.auto-layout { padding: 24px; }
+.auto-tabs { display: flex; justify-content: center; width: fit-content; margin: 0 auto 18px; background: #252527; border-radius: 11px; }
+.auto-tab { display: flex; align-items: center; justify-content: center; min-width: 112px; height: 33px; padding: 0 16px; border-radius: 16px; color: #999; font-size: 14px; font-weight: 600; text-decoration: none; transition: all .2s ease; }
+.auto-tab .menu-icon-svg { width: 18px; height: 18px; margin-right: 5px; flex: 0 0 18px; }
+.auto-tab:has(.menu-icon-svg) { padding-left: 11px; }
+.auto-tab:hover { color: #ddd; background: rgb(255 255 255 / 7%); }
+.auto-tab.active { color: #6d99f2; background: #3a3a3c; box-shadow: 0 1px 4px rgb(0 0 0 / 30%); }
+@media (max-width: 640px) { .auto-layout { padding: 16px; } .auto-tab { min-width: 0; padding: 0 12px; font-size: 13px; } }
