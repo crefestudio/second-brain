@@ -8,11 +8,12 @@ import { ToastService } from '../../../../../../services/toast.service';
 import { UserService } from '../../../../../../services/user.service';
 import { NACommonService } from '../../../../../../services/common.service';
 import { APP_CONFIG } from '../../../../../../config/app-config.token';
+import { LifebotGuideModalComponent } from '../../../../../common/lifebot-guide-modal/lifebot-guide-modal.component';
 
 @Component({
     selector: 'app-lifeup-migration',
     standalone: true,
-    imports: [CommonModule, RouterLink],
+    imports: [CommonModule, RouterLink, LifebotGuideModalComponent],
     templateUrl: './lifeup-migration.component.html',
     styleUrl: './lifeup-migration.component.scss'
 })
@@ -50,6 +51,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     migrationSupportsStop = false;
     migrationStopPending = false;
     migrationNoticeExpanded = false;
+    isBackupGuideOpen = false;
 
     get migrationCanRestart(): boolean {
         return !!this.migrationRunId && !this.migrationSuccess &&

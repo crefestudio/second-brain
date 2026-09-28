@@ -109,7 +109,7 @@
                         </span>
                     </div>
 
-                    <button class="secondary-btn">
+                    <button type="button" class="secondary-btn" (click)="isBackupGuideOpen = true">
                         백업 방법 보기
                     </button>
                 </div>
@@ -777,4 +777,5 @@
 
     </section>
 </div>
-}
+<app-lifebot-guide-modal [open]="isBackupGuideOpen" (closed)="isBackupGuideOpen = false"></app-lifebot-guide-modal>
+} 
