@@ -52,6 +52,12 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     migrationStopPending = false;
     migrationNoticeExpanded = false;
     isBackupGuideOpen = false;
+    guideInitialSection = 'backup-method';
+
+    openGuide(section: 'backup-method' | 'template-permission'): void {
+        this.guideInitialSection = section;
+        this.isBackupGuideOpen = true;
+    }
 
     get migrationCanRestart(): boolean {
         return !!this.migrationRunId && !this.migrationSuccess &&

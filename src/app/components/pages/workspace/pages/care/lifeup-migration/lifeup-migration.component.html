@@ -19,7 +19,7 @@
 </div>
 
 <!-- Notion 연결됨 -->
-<div *ngIf="userId" class="page">
+<div *ngIf="userId" class="page lifeup-migration-page">
     <div class="page-header">
         <h1>🔄 라이프업 업데이트</h1>
 
@@ -109,7 +109,8 @@
                         </span>
                     </div>
 
-                    <button type="button" class="secondary-btn" (click)="isBackupGuideOpen = true">
+                    <button type="button" class="secondary-btn" (click)="openGuide('backup-method')">
+                        <span class="guide-button-icon" aria-hidden="true">?</span>
                         백업 방법 보기
                     </button>
                 </div>
@@ -180,14 +181,21 @@
                     </p>
                 </div>
 
-                <div class="connection-status" *ngIf="!isMigrationConnected">
-                    <span class="status-dot"></span>
-                    연결 대기
-                </div>
+                <div class="connection-header-actions">
+                    <button type="button" class="secondary-btn" (click)="openGuide('template-permission')">
+                        <span class="guide-button-icon" aria-hidden="true">?</span>
+                        연결 방법 보기
+                    </button>
 
-                <div class="success-status" *ngIf="isMigrationConnected">
-                    <span class="status-dot"></span>
-                    연결 완료
+                    <div class="connection-status" *ngIf="!isMigrationConnected">
+                        <span class="status-dot"></span>
+                        연결 대기
+                    </div>
+
+                    <div class="success-status" *ngIf="isMigrationConnected">
+                        <span class="status-dot"></span>
+                        연결 완료
+                    </div>
                 </div>
             </div>
 
@@ -792,5 +800,5 @@
 
     </section>
 </div>
-<app-lifebot-guide-modal [open]="isBackupGuideOpen" (closed)="isBackupGuideOpen = false"></app-lifebot-guide-modal>
+<app-lifebot-guide-modal [open]="isBackupGuideOpen" [initialSection]="guideInitialSection" (closed)="isBackupGuideOpen = false"></app-lifebot-guide-modal>
 } 
