@@ -450,7 +450,12 @@
             }
           </td>
           <td class="task-cell">
-            카카오톡 AI 비서 연결
+            <div class="task-title-with-guide">
+              카카오톡 AI 비서 연결
+              <button type="button" class="guide-btn" (click)="isKakaoGuideOpen = true">
+                ? 연결 방법 보기
+              </button>
+            </div>
           </td>
           <td class="action-cell">
             <div class="verify-wrap">
@@ -570,6 +575,8 @@
 </div>
 <div class="warn-message" [innerHTML]="warnMessage">
 </div>
+
+<app-lifebot-guide-modal [open]="isKakaoGuideOpen" initialSection="kakao-connect" (closed)="isKakaoGuideOpen = false"></app-lifebot-guide-modal>
 
 <!-- 카카오톡 연결해제 -->
 <div class="modal-backdrop" *ngIf="isConfirmRemoveDisconnectKakao">

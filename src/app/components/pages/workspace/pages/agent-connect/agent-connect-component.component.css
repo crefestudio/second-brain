@@ -110,6 +110,29 @@
   width: auto;
 }
 
+.task-title-with-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guide-btn {
+  padding: 5px 10px 3px;
+  color: #aab3bf;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  background: #252a31;
+  border: 1px solid #3a414b;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.guide-btn:hover {
+  color: #fff;
+  background: #2d333b;
+}
+
 .action-cell {
 
   width: 420px;

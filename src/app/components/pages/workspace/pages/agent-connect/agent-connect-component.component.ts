@@ -6,6 +6,7 @@ import { Component, HostListener, inject, OnInit } from '@angular/core';
 import { UserService } from '../../../../../services/user.service';
 import { ToastService } from '../../../../../services/toast.service';
 import { AuthService } from '../../../../../services/auth.service';
+import { LifebotGuideModalComponent } from '../../../../common/lifebot-guide-modal/lifebot-guide-modal.component';
 
 
 /*
@@ -25,7 +26,7 @@ const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-agent-connect-component',
-    imports: [CommonModule, FormsModule, RouterLink],
+    imports: [CommonModule, FormsModule, RouterLink, LifebotGuideModalComponent],
     templateUrl: './agent-connect-component.component.html',
     styleUrl: './agent-connect-component.component.css'
 })
@@ -53,6 +54,7 @@ export class AgentConnectComponentComponent implements OnInit {
     public isWaitingKakaoVerification = false;
     public isKakaoVerificationSuccess = false;
     isConfirmRemoveDisconnectKakao: boolean = false;
+    isKakaoGuideOpen = false;
 
     // notion tempalte
     isOpenNotionConnectWindow: boolean = false; // 연결창 띄움 여부

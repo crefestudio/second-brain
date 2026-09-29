@@ -7,6 +7,8 @@
 
         <div class="guide-modal-body">
             <nav class="guide-index" aria-label="가이드 목차">
+                <a href="#lifebot-connect-settings" [class.active]="activeSection === 'lifebot-connect-settings'" (click)="selectSection($event, 'lifebot-connect-settings')">라이프봇 연결 설정</a>
+                <a class="guide-index-child" href="#kakao-connect" [class.active]="activeSection === 'kakao-connect'" (click)="selectSection($event, 'kakao-connect')">카카오톡 연결하기</a>
                 <a href="#lifeup-update" [class.active]="activeSection === 'lifeup-update'" (click)="selectSection($event, 'lifeup-update')">라이프업 업데이트</a>
                 <a class="guide-index-child" href="#backup-method" [class.active]="activeSection === 'backup-method'" (click)="selectSection($event, 'backup-method')">기존 템플릿 백업 방법 보기</a>
                 <a class="guide-index-child" href="#template-permission" [class.active]="activeSection === 'template-permission'" (click)="selectSection($event, 'template-permission')">템플릿 권한 연결하기</a>
@@ -76,6 +78,44 @@
                             </div>
                         </article>
                     </section>
+                </section>
+
+                <section id="lifebot-connect-settings" class="guide-section guide-subsection">
+                    <p class="guide-eyebrow">라이프봇 연결 설정</p>
+                    <h3 id="kakao-connect">카카오톡 연결하기</h3>
+                    <p class="guide-intro">카카오톡과 라이프봇을 연결하는 방법입니다.</p>
+
+                    <article class="guide-step">
+                        <div class="guide-step-number">1</div>
+                        <div>
+                            <p><strong>연결 설정</strong> 메뉴에서 <strong>카카오톡 연결</strong> 버튼을 누릅니다.</p>
+                            <img src="assets/images/kakao_connect_guide1.png" alt="연결 설정 메뉴의 카카오톡 연결 버튼">
+                        </div>
+                    </article>
+
+                    <article class="guide-step">
+                        <div class="guide-step-number">2</div>
+                        <div>
+                            <p><strong>카카오톡 열기</strong> 버튼을 누르면 모바일 또는 데스크톱 카카오톡이 열립니다.</p>
+                            <img src="assets/images/kakao_connect_guide2.png" alt="카카오톡 열기 버튼">
+                        </div>
+                    </article>
+
+                    <article class="guide-step">
+                        <div class="guide-step-number">3</div>
+                        <div>
+                            <p>라이프봇 대화창에 표시된 <strong>인증번호를 입력</strong>합니다.</p>
+                            <img src="assets/images/kakao_connect_guide3.png" alt="라이프봇 대화창에 인증번호를 입력하는 화면">
+                        </div>
+                    </article>
+
+                    <article class="guide-step">
+                        <div class="guide-step-number">4</div>
+                        <div>
+                            <p>인증이 완료되면 연결 상태 화면으로 바뀌며, 카카오톡과 라이프봇 연결이 완료됩니다.</p>
+                            <img src="assets/images/kakao_connect_guide4.png" alt="카카오톡과 라이프봇 연결이 완료된 화면">
+                        </div>
+                    </article>
                 </section>
             </main>
         </div>
