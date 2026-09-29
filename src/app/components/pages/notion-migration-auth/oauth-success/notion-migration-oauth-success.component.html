@@ -3,6 +3,11 @@
         <h1 class="title" *ngIf="isPending">연결 확인 중</h1>
         <h1 class="title" *ngIf="!isPending">🎉 연결 성공</h1>
 
+        <p class="connection-notice" *ngIf="isPending && connectionState !== 'delayed'">
+          연결에는 평균 <strong>3~5분 정도</strong> 소요됩니다.<br>
+          <strong>연결이 완료될 때까지 이 창을 닫지 말고 기다려주세요.</strong>
+        </p>
+
         <p class="desc" *ngIf="!isPending">
             데이터 이전을 위한 라이프업 연결이 완료되었습니다.<br>
             이제 원래 페이지로 돌아가 다음 단계를 진행해주세요.

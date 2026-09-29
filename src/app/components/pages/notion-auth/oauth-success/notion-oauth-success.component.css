@@ -108,6 +108,20 @@
     line-height: 1.6;
 }
 
+.connection-notice {
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid rgba(116, 201, 149, .25);
+  border-radius: 10px;
+  background: rgba(116, 201, 149, .07);
+  color: #c3d5c9;
+  font-size: 14px;
+  line-height: 1.8;
+  word-break: keep-all;
+}
+
+.connection-notice strong { color: #74c995; }
+
 .connection-status {
   margin-top: 24px;
   padding: 16px;
@@ -130,7 +144,7 @@
   height: 16px;
   flex: 0 0 auto;
   border: 2px solid #4b4b52;
-  border-top-color: #ef8a72;
+  border-top-color: #74c995;
   border-radius: 50%;
   animation: connection-spin .8s linear infinite;
 }
@@ -147,7 +161,7 @@
   height: 100%;
   min-width: 4px;
   border-radius: inherit;
-  background: #ef8a72;
+  background: #74c995;
   transition: width .4s ease;
 }
 
