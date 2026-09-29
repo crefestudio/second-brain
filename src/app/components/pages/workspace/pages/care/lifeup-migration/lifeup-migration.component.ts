@@ -267,8 +267,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             this.migrationCheckSuccess = status.success === true;
             this.migrationCheckStatus = this.migrationCheckSuccess ? 'READY' : 'ERROR';
 
-            this.userService.stopMigrationCheckWatcher();
-
+            // The results snapshot can arrive after the completion snapshot.
+            // Keep listening until the next check, disconnect, or page destruction.
             this.clearForceStopTimer();
             this.forceStopAvailable = false;
         }));
@@ -666,6 +666,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     // migration check
 
     async startCheckProcess() {
+        if (!this.userId || this.migrationCheckStatus === 'CHECKING') return;
         // Ignore an older restore request that may still be resolving while this new check starts.
         this.migrationCheckRestoreGeneration++;
         this.userService.stopMigrationCheckWatcher();
@@ -680,15 +681,35 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         this.migrationCheckTotalCount = 0;
         this.migrationCheckSuccess = false;
 
+        const generation = this.migrationCheckRestoreGeneration;
+        try {
+            const previousRun = await this.userService.getMigrationCheckRun(this.userId);
+            if (this.destroyed || generation !== this.migrationCheckRestoreGeneration) return;
+            this.userService.watchNextMigrationCheckRun(this.userId, previousRun?.runId || '', runId => {
+                this.migrationCheckRunId = runId;
+            });
+        } catch (error) {
+            console.error('[Migration Check] failed to prepare watcher:', error);
+            this.migrationCheckStatus = 'ERROR';
+            return;
+        }
+        this.startForceStopTimer();
         const result: any = await this.userService.checkLifeUpMigration(this.userId);
+        if (this.destroyed || generation !== this.migrationCheckRestoreGeneration) return;
 
         console.log('[Migration Check] start result:', result);
 
         if (!result?.success || !result.runId) {
+            // The request can fail while the server is still writing progress.
+            if (this.migrationCheckRunId) return;
+            this.userService.stopMigrationCheckWatcher();
+            this.clearForceStopTimer();
             this.migrationCheckStatus = 'ERROR';
             return;
         }
 
+        // Results are already streaming; do not restart a completed subscription.
+        if (this.migrationCheckRunId === result.runId) return;
         this.migrationCheckRunId = result.runId;
 
         this.startForceStopTimer();
@@ -783,6 +804,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     }
 
     forceStopMigrationCheck() {
+        this.migrationCheckRestoreGeneration++;
         this.clearForceStopTimer();
         this.forceStopAvailable = false;
 

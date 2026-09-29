@@ -1443,17 +1443,29 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
                 // --------------------------------------------------
 
                 if (onlyOld.length || onlyNew.length || renamed.length || typeChanged.length) {
-                    const isError = (onlyOld.length > 0 || typeChanged.length > 0) && count > 0;
+                    // Known template migrations that safely convert existing values.
+                    // Keep them in the result for visibility, but do not block migration.
+                    const knownWarningTypeChanges = typeChanged.filter(change =>
+                        dbName === 'memo' &&
+                        change.name === '중요도' &&
+                        change.oldType === 'multi_select' &&
+                        change.newType === 'select'
+                    );
+                    const blockingTypeChanges = typeChanged.filter(
+                        change => !knownWarningTypeChanges.includes(change)
+                    );
+                    const isError = (onlyOld.length > 0 || blockingTypeChanges.length > 0) && count > 0;
 
                     result = {
                         dbName,
-                        status: isError ? "error" : "notification",
+                        status: isError ? "error" : knownWarningTypeChanges.length ? "warning" : "notification",
                         count,
                         type: "schema",
                         onlyOld,
                         onlyNew,
                         renamed,
-                        typeChanged
+                        typeChanged,
+                        knownWarningTypeChanges
                     };
                 } else {
                     result = {

@@ -247,6 +247,7 @@ export class UserService {
         this.migrationUnsubscribers = [];
     }
 
+    private migrationCheckRunUnsubscribe?: () => void;
     private migrationCheckUnsubscribe?: () => void;
     private migrationCheckStatusUnsubscribe?: () => void;
 
@@ -2061,6 +2062,20 @@ export class UserService {
     }
 
 
+    watchNextMigrationCheckRun(userId: string, previousRunId: string, onRun: (runId: string) => void) {
+        this.stopMigrationCheckWatcher();
+        this.migrationCheckRunUnsubscribe = onSnapshot(
+            doc(firestore, 'users', userId, 'integrations', 'migration'),
+            snapshot => {
+                const runId = snapshot.data()?.['migrationCheckRunId'];
+                if (!runId || runId === previousRunId) return;
+                onRun(runId);
+                this.startMigrationCheckWatcher(userId, runId);
+            },
+            error => console.error('[Migration Check] run watcher ERROR:', error)
+        );
+    }
+
     startMigrationCheckWatcher(userId: string, runId: string) {
         if (!userId || !runId) { return; }
 
@@ -2138,6 +2153,8 @@ export class UserService {
     }
 
     stopMigrationCheckWatcher() {
+        this.migrationCheckRunUnsubscribe?.();
+        this.migrationCheckRunUnsubscribe = undefined;
         this.migrationCheckUnsubscribe?.();
         this.migrationCheckUnsubscribe = undefined;
 

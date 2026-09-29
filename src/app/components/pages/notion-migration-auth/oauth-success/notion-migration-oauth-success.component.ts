@@ -24,6 +24,7 @@ export class NotionMigrationOauthSuccessComponent implements OnInit, OnDestroy {
     readonly pollingIntervalMs = 10 * 1000;
     private readonly pollingDeadlineMs = 5 * 60 * 1000;
     private pollingStartedAt = 0;
+    private userId = '';
 
     constructor(private route: ActivatedRoute, private userService: UserService) {
 
@@ -35,15 +36,9 @@ export class NotionMigrationOauthSuccessComponent implements OnInit, OnDestroy {
             _log('OAuth callback userId =>', userId);
 
             if (!userId) return;
+            this.userId = userId;
 
-            if (this.pollTimer) clearTimeout(this.pollTimer);
-            this.pollingStartedAt = Date.now();
-            this.now = this.pollingStartedAt;
-            this.connectionState = 'checking';
-            this.checkCount = 0;
-            this.nextCheckAt = undefined;
-            this.statusTimer ??= setInterval(() => this.now = Date.now(), 1000);
-            void this.checkConnection(userId);
+            this.retryConnection();
         });
     }
 
@@ -85,6 +80,18 @@ export class NotionMigrationOauthSuccessComponent implements OnInit, OnDestroy {
     get secondsUntilRetry(): number {
         if (!this.nextCheckAt) return 0;
         return Math.max(0, Math.ceil((this.nextCheckAt - this.now) / 1000));
+    }
+
+    retryConnection(): void {
+        if (!this.userId) return;
+        if (this.pollTimer) clearTimeout(this.pollTimer);
+        this.pollingStartedAt = Date.now();
+        this.now = this.pollingStartedAt;
+        this.connectionState = 'checking';
+        this.checkCount = 0;
+        this.nextCheckAt = undefined;
+        this.statusTimer ??= setInterval(() => this.now = Date.now(), 1000);
+        void this.checkConnection(this.userId);
     }
 
 }

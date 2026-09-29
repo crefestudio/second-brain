@@ -37,11 +37,17 @@
         {{ secondsUntilRetry }}초 후에 다시 시도하겠습니다. ({{ pollingIntervalMs / 1000 }}초마다 자동 확인)
       </p>
       <p class="status-message" *ngIf="connectionState === 'delayed'">
-        확인이 완료되지 않았습니다. 원래 페이지에서 다시 연결을 시도해주세요.
+        템플릿을 연결할 수 없습니다.<br>
+        연결 가이드를 확인한 후 다시 시도해주시기 바랍니다.
       </p>
 
+      <div class="delayed-actions" *ngIf="connectionState === 'delayed'">
+        <button type="button" class="retry-btn" (click)="retryConnection()">연결 재시도</button>
+        <a href="http://pf.kakao.com/_tGkqX/chat" target="_blank" rel="noopener noreferrer" class="inquiry-btn">문의하기</a>
+      </div>
+
       <p class="status-meta" *ngIf="connectionState !== 'delayed'">
-        확인 {{ checkCount }}회째 · 노션 API 연결은 보통 연결 요청 후 3~5분 정도 소요됩니다.
+        확인 {{ checkCount }}회째 시도 중입니다.
       </p>
     </section>
 
