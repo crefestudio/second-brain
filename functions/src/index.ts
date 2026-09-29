@@ -2237,9 +2237,9 @@ function escapeEmailHtml(value: string): string {
 
 type LifeupEmailTemplateId = 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome';
 const LIFEUP_EMAIL_TEMPLATES: ReadonlyArray<{ id: LifeupEmailTemplateId; name: string }> = [
-    { id: 'standard-purchaser-update', name: '기존 일반 구매자 업데이트 안내' }
+    { id: 'standard-purchaser-update', name: '기존 일반 구매자 업데이트 안내' },
     { id: 'standard-purchaser-welcome', name: '[자동 발송] 일반 구매자 / 구매 시' },
-    { id: 'premium-purchaser-welcome', name: '[자동 발송] 프리미엄 구매자 / 구매 시'},
+    { id: 'premium-purchaser-welcome', name: '[자동 발송] 프리미엄 구매자 / 구매 시' },
 ];
 const LIFEUP_EMAIL_VARIABLES = {
     lifeupbotUrl: 'https://notionable.net/app',
@@ -2311,7 +2311,7 @@ function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject
 function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subject: string; text: string; html: string } {
     const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '안녕하세요,';
     const {
-        lifeupMigrationUrl, keyYoutubeUrl, installYoutubeUrl,
+        lifeupMigrationUrl, reviewUrl, installYoutubeUrl,
         lifeupPassportUrl, lifeupTemplateReleaseUrl, kakaoConnectUrl
     } = LIFEUP_EMAIL_VARIABLES;
 
@@ -2404,32 +2404,28 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
 
                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
 
-                            <h2 style="margin:0 0 8px;font-size:20px;color:#171717;">🎁 기존 구매자 감사 이벤트</h2>
-                            <h3 style="margin:0 0 16px;font-size:17px;line-height:1.5;color:#2563eb;">유튜브 댓글 작성하고 라이프봇 1년 무료 이용권 받기</h3>
+                           <h2 style="margin:0 0 8px;font-size:20px;color:#171717;">🎁 이용자 감사 이벤트</h2>
+                            <h3 style="margin:0 0 16px;font-size:17px;line-height:1.5;color:#2563eb;">리뷰 작성하고 라이프봇 1년 무료 이용권 받기</h3>
                             <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
-                                기존 라이프업 사용자분들을 위한 작은 이벤트를 준비했습니다.
-                            </p>
-                            <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
-                                아래 영상을 보신 뒤, 유튜브 댓글로 <strong>라이프업 1.5와 라이프봇에 대한 솔직한 의견,
-                                기대되는 점, 바라는 점 또는 응원의 한마디</strong>를 짧게 남겨주세요.
+                                새로워진 <strong>라이프업 1.5</strong>를 사용해보시고, 좋았던 점이나 아쉬웠던 점을 간단하게 남겨주세요.
                             </p>
                             <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
-                                댓글을 남겨주신 분께는 감사의 마음을 담아, 정식 오픈 후에도 사용할 수 있는
+                                리뷰를 작성해주신 분께는 감사의 마음을 담아, 정식 오픈 후에도 사용할 수 있는
                                 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁
                             </p>
 
                             <div style="padding:22px;background:#f8faff;border-radius:12px;">
                                 <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#333;">참여 방법</p>
                                 <p style="margin:0;font-size:14px;line-height:1.8;color:#555;">
-                                    1. 아래 라이프봇 소개 영상을 열어주세요.<br>
-                                    2. 영상 댓글로 라이프봇에 대한 의견을 남겨주세요.<br>
-                                    &nbsp;&nbsp;&nbsp;사용해 본 느낌, 기대되는 점, 바라는 점, 응원의 한마디 모두 좋습니다. 😊
+                                    1. 아래 버튼을 눌러 리뷰 게시판으로 이동합니다.<br>
+                                    2. 라이프업 1.5를 사용한 솔직한 의견을 남겨주세요.<br>
+                                    &nbsp;&nbsp;&nbsp;사용 중인 화면을 사진으로 함께 남겨주시면 더욱 좋습니다. 😊
                                 </p>
-                                <a href="${keyYoutubeUrl}" target="_blank" style="display:inline-block;margin-top:18px;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프봇 소개 영상 보고 댓글 남기기 →</a>
+                                <a href="${reviewUrl}" target="_blank" style="display:inline-block;margin-top:18px;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 리뷰 작성하기 →</a>
                             </div>
 
                             <p style="margin:20px 0 0;font-size:14px;line-height:1.8;color:#666;">
-                                기존 라이프업 사용자분들의 의견은 라이프봇을 더 좋은 서비스로 만드는 데 큰 도움이 됩니다.
+                                여러분의 솔직한 의견은 라이프업을 더 좋은 서비스로 만드는 데 큰 도움이 됩니다.
                             </p>
                         </td>
                     </tr>
@@ -2959,7 +2955,11 @@ async function setCurrentCustomerConsent(email: string, consent: boolean, source
 
 // Customers are a marketing audience. They intentionally remain separate from
 // purchasers so that a free CSV entry can never be mistaken for a purchase.
-export const importLifeupCustomersCsv = onRequest(withCors(async (req, res) => {
+// A CSV export can contain well over several hundred distinct customers.  Each
+// customer import may need to look up an account preference and merge a
+// Firestore document, so the default HTTP timeout is too short for a valid
+// large upload.
+export const importLifeupCustomersCsv = onRequest({ timeoutSeconds: 540, memory: '512MiB' }, withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     try {
         const identity = await getCareIdentity(req);
@@ -3178,7 +3178,7 @@ export const validateLifeupPurchaserCsv = onRequest(withCors(async (req, res) =>
                 const memberType = lifeupMemberType(row);
                 const upgradeOnly = isLifeupUpgrade(row);
                 const purchaserRef = db.collection('purchasers').doc(`csv_${crypto.createHash('sha256').update(key).digest('hex')}`);
-                const purchaser = { ...row, amount: `${lifeupEffectiveAmount(row).toLocaleString('ko-KR')}원`, templateId: 'lifeUp', source: 'csv', memberType, purchaseEligible: memberType !== null && !upgradeOnly, upgradeOnly, registrationStatus: 'file_added', issues: ['일치하는 래피드훅 구매 기록이 없습니다.'], updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+                const purchaser = { ...row, amount: `${lifeupEffectiveAmount(row).toLocaleString('ko-KR')}원`, templateId: 'lifeUp', source: 'csv', memberType, purchaseEligible: memberType !== null && !upgradeOnly, upgradeOnly, registrationStatus: 'file_added', issues: [], updatedAt: admin.firestore.FieldValue.serverTimestamp() };
                 await purchaserRef.set({ ...purchaser, createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
                 results.push({ id: purchaserRef.id, registrationStatus: 'file_added', csv: purchaser, issues: purchaser.issues });
                 continue;
@@ -3196,7 +3196,7 @@ export const validateLifeupPurchaserCsv = onRequest(withCors(async (req, res) =>
             }
             results.push({ id: webhook.id, registrationStatus: issues.length ? 'file_mismatch' : 'file_verified', csv: row, issues });
         }
-        for (const doc of webhookDocs) if (!csvKeys.has(purchaserCsvKey(doc.data()))) results.push({ id: doc.id, registrationStatus: 'webhook', issues: ['CSV 파일에 해당 구매 기록이 없습니다.'] });
+        for (const doc of webhookDocs) if (!csvKeys.has(purchaserCsvKey(doc.data()))) results.push({ id: doc.id, registrationStatus: 'webhook', issues: [] });
         return res.json({ results, csvCount: paidRows.length });
     } catch (error) {
         logger.error('LifeUp purchaser CSV validation failed', error);
@@ -3648,6 +3648,7 @@ export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
             verificationId,
             code: hashedCode,
             verified: false,
+            status: 'waiting',
             kakaoUserId: null,
             expiresAt,
             attempts: 0,
@@ -14240,13 +14241,22 @@ async function processVerificationCode(
         }
 
         ///////////////////////////////////////////////////
-        // 카카오톡 연결
-        await connectKakaoUser(userId, kakaoUserId);
+        const connectionResult = await connectKakaoUser(userId, kakaoUserId);
+
+        if (connectionResult === 'already-connected-to-another-workspace') {
+            await matchedDoc.ref.update({
+                status: connectionResult,
+                completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                kakaoUserId
+            });
+            return sendAlreadyConnectedKakaoMessage(res);
+        }
 
         ///////////////////////////////////////////////////
         // verification 완료 처리
         await matchedDoc.ref.update({
             verified: true,
+            status: connectionResult,
             verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
             kakaoUserId
         });
@@ -14262,7 +14272,9 @@ async function processVerificationCode(
 ///////////////////////////////////////////////////////
 // kakao connect user
 
-export async function connectKakaoUser(uid: string, kakaoUserId: string): Promise<void> {
+type KakaoConnectionResult = 'connected' | 'already-connected' | 'already-connected-to-another-workspace';
+
+export async function connectKakaoUser(uid: string, kakaoUserId: string): Promise<KakaoConnectionResult> {
     try {
         console.log("[connectKakaoUser]", { uid, kakaoUserId });
 
@@ -14270,33 +14282,42 @@ export async function connectKakaoUser(uid: string, kakaoUserId: string): Promis
         const connRef = db.collection('kakaoConnections').doc(kakaoUserId);
         const integrationRef = db.collection('users').doc(uid).collection('integrations').doc('kakao-capture');
 
-        const userDoc = await userRef.get();
-        const userData = userDoc.data();
-        const pageUrls = userData?.lifeupTemplateInfo?.pageUrls;
+        const result = await db.runTransaction(async transaction => {
+            const [userDoc, connectionDoc] = await Promise.all([
+                transaction.get(userRef),
+                transaction.get(connRef)
+            ]);
+            const connectedUid = connectionDoc.exists
+                ? connectionDoc.data()?.uid ?? connectionDoc.data()?.userId
+                : '';
 
-        const batch = db.batch();
+            if (connectedUid && connectedUid !== uid) {
+                return 'already-connected-to-another-workspace' as const;
+            }
+            if (connectedUid === uid) {
+                return 'already-connected' as const;
+            }
 
-        batch.update(userRef, { kakaoUserId });
+            const pageUrls = userDoc.data()?.lifeupTemplateInfo?.pageUrls;
+            const connectionData: any = {
+                uid,
+                userId: uid,
+                enabled: true,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
 
-        const connectionData: any = {
-            uid,
-            enabled: true,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
+            if (pageUrls) connectionData.pageUrls = pageUrls;
 
-        // 페이지 정보를 복사함
-        if (pageUrls) {
-            connectionData.pageUrls = pageUrls;
-        }
-
-        batch.set(connRef, connectionData);
-        batch.set(integrationRef, {
-            enabled: true,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            transaction.update(userRef, { kakaoUserId });
+            transaction.set(connRef, connectionData);
+            transaction.set(integrationRef, {
+                enabled: true,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            return 'connected' as const;
         });
-
-        await batch.commit();
-        console.log("[connectKakaoUser] committed");
+        console.log("[connectKakaoUser]", result);
+        return result;
     } catch (error) {
         console.error("[connectKakaoUser FAILED]", error);
         throw error;
@@ -14426,6 +14447,13 @@ function sendExpiredVerificationCode(
 ) {
     return resposeKakaoMessage(
         "인증번호가 만료되었습니다.", res
+    );
+}
+
+function sendAlreadyConnectedKakaoMessage(res: any) {
+    return resposeKakaoMessage(
+        '이 카카오톡 계정은 이미 다른 워크스페이스에 연결되어 있습니다. 기존 연결을 해제한 뒤 다시 시도해 주세요.',
+        res
     );
 }
 

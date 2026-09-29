@@ -489,6 +489,10 @@
                 <div class="kakao-message error">
                   인증번호 발급에 실패하였습니다.
                 </div>
+                } @else if (kakaoVerificationError) {
+                <div class="kakao-message error">
+                  {{ kakaoVerificationError }}
+                </div>
                 } @else if (isWaitingKakaoVerification) {
                 <div class="kakao-message">
                   인증번호

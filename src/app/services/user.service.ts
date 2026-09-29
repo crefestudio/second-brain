@@ -157,6 +157,8 @@ interface LifeUpMigrationResult {
 
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
+export type KakaoVerificationStatus = 'connected' | 'already-connected' | 'already-connected-to-another-workspace';
+
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 // `reconcileMyHabitStats` is deployed in asia-northeast3. It must not use the
 // default us-central1 base URL, which returns a non-CORS 404 response.
@@ -167,7 +169,7 @@ const habitStatsFunctionsBaseUrl = 'https://asia-northeast3-notionable-secondbra
 export class UserService {
     private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 
-    public kakaoVerified$ = new Subject<void>();
+    public kakaoVerified$ = new Subject<KakaoVerificationStatus>();
     private kakaoVerificationUnsubscribe?: () => void;
 
     public notionConnected$ = new Subject<void>();
@@ -845,8 +847,9 @@ export class UserService {
 
             if (data['verificationId'] !== verificationId) { return; }
 
-            if (data['verified'] === true) {
-                this.kakaoVerified$.next();
+            const status = data['status'] as KakaoVerificationStatus | undefined;
+            if (data['verified'] === true || status === 'already-connected-to-another-workspace') {
+                this.kakaoVerified$.next(status ?? 'connected');
                 this.stopKakaoVerificationWatcher();
             }
         });

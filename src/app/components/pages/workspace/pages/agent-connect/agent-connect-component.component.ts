@@ -53,6 +53,7 @@ export class AgentConnectComponentComponent implements OnInit {
     public isRequestKakaoConnect = false;
     public isWaitingKakaoVerification = false;
     public isKakaoVerificationSuccess = false;
+    kakaoVerificationError = '';
     isConfirmRemoveDisconnectKakao: boolean = false;
     isKakaoGuideOpen = false;
 
@@ -91,8 +92,8 @@ export class AgentConnectComponentComponent implements OnInit {
         try {
             await this.initData();
 
-            this.userService.kakaoVerified$.subscribe(() => {
-                this.onComplateKakaoConnect();
+            this.userService.kakaoVerified$.subscribe(status => {
+                this.onComplateKakaoConnect(status);
             });
 
             this.userService.notionConnected$.subscribe(() => {
@@ -491,6 +492,7 @@ export class AgentConnectComponentComponent implements OnInit {
             }
             this.kakaoVerificationCode = result.code;
             this.kakaoVerificationId = result.verificationId;
+            this.kakaoVerificationError = '';
             this.isRequestKakaoConnect = true;
 
             ToastService.show('인증번호가 생성되었습니다.');
@@ -504,6 +506,7 @@ export class AgentConnectComponentComponent implements OnInit {
         this.isRequestKakaoConnect = false;
         this.isWaitingKakaoVerification = false;
         this.isKakaoVerificationSuccess = false;
+        this.kakaoVerificationError = '';
         this.kakaoVerificationCode = '';
         this.kakaoVerificationId = '';
         this.userService.stopKakaoVerificationWatcher();
@@ -529,8 +532,13 @@ export class AgentConnectComponentComponent implements OnInit {
         this.userService.startKakaoVerificationWatcher(this.userId, this.kakaoVerificationId);
     }
 
-    onComplateKakaoConnect() {
+    onComplateKakaoConnect(status: 'connected' | 'already-connected' | 'already-connected-to-another-workspace') {
         this.isWaitingKakaoVerification = false;
+        if (status === 'already-connected-to-another-workspace') {
+            this.kakaoVerificationError = '이 카카오톡 계정은 이미 다른 워크스페이스에 연결되어 있습니다. 기존 연결을 해제한 뒤 다시 시도해 주세요.';
+            return;
+        }
+
         this.isKakaoVerificationSuccess = true;
         this.isRequestKakaoConnect = false;
 
