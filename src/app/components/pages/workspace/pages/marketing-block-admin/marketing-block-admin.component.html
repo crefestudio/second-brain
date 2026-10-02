@@ -1,0 +1,14 @@
+@if (isLoading) {
+  <div class="page-loading">수신 차단 목록을 불러오는 중입니다.</div>
+} @else {
+  <div class="page-container">
+    <header class="page-header"><div class="breadcrumb">관리도구 <span>›</span> 알림 수신 차단 관리</div><h1>알림 수신 차단 관리</h1><p>수신 차단 페이지에서 명시적으로 차단한 비회원 고객 목록입니다.</p></header>
+    @if (error) { <p class="load-error" role="alert">{{ error }}</p> }
+    <p class="count">총 {{ totalCount }}명</p>
+    <div class="table-card"><table class="service-table"><thead><tr><th>차단일</th><th>이메일</th><th>휴대폰 번호</th><th>등록 경로</th></tr></thead><tbody>
+      @for (block of blocks; track block.id) { <tr><td>{{ formatDate(block.blockedAt) }}</td><td>{{ block.email || '-' }}</td><td>{{ block.phone || '-' }}</td><td>{{ block.source === 'legacyCustomer' ? '기존 고객 차단 기록' : '수신 차단 페이지' }}</td></tr> }
+      @empty { <tr><td colspan="4" class="empty-cell">명시적으로 수신 차단한 고객이 없습니다.</td></tr> }
+    </tbody></table></div>
+    @if (hasMore) { <button type="button" class="admin-action load-more" (click)="loadMore()" [disabled]="isLoadingMore">{{ isLoadingMore ? '불러오는 중…' : '더 보기' }}</button> }
+  </div>
+}

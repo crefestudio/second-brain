@@ -1,0 +1,28 @@
+<main>
+  <section class="invitation-card">
+    <p class="brand">NOTIONABLE · INVITATION</p>
+    @if (loading) { <p role="status">초대장을 확인하고 있습니다.</p> }
+    @else if (invitation) {
+      <span class="tier">라이프업 {{ tierLabel }}</span>
+      <h1>{{ registered ? '초대장 등록이 완료되었습니다.' : '라이프업에 초대합니다.' }}</h1>
+      @if (registered) {
+        <p><strong>{{ invitation.email }}</strong> 이메일로 라이프업 {{ tierLabel }} 구매자가 등록되었습니다.</p>
+        <p>아래에서 초대받은 이메일을 인증하고 회원 가입을 완료해주세요. 마케팅 알림 수신 여부는 가입 시 선택합니다.</p>
+        <a class="primary" routerLink="/login" [queryParams]="{ email: invitation.email, returnUrl: '/mypage/profile' }">이메일 인증하고 가입하기</a>
+      } @else {
+        <p>아래 내용을 입력하면 라이프업 <strong>{{ tierLabel }}</strong> 구매자로 등록됩니다. 이후 이메일 인증을 거쳐 회원 가입을 완료할 수 있습니다.</p>
+        <form #form="ngForm" (ngSubmit)="register()">
+          <label for="invite-name">이름</label>
+          <input id="invite-name" name="name" autocomplete="name" required maxlength="80" [(ngModel)]="name" [disabled]="busy">
+          <label for="invite-phone">전화번호</label>
+          <input id="invite-phone" name="phone" type="tel" autocomplete="tel" required maxlength="30" [(ngModel)]="phone" [disabled]="busy">
+          <label for="invite-email">이메일</label>
+          <input id="invite-email" type="email" [value]="invitation.email" readonly>
+          <p class="hint">이 초대장은 위 이메일 전용이며 변경할 수 없습니다.<br>초대 등록에는 실제 결제가 발생하지 않습니다.</p>
+          <button class="primary" type="submit" [disabled]="busy || form.invalid">{{ busy ? '등록 중…' : '구매 등록' }}</button>
+        </form>
+      }
+    }
+    @if (error) { <p role="alert">{{ error }}</p> }
+  </section>
+</main>

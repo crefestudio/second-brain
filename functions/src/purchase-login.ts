@@ -126,7 +126,10 @@ export function createPurchaseLogin(deps: Dependencies) {
                 }
                 tx.set(workspaceRef, { email, firebaseUid: uid, memberType: purchase.memberType,
                     ...(!workspace.exists ? { createdAt: new Date() } : {}) }, { merge: true });
-                tx.set(accountRef, { userId }, { merge: true });
+                tx.set(accountRef, { userId,
+                    ...(purchase.purchaser.source === 'invitation' && currentBinding.marketingConsentSource !== 'user'
+                        ? { invitationMarketingConsentRequired: true } : {})
+                }, { merge: true });
                 tx.set(workspaceRef.collection('purchases').doc('lifeUp'), {
                     verified: true, ...purchase, verifiedAt: new Date()
                 }, { merge: true });

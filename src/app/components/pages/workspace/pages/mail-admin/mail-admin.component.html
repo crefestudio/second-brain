@@ -1,0 +1,18 @@
+@if (!allowed && !error) {
+  <div class="page-loading">메일 발송 정보를 불러오는 중입니다.</div>
+} @else if (error && !allowed) {
+  <div class="page-container"><div class="empty-state"><h1>메일 발송 관리</h1><p>{{ error }}</p></div></div>
+} @else {
+  <div class="page-container">
+    <header class="page-header"><div class="header-row"><div><div class="breadcrumb">관리도구 <span>›</span> 메일 발송 관리</div><h1>메일 발송 관리</h1><p>모든 발송 요청의 대기·성공·실패 상태를 확인합니다.</p></div><button type="button" class="admin-action" (click)="load()" [disabled]="loading">{{ loading ? '불러오는 중…' : '새로고침' }}</button></div></header>
+    @if (error) { <p class="load-error" role="alert">{{ error }}</p> }
+    <section class="quota-card" aria-label="오늘의 발송 할당량"><div><span>오늘 전체 발송·예약</span><strong>{{ (usage['critical'] || 0) + (usage['high'] || 0) + (usage['normal'] || 0) }} / 100</strong><small>우선 메일은 전체 한도까지 즉시 발송</small></div>@for (pool of priorities; track pool.id) { <div><span>{{ pool.label }}</span><strong>{{ pool.id === 'high' ? (usage['high'] || 0) + (usage['critical'] || 0) : (usage['normal'] || 0) }}{{ pool.limit ? ' / ' + pool.limit : '' }}</strong><small>{{ pool.id === 'normal' ? '하루 고정 한도' : '전체 한도 내에서 발송' }}</small></div> }</section>
+    <p class="queue-hint">하루 최대 100건입니다. 보통 메일은 하루 70건까지만 발송하며, 우선 메일은 보통 70건을 모두 쓴 뒤에도 전체 100건 한도 내에서 즉시 발송합니다. 대기 메일은 다음 날 오전 10시부터 다시 시도합니다.</p>
+    <div class="table-card"><table class="service-table"><thead><tr><th>등록일</th><th>발송 순서</th><th>발송일</th><th>메일 제목</th><th>수신자</th><th>우선순위</th><th>발송 상태</th><th>관리</th></tr></thead><tbody>
+      @for (item of items; track item.id) {
+        <tr><td>{{ item.createdAt | date:'yyyy.MM.dd HH:mm':'+0900' }}</td><td>{{ item.queueOrder || '-' }}</td><td>{{ item.sentAt ? (item.sentAt | date:'yyyy.MM.dd HH:mm':'+0900') : '-' }}</td><td>{{ item.subject }}</td><td class="recipient">{{ item.recipient }}</td><td>{{ priority(item.priority) }}</td><td><span class="badge" [class.success]="item.status === 'sent'" [class.pending]="item.status === 'pending' || item.status === 'sending'" [class.failed]="item.status === 'failed' || item.status === 'review'" [class.cancelled]="item.status === 'cancelled'">{{ status(item.status) }}</span>@if (item.lastError) { <small class="state-detail">{{ item.lastError }}</small> }@if (item.status === 'pending' && item.nextAttemptAt) { <small class="state-detail">다음 시도 {{ item.nextAttemptAt | date:'MM.dd HH:mm':'+0900' }}</small> }</td><td>@if (item.status === 'pending') { <button type="button" class="admin-action danger" (click)="cancel(item)" [disabled]="cancellingId === item.id">{{ cancellingId === item.id ? '취소 중…' : '발송 취소' }}</button> } @else { <span class="no-action">-</span> }</td></tr>
+      } @empty { <tr><td colspan="8" class="empty-cell">등록된 메일이 없습니다.</td></tr> }
+    </tbody></table></div>
+    @if (hasMore) { <button type="button" class="admin-action" (click)="load(true)" [disabled]="loading">더 보기</button> }
+  </div>
+}

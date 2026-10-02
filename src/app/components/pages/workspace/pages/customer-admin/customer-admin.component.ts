@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CareRequestService } from '../../../../../services/care-request.service';
@@ -9,9 +9,15 @@ type NotifyFilter = 'all' | 'yes' | 'no' | 'blocked';
 type MembershipFilter = 'all' | 'premium' | 'standard' | 'none';
 
 @Component({ selector: 'app-customer-admin', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './customer-admin.component.html', styleUrl: './customer-admin.component.scss' })
-export class CustomerAdminComponent implements OnInit {
-    isLoading = true; isImporting = false; isSendingMail = false; errorMessage = ''; csvMessage = ''; mailMessage = '';
-    customers: LifeupCustomer[] = []; selectedCustomer: LifeupCustomer | null = null; selectedIds = new Set<string>();
+export class CustomerAdminComponent implements OnInit, OnDestroy {
+    sort = 'purchasedAt'; direction = 'desc'; filteredCount = 0; listError = ''; isRefreshing = false;
+    private requestVersion = 0;
+    private controller?: AbortController;
+    private searchTimer?: ReturnType<typeof setTimeout>;
+    private mailRequest: { signature: string; id: string } | null = null;
+    isLoading = true; isImporting = false; isSendingMail = false; isLoadingMore = false; hasMore = false; errorMessage = ''; csvMessage = ''; mailMessage = '';
+    private nextCursor: string | null = null;
+    customers: LifeupCustomer[] = []; totalCustomerCount = 0; selectedCustomer: LifeupCustomer | null = null; selectedIds = new Set<string>();
     search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' = 'standard-purchaser-welcome';
     constructor(private readonly care: CareRequestService, private readonly customerAdmin: CustomerAdminService) {}
 
@@ -22,14 +28,22 @@ export class CustomerAdminComponent implements OnInit {
     }
 
     get filteredCustomers(): LifeupCustomer[] {
-        const term = this.search.trim().toLowerCase();
-        return this.customers.filter(customer => {
-            const matchesSearch = !term || [customer.name, customer.phoneDisplay, customer.phone, ...(customer.emails || [])].join(' ').toLowerCase().includes(term);
-            const matchesMember = this.memberFilter === 'all' || (this.memberFilter === 'none' ? !customer.memberType : customer.memberType === this.memberFilter);
-            const matchesMembership = this.membershipFilter === 'all' || customer.membership === this.membershipFilter;
-            const matchesNotify = this.notifyFilter === 'all' || (this.notifyFilter === 'yes' ? customer.notificationConsent === '예' : this.notifyFilter === 'blocked' ? customer.notificationConsent === '차단' : customer.notificationConsent === '아니오' || customer.notificationConsent === '미응답');
-            return matchesSearch && matchesMember && matchesMembership && matchesNotify;
-        }).sort((a, b) => this.timestamp(b.purchasedAt) - this.timestamp(a.purchasedAt));
+        return this.customers;
+    }
+
+    ngOnDestroy(): void { clearTimeout(this.searchTimer); this.controller?.abort(); this.requestVersion++; }
+    criteriaChanged(debounce = false): void {
+        clearTimeout(this.searchTimer);
+        this.controller?.abort();
+        this.requestVersion++;
+        this.customers = []; this.selectedIds.clear(); this.selectedCustomer = null;
+        this.nextCursor = null; this.hasMore = false; this.filteredCount = 0;
+        this.isLoadingMore = false; this.isRefreshing = true; this.listError = '';
+        this.searchTimer = setTimeout(() => void this.refresh(), debounce ? 400 : 0);
+    }
+    async refresh(): Promise<void> {
+        try { await this.load(); }
+        catch (error) { this.listError = error instanceof Error ? error.message : '고객 목록 조회에 실패했습니다.'; }
     }
 
     get allVisibleSelected(): boolean { return this.filteredCustomers.length > 0 && this.filteredCustomers.every(customer => this.selectedIds.has(customer.id)); }
@@ -46,14 +60,20 @@ export class CustomerAdminComponent implements OnInit {
     async sendSelectedMail(): Promise<void> {
         if (!this.selectedIds.size || this.isSendingMail) return;
         this.isSendingMail = true; this.mailMessage = '';
+        // `customers` is already in the table's current server-side sort order.
+        const customerIds = this.selectedCustomers.map(customer => customer.id);
+        const signature = JSON.stringify([customerIds, this.mailTemplate]);
+        if (this.mailRequest?.signature !== signature) this.mailRequest = { signature, id: crypto.randomUUID() };
+        const requestId = this.mailRequest.id;
         try {
-            let result = await this.customerAdmin.sendSelectedMail([...this.selectedIds], this.mailTemplate);
+            let result = await this.customerAdmin.sendSelectedMail(customerIds, this.mailTemplate, false, requestId);
             if (result.requiresConsentConfirmation) {
                 const warning = `알림 미동의 또는 미응답 이메일 ${result.nonConsentingCount || 0}건이 포함되어 있습니다.\n차단 이메일 ${result.blockedCount || 0}건은 발송하지 않습니다.\n그래도 기존 일반 구매자 메일을 발송할까요?`;
                 if (!window.confirm(warning)) { this.mailMessage = '메일 발송을 취소했습니다.'; return; }
-                result = await this.customerAdmin.sendSelectedMail([...this.selectedIds], this.mailTemplate, true);
+                result = await this.customerAdmin.sendSelectedMail(customerIds, this.mailTemplate, true, requestId);
             }
-            this.mailMessage = `${result.sentCount || 0}건 발송했습니다.${result.failedCount ? ` ${result.failedCount}건은 실패했습니다.` : ''}${result.blockedCount ? ` 수신 차단 ${result.blockedCount}건은 제외했습니다.` : ''}`;
+            this.mailMessage = `${result.queuedCount || 0}건을 발송 대기열에 등록했습니다. 메일 발송 관리에서 상태를 확인하세요.${result.failedCount ? ` ${result.failedCount}건은 등록 실패했습니다. 같은 선택으로 다시 시도하면 실패 건만 추가됩니다.` : ''}${result.blockedCount ? ` 수신 차단 ${result.blockedCount}건은 제외했습니다.` : ''}`;
+            if (!result.failedCount) this.selectedIds.clear();
         } catch (error) { this.mailMessage = error instanceof Error ? error.message : '메일 발송에 실패했습니다.'; }
         finally { this.isSendingMail = false; }
     }
@@ -66,6 +86,26 @@ export class CustomerAdminComponent implements OnInit {
         finally { this.isImporting = false; }
     }
 
-    private async load(): Promise<void> { this.customers = await this.customerAdmin.list(); }
-    private timestamp(value: unknown): number { const match = String(value || '').match(/(\d{2,4})\.(\d{1,2})\.(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?/); return match ? Date.UTC(Number(match[1]) < 100 ? 2000 + Number(match[1]) : Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4] || 0), Number(match[5] || 0)) : 0; }
+    async loadMore(): Promise<void> {
+        if (this.isLoadingMore || this.isRefreshing || !this.nextCursor) return;
+        this.isLoadingMore = true;
+        try { await this.load(true); }
+        catch (error) { this.listError = error instanceof Error ? error.message : '고객 목록을 더 불러오지 못했습니다.'; }
+    }
+    private async load(more = false): Promise<void> {
+        const version = ++this.requestVersion;
+        this.controller?.abort(); this.controller = new AbortController(); this.listError = '';
+        if (!more) { this.isRefreshing = true; this.selectedIds.clear(); this.selectedCustomer = null; }
+        try {
+            const page = await this.customerAdmin.list({ search: this.search, memberFilter: this.memberFilter,
+                membershipFilter: this.membershipFilter, notifyFilter: this.notifyFilter, sort: this.sort, direction: this.direction },
+                more ? this.nextCursor || undefined : undefined, this.controller.signal);
+            if (version !== this.requestVersion) return;
+            const rows = more ? [...this.customers, ...page.customers] : page.customers;
+            this.customers = [...new Map(rows.map(row => [row.id, row])).values()];
+            this.totalCustomerCount = page.totalCount; this.filteredCount = page.filteredCount;
+            this.nextCursor = page.nextCursor; this.hasMore = Boolean(page.nextCursor);
+        } catch (error) { if (version === this.requestVersion) throw error; }
+        finally { if (version === this.requestVersion) { this.isRefreshing = false; this.isLoadingMore = false; } }
+    }
 }

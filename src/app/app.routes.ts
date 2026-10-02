@@ -46,7 +46,9 @@ import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pa
 import { LifeupCareComponent } from './components/pages/workspace/pages/care/lifeup-care/lifeup-care.component';
 import { PurchaserAdminComponent } from './components/pages/workspace/pages/purchaser-admin/purchaser-admin.component';
 import { CustomerAdminComponent } from './components/pages/workspace/pages/customer-admin/customer-admin.component';
+import { MailAdminComponent } from './components/pages/workspace/pages/mail-admin/mail-admin.component';
 import { MemberAdminComponent } from './components/pages/workspace/pages/member-admin/member-admin.component';
+import { MarketingBlockAdminComponent } from './components/pages/workspace/pages/marketing-block-admin/marketing-block-admin.component';
 import { UnsubscribeComponent } from './components/pages/unsubscribe/unsubscribe.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
@@ -58,7 +60,9 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
-  { path: 'unsubscribe', component: UnsubscribeComponent },
+  { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },
+  { path: 'block', component: UnsubscribeComponent },
+  { path: 'unsubscribe', redirectTo: 'block', pathMatch: 'full' },
   { path: 'login', component: SocialLoginComponent },
   {
     path: 'download/lifeup',
@@ -99,6 +103,14 @@ export const routes: Routes = [
       {
         path: 'admin/customers',
         component: CustomerAdminComponent
+      },
+      {
+        path: 'admin/mail',
+        component: MailAdminComponent
+      },
+      {
+        path: 'admin/marketing-blocks',
+        component: MarketingBlockAdminComponent
       },
       {
         path: 'admin/members',

@@ -28,7 +28,11 @@ import { Client } from "@notionhq/client";
 import { executeMigration, MigrationConflict, migrationErrorMessage } from './lifeup-migration-runner';
 import { habitDayRange, uniqueHabitLogs } from './routine-utils';
 import { createPurchaseLogin, PurchaseLoginError } from './purchase-login';
+import { createPurchaseInvitations, InvitationError } from './purchase-invitations';
 import { deleteAccountData } from './account-deletion';
+import { createMailQueue } from './mail-queue';
+import { CustomerListPage, customerListOptions } from './customer-list-page';
+import { addCustomerGrade, normalizedCustomerPhone } from './customer-grades';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
@@ -1819,12 +1823,44 @@ export const checkUserAccessKey = onRequest(withCors(async (req, res) => {
 // 인증 이메일 발송
 // ----------------------
 const resend = new Resend(process.env.RESEND_API_KEY!);
+const mailQueue = createMailQueue(db, (mail, idempotencyKey) =>
+    resend.emails.send(mail as Parameters<typeof resend.emails.send>[0], { idempotencyKey }), async email => {
+        if ((await db.collection('marketingBlocks').doc(marketingBlockDocumentId(email)).get()).exists) return false;
+        return true;
+    });
+
+export const processMailQueue = onSchedule({ schedule: 'every 1 minutes', timeZone: 'Asia/Seoul', timeoutSeconds: 120, maxInstances: 1 }, async () => {
+    await mailQueue.drain();
+});
+
+export const listMailQueue = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+        return res.json(await mailQueue.list(Number(req.body?.before) || undefined, String(req.body?.beforeId || '')));
+    } catch { return res.status(500).json({ error: '메일 발송 목록을 불러오지 못했습니다.' }); }
+}));
+
+export const cancelMailQueueItem = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+        const id = String(req.body?.id || '');
+        if (!/^[a-f0-9]{64}$/.test(id)) return res.status(400).json({ error: 'INVALID_MAIL_ID' });
+        const status = await mailQueue.cancel(id);
+        if (status === 'missing') return res.status(404).json({ error: '메일을 찾을 수 없습니다.' });
+        if (status !== 'cancelled') return res.status(409).json({ error: '발송 대기 중인 메일만 취소할 수 있습니다.', status });
+        return res.json({ status });
+    } catch { return res.status(500).json({ error: '메일 발송 취소에 실패했습니다.' }); }
+}));
 
 // Keep payment-webhook emails pointed at the test inbox until the production
 // recipient flow is enabled.
 const LATPEED_ADMIN_EMAIL = 'toto791@gmail.com';
 const APP_PUBLIC_URL = 'https://app.notionable.net';
 function withUnsubscribe(mail: { subject: string; text: string; html: string }): { subject: string; text: string; html: string } {
+    const blockFooter = `<p style="margin:24px 0 0;color:#6b7280;font-size:12px"><a href="${APP_PUBLIC_URL}/block" style="color:#6b7280">알림 수신 차단</a></p>`;
+    return { ...mail, text: `${mail.text}\n\n알림 수신 차단: ${APP_PUBLIC_URL}/block`, html: `${mail.html}${blockFooter}` };
     const footer = `<p style="margin:24px 0 0;color:#6b7280;font-size:12px"><a href="${APP_PUBLIC_URL}/unsubscribe" style="color:#6b7280">마케팅 알림 수신 차단</a></p>`;
     return { ...mail, text: `${mail.text}\n\n마케팅 알림 수신 차단: ${APP_PUBLIC_URL}/unsubscribe`, html: `${mail.html}${footer}` };
 }
@@ -1933,7 +1969,20 @@ async function findPurchaserRecords(templateId: string, email?: string, phone?: 
         .where('templateId', '==', templateId)
         .where(field, '==', value)
         .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+    if (!normalizedEmail || !snapshot.empty) {
+        return snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+    }
+
+    // Firestore string equality is case-sensitive. Older imported purchaser
+    // records kept the checkout email's original casing, while every login
+    // and verification request is normalized to lowercase. Fall back only
+    // when the indexed lookup misses so those legacy records remain usable.
+    const legacySnapshot = await db.collection('purchasers')
+        .where('templateId', '==', templateId)
+        .get();
+    return legacySnapshot.docs
+        .filter(doc => String(doc.data().email || '').trim().toLowerCase() === normalizedEmail)
+        .map(doc => ({ id: doc.id, data: doc.data() }));
 }
 
 async function carePremium(uid: string): Promise<boolean> {
@@ -2058,11 +2107,11 @@ export const createCareRequest = onRequest(withCors(async (req, res) => {
             throw error;
         }
         try {
-            await resend.emails.send({
+            await mailQueue.send({
                 from: 'Notionable <noreply@notionable.net>', to: Array.from(ADMIN_EMAILS),
                 subject: `[라이프업 케어] 새 요청: ${title}`,
                 text: `${identity.email} 님이 ${type} 요청을 접수했습니다.\n\n${content}`
-            });
+            }, 'high');
         } catch (error) { logger.error('[Care] admin notification failed', error); }
         return res.status(201).json({ id: requestRef.id });
     } catch (error: any) {
@@ -2222,7 +2271,8 @@ Notionable 드림`;
     return {
         subject: '라이프업 구매 안내 및 보관용 PDF를 보내드립니다',
         text,
-        html: `<div style="margin:0;background:#f5f7fb;padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#243047"><div style="max-width:620px;margin:auto;background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:36px 30px;box-sizing:border-box"><div style="font-weight:700;color:#718096;font-size:14px">🧠 Notionable</div><h1 style="margin:12px 0 16px;color:#172033;font-size:28px;line-height:1.35">라이프업에 오신 것을<br>환영합니다! 😊</h1><p style="line-height:1.7">라이프업과 함께 목표부터 프로젝트, 할 일과 기록까지 나만의 방식으로 삶을 관리해보세요.</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">📥 라이프업 1.5 다운로드</h2><p style="line-height:1.7">아래 구매 안내 페이지에서 <strong>라이프업 1.5를 다운로드하고 설치 방법 및 사용 가이드</strong>를 확인하실 수 있습니다.</p><a href="${guideUrl}" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 다운로드 및 구매 안내 →</a><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 받기</h2><p style="line-height:1.7">라이프업 1.5 구매 고객을 대상으로 <strong>라이프봇 1년 무료 이용권 이벤트</strong>를 진행합니다.</p><p style="line-height:1.7">카카오톡 AI 비서, 세컨드브레인, 루틴 관리 등 라이프봇 기능을 정식 오픈 전까지 무료로 이용하실 수 있습니다.</p><a href="https://notionable.net/store/?idx=1#prod_detail_review" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 리뷰 작성하기 →</a><p style="line-height:1.7">리뷰를 남겨주신 분께 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">📄 보관용 PDF</h2><p style="line-height:1.7">구매 내역 확인을 위한 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p><a href="${LIFEUP_PASSPORT_URL}" style="display:inline-block;background:#eef3f9;color:#243047;padding:12px 16px;border:1px solid #cbd7e6;border-radius:8px;text-decoration:none;font-weight:700">보관용 PDF 열기 →</a><p style="margin:32px 0 0;color:#718096;line-height:1.7">Notionable 드림</p></div></div>`
+        html: `<div style="margin:0;background:#f5f7fb;padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#243047"><div style="max-width:620px;margin:auto;background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:36px 30px;box-sizing:border-box"><div style="font-weight:700;color:#718096;font-size:14px">🧠 Notionable</div><h1 style="margin:12px 0 16px;color:#172033;font-size:28px;line-height:1.35">라이프업에 오신 것을<br>환영합니다! 😊</h1><p style="line-height:1.7">라이프업과 함께 목표부터 프로젝트, 할 일과 기록까지 나만의 방식으로 삶을 관리해보세요.</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0">
+        <h2 style="font-size:20px">📥 라이프업 1.5 다운로드</h2><p style="line-height:1.7">아래 구매 안내 페이지에서 <strong>라이프업 1.5를 다운로드하고 설치 방법 및 사용 가이드</strong>를 확인하실 수 있습니다.</p><a href="${guideUrl}" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 다운로드 및 구매 안내 →</a><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 받기</h2><p style="line-height:1.7">라이프업 1.5 구매 고객을 대상으로 <strong>라이프봇 1년 무료 이용권 이벤트</strong>를 진행합니다.</p><p style="line-height:1.7">카카오톡 AI 비서, 세컨드브레인, 루틴 관리 등 라이프봇 기능을 정식 오픈 전까지 무료로 이용하실 수 있습니다.</p><a href="https://notionable.net/store/?idx=1#prod_detail_review" style="display:inline-block;background:#3595df;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">라이프업 1.5 리뷰 작성하기 →</a><p style="line-height:1.7">리뷰를 남겨주신 분께 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁</p><hr style="border:0;border-top:1px solid #e3e8f0;margin:28px 0"><h2 style="font-size:20px">📄 보관용 PDF</h2><p style="line-height:1.7">구매 내역 확인을 위한 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p><a href="${LIFEUP_PASSPORT_URL}" style="display:inline-block;background:#eef3f9;color:#243047;padding:12px 16px;border:1px solid #cbd7e6;border-radius:8px;text-decoration:none;font-weight:700">보관용 PDF 열기 →</a><p style="margin:32px 0 0;color:#718096;line-height:1.7">Notionable 드림</p></div></div>`
     };
 }
 
@@ -2312,10 +2362,11 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
     const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '안녕하세요,';
     const {
         lifeupMigrationUrl, reviewUrl, installYoutubeUrl,
-        lifeupPassportUrl, lifeupTemplateReleaseUrl, kakaoConnectUrl
+        lifeupTemplateReleaseUrl, kakaoConnectUrl //lifeupPassportUrl, 
     } = LIFEUP_EMAIL_VARIABLES;
 
     // Keep the supplied update HTML and the welcome-mail sections verbatim.
+
     const html = `
 <!doctype html>
 <html lang="ko">
@@ -2331,7 +2382,16 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;">
                     <tr>
                         <td align="center" style="padding:32px 32px 24px;">
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 7px 0 0;font-size:16px;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">🧠</a></td><td valign="middle" style="padding:0;font-size:18px;font-weight:700;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">Notionable</a></td></tr></table>
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;">
+                                <tr>
+                                    <td valign="middle" style="padding:0 7px 0 0;font-size:16px;line-height:22px;">
+                                        <a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">🧠</a>
+                                    </td>
+                                    <td valign="middle" style="padding:0;font-size:18px;font-weight:700;line-height:22px;">
+                                        <a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">Notionable</a>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     <tr>
@@ -2349,51 +2409,60 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
 
                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
 
-                            <h2 style="margin:0 0 16px;font-size:20px;color:#171717;">✨ 라이프업 1.5 주요 업데이트</h2>
-
-                            <p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#555;">
-                                <strong>카카오톡 라이프봇</strong><br>
-                                카카오톡에 할 일, 일정, 메모, 자료를 보내면 라이프업에 알아서 정리해 드립니다.
-                            </p>
-                            <p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#555;">
-                                <strong>내 루틴</strong><br>
-                                반복할 습관과 루틴을 관리하고, 오늘의 실천 기록을 쌓을 수 있습니다.
-                            </p>
-                            <p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#555;">
-                                <strong>모바일 전용 뷰</strong><br>
-                                모바일에서도 오늘·내일의 할 일과 일정을 더 빠르게 확인하고 추가할 수 있습니다.
-                            </p>
+                            <h2 style="margin:0 0 16px;font-size:20px;color:#171717;">✨ 라이프업 1.5를 소개합니다</h2>
                             <p style="margin:0;font-size:15px;line-height:1.8;color:#555;">
-                                <strong>라이프업 App</strong><br>
-                                내 템플릿을 연결하여 자동화 비서, 루틴, 업데이트 등 한곳에서 관리할 수 있습니다.
+                                카카오톡 라이프봇, 내 루틴, 모바일 전용 뷰 등 라이프업의 새로운 기능을 만나보세요.<br>
+                                영상을 보시고 <span style="color:#ff5a5f;font-weight:700;">좋아요와 따뜻한 응원 댓글</span>도 부탁드립니다! 🙏<br>
+                                앞으로도 여러분의 삶에 도움이 되는 지속적인 업데이트로 보답하겠습니다.
+                            </p>
+                            <div style="margin-top:24px;">
+                                <a href="https://www.youtube.com/watch?v=IZEwNYIEGck" target="_blank" style="display:inline-block;padding:13px 20px;background:#171717;border-radius:8px;color:#fff;font-size:15px;font-weight:700;text-decoration:none;">
+                                    라이프업 1.5 소개 영상 보기 →
+                                </a>
+                            </div>
+
+                            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;">
+                                <tr>
+                                    <td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📥</td>
+                                    <td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프업 1.5 다운로드</td>
+                                </tr>
+                            </table>
+                            <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
+                                아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.
+                            </p>
+                            <a href="${lifeupTemplateReleaseUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">
+                                라이프업 1.5 다운로드 →
+                            </a>
+                            <p style="margin:16px 0 0;">
+                                <a href="${installYoutubeUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a>
                             </p>
 
                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
 
-                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📥</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프업 1.5 다운로드</td></tr></table>
-                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.</p>
-                    <a href="${lifeupTemplateReleaseUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 다운로드 →</a>
-                    <p style="margin:16px 0 0"><a href="${installYoutubeUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📄</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">보관용 PDF</td></tr></table>
-                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">설치 링크와 이용 안내를 담은 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p>
-                    <a href="${lifeupPassportUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-size:15px;font-weight:700;text-decoration:none;">보관용 PDF 열기 →</a>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">💬</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">카카오톡 라이프봇</td></tr></table>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">이제 늘 쓰는 카카오톡으로 할 일, 일정, 아이디어, 필요한 자료까지 바로 기록해보세요.<br>카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.</p>
-                    <a href="${kakaoConnectUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#fee500;border-radius:8px;color:#191919;font-size:15px;font-weight:700;text-decoration:none;">카카오톡 연결하기 →</a>
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;">
+                                <tr>
+                                    <td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">💬</td>
+                                    <td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">카카오톡 라이프봇</td>
+                                </tr>
+                            </table>
+                            <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
+                                카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.
+                            </p>
+                            <a href="${kakaoConnectUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#fee500;border-radius:8px;color:#191919;font-size:15px;font-weight:700;text-decoration:none;">
+                                카카오톡 연결하기 →
+                            </a>
 
                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
 
                             <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🔄 라이프업 1.3 → 1.5 업데이트 안내</h2>
-                            <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
-                                라이프업 <strong>1.3 버전을 사용 중이시라면</strong>, 스튜디오에서 제공하는 데이터 이전 기능을 통해
-                                1.5 버전으로 업데이트하실 수 있습니다.
-                            </p>
                             <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
-                                먼저 기존 라이프업을 복제해 백업한 뒤, 안내에 따라 1.3과 1.5를 연결하면 데이터를 이전할 수 있습니다.
+                                라이프업 <strong>1.3 버전을 사용 중이시라면</strong>, 기존 라이프업을 복제해 백업한 뒤 스튜디오에서 1.3과 1.5를 연결해 데이터를 이전할 수 있습니다.
                             </p>
-                            <a href="${lifeupMigrationUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5로 업데이트하기 →</a>
+                            <a href="${lifeupMigrationUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">
+                                라이프업 1.5로 업데이트하기 →
+                            </a>
                             <div style="margin-top:18px;padding:16px 18px;background:#fff8eb;border-radius:10px;">
                                 <p style="margin:0;font-size:13px;line-height:1.7;color:#795b1e;">
                                     ⚠️ 아쉽게도 <strong>1.3 이전 버전은 자동 데이터 이전을 지원하지 않습니다.</strong><br>
@@ -2404,16 +2473,13 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
 
                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
 
-                           <h2 style="margin:0 0 8px;font-size:20px;color:#171717;">🎁 이용자 감사 이벤트</h2>
+                            <h2 style="margin:0 0 8px;font-size:20px;color:#171717;">🎁 이용자 감사 이벤트</h2>
                             <h3 style="margin:0 0 16px;font-size:17px;line-height:1.5;color:#2563eb;">리뷰 작성하고 라이프봇 1년 무료 이용권 받기</h3>
-                            <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
-                                새로워진 <strong>라이프업 1.5</strong>를 사용해보시고, 좋았던 점이나 아쉬웠던 점을 간단하게 남겨주세요.
-                            </p>
                             <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
-                                리뷰를 작성해주신 분께는 감사의 마음을 담아, 정식 오픈 후에도 사용할 수 있는
+                                새로워진 <strong>라이프업 1.5</strong>를 사용해보시고, 좋았던 점이나 아쉬웠던 점을 간단하게 남겨주세요.<br>
+                                리뷰를 작성해주신 분께는 감사의 마음을 담아 정식 오픈 후에도 사용할 수 있는
                                 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁
                             </p>
-
                             <div style="padding:22px;background:#f8faff;border-radius:12px;">
                                 <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#333;">참여 방법</p>
                                 <p style="margin:0;font-size:14px;line-height:1.8;color:#555;">
@@ -2421,11 +2487,17 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
                                     2. 라이프업 1.5를 사용한 솔직한 의견을 남겨주세요.<br>
                                     &nbsp;&nbsp;&nbsp;사용 중인 화면을 사진으로 함께 남겨주시면 더욱 좋습니다. 😊
                                 </p>
-                                <a href="${reviewUrl}" target="_blank" style="display:inline-block;margin-top:18px;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 리뷰 작성하기 →</a>
+                                <a href="${reviewUrl}" target="_blank" style="display:inline-block;margin-top:18px;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">
+                                    라이프업 1.5 리뷰 작성하기 →
+                                </a>
                             </div>
 
                             <p style="margin:20px 0 0;font-size:14px;line-height:1.8;color:#666;">
                                 여러분의 솔직한 의견은 라이프업을 더 좋은 서비스로 만드는 데 큰 도움이 됩니다.
+                            </p>
+                            <p style="margin:24px 0 0;font-size:12px;line-height:1.7;color:#888;">
+                                본 메일은 라이프업 구매 및 서비스 이용에 필요한 기본 안내입니다. 더 이상 이메일 수신을 원하지 않으시면
+                                <a href="https://app.notionable.net/block" target="_blank" style="color:#777;text-decoration:underline;">알림 수신 거부하기</a>
                             </p>
                         </td>
                     </tr>
@@ -2435,7 +2507,140 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
     </table>
 </body>
 </html>
-    `;
+
+    
+    `
+    //     const html = `
+    // <!doctype html>
+    // <html lang="ko">
+    // <head>
+    //     <meta charset="utf-8">
+    //     <meta name="viewport" content="width=device-width, initial-scale=1">
+    //     <title>라이프업 1.5 업데이트 안내</title>
+    // </head>
+    // <body style="margin:0;padding:0;background:#f5f6f8;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f;">
+    //     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f6f8;">
+    //         <tr>
+    //             <td align="center" style="padding:32px 16px;">
+    //                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;">
+    //                     <tr>
+    //                         <td align="center" style="padding:32px 32px 24px;">
+    //                             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 7px 0 0;font-size:16px;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">🧠</a></td><td valign="middle" style="padding:0;font-size:18px;font-weight:700;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">Notionable</a></td></tr></table>
+    //                         </td>
+    //                     </tr>
+    //                     <tr>
+    //                         <td style="padding:0 32px 40px;">
+    //                             <h1 style="margin:0 0 16px;font-size:26px;line-height:1.45;color:#171717;">
+    //                                 ${greetingName}<br>라이프업 잘 이용하고 계신가요? 😊
+    //                             </h1>
+    //                             <p style="margin:0;font-size:16px;line-height:1.8;color:#555;">
+    //                                 새로운 업데이트 소식과 함께 오랜만에 인사드립니다.
+    //                             </p>
+    //                             <p style="margin:16px 0 0;font-size:16px;line-height:1.8;color:#555;">
+    //                                 라이프업 1.5가 새롭게 공개되었습니다. 기존의 목표·프로젝트·할 일·기록 관리 흐름은 그대로 유지하면서,
+    //                                 라이프업을 더 편리하게 활용할 수 있는 <strong>라이프봇</strong>과 새로운 기능들을 추가했습니다.
+    //                             </p>
+
+    //                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+    //                             <h2 style="margin:0 0 16px;font-size:20px;color:#171717;">✨ 라이프업 1.5를 소개합니다</h2>
+
+    //                             <p style="margin:0;font-size:15px;line-height:1.8;color:#555;">
+    //                                 카카오톡 라이프봇, 내 루틴, 모바일 전용 뷰 등<br>
+    //                                 라이프업을 더 쉽고 꾸준히 사용할 수 있는 새로운 기능을 만나보세요.
+    //                             </p>
+
+    //                             <div style="margin-top:24px;text-align:center;">
+    //                                 <a href="https://www.youtube.com/watch?v=IZEwNYIEGck" style="display:inline-block;padding:13px 20px;background:#171717;border-radius:8px;color:#fff;font-size:15px;font-weight:700;text-decoration:none;">
+    //                                     라이프업 1.5 소개 영상 보기 →
+    //                                 </a>
+    //                             </div>
+
+    //                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+    //                             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📥</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프업 1.5 다운로드</td></tr></table>
+    //                     <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.</p>
+    //                     <a href="${lifeupTemplateReleaseUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 다운로드 →</a>
+    //                     <p style="margin:16px 0 0"><a href="${installYoutubeUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>
+    //                     <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+    //                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📄</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">보관용 PDF</td></tr></table>
+    //                     <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">설치 링크와 이용 안내를 담은 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p>
+    //                     <a href="${lifeupPassportUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-size:15px;font-weight:700;text-decoration:none;">보관용 PDF 열기 →</a>
+    //                     <div style="height:1px;background:#eceef1;margin:32px 0"></div>
+    //                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">💬</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">카카오톡 라이프봇</td></tr></table>
+    //                     <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">이제 늘 쓰는 카카오톡으로 할 일, 일정, 아이디어, 필요한 자료까지 바로 기록해보세요.<br>카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.</p>
+    //                     <a href="${kakaoConnectUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#fee500;border-radius:8px;color:#191919;font-size:15px;font-weight:700;text-decoration:none;">카카오톡 연결하기 →</a>
+
+    //                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+    //                             <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">🔄 라이프업 1.3 → 1.5 업데이트 안내</h2>
+    //                             <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
+    //                                 라이프업 <strong>1.3 버전을 사용 중이시라면</strong>, 스튜디오에서 제공하는 데이터 이전 기능을 통해
+    //                                 1.5 버전으로 업데이트하실 수 있습니다.
+    //                             </p>
+    //                             <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
+    //                                 먼저 기존 라이프업을 복제해 백업한 뒤, 안내에 따라 1.3과 1.5를 연결하면 데이터를 이전할 수 있습니다.
+    //                             </p>
+    //                             <a href="${lifeupMigrationUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5로 업데이트하기 →</a>
+    //                             <div style="margin-top:18px;padding:16px 18px;background:#fff8eb;border-radius:10px;">
+    //                                 <p style="margin:0;font-size:13px;line-height:1.7;color:#795b1e;">
+    //                                     ⚠️ 아쉽게도 <strong>1.3 이전 버전은 자동 데이터 이전을 지원하지 않습니다.</strong><br>
+    //                                     이 경우 새 버전으로 새롭게 시작하시는 것을 추천드립니다. 기존 데이터를 꼭 옮겨야 한다면,
+    //                                     라이프업 프리미엄 구매 고객에 한해 수동 이전을 도와드릴 수 있습니다.
+    //                                 </p>
+    //                             </div>
+
+    //                             <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+
+    //                            <h2 style="margin:0 0 8px;font-size:20px;color:#171717;">🎁 이용자 감사 이벤트</h2>
+    //                             <h3 style="margin:0 0 16px;font-size:17px;line-height:1.5;color:#2563eb;">리뷰 작성하고 라이프봇 1년 무료 이용권 받기</h3>
+    //                             <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">
+    //                                 새로워진 <strong>라이프업 1.5</strong>를 사용해보시고, 좋았던 점이나 아쉬웠던 점을 간단하게 남겨주세요.
+    //                             </p>
+    //                             <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">
+    //                                 리뷰를 작성해주신 분께는 감사의 마음을 담아, 정식 오픈 후에도 사용할 수 있는
+    //                                 <strong>라이프봇 1년 무료 이용권</strong>을 드립니다. 🎁
+    //                             </p>
+
+    //                             <div style="padding:22px;background:#f8faff;border-radius:12px;">
+    //                                 <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#333;">참여 방법</p>
+    //                                 <p style="margin:0;font-size:14px;line-height:1.8;color:#555;">
+    //                                     1. 아래 버튼을 눌러 리뷰 게시판으로 이동합니다.<br>
+    //                                     2. 라이프업 1.5를 사용한 솔직한 의견을 남겨주세요.<br>
+    //                                     &nbsp;&nbsp;&nbsp;사용 중인 화면을 사진으로 함께 남겨주시면 더욱 좋습니다. 😊
+    //                                 </p>
+    //                                 <a href="${reviewUrl}" target="_blank" style="display:inline-block;margin-top:18px;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 리뷰 작성하기 →</a>
+    //                             </div>
+
+    //                             <p style="margin:14px 0 0;padding:10px 12px;background:#f7f8fa;border-radius:8px;font-size:12px;line-height:1.7;color:#777;">
+    //                                 카카오톡 라이프봇, 루틴 등 AI 자동화 기능은 현재 무료로 이용할 수 있지만 정식 오픈 후에는 소정의 이용료가 필요할 수 있습니다.<br>
+    //                                 라이프업 템플릿은 계속 추가 비용 없이 이용하실 수 있으며, 이벤트 참여 시 라이프봇도 정식 오픈 후 1년간 무료로 이용하실 수 있습니다.
+    //                             </p>
+
+    //                             <p style="margin:20px 0 0;font-size:14px;line-height:1.8;color:#666;">
+    //                                 여러분의 솔직한 의견은 라이프업을 더 좋은 서비스로 만드는 데 큰 도움이 됩니다.
+    //                             </p>
+
+    //                             <div style="height:1px;background:#eceef1;margin:32px 0 20px;"></div>
+
+    //                             <p style="margin:0 0 8px;font-size:12px;line-height:1.7;color:#888;">
+    //                                 본 메일은 라이프업 구매 및 서비스 이용에 필요한 기본 안내입니다.<br>
+    //                                 더 이상 이메일 수신을 원하지 않으시면 아래 버튼을 눌러주세요.
+    //                             </p>
+
+    //                             <a href="https://app.notionable.net/block" target="_blank" style="display:inline-block;padding:10px 14px;border:1px solid #d9dde3;border-radius:6px;color:#666;font-size:12px;font-weight:700;text-decoration:none;">
+    //                                 알림 수신 거부하기
+    //                             </a>
+
+    //                         </td>
+    //                     </tr>
+    //                 </table>
+    //             </td>
+    //         </tr>
+    //     </table>
+    // </body>
+    // </html>
+    //     `;
     // Derive the text alternative from the same copy, including link destinations.
     const text = html
         .replace(/<head>[\s\S]*?<\/head>/i, '')
@@ -2470,6 +2675,42 @@ function lifeupPremiumWelcomeMail(customerName: string): { subject: string; text
         </div></div></div>`
     };
 }
+
+const purchaseInvitations = createPurchaseInvitations(db, formatLatpeedDate);
+
+export const createLifeupInvitation = onRequest(withCors(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    let identity: CareIdentity;
+    try { identity = await getCareIdentity(req); }
+    catch { return res.status(401).json({ error: '관리자 계정으로 로그인해주세요.' }); }
+    if (!identity.isAdmin) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
+    try {
+        const invitation = await purchaseInvitations.create(req.body?.email, req.body?.memberType, identity.uid);
+        return res.json({ email: invitation.email, memberType: invitation.memberType, expiresAt: invitation.expiresAt,
+            url: `${APP_PUBLIC_URL}/invite/lifeup#token=${invitation.token}` });
+    } catch (error) {
+        return res.status(error instanceof InvitationError ? error.status : 500).json({ error: error instanceof InvitationError ? error.message : '초대 링크를 생성하지 못했습니다.' });
+    }
+}));
+
+export const getLifeupInvitation = onRequest(withCors(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try { return res.json(await purchaseInvitations.inspect(req.body?.token)); }
+    catch (error) {
+        return res.status(error instanceof InvitationError ? error.status : 500).json({ error: error instanceof InvitationError ? error.message : '초대장을 불러오지 못했습니다.' });
+    }
+}));
+
+export const redeemLifeupInvitation = onRequest(withCors(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try { return res.json(await purchaseInvitations.redeem(req.body?.token, req.body?.name, req.body?.phone)); }
+    catch (error) {
+        return res.status(error instanceof InvitationError ? error.status : 500).json({ error: error instanceof InvitationError ? error.message : '구매 등록하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+    }
+}));
 
 export const latpeedPaymentWebhook = onRequest(
     { secrets: [LATPEED_WEBHOOK_SECRET], timeoutSeconds: 10 },
@@ -2562,34 +2803,10 @@ export const latpeedPaymentWebhook = onRequest(
         };
         const memberType = lifeupMemberType(purchaser);
         const upgradeOnly = isLifeupUpgrade(purchaser);
-        const recipientMap = new Map<string, { email: string; roles: string[] }>();
-        const addRecipient = (email: string, role: string) => {
-            const normalized = email.trim().toLowerCase();
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return;
-            const existing = recipientMap.get(normalized);
-            if (existing) existing.roles.push(role);
-            else recipientMap.set(normalized, { email: normalized, roles: [role] });
-        };
-        addRecipient(LATPEED_ADMIN_EMAIL, 'admin');
-        addRecipient(purchaser.email, 'purchaser');
-        const welcomeRecipients = Array.from(recipientMap.values());
         const created = await db.runTransaction(async transaction => {
             if ((await transaction.get(purchaserRef)).exists) return false;
-            transaction.set(purchaserRef, {
-                ...purchaser,
-                memberType,
-                purchaseEligible: memberType !== null && !upgradeOnly,
-                upgradeOnly,
-                welcomeEmail: {
-                    status: memberType && !upgradeOnly ? 'pending' : 'skipped',
-                    recipients: memberType && !upgradeOnly
-                        ? welcomeRecipients.map(recipient => ({ ...recipient, status: 'pending' })) : []
-                },
-                premiumWelcomeEmail: {
-                    status: memberType === 'premium' ? 'pending' : 'skipped',
-                    recipients: memberType === 'premium'
-                        ? welcomeRecipients.map(recipient => ({ ...recipient, status: 'pending' })) : []
-                },
+            transaction.create(purchaserRef, {
+                ...purchaser, memberType, purchaseEligible: memberType !== null && !upgradeOnly, upgradeOnly,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
@@ -2600,62 +2817,12 @@ export const latpeedPaymentWebhook = onRequest(
             res.status(200).json({ received: true, duplicate: true });
             return;
         }
-
+        // All purchase sources are processed by the retriable purchaser-created trigger.
+        emailStatus = memberType ? 'pending' : 'skipped';
         if (!memberType) {
             outcome = 'ineligible_purchase';
             res.status(200).json({ received: true, processed: true, eligible: false });
             return;
-        }
-
-        try {
-            await promoteExistingLifeupMembers(purchaser.email, purchaserRef.id, purchaser);
-        } catch (error) {
-            // 결제 기록은 이미 저장했으므로 승격 실패가 결제 훅의 성공 응답을 막지 않게 한다.
-            logger.error('[Latpeed Webhook] premium member upgrade failed', error);
-        }
-
-        if (!upgradeOnly) {
-            const mail = lifeupWelcomeMail(String(payment.name || '').trim(), LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl);
-            const deliveryResults = await Promise.all(welcomeRecipients.map(async recipient => {
-                try {
-                    const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: recipient.email, ...withUnsubscribe(mail) });
-                    if (sent.error) return { ...recipient, status: 'failed', error: String(sent.error.message || 'PROVIDER_REJECTED') };
-                    return { ...recipient, status: 'sent', resendId: sent.data?.id || '' };
-                } catch (error) {
-                    logger.error('[Latpeed Webhook] welcome email failed', { roles: recipient.roles, error });
-                    return { ...recipient, status: 'failed', error: error instanceof Error ? error.message : 'SEND_FAILED' };
-                }
-            }));
-            const failed = deliveryResults.filter(result => result.status === 'failed');
-            emailStatus = failed.length ? (failed.length === deliveryResults.length ? 'failed' : 'partial_failed') : 'sent';
-            await purchaserRef.update({
-                'welcomeEmail.status': emailStatus,
-                'welcomeEmail.recipients': deliveryResults,
-                'welcomeEmail.sentAt': admin.firestore.FieldValue.serverTimestamp()
-            });
-        }
-
-        if (memberType === 'premium') {
-            const premiumMail = lifeupPremiumWelcomeMail(String(payment.name || '').trim());
-            const premiumDeliveries = await Promise.all(welcomeRecipients.map(async recipient => {
-                try {
-                    const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: recipient.email, ...withUnsubscribe(premiumMail) });
-                    return sent.error
-                        ? { ...recipient, status: 'failed', error: String(sent.error.message || 'PROVIDER_REJECTED') }
-                        : { ...recipient, status: 'sent', resendId: sent.data?.id || '' };
-                } catch (error) {
-                    logger.error('[Latpeed Webhook] premium welcome email failed', { roles: recipient.roles, error });
-                    return { ...recipient, status: 'failed', error: error instanceof Error ? error.message : 'SEND_FAILED' };
-                }
-            }));
-            const premiumFailed = premiumDeliveries.filter(delivery => delivery.status === 'failed');
-            const premiumStatus = premiumFailed.length
-                ? (premiumFailed.length === premiumDeliveries.length ? 'failed' : 'partial_failed') : 'sent';
-            await purchaserRef.update({
-                'premiumWelcomeEmail.status': premiumStatus,
-                'premiumWelcomeEmail.recipients': premiumDeliveries,
-                'premiumWelcomeEmail.sentAt': admin.firestore.FieldValue.serverTimestamp()
-            });
         }
         outcome = upgradeOnly ? 'upgrade_processed' : 'processed';
         res.status(200).json({ received: true, processed: true, upgradeOnly });
@@ -2665,11 +2832,11 @@ export const latpeedPaymentWebhook = onRequest(
 const purchaseLogin = createPurchaseLogin({
     db, auth: admin.auth(),
     send: async (email, code) => {
-        const result = await resend.emails.send({
+        const result = await mailQueue.send({
             from: 'Notionable <noreply@notionable.net>', to: email,
             subject: 'NotionAble 앱 로그인 인증번호',
             text: `앱 로그인 인증번호: ${code}\n유효시간은 10분입니다. 본인이 요청하지 않았다면 입력하거나 공유하지 마세요.`
-        });
+        }, 'high', undefined, true);
         if (result.error) throw new Error('LOGIN_EMAIL_DELIVERY_FAILED');
     },
     purchase: async email => {
@@ -2726,14 +2893,15 @@ export const sendVerificationEmail = onRequest(
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        await resend.emails.send({
+        const delivery = await mailQueue.send({
             from: 'Notionable <noreply@notionable.net>',
             to: email,
             subject: 'Notionable SecondBrain API연동 인증번호 안내',
             text: `인증번호: ${code} 유효시간: 10분
             Notionable SecondBrain API 연동을 위해 인증번호를 발급하였습니다.
             요청하신 템플릿에서 아래 인증번호를 입력해 주세요.`,
-        });
+        }, 'high', undefined, true);
+        if (delivery.error) return res.status(503).json({ error: delivery.error.message });
 
         return res.status(200).json({ success: true });
     })
@@ -2853,7 +3021,7 @@ function parseCustomerCsv(csv: string): CustomerCsvRow[] {
     }));
 }
 
-function customerPhone(value: unknown): string { return String(value ?? '').replace(/\D/g, ''); }
+function customerPhone(value: unknown): string { return normalizedCustomerPhone(value); }
 function customerEmail(value: unknown): string { return String(value ?? '').trim().toLowerCase(); }
 function customerHasNotification(value: unknown): boolean {
     return ['예', 'yes', 'y', 'true', '1'].includes(csvComparable(value));
@@ -2863,6 +3031,21 @@ function customerDocumentId(phone: string): string {
 }
 function customerEmailDocumentId(email: string): string {
     return `email_${crypto.createHash('sha256').update(email).digest('hex')}`;
+}
+function marketingBlockDocumentId(email?: string, phone?: string): string {
+    const key = email ? `email:${customerEmail(email)}` : `phone:${customerPhone(phone)}`;
+    return crypto.createHash('sha256').update(key).digest('hex');
+}
+async function saveMarketingBlock(email?: string, phone?: string): Promise<void> {
+    const normalizedEmail = customerEmail(email); const normalizedPhone = customerPhone(phone);
+    if (!normalizedEmail && !normalizedPhone) return;
+    const ref = db.collection('marketingBlocks').doc(marketingBlockDocumentId(normalizedEmail, normalizedPhone));
+    const existing = await ref.get();
+    await ref.set({
+        email: normalizedEmail || '', phone: normalizedPhone || '', source: 'public',
+        blockedAt: existing.data()?.blockedAt || admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
 }
 
 // Explicit member preferences are authoritative; customer consent is a projection.
@@ -2941,10 +3124,10 @@ async function setCurrentCustomerConsent(email: string, consent: boolean, source
             const emails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
             // An account owner's later choice must never be undone by a CSV reimport
             // or an old purchase webhook.
-            if ((existing.notificationBlocked && source !== 'account') || (explicit === undefined && source !== 'account' && existing.notificationConsentSource === 'account')) return;
+            if (explicit === undefined && source !== 'account' && existing.notificationConsentSource === 'account') return;
             transaction.set(refs[index], {
                 templateId: 'lifeUp', emails: [...new Set([...emails, normalized])],
-                notificationConsent: (explicit ?? consent) ? '예' : '아니오', notificationConsentSource: explicit === undefined ? source : 'account', notificationBlocked: false,
+                notificationConsent: (explicit ?? consent) ? '예' : '아니오', notificationConsentSource: explicit === undefined ? source : 'account',
                 notificationConsentUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
@@ -2987,14 +3170,13 @@ export const importLifeupCustomersCsv = onRequest({ timeoutSeconds: 540, memory:
                 const existing = (await transaction.get(ref)).data() || {};
                 const preferences = await Promise.all(preferenceRefs.map(ref => transaction.get(ref)));
                 const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
-                if (existing.notificationBlocked && explicit === undefined) return;
                 const existingEmails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
                 transaction.set(ref, {
                     templateId: 'lifeUp', phone, phoneDisplay: newest.phone || existing.phoneDisplay || phone,
                     name: newest.name || existing.name || '', emails: [...new Set([...existingEmails, ...emails])],
                     purchasedAt: newest.purchasedAt || existing.purchasedAt || '', source: 'csv',
                     notificationConsent: explicit !== undefined ? (explicit ? '예' : '아니오') : existing.notificationConsentSource === 'account' || newest.notificationConsent === undefined ? existing.notificationConsent || '미응답' : newest.notificationConsent ? '예' : '아니오',
-                    notificationConsentSource: explicit !== undefined ? 'account' : existing.notificationConsentSource || 'csv', notificationBlocked: false,
+                    notificationConsentSource: explicit !== undefined ? 'account' : existing.notificationConsentSource || 'csv',
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
@@ -3010,36 +3192,57 @@ export const importLifeupCustomersCsv = onRequest({ timeoutSeconds: 540, memory:
     }
 }));
 
-export const listLifeupCustomers = onRequest(withCors(async (req, res) => {
+export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency: 1 }, withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     try {
         const identity = await getCareIdentity(req);
         if (!identity.isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
-        const [customerSnapshot, purchaserSnapshot] = await Promise.all([
-            db.collection('customers').where('templateId', '==', 'lifeUp').get(),
-            db.collection('purchasers').where('templateId', '==', 'lifeUp').get()
-        ]);
+        const page = new CustomerListPage(customerListOptions(req.body || {}), req.body?.after);
+        const marketingBlocks = await db.collection('marketingBlocks').get();
+        const blockedEmails = new Set(marketingBlocks.docs.map(doc => customerEmail(doc.data().email)).filter(Boolean));
+        const blockedPhones = new Set(marketingBlocks.docs.map(doc => customerPhone(doc.data().phone)).filter(Boolean));
+        // Read purchase records in bounded batches; legacy phone formatting varies.
+        // Retain only normalized phone -> highest grade, not purchase documents.
         const grades = new Map<string, LifeupMemberType>();
-        for (const doc of purchaserSnapshot.docs) {
-            const phone = customerPhone(doc.data().phone);
-            const grade = lifeupMemberType(doc.data());
-            if (!phone || !grade) continue;
-            if (grades.get(phone) === 'premium') continue;
-            grades.set(phone, grade);
+        let purchaseAfter: admin.firestore.QueryDocumentSnapshot | undefined;
+        while (true) {
+            let query = db.collection('purchasers').where('templateId', '==', 'lifeUp')
+                .orderBy(admin.firestore.FieldPath.documentId()).select('phone', 'purchaseOption', 'amount').limit(100);
+            if (purchaseAfter) query = query.startAfter(purchaseAfter);
+            const snapshot = await query.get();
+            for (const doc of snapshot.docs) addCustomerGrade(grades, doc.data().phone, lifeupMemberType(doc.data()));
+            if (snapshot.size < 100) break;
+            purchaseAfter = snapshot.docs[snapshot.size - 1];
         }
-        const customers = await Promise.all(customerSnapshot.docs.map(async doc => {
-            const data = doc.data();
-            const refs = await memberPreferenceRefs([...(Array.isArray(data.emails) ? data.emails : []), data.email]);
-            const preferences = await Promise.all(refs.map(ref => ref.get()));
-            const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
-            const memberType = grades.get(customerPhone(data.phone)) || null;
-            return {
-                id: doc.id, ...data, memberType, membership: preferences.length ? memberType === 'premium' ? 'premium' : 'standard' : 'none',
-                notificationConsent: data.notificationBlocked && !preferences.length ? '차단' : explicit === undefined ? data.notificationConsent || '미응답' : explicit ? '예' : '아니오'
-            };
-        }));
-        return res.json({ customers });
+        let after: admin.firestore.QueryDocumentSnapshot | undefined;
+        while (true) {
+            let customerQuery = db.collection('customers').where('templateId', '==', 'lifeUp')
+                .orderBy(admin.firestore.FieldPath.documentId()).limit(100);
+            if (after) customerQuery = customerQuery.startAfter(after);
+            const customerSnapshot = await customerQuery.get();
+            const customerDocs = customerSnapshot.docs;
+            if (!customerDocs.length) break;
+            for (let offset = 0; offset < customerDocs.length; offset += 10) {
+                const customers = await Promise.all(customerDocs.slice(offset, offset + 10).map(async doc => {
+                    const data = doc.data();
+                    const refs = await memberPreferenceRefs([...(Array.isArray(data.emails) ? data.emails : []), data.email]);
+                    const preferences = await Promise.all(refs.map(ref => ref.get()));
+                    const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
+                    const memberType = grades.get(customerPhone(data.phone)) || null;
+                    const blocked = [...(Array.isArray(data.emails) ? data.emails : []), data.email].map(customerEmail).some(email => blockedEmails.has(email)) || blockedPhones.has(customerPhone(data.phone));
+                    return {
+                        id: doc.id, ...data, memberType, membership: preferences.length ? memberType === 'premium' ? 'premium' : 'standard' : 'none',
+                        notificationConsent: blocked ? '차단' : explicit === undefined ? (data.notificationConsent === '차단' ? '미응답' : data.notificationConsent || '미응답') : explicit ? '예' : '아니오'
+                    };
+                }));
+                customers.forEach(customer => page.add(customer));
+            }
+            if (customerDocs.length < 100) break;
+            after = customerDocs[customerDocs.length - 1];
+        }
+        return res.json(page.result());
     } catch (error) {
+        if (error instanceof Error && ['INVALID_CUSTOMER_QUERY', 'INVALID_CUSTOMER_CURSOR'].includes(error.message)) return res.status(400).json({ error: '검색 조건이 변경되었습니다. 목록을 다시 조회해주세요.' });
         logger.error('Customer admin list failed', error);
         return res.status(500).json({ error: 'CUSTOMER_LIST_FAILED' });
     }
@@ -3048,7 +3251,7 @@ export const listLifeupCustomers = onRequest(withCors(async (req, res) => {
 // Admin-only delivery for the customer-management toolbar.  "차단" means all
 // notifications are prohibited, while a marketing opt-out can be explicitly
 // acknowledged by an administrator before sending this existing purchaser mail.
-export const sendLifeupCustomerMail = onRequest(withCors(async (req, res) => {
+export const sendLifeupCustomerMail = onRequest({ timeoutSeconds: 540 }, withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     try {
         const identity = await getCareIdentity(req);
@@ -3057,19 +3260,29 @@ export const sendLifeupCustomerMail = onRequest(withCors(async (req, res) => {
         const customerIds: string[] = [...new Set(requestedCustomerIds.map(id => String(id || '').trim()).filter(Boolean))];
         const template = String(req.body?.template || 'standard-purchaser-welcome');
         const confirmNonConsenting = req.body?.confirmNonConsenting === true;
-        if (!customerIds.length || customerIds.length > 100) return res.status(400).json({ error: 'CUSTOMER_SELECTION_REQUIRED' });
+        if (!customerIds.length || customerIds.length > 2000) return res.status(400).json({ error: '1~2000명의 고객을 선택해주세요.' });
+        const requestId = String(req.body?.requestId || '');
+        if (!/^[a-zA-Z0-9-]{16,80}$/.test(requestId)) return res.status(400).json({ error: '화면을 새로고침한 뒤 다시 요청해주세요.' });
         if (!LIFEUP_EMAIL_TEMPLATES.some(item => item.id === template)) return res.status(400).json({ error: 'UNKNOWN_MAIL_TEMPLATE' });
 
-        const snapshots = await db.getAll(...customerIds.map(id => db.collection('customers').doc(id)));
+        const [snapshots, marketingBlocks] = await Promise.all([
+            db.getAll(...customerIds.map(id => db.collection('customers').doc(id))),
+            db.collection('marketingBlocks').get()
+        ]);
+        const blockedEmails = new Set(marketingBlocks.docs.map(doc => customerEmail(doc.data().email)).filter(Boolean));
+        const blockedPhones = new Set(marketingBlocks.docs.map(doc => customerPhone(doc.data().phone)).filter(Boolean));
         const recipients = new Map<string, { name: string; customerIds: string[]; nonConsenting: boolean; blocked: boolean }>();
-        for (const snapshot of snapshots) {
+        const snapshotsById = new Map(snapshots.map(snapshot => [snapshot.id, snapshot]));
+        for (const customerId of customerIds) {
+            const snapshot = snapshotsById.get(customerId);
+            if (!snapshot) continue;
             if (!snapshot.exists || snapshot.data()?.templateId !== 'lifeUp') continue;
             const customer = snapshot.data() || {};
             const emails = [...new Set([...(Array.isArray(customer.emails) ? customer.emails : []), customer.email].map(customerEmail).filter(Boolean))];
             const preferences = await Promise.all((await memberPreferenceRefs(emails)).map(ref => ref.get()));
             const explicit = explicitMemberConsent(preferences.map(preference => preference.data() || {}));
             const consent = explicit === undefined ? String(customer.notificationConsent || '미응답') : explicit ? '예' : '아니오';
-            const blocked = Boolean(customer.notificationBlocked) && !preferences.length;
+            const blocked = emails.some(email => blockedEmails.has(email)) || blockedPhones.has(customerPhone(customer.phone));
             for (const email of emails) {
                 const current = recipients.get(email) || { name: String(customer.name || ''), customerIds: [], nonConsenting: false, blocked: false };
                 current.name ||= String(customer.name || '');
@@ -3086,26 +3299,31 @@ export const sendLifeupCustomerMail = onRequest(withCors(async (req, res) => {
             return res.json({ requiresConsentConfirmation: true, recipientCount: deliverable.length, nonConsentingCount, blockedCount });
         }
 
-        const results = await Promise.all(deliverable.map(async ([email, recipient]) => {
+        // Keep the same order as the customer-management table. Queueing one
+        // recipient at a time also avoids Firestore write completion order from
+        // changing the campaign's send order.
+        const results: Array<{ sent: boolean; customerIds: string[] }> = [];
+        const firstAttemptAt = Date.now() + 5_000;
+        for (const [index, [email, recipient]] of deliverable.entries()) {
             try {
                 const mail = withUnsubscribe(template === 'standard-purchaser-update'
                     ? lifeupStandardPurchaserUpdateMailDetailed(recipient.name)
                     : template === 'premium-purchaser-welcome'
                         ? lifeupPremiumWelcomeMail(recipient.name)
                         : lifeupWelcomeMail(recipient.name, LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl));
-                const sent = await resend.emails.send({ from: 'Notionable <noreply@notionable.net>', to: email, ...mail });
-                return { sent: !sent.error, customerIds: recipient.customerIds };
+                const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: email, ...mail }, 'normal', `manual:${identity.uid}:${requestId}:${template}:${email}`, false, firstAttemptAt + index, index + 1);
+                results.push({ sent: !sent.error, customerIds: recipient.customerIds });
             } catch (error) {
                 logger.error('Customer admin mail delivery failed', { customerIds: recipient.customerIds, error });
-                return { sent: false, customerIds: recipient.customerIds };
+                results.push({ sent: false, customerIds: recipient.customerIds });
             }
-        }));
+        }
         const sentCount = results.filter(result => result.sent).length;
         await db.collection('customerMailDeliveries').add({
-            template, customerIds, recipientCount: deliverable.length, sentCount,
+            template, customerIds, recipientCount: deliverable.length, queuedCount: sentCount,
             nonConsentingCount, blockedCount, sentBy: identity.uid, sentAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        return res.json({ sentCount, failedCount: deliverable.length - sentCount, blockedCount, nonConsentingCount });
+        return res.json({ queuedCount: sentCount, failedCount: deliverable.length - sentCount, blockedCount, nonConsentingCount });
     } catch (error) {
         logger.error('Customer admin mail send failed', error);
         return res.status(500).json({ error: 'CUSTOMER_MAIL_SEND_FAILED' });
@@ -3120,41 +3338,84 @@ export const unsubscribeMarketing = onRequest(withCors(async (req, res) => {
         const memberEmail = email && await admin.auth().getUserByEmail(email).then(() => true).catch(() => false);
         const memberPhone = phone && await admin.auth().getUserByPhoneNumber(`+82${phone.replace(/^0/, '')}`).then(() => true).catch(() => false);
         if (memberEmail || memberPhone) return res.json({ member: true });
-        const snapshot = await db.collection('customers').where('templateId', '==', 'lifeUp').get();
-        const refs = snapshot.docs.filter(doc => {
-            const data = doc.data();
-            return !!(email && [...(Array.isArray(data.emails) ? data.emails : []), data.email].some(value => customerEmail(value) === email)) || !!(phone && customerPhone(data.phone) === phone);
-        }).map(doc => doc.ref);
-        await Promise.all(refs.map(ref => ref.set({
-            notificationConsent: '아니오', notificationConsentSource: 'blocked', notificationBlocked: true,
-            notificationBlockedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true })));
+        await saveMarketingBlock(email, phone);
         return res.json({ member: false, blocked: true });
     } catch (error) { logger.error('Marketing unsubscribe failed', error); return res.status(500).json({ error: '수신 차단을 완료하지 못했습니다.' }); }
 }));
 
+// New public name. The previous endpoint remains for links already sent.
+export const blockMarketing = unsubscribeMarketing;
+
+export const listMarketingBlocks = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+        const before = Number(req.body?.before) || 0; const beforeId = String(req.body?.beforeId || '');
+        let query = db.collection('marketingBlocks').orderBy('blockedAt', 'desc').orderBy(admin.firestore.FieldPath.documentId(), 'desc').limit(101);
+        if (before && beforeId) query = query.startAfter(admin.firestore.Timestamp.fromMillis(before), beforeId);
+        const snapshot = await query.get(); const docs = snapshot.docs.slice(0, 100);
+        const count = await db.collection('marketingBlocks').count().get();
+        return res.json({
+            totalCount: count.data().count, hasMore: snapshot.size > 100, blocks: docs.map(doc => {
+                const data = doc.data(); return { id: doc.id, email: data.email || '', phone: data.phone || '', source: data.source || 'public', blockedAt: data.blockedAt?.toMillis?.() || 0 };
+            })
+        });
+    } catch (error) { logger.error('Marketing block list failed', error); return res.status(500).json({ error: 'MARKETING_BLOCK_LIST_FAILED' }); }
+}));
+
 // A purchaser is also a customer, but never the other way around. This keeps
 // free customer CSV rows away from authentication and entitlement checks.
-export const addLifeupPurchaserToCustomers = onDocumentCreated('purchasers/{purchaserId}', async event => {
+export const addLifeupPurchaserToCustomers = onDocumentCreated({ document: 'purchasers/{purchaserId}', retry: true, timeoutSeconds: 120 }, async event => {
     const purchaser = event.data?.data();
     if (!purchaser || purchaser.templateId !== 'lifeUp') return;
+    await receiveLifeupPurchase(event.data!.ref, purchaser);
+});
+
+async function receiveLifeupPurchase(purchaserRef: admin.firestore.DocumentReference, purchaser: admin.firestore.DocumentData): Promise<void> {
+    await registerPurchaserCustomer(purchaser);
+    const memberType = lifeupMemberType(purchaser);
+    if (!memberType) return;
+    await promoteExistingLifeupMembers(customerEmail(purchaser.email), purchaserRef.id, purchaser);
+    const recipients = [...new Set([LATPEED_ADMIN_EMAIL, customerEmail(purchaser.email)])]
+        .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    const enqueue = async (field: string, prefix: string, mail: { subject: string; text: string; html: string }) => {
+        // Stable keys allow safe trigger redelivery and deployment overlap with
+        // the old webhook without creating duplicate welcome messages.
+        const deliveries = await Promise.all(recipients.map(async email => {
+            const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: email, ...withUnsubscribe(mail) }, 'high', `${prefix}:${purchaserRef.id}:${email}`);
+            if (sent.error) throw new Error('PURCHASE_MAIL_QUEUE_FAILED');
+            return { email, queueId: sent.data?.id || '', status: 'queued' };
+        }));
+        await purchaserRef.update({ [`${field}.status`]: 'queued', [`${field}.recipients`]: deliveries,
+            [`${field}.queuedAt`]: admin.firestore.FieldValue.serverTimestamp() });
+    };
+    if (!isLifeupUpgrade(purchaser)) await enqueue('welcomeEmail', 'purchase-welcome', lifeupWelcomeMail(String(purchaser.name || ''), LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl));
+    if (memberType === 'premium') await enqueue('premiumWelcomeEmail', 'purchase-premium', lifeupPremiumWelcomeMail(String(purchaser.name || '')));
+    await purchaserRef.update({ 'reception.status': 'completed', 'reception.completedAt': admin.firestore.FieldValue.serverTimestamp() });
+}
+
+async function registerPurchaserCustomer(purchaser: admin.firestore.DocumentData): Promise<void> {
     const phone = customerPhone(purchaser.phone);
-    if (!phone) return;
     const email = customerEmail(purchaser.email);
-    const ref = await findCustomerRefByEmail(email) || db.collection('customers').doc(customerDocumentId(phone));
+    if (!phone && !email) return;
+    const ref = await findCustomerRefByEmail(email) || db.collection('customers').doc(phone ? customerDocumentId(phone) : customerEmailDocumentId(email));
     await db.runTransaction(async transaction => {
         const existing = (await transaction.get(ref)).data() || {};
         const emails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
         transaction.set(ref, {
-            templateId: 'lifeUp', phone, phoneDisplay: purchaser.phone || existing.phoneDisplay || phone,
+            templateId: 'lifeUp', phone: phone || existing.phone || '', phoneDisplay: purchaser.phone || existing.phoneDisplay || phone,
             name: purchaser.name || existing.name || '', emails: [...new Set([...emails, ...(email ? [email] : [])])],
             purchasedAt: purchaser.purchasedAt || existing.purchasedAt || '', source: existing.source || 'purchaser',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
     });
-    await setCurrentCustomerConsent(email, customerHasNotification(purchaser.notify), 'purchase');
-});
+    // An unanswered invitation is not an opt-out. Keep consent absent so
+    // account onboarding asks the recipient to make their own choice.
+    if (['예', '아니오'].includes(purchaser.notify)) {
+        await setCurrentCustomerConsent(email, customerHasNotification(purchaser.notify), 'purchase');
+    }
+}
 
 export const validateLifeupPurchaserCsv = onRequest(withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
@@ -3255,14 +3516,7 @@ export const getMyProfileSettings = onRequest(withCors(async (req, res) => {
         const appAccount = (await accountRef.get()).data() || {};
         const hasExplicitConsent = typeof appAccount.marketingConsent === 'boolean' && appAccount.marketingConsentSource === 'user';
         const customerRef = await findCustomerRefByEmail(identity.email);
-        let customer = customerRef ? (await customerRef.get()).data() : null;
-        // A public block is only for nonmembers. Once the customer has an account,
-        // release the block and retain a marketing opt-out in the member flow.
-        const blockedCustomer = customer;
-        if (blockedCustomer?.notificationBlocked) {
-            await setCurrentCustomerConsent(identity.email, false, 'account');
-            customer = { ...blockedCustomer, notificationConsent: '아니오', notificationConsentSource: 'account', notificationBlocked: false };
-        }
+        const customer = customerRef ? (await customerRef.get()).data() : null;
         const hasCustomerConsent = customer?.notificationConsent === '예' || customer?.notificationConsent === '아니오';
         const marketingConsent = hasExplicitConsent ? appAccount.marketingConsent : hasCustomerConsent
             ? customer?.notificationConsent === '예' : await initialMarketingConsent(identity.email);
@@ -3270,7 +3524,7 @@ export const getMyProfileSettings = onRequest(withCors(async (req, res) => {
             displayName: account.displayName || '', email: account.email || '', phoneNumber: account.phoneNumber || '',
             createdAt: account.metadata.creationTime || '', providers: account.providerData.map(provider => provider.providerId),
             marketingConsent, marketingConsentSource: hasExplicitConsent ? 'user' : hasCustomerConsent ? customer?.notificationConsentSource || 'import' : 'none',
-            marketingConsentRequired: !hasExplicitConsent && !hasCustomerConsent
+            marketingConsentRequired: !hasExplicitConsent && (!hasCustomerConsent || appAccount.invitationMarketingConsentRequired === true)
         });
     } catch (error) {
         logger.error('Profile settings lookup failed', error);
@@ -3331,16 +3585,6 @@ export const listAppMembers = onRequest(withCors(async (req, res) => {
     try {
         const identity = await getCareIdentity(req);
         if (!identity.isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
-        const customerSnapshot = await db.collection('customers').where('templateId', '==', 'lifeUp').get();
-        const importedConsent = new Map<string, { value: boolean; updatedAt: number }>();
-        const addConsent = (email: string, value: boolean, updatedAt: number) => {
-            const normalized = customerEmail(email); const existing = importedConsent.get(normalized);
-            if (normalized && (!existing || updatedAt >= existing.updatedAt)) importedConsent.set(normalized, { value, updatedAt });
-        };
-        customerSnapshot.docs.forEach(doc => {
-            const data = doc.data(); const updatedAt = data.updatedAt?.toMillis?.() || 0;
-            (Array.isArray(data.emails) ? data.emails : []).forEach((email: unknown) => addConsent(String(email || ''), data.notificationConsent === '예', updatedAt));
-        });
         const members: any[] = []; let pageToken: string | undefined;
         do {
             const page = await admin.auth().listUsers(1000, pageToken);
@@ -3350,13 +3594,18 @@ export const listAppMembers = onRequest(withCors(async (req, res) => {
             ]);
             page.users.forEach((user, index) => {
                 const preference = preferenceDocs[index].data() || {};
-                const email = customerEmail(user.email);
+                const workspaces = workspaceSnapshots[index].docs;
                 // Only IDs of existing /users documents are workspace IDs.
                 // appAccounts.userId is a binding that may be stale.
                 const workspaceIds = [...new Set([
-                    ...workspaceSnapshots[index].docs.map(doc => doc.id)
+                    ...workspaces.map(doc => doc.id)
                 ])];
-                members.push({ id: user.uid, profileName: user.displayName || preference.profileName || '', email: user.email || '', phoneNumber: user.phoneNumber || '', workspaceIds, createdAt: user.metadata.creationTime || '', marketingConsent: preference.marketingConsentSource === 'user' ? preference.marketingConsent === true : importedConsent.get(email)?.value || false });
+                const notionConnected = workspaces.some(doc => {
+                    const workspace = doc.data();
+                    return workspace.notionConnection?.status === 'connected' || Boolean(workspace.notionAccessToken);
+                });
+                const kakaoConnected = workspaces.some(doc => Boolean(doc.data().kakaoUserId));
+                members.push({ id: user.uid, profileName: user.displayName || preference.profileName || '', email: user.email || '', phoneNumber: user.phoneNumber || '', workspaceIds, createdAt: user.metadata.creationTime || '', notionConnected, kakaoConnected });
             });
             pageToken = page.pageToken;
         } while (pageToken);
@@ -3590,7 +3839,10 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
                     (workspace.data()?.firebaseUid && workspace.data()?.firebaseUid !== firebaseUid)) {
                     throw new Error('이미 다른 계정에 연결되어 있습니다. 관리자에게 문의해주세요.');
                 }
-                transaction.set(accountRef, { userId }, { merge: true });
+                transaction.set(accountRef, { userId,
+                    ...(bestPurchaser?.data.source === 'invitation' && account.data()?.marketingConsentSource !== 'user'
+                        ? { invitationMarketingConsentRequired: true } : {})
+                }, { merge: true });
                 transaction.update(workspaceRef, { firebaseUid });
                 transaction.delete(docRef);
             });
@@ -3675,7 +3927,7 @@ export const sendTemplateConnectRequest = onRequest(
             });
         }
 
-        await resend.emails.send({
+        await mailQueue.send({
             from: 'Notionable <noreply@notionable.net>',
             to: 'crefestudio@gmail.com',
             subject: '[라이프업] 템플릿 연결 신청',
@@ -3697,7 +3949,7 @@ export const sendTemplateConnectRequest = onRequest(
                     ${new Date().toLocaleString('ko-KR')}
                 </p>
             `
-        });
+        }, 'high');
 
         return res.status(200).json({
             success: true
@@ -11368,10 +11620,10 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
     }
 
     // 시험 운영 안내
-    // lines.push("");
-    // lines.push("📢 [시험 운영 안내]");
-    // lines.push("◾ 분석이 잘못될 수 있으며, '할일로', '메모로'처럼 바로 수정할 수 있습니다. 오류를 캡처해 보내주시면 개선에 큰 도움이 됩니다.");
-    // lines.push("👉 오류 신고 : https://notionable.net/feedback?category=13h58R7m0A");
+    lines.push("");
+    lines.push("📢 [시험 운영 안내]");
+    lines.push("◾ 분석이 잘못될 수 있으며, '할일로', '메모로'처럼 바로 수정할 수 있습니다. 오류를 캡처해 보내주시면 개선에 큰 도움이 됩니다.");
+    lines.push("👉 오류 신고 : https://notionable.net/feedback?category=13h58R7m0A");
 
     return lines.join("\n");
 }

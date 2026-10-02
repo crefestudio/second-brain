@@ -1,4 +1,5 @@
-@use '../purchaser-admin/purchaser-admin.component.scss';
+@use '../admin-list';
+.filter-card { flex-wrap: wrap; }
 .emails { max-width: 280px; white-space: normal !important; word-break: break-all; }
 .badge.none { color:#9ca3af; background:rgba(156,163,175,.12); }
 .filter-card select:disabled { opacity:.75; cursor:default; }
@@ -7,4 +8,5 @@
 .mail-toolbar select { padding:8px 10px; color:#f3f4f6; background:#252525; border:1px solid #3a3a3a; border-radius:7px; font:inherit; }
 .mail-send-btn { border:0; padding:8px 12px; border-radius:7px; color:#fff; background:#2563eb; font:inherit; font-weight:700; cursor:pointer; }.mail-send-btn:hover { background:#1d4ed8; }.mail-send-btn:disabled { opacity:.5; cursor:not-allowed; }
 .mail-warning { color:#fbbf24; font-size:13px; }.mail-blocked { color:#f87171; font-size:13px; }.mail-message { margin-left:auto; color:#7aa2f7; font-size:13px; }
+.load-more { display: block; margin: 16px auto 0; }
 @media (max-width:640px) { .mail-message { width:100%; margin-left:0; } }

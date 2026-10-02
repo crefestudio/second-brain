@@ -69,6 +69,9 @@ export class SocialLoginComponent {
     auth = inject(SocialAuthService);
     private router = inject(Router);
     private route = inject(ActivatedRoute);
+    constructor() {
+        this.purchaseEmail = (this.route.snapshot.queryParamMap.get('email') || '').slice(0, 254);
+    }
     get errorLines(): string[] {
         const message = this.auth.error();
         return message === '로그인 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'

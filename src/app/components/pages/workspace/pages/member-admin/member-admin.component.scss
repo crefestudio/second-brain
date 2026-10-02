@@ -1,5 +1,4 @@
-@use '../purchaser-admin/purchaser-admin.component.scss';
-.badge.none { color:#9ca3af; background:rgba(156,163,175,.12); }
+@use '../admin-list';
 .workspace-ids { display:flex; flex-wrap:wrap; gap:6px; }
 .workspace-id { border:0; border-radius:7px; padding:7px 11px; color:#7aa2f7; background:rgba(122,162,247,.12); font:inherit; cursor:pointer; font-size: 13px; }
 .workspace-id:hover, .workspace-id.selected { color:#7aa2f7; background:rgba(122,162,247,.22); text-decoration:underline; }

@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { APP_CONFIG } from '../config/app-config.token';
 import { auth } from '../firebase';
 
-export type AppMember = { id: string; profileName: string; email: string; phoneNumber: string; workspaceIds: string[]; createdAt: string; marketingConsent: boolean; };
+export type AppMember = { id: string; profileName: string; email: string; phoneNumber: string; workspaceIds: string[]; createdAt: string; notionConnected: boolean; kakaoConnected: boolean; };
 export type WorkspaceAdminDetails = {
     workspaceId: string; createdAt: string; email: string; firebaseUid: string; imwebMemberId: string; kakaoUserId: string;
     lifeupTemplateInfo: { name: string; pageCount: number; connected: boolean } | null;

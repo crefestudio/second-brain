@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createPurchaseLogin } = require('../lib/purchase-login');
 
-function setup() {
+function setup(purchaseSource = 'latpeed') {
     const data = new Map();
     const tokens = [];
     const sent = [];
@@ -51,13 +51,22 @@ function setup() {
     };
     const service = createPurchaseLogin({ db, auth,
         send: async (email, code) => { if (sendFailure) throw Error('mail failed'); sent.push({ email, code }); },
-        purchase: async () => purchased ? { purchaser: { email: 'buyer@example.com' }, purchaserIds: ['p1'], memberType: 'standard' } : null
+        purchase: async () => purchased ? { purchaser: { email: 'buyer@example.com', source: purchaseSource }, purchaserIds: ['p1'], memberType: 'standard' } : null
     });
     return { data, service, tokens, sent, setPurchased: value => purchased = value,
         setDisabled: value => disabled = value, failSend: () => sendFailure = true,
         challenge: () => [...data.values()].find(value => 'codeHash' in value) };
 }
 const email = 'buyer@example.com';
+
+test('invitation signup explicitly requires marketing preference, without granting consent', async () => {
+    const h = setup('invitation');
+    await h.service.request(email, 'ip');
+    await h.service.verify(email, h.sent[0].code);
+    const account = h.data.get('appAccounts/new-firebase-user');
+    assert.equal(account.invitationMarketingConsentRequired, true);
+    assert.equal(account.marketingConsent, undefined);
+});
 
 test('existing Google binding is reused; widget credentials remain unchanged', async () => {
     const h = setup();
