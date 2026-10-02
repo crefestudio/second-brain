@@ -33,6 +33,7 @@ import { deleteAccountData } from './account-deletion';
 import { createMailQueue } from './mail-queue';
 import { CustomerListPage, customerListOptions } from './customer-list-page';
 import { addCustomerGrade, normalizedCustomerPhone } from './customer-grades';
+import { resolveTaskKinds } from './task-classification';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const nanoid = customAlphabet(
@@ -4744,9 +4745,7 @@ class NotionService {
                 };
                 const normalizedType = typeMap[aiResult.type] ?? aiResult.type ?? "할 것";
 
-                const kinds = aiResult.dateData?.date
-                    ? "일정"
-                    : aiResult.kinds ?? "수집함";
+                const kinds = resolveTaskKinds(aiResult);
 
                 properties = {
                     할일: {
@@ -8954,8 +8953,9 @@ Reference는 나중에 참고하기 위해 수집하는 정보이다.
 
 [task.dateExpr]
 날짜와 시간은 별도의 날짜 처리 과정에서 결정된다.
-입력에 [확정된 날짜/시간] 정보가 있으면 해당 dateExpr를 그대로 사용한다.
-dateExpr를 판단하거나 변경하지 않는다.
+입력에 [확정된 날짜/시간] 정보가 있으면 날짜가 확정된 것이다.
+이 경우 task.kinds는 반드시 "일정"으로 반환한다.
+dateExpr를 새로 생성하거나 날짜와 시간을 다시 판단하지 않는다.
 
 2. memo 의 세부 규칙
 
@@ -9772,7 +9772,8 @@ date: ${dateResult.data!.date}${dateResult.data!.time
 규칙:
 - 위 날짜와 시간은 날짜 처리 전용 AI에서 이미 확정한 최종 값이다.
 - 날짜와 시간을 다시 판단하거나 변경하지 않는다.
-- 위 값이 존재하면 반드시 결과의 data.date와 data.time에 그대로 사용한다.
+- 날짜와 시간은 서버가 결과의 dateData에 설정한다. 별도의 data나 dateExpr를 생성하지 않는다.
+- db가 task이면 kinds는 반드시 "일정"으로 반환한다.
 `
         : "";
 
@@ -11435,8 +11436,8 @@ function enrichKakaoAssistantResult(
         console.log("[enrich] merged =", JSON.stringify(enrichedResult, null, 2));
     }
 
-    if (enrichedResult.dateExpr && !enrichedResult.kinds) {
-        enrichedResult.kinds = "일정";
+    if (enrichedResult.db === "task") {
+        enrichedResult.kinds = resolveTaskKinds(enrichedResult);
     }
 
     if (enrichedResult.action === "help") {
