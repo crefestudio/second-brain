@@ -21,7 +21,7 @@ import { AssistantEntity, TextEntity, WebPageEntity, ImageEntity, ContactEntity,
 import { WebPageAnalyzer } from './services/web-page-analyzer';
 
 import * as functions from "firebase-functions";
-import { formatDateExpr, formatTimeExpr, formatKoreanDate, formatKoreanDateTime, resolveDateExpr } from './services/date-service';
+import { formatKoreanDate, formatKoreanDateTime, resolveDateData, toNotionDate, DateProcessData, hasMonthWithoutDay } from './services/date-service';
 
 // notion
 import { Client } from "@notionhq/client";
@@ -4767,14 +4767,7 @@ class NotionService {
 
                 if (aiResult.dateData?.date) {
                     properties.날짜 = {
-                        date: {
-                            start: aiResult.dateData.time
-                                ? `${aiResult.dateData.date}T${aiResult.dateData.time}:00`
-                                : aiResult.dateData.date,
-                            ...(aiResult.dateData.time
-                                ? { time_zone: "Asia/Seoul" }
-                                : {})
-                        }
+                        date: toNotionDate(aiResult.dateData)
                     };
                 }
                 break;
@@ -8941,7 +8934,8 @@ Reference는 나중에 참고하기 위해 수집하는 정보이다.
 규칙:
 
 * 기본값: "수집함"
-* 날짜가 있는 경우 → "일정"
+* 서버의 [확정된 날짜/시간]에 일자까지 확정된 경우에만 → "일정"
+* "10월에 군산가기", "다음 달 여행하기"처럼 월만 있으면 날짜 없는 할일이다. 월 표현을 제목에 유지하고 기본 분류는 "수집함"이다.
 * 사용자가 다음 분류를 명시한 경우에만 해당 값을 사용한다.
   - "다음", "다음에", "후속" → "다음"
   - "대기", "대기중", "기다리는 중", "답변 대기" → "대기중"
@@ -9775,7 +9769,9 @@ date: ${dateResult.data!.date}${dateResult.data!.time
 - 날짜와 시간은 서버가 결과의 dateData에 설정한다. 별도의 data나 dateExpr를 생성하지 않는다.
 - db가 task이면 kinds는 반드시 "일정"으로 반환한다.
 `
-        : "";
+        : dateResult?.precision === "month"
+            ? "[일자 미지정] 월만 언급되었다. 날짜를 만들지 않는다. 행동 요청은 task로 분류하고 kinds는 기본 수집함이다. 제목에는 월 표현을 포함한 현재 입력을 그대로 유지한다. dateData, dateExpr, data를 생성하지 않는다."
+            : "";
 
     let userPrompt: string;
     if (previousResult?.result?.action === "ask") {
@@ -9857,10 +9853,18 @@ ${currentInput}
         const result = safeParseAssistantJson(text);
 
         if (hasResolvedDate && dateResult?.data?.date) {
-            result.dateData = {
-                date: dateResult.data.date,
-                ...(dateResult.data.time ? { time: dateResult.data.time } : {})
-            };
+            result.dateData = { ...dateResult.data };
+        }
+
+        if (dateResult?.precision === "month") {
+            // Enforce the rule even if the classification model invents a date.
+            delete result.dateData;
+            delete result.dateExpr;
+            delete result.data;
+            if (result.db === "task") {
+                if (!result.kinds || result.kinds === "일정") result.kinds = "수집함";
+                if (result.action === "create") result.title = userMessage.trim();
+            }
         }
 
         console.log("[TagCache] check", {
@@ -11004,13 +11008,10 @@ interface DateAIResult {
     question?: string;
 }
 
-interface DateProcessData {
-    date?: string;
-    time?: string;
-}
 
 interface DateProcessResult {
     status: DateProcessStatus;
+    precision?: "month";
     data?: DateProcessData;
     question?: string;
 }
@@ -11032,6 +11033,10 @@ export async function processDateExpression(
     userMessage: string,
     previousContext?: AssistantContext | null
 ): Promise<DateProcessResult> {
+    if (hasMonthWithoutDay(userMessage)) {
+        return { status: "none", precision: "month" };
+    }
+
     const isDateAsk = previousContext?.result?.action === "dateAsk";
     const hasCandidate = hasDateCandidate(userMessage);
 
@@ -11127,10 +11132,7 @@ function getPreviousDateData(
         return undefined;
     }
 
-    return {
-        date: data.date,
-        ...(data.time ? { time: data.time } : {})
-    };
+    return { ...data };
 }
 
 ///////////////////////////////////////////////////////////
@@ -11144,26 +11146,11 @@ function resolveDateResult(
         };
     }
 
-    const parsed = resolveDateExpr(
-        result.dateExpr,
-        previousData
-    );
-
-    if (!parsed) {
-        return {
-            status: "none"
-        };
+    const data = resolveDateData(result.dateExpr, previousData);
+    if (!data) {
+        return { status: "dateAsk", question: "날짜를 확인하지 못했습니다. 시작일과 종료일을 연도·월·일까지 다시 알려주세요." };
     }
-
-    return {
-        status: result.status,
-        data: {
-            date: formatDateExpr(parsed.date),
-            ...(parsed.hasTime
-                ? { time: formatTimeExpr(parsed.date) }
-                : {})
-        }
-    };
+    return { status: result.status, data };
 }
 
 ///////////////////////////////////////////////////////////
@@ -11221,6 +11208,8 @@ async function requestDateExpressionFromAI(
 
 실제 날짜와 시간은 계산하지 않는다.
 사용자가 말하지 않은 날짜나 시간을 생성하지 않는다.
+"10월", "2026년 10월", "다음 달"처럼 일자가 없는 월 표현만 있으면 status는 none이다.
+월의 1일, 말일, 오늘의 일자를 임의로 채우지 않고 추가 질문도 하지 않는다.
 기존 날짜와 새로운 날짜를 AI가 병합하지 않는다.
 
 # 출력
@@ -11280,6 +11269,24 @@ async function requestDateExpressionFromAI(
 
 내일 오후 3시                => tomorrow+15:00
 다음주 월요일 오전 10시       => next:monday+10:00
+
+# 날짜 구간
+
+기간은 시작 표현과 종료 표현을 ".."로 연결한다. 시작일만 반환하지 않는다.
+"에서", "부터 ...까지", "~"는 날짜 사이에 있으면 구간이다.
+끝 날짜에 생략된 월/연도는 시작 날짜에서 이어받는다.
+시간이 없으면 양쪽 모두 날짜만 반환하며 dateAsk 하지 않는다.
+
+10월 16일에서 18일 제주 => resolved / date:10-16..date:10-18
+10월 16일부터 18일까지 => resolved / date:10-16..date:10-18
+10월 16일~11월 2일 => resolved / date:10-16..date:11-02
+2026년 12월 30일부터 2027년 1월 2일 => resolved / date:2026-12-30..date:2027-01-02
+내일부터 모레까지 => resolved / tomorrow..dayafter
+10월 16일 오전 9시부터 18일 오후 6시 => resolved / date:10-16+09:00..date:10-18+18:00
+기간을 명시적으로 수정하면 correct 상태로 전체 구간을 반환한다.
+종료일만 수정하면 이전 dateData의 시작일을 유지한 전체 구간을 반환한다.
+하루 일정으로 변경하면 같은 날짜를 양쪽에 반환한다.
+한쪽 시간만 있거나 종료일이 시작일보다 앞서는 등 불명확하면 dateAsk로 확인한다.
 
 # 시간 처리
 
@@ -11396,7 +11403,7 @@ else:
                 role: "user",
                 content: JSON.stringify({
                     userMessage,
-                    previousContext: previousDateContext
+                    previousContext: previousDateContext ?? (previousContext?.dateData ? { dateData: previousContext.dateData } : null)
                 })
             }
         ]
@@ -11490,7 +11497,12 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
     if (result.dateData?.date) {
         const date = new Date(`${result.dateData.date}T${result.dateData.time ?? "00:00"}:00`);
         const dateText = result.dateData.time ? formatKoreanDateTime(date) : formatKoreanDate(date);
-        lines.push(`🗓️ ${dateText}`);
+        let rangeText = dateText;
+        if (result.dateData.endDate) {
+            const end = new Date(`${result.dateData.endDate}T${result.dateData.endTime ?? "00:00"}:00`);
+            rangeText += ` ~ ${result.dateData.endTime ? formatKoreanDateTime(end) : formatKoreanDate(end)}`;
+        }
+        lines.push(`🗓️ ${rangeText}`);
         lines.push("");
     }
 
@@ -11568,10 +11580,10 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
             }
 
             const previousDate = previous?.dateData
-                ? `${previous.dateData.date ?? ""}T${previous.dateData.time ?? ""}`
+                ? `${previous.dateData.date ?? ""}T${previous.dateData.time ?? ""}/${previous.dateData.endDate ?? ""}T${previous.dateData.endTime ?? ""}`
                 : "";
             const currentDate = result.dateData
-                ? `${result.dateData.date ?? ""}T${result.dateData.time ?? ""}`
+                ? `${result.dateData.date ?? ""}T${result.dateData.time ?? ""}/${result.dateData.endDate ?? ""}T${result.dateData.endTime ?? ""}`
                 : "";
 
             if (result.dateData !== undefined && currentDate !== previousDate) {
