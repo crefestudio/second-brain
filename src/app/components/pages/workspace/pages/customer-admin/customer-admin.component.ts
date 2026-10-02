@@ -18,7 +18,7 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
     isLoading = true; isImporting = false; isSendingMail = false; isLoadingMore = false; hasMore = false; errorMessage = ''; csvMessage = ''; mailMessage = '';
     private nextCursor: string | null = null;
     customers: LifeupCustomer[] = []; totalCustomerCount = 0; selectedCustomer: LifeupCustomer | null = null; selectedIds = new Set<string>();
-    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' = 'standard-purchaser-welcome';
+    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: '' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' = '';
     constructor(private readonly care: CareRequestService, private readonly customerAdmin: CustomerAdminService) {}
 
     async ngOnInit(): Promise<void> {
@@ -58,7 +58,7 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
     detailEntries(customer: LifeupCustomer): Array<{ key: string; value: string }> { return Object.entries(customer).map(([key, value]) => ({ key, value: Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '') })); }
 
     async sendSelectedMail(): Promise<void> {
-        if (!this.selectedIds.size || this.isSendingMail) return;
+        if (!this.selectedIds.size || !this.mailTemplate || this.isSendingMail) return;
         this.isSendingMail = true; this.mailMessage = '';
         // `customers` is already in the table's current server-side sort order.
         const customerIds = this.selectedCustomers.map(customer => customer.id);
@@ -68,7 +68,7 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
         try {
             let result = await this.customerAdmin.sendSelectedMail(customerIds, this.mailTemplate, false, requestId);
             if (result.requiresConsentConfirmation) {
-                const warning = `알림 미동의 또는 미응답 이메일 ${result.nonConsentingCount || 0}건이 포함되어 있습니다.\n차단 이메일 ${result.blockedCount || 0}건은 발송하지 않습니다.\n그래도 기존 일반 구매자 메일을 발송할까요?`;
+                const warning = `알림 미동의 또는 미응답 이메일 ${result.nonConsentingCount || 0}건이 포함되어 있습니다.\n차단 이메일 ${result.blockedCount || 0}건은 발송하지 않습니다.\n그래도 선택한 메일을 발송할까요?`;
                 if (!window.confirm(warning)) { this.mailMessage = '메일 발송을 취소했습니다.'; return; }
                 result = await this.customerAdmin.sendSelectedMail(customerIds, this.mailTemplate, true, requestId);
             }

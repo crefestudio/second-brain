@@ -2286,9 +2286,10 @@ function escapeEmailHtml(value: string): string {
     }[character]!));
 }
 
-type LifeupEmailTemplateId = 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome';
+type LifeupEmailTemplateId = 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update';
 const LIFEUP_EMAIL_TEMPLATES: ReadonlyArray<{ id: LifeupEmailTemplateId; name: string }> = [
     { id: 'standard-purchaser-update', name: '기존 일반 구매자 업데이트 안내' },
+    { id: 'premium-purchaser-update', name: '프리미엄 구매자 업데이트 안내' },
     { id: 'standard-purchaser-welcome', name: '[자동 발송] 일반 구매자 / 구매 시' },
     { id: 'premium-purchaser-welcome', name: '[자동 발송] 프리미엄 구매자 / 구매 시' },
 ];
@@ -2653,6 +2654,49 @@ function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subj
         .replace(/&#39;/g, "'").replace(/&amp;/g, '&')
         .split('\n').map(line => line.trim()).filter(Boolean).join('\n');
     return { subject: '라이프업 1.5 업데이트 안내', text, html };
+}
+
+function lifeupPremiumPurchaserUpdateMail(customerName: string): { subject: string; text: string; html: string } {
+    const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '안녕하세요,';
+    const { lifeupMigrationUrl, lifeupStudioUrl, lifeupTemplateReleaseUrl, installYoutubeUrl, kakaoConnectUrl } = LIFEUP_EMAIL_VARIABLES;
+    const manualMigrationUrl = lifeupMigrationUrl;
+    const studioUrl = lifeupStudioUrl;
+    return {
+        subject: '라이프업 프리미엄 멤버를 위한 새로운 업데이트 소식입니다.',
+        text: `${customerName?.trim() ? `${customerName.trim()}님,\n` : ''}라이프업 1.5가 새롭게 개편되었습니다.\n\n라이프업 1.5 소개 영상: https://www.youtube.com/watch?v=IZEwNYIEGck\n라이프업 1.5 다운로드: ${lifeupTemplateReleaseUrl}\n설치 안내 영상: ${installYoutubeUrl}\n카카오톡 연결: ${kakaoConnectUrl}\n\n프리미엄 멤버 혜택\n1. 라이프봇 1년 무료 이용\n2. 라이프업 1.5 자동 업데이트: ${lifeupMigrationUrl}\n3. 수동 업데이트 지원: ${lifeupMigrationUrl}\n4. 라이프업 스튜디오: ${lifeupStudioUrl}`,
+        html: `<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>라이프업 1.5 프리미엄 멤버 안내</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f6f8;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f6f8;"><tr><td align="center" style="padding:32px 16px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;">
+        <tr><td align="center" style="padding:32px 32px 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 7px 0 0;font-size:16px;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">🧠</a></td><td valign="middle" style="padding:0;font-size:18px;font-weight:700;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">Notionable</a></td></tr></table></td></tr>
+        <tr><td style="padding:0 32px 40px;">
+            <h1 style="margin:0 0 16px;font-size:26px;line-height:1.45;color:#171717;">${greetingName}<br>라이프업 1.5가 새롭게 개편되었습니다. 🎉</h1>
+            <p style="margin:0;font-size:16px;line-height:1.8;color:#555;">라이프업을 믿고 함께해주신 ${customerName}님께 새로운 소식을 전해드립니다.</p>
+            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+            <h2 style="margin:0 0 16px;font-size:20px;color:#171717;">✨ 라이프업 1.5를 소개합니다</h2><p style="margin:0;font-size:15px;line-height:1.8;color:#555;">카카오톡 라이프봇, 내 루틴, 모바일 전용 뷰 등 라이프업의 새로운 기능을 만나보세요.</p><div style="margin-top:24px;"><a href="https://www.youtube.com/watch?v=IZEwNYIEGck" target="_blank" style="display:inline-block;padding:13px 20px;background:#171717;border-radius:8px;color:#fff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 소개 영상 보기 →</a></div><p style="margin:18px 0 0;font-size:15px;line-height:1.8;color:#555;">영상을 보시고 <span style="color:#ff5a5f;font-weight:700;">좋아요와 따뜻한 응원 댓글</span>도 부탁드립니다! 🙏<br>앞으로도 여러분의 삶에 도움이 되는 지속적인 업데이트로 보답하겠습니다.</p>
+            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+            <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">📥 라이프업 1.5 다운로드</h2><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.</p><a href="${lifeupTemplateReleaseUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 다운로드 →</a><p style="margin:16px 0 0;"><a href="${installYoutubeUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>
+            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+            <h2 style="margin:0 0 12px;font-size:20px;color:#171717;">💬 카카오톡 라이프봇</h2><p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.</p><a href="${kakaoConnectUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#fee500;border-radius:8px;color:#191919;font-size:15px;font-weight:700;text-decoration:none;">카카오톡 연결하기 →</a>
+            <div style="height:1px;background:#eceef1;margin:32px 0;"></div>
+            <div style="padding:24px;background:#f8f5ff;border:1px solid #eee7ff;border-radius:14px;"><h2 style="margin:0 0 20px;font-size:21px;color:#34215c;">👑 프리미엄 멤버 혜택 안내</h2><p style="margin:0;font-size:15px;line-height:1.8;color:#555;">기존 커스터마이징 구매자분들은 이제 <strong>라이프업 프리미엄 멤버</strong>로 전환됩니다.</p><p style="margin:10px 0 24px;"><a href="https://notionable.net/price" target="_blank" style="font-size:14px;color:#6d4bb3;text-decoration:none;">새로워진 회원 체계 보기 →</a></p>
+                <h3 style="margin:0 0 10px;font-size:17px;color:#34215c;">1. 라이프봇 1년 무료 이용</h3><p style="margin:0;font-size:15px;line-height:1.8;color:#555;">프리미엄 멤버분들께는 라이프업을 더 편리하게 활용할 수 있는 자동화 서비스, <strong>라이프봇 1년 무료 이용권</strong>을 제공합니다.</p><p style="margin:12px 0 0;font-size:15px;line-height:1.8;color:#555;">카카오톡 AI 비서, 루틴 코치, 템플릿 자동 업데이트, 세컨드브레인 그래프 등 현재 제공 중인 기능은 물론, 앞으로 추가되는 라이프봇 기능도 이용하실 수 있습니다.</p><div style="margin-top:16px;padding:14px 16px;background:#fff;border-radius:10px;"><p style="margin:0;font-size:13px;line-height:1.7;color:#795b1e;">ℹ️ 라이프봇은 현재 시험 운영 중이며, 정식 오픈 후 유료 서비스로 전환될 예정입니다. 정식 오픈이 늦어진 만큼 이용 기간은 <strong>정식 오픈일부터 1년간</strong>으로 적용해드립니다.</p></div>
+                <div style="height:1px;background:#e8e1f4;margin:24px 0;"></div>
+                <h3 style="margin:0 0 10px;font-size:17px;color:#34215c;">2. 라이프업 1.5 자동 업데이트</h3><p style="margin:0;font-size:15px;line-height:1.8;color:#555;">라이프업 1.3 사용자는 스튜디오에서 제공하는 데이터 이전 기능을 통해 <strong>라이프업 1.5로 업데이트</strong>하실 수 있습니다.</p><p style="margin:12px 0 18px;font-size:15px;line-height:1.8;color:#555;">기존 라이프업을 복제해 백업한 뒤, 안내에 따라 1.3과 1.5를 연결하면 데이터를 이전할 수 있습니다.</p><a href="${lifeupMigrationUrl}" target="_blank" style="display:inline-block;padding:13px 18px;background:#6d4bb3;border-radius:8px;color:#fff;font-size:14px;font-weight:700;text-decoration:none;">라이프업 1.5로 업데이트하기 →</a><p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#795b1e;">⚠️ <strong>1.3 이전 버전은 자동 데이터 이전을 지원하지 않습니다.</strong> 해당 버전을 사용 중이거나 자동 이전 중 도움이 필요하신 경우, 프리미엄 멤버 혜택으로 수동 업데이트를 신청하실 수 있습니다.</p>
+                <div style="height:1px;background:#e8e1f4;margin:24px 0;"></div>
+                <h3 style="margin:0 0 10px;font-size:17px;color:#34215c;">3. 수동 업데이트 지원</h3><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">자동 업데이트가 어려운 이전 버전 사용자분들을 위해, 기존 데이터를 1.5 버전으로 옮길 수 있도록 수동 업데이트를 지원합니다. 현재 사용 중인 버전과 데이터 상태를 확인한 뒤 가능한 방법을 안내해드리겠습니다.</p><a href="${manualMigrationUrl}" target="_blank" style="display:inline-block;padding:13px 18px;background:#6d4bb3;border-radius:8px;color:#fff;font-size:14px;font-weight:700;text-decoration:none;">수동 업데이트 신청하기 →</a>
+                <div style="height:1px;background:#e8e1f4;margin:24px 0;"></div>
+                <h3 style="margin:0 0 10px;font-size:17px;color:#34215c;">4. 라이프업 스튜디오</h3><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">프리미엄 멤버를 위한 <strong>라이프업 스튜디오</strong>도 준비하고 있습니다. 라이프업 활용 상담부터 템플릿 수정, 자동화, 개인에게 필요한 기능 요청까지 한곳에서 편하게 신청하고 관리할 수 있는 공간입니다.</p><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">앞으로도 프리미엄 멤버분들께 필요한 기능과 지원 서비스를 꾸준히 제공해드리겠습니다.</p><a href="${studioUrl}" target="_blank" style="display:inline-block;padding:13px 18px;background:#6d4bb3;border-radius:8px;color:#fff;font-size:14px;font-weight:700;text-decoration:none;">라이프업 스튜디오 바로가기 →</a></div>
+            <p style="margin:28px 0 0;font-size:12px;line-height:1.7;color:#888;">본 메일은 라이프업 구매 및 서비스 이용에 필요한 기본 안내입니다. 더 이상 이메일 수신을 원하지 않으시면 <a href="https://app.notionable.net/block" target="_blank" style="color:#777;text-decoration:underline;">알림 수신 거부하기</a></p>
+        </td></tr></table></td></tr></table>
+</body>
+</html>`
+    };
 }
 
 function lifeupPremiumWelcomeMail(customerName: string): { subject: string; text: string; html: string } {
@@ -3309,6 +3353,8 @@ export const sendLifeupCustomerMail = onRequest({ timeoutSeconds: 540 }, withCor
             try {
                 const mail = withUnsubscribe(template === 'standard-purchaser-update'
                     ? lifeupStandardPurchaserUpdateMailDetailed(recipient.name)
+                    : template === 'premium-purchaser-update'
+                        ? lifeupPremiumPurchaserUpdateMail(recipient.name)
                     : template === 'premium-purchaser-welcome'
                         ? lifeupPremiumWelcomeMail(recipient.name)
                         : lifeupWelcomeMail(recipient.name, LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl));

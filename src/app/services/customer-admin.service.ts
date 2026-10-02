@@ -22,7 +22,7 @@ export class CustomerAdminService {
         return this.request('importLifeupCustomersCsv', { csv });
     }
 
-    async sendSelectedMail(customerIds: string[], template: 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome', confirmNonConsenting = false, requestId: string = crypto.randomUUID()): Promise<{ requiresConsentConfirmation?: boolean; recipientCount?: number; nonConsentingCount?: number; blockedCount?: number; queuedCount?: number; failedCount?: number }> {
+    async sendSelectedMail(customerIds: string[], template: 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update', confirmNonConsenting = false, requestId: string = crypto.randomUUID()): Promise<{ requiresConsentConfirmation?: boolean; recipientCount?: number; nonConsentingCount?: number; blockedCount?: number; queuedCount?: number; failedCount?: number }> {
         return this.request('sendLifeupCustomerMail', { customerIds, template, confirmNonConsenting, requestId });
     }
 
