@@ -31,8 +31,7 @@
         </div> -->
 
         <div class="wizard-image">
-          <img [src]="'assets/images/notionable_auto_connect_guide_' + currentStep + '.png'"
-            [alt]="'노셔너블 자동화 연결 가이드 Step ' + currentStep" class="guide-image">
+          <img src="assets/images/notion_connect_guide.png" alt="노셔너블 자동화 연결 가이드" class="guide-image">
         </div>
 
         <!-- <div class="wizard-description" *ngIf="currentStep === 1">
@@ -49,15 +48,7 @@
         </div> -->
 
         <div class="wizard-navigation">
-          <button class="wizard-btn prev" *ngIf="currentStep > 1" (click)="previousStep()">
-            이전
-          </button>
-
-          <button class="wizard-btn next" *ngIf="currentStep < 3" (click)="nextStep()">
-            다음
-          </button>
-
-          <button class="wizard-btn next" *ngIf="currentStep === 3" (click)="connectNotion()">
+          <button class="wizard-btn next" (click)="connectNotion()">
             라이프업 템플릿 연결하기
           </button>
         </div>

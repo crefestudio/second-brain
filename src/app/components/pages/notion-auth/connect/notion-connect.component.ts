@@ -22,20 +22,6 @@ export class NotionConnectComponent implements OnInit {
 
     userId: string = '';
 
-    currentStep = 1;
-
-    nextStep() {
-        if (this.currentStep < 3) {
-            this.currentStep++;
-        }
-    }
-
-    previousStep() {
-        if (this.currentStep > 1) {
-            this.currentStep--;
-        }
-    }
-
     selectTab(tab: 'installed' | 'not-installed') {
         this.activeTab = tab;
     }

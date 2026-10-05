@@ -1867,7 +1867,7 @@ function withUnsubscribe(mail: { subject: string; text: string; html: string }):
 }
 const ADMIN_EMAILS = new Set([
     'toto791@gmail.com',
-    'crefestudio@gmail.com'
+    // 'crefestudio@gmail.com'
 ]);
 
 type CareIdentity = { uid: string; email: string; isAdmin: boolean };
@@ -3962,48 +3962,48 @@ export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
 })
 );
 
-export const sendTemplateConnectRequest = onRequest(
-    withCors(async (req, res) => {
+// export const sendTemplateConnectRequest = onRequest(
+//     withCors(async (req, res) => {
 
-        const contact: string = req.body.contact;
-        const memberUid: string = req.body.memberUid;
+//         const contact: string = req.body.contact;
+//         const memberUid: string = req.body.memberUid;
 
-        if (!contact) {
-            return res.status(400).json({
-                error: '연락처가 필요합니다.'
-            });
-        }
+//         if (!contact) {
+//             return res.status(400).json({
+//                 error: '연락처가 필요합니다.'
+//             });
+//         }
 
-        await mailQueue.send({
-            from: 'Notionable <noreply@notionable.net>',
-            to: 'crefestudio@gmail.com',
-            subject: '[라이프업] 템플릿 연결 신청',
-            html: `
-                <h3>템플릿 연결 신청</h3>
+//         await mailQueue.send({
+//             from: 'Notionable <noreply@notionable.net>',
+//             to: 'crefestudio@gmail.com',
+//             subject: '[라이프업] 템플릿 연결 신청',
+//             html: `
+//                 <h3>템플릿 연결 신청</h3>
 
-                <p>
-                    <strong>UID</strong><br>
-                    ${memberUid || '-'}
-                </p>
+//                 <p>
+//                     <strong>UID</strong><br>
+//                     ${memberUid || '-'}
+//                 </p>
 
-                <p>
-                    <strong>연락처</strong><br>
-                    ${contact}
-                </p>
+//                 <p>
+//                     <strong>연락처</strong><br>
+//                     ${contact}
+//                 </p>
 
-                <p>
-                    <strong>신청일시</strong><br>
-                    ${new Date().toLocaleString('ko-KR')}
-                </p>
-            `
-        }, 'high');
+//                 <p>
+//                     <strong>신청일시</strong><br>
+//                     ${new Date().toLocaleString('ko-KR')}
+//                 </p>
+//             `
+//         }, 'high');
 
-        return res.status(200).json({
-            success: true
-        });
+//         return res.status(200).json({
+//             success: true
+//         });
 
-    })
-);
+//     })
+// );
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // NotionService #notion service
