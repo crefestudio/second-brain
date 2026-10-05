@@ -3932,7 +3932,7 @@ export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
     const userId: string = req.body.userId;
 
     const verificationId = crypto.randomUUID();
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
     const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
 
     const expiresAt =
@@ -10671,6 +10671,15 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
     try {
         logKakaoRequest(payload, user, kakaoUserId);
 
+        // 인증번호가 현재 대기 중인 요청과 일치하면, 기존 연결 여부와 관계없이
+        // 먼저 인증 처리한다. 일치하지 않는 숫자 메시지는 아래의 일반 수집 흐름을 따른다.
+        if (/^\d{6}$/.test(utterance)) {
+            const matchedVerification = await findPendingKakaoVerification(utterance);
+            if (matchedVerification) {
+                return await processVerificationCode(res, kakaoUserId, matchedVerification);
+            }
+        }
+
         ///////////////////////////////////////////////////
         // 연결된 사용자 조회
         const connection = await findEnabledConnectedUser(kakaoUserId);
@@ -10731,14 +10740,6 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
             return;
         }
 
-        // 여기부터는 미연결 사용자
-        if (/^\d{4}$/.test(utterance)) {
-            return await processVerificationCode(
-                res,
-                utterance,
-                kakaoUserId
-            );
-        }
         return resposeKakaoMessage(
             [
                 "노셔너블 비서입니다.",
@@ -14503,18 +14504,12 @@ async function waitForTargetPageId(
 //     });
 // }
 
-async function processVerificationCode(
-    res: any,
-    utterance: string,
-    kakaoUserId: string
-) {
-
+async function findPendingKakaoVerification(utterance: string) {
     const hashedInput = crypto
         .createHash('sha256')
         .update(utterance)
         .digest('hex');
 
-    ///////////////////////////////////////////////////
     const verificationSnap = await db
         .collection('kakao_verifications')
         .where('verified', '==', false)
@@ -14522,61 +14517,61 @@ async function processVerificationCode(
         .limit(1)
         .get();
 
-    if (!verificationSnap.empty) {
+    return verificationSnap.docs[0] ?? null;
+}
 
-        const matchedDoc = verificationSnap.docs[0];
-        const verificationData = matchedDoc.data();
+async function processVerificationCode(
+    res: any,
+    kakaoUserId: string,
+    matchedDoc: FirebaseFirestore.QueryDocumentSnapshot
+) {
+    const verificationData = matchedDoc.data();
 
-        ///////////////////////////////////////////////////
-        // 만료 체크
-        if (
-            verificationData.expiresAt &&
-            verificationData.expiresAt.toMillis() < Date.now()
-        ) {
-            await matchedDoc.ref.delete();
-            return sendExpiredVerificationCode(res);
-        }
+    ///////////////////////////////////////////////////
+    // 만료 체크
+    if (
+        verificationData.expiresAt &&
+        verificationData.expiresAt.toMillis() < Date.now()
+    ) {
+        await matchedDoc.ref.delete();
+        return sendExpiredVerificationCode(res);
+    }
 
-        const userId = matchedDoc.id;
+    const userId = matchedDoc.id;
 
-        ///////////////////////////////////////////////////
-        // user 존재 체크
-        const targetUserSnap = await db
-            .collection('users')
-            .doc(userId)
-            .get();
+    ///////////////////////////////////////////////////
+    // user 존재 체크
+    const targetUserSnap = await db
+        .collection('users')
+        .doc(userId)
+        .get();
 
-        if (!targetUserSnap.exists) {
-            //인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요.
-            return sendInvalidVerificationCode(res);
-        }
-
-        ///////////////////////////////////////////////////
-        const connectionResult = await connectKakaoUser(userId, kakaoUserId);
-
-        if (connectionResult === 'already-connected-to-another-workspace') {
-            await matchedDoc.ref.update({
-                status: connectionResult,
-                completedAt: admin.firestore.FieldValue.serverTimestamp(),
-                kakaoUserId
-            });
-            return sendAlreadyConnectedKakaoMessage(res);
-        }
-
-        ///////////////////////////////////////////////////
-        // verification 완료 처리
-        await matchedDoc.ref.update({
-            verified: true,
-            status: connectionResult,
-            verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-            kakaoUserId
-        });
-        return sendConnectedMessage(res);
+    if (!targetUserSnap.exists) {
+        //인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요.
+        return sendInvalidVerificationCode(res);
     }
 
     ///////////////////////////////////////////////////
-    // 인증 실패
-    return sendInvalidVerificationCode(res);
+    const connectionResult = await connectKakaoUser(userId, kakaoUserId);
+
+    if (connectionResult === 'already-connected-to-another-workspace') {
+        await matchedDoc.ref.update({
+            status: connectionResult,
+            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            kakaoUserId
+        });
+        return sendAlreadyConnectedKakaoMessage(res);
+    }
+
+    ///////////////////////////////////////////////////
+    // verification 완료 처리
+    await matchedDoc.ref.update({
+        verified: true,
+        status: connectionResult,
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        kakaoUserId
+    });
+    return sendConnectedMessage(res);
 }
 
 
