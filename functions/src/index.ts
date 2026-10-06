@@ -10684,7 +10684,7 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
 
         // 인증번호가 현재 대기 중인 요청과 일치하면, 기존 연결 여부와 관계없이
         // 먼저 인증 처리한다. 일치하지 않는 숫자 메시지는 아래의 일반 수집 흐름을 따른다.
-        if (/^\d{6}$/.test(utterance)) {
+        if (/^\d{4}$/.test(utterance)) {
             const matchedVerification = await findPendingKakaoVerification(utterance);
             if (matchedVerification) {
                 return await processVerificationCode(res, kakaoUserId, matchedVerification);
