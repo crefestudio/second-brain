@@ -2,6 +2,7 @@ import { _log } from '../../../../lib/cf-common/cf-common';
 import { UserService } from '../../../../services/user.service';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
 
 @Component({
@@ -15,7 +16,8 @@ import { ActivatedRoute } from '@angular/router';
 })
 export class NotionMigrationOauthSuccessComponent implements OnInit, OnDestroy {
     isPending = true;
-    connectionState: 'checking' | 'waiting' | 'delayed' = 'checking';
+    connectionState: 'checking' | 'waiting' | 'delayed' | 'error' = 'checking';
+    connectionError = '';
     checkCount = 0;
     nextCheckAt?: number;
     now = Date.now();
@@ -60,6 +62,14 @@ export class NotionMigrationOauthSuccessComponent implements OnInit, OnDestroy {
             }
         } catch (error) {
             console.warn('[Migration OAuth] connection check failed', error);
+            if (error instanceof HttpErrorResponse && error.error?.code === 'MIGRATION_TEMPLATE_DUPLICATE') {
+                this.connectionState = 'error';
+                this.connectionError = error.error.error;
+                this.nextCheckAt = undefined;
+                if (this.pollTimer) clearTimeout(this.pollTimer);
+                if (this.statusTimer) clearInterval(this.statusTimer);
+                return;
+            }
         }
 
         if (Date.now() - this.pollingStartedAt < this.pollingDeadlineMs) {
@@ -88,6 +98,7 @@ export class NotionMigrationOauthSuccessComponent implements OnInit, OnDestroy {
         this.pollingStartedAt = Date.now();
         this.now = this.pollingStartedAt;
         this.connectionState = 'checking';
+        this.connectionError = '';
         this.checkCount = 0;
         this.nextCheckAt = undefined;
         this.statusTimer ??= setInterval(() => this.now = Date.now(), 1000);

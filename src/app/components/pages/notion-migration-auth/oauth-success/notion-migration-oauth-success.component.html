@@ -1,9 +1,10 @@
 <div class="success-wrapper">
     <div class="success-card">
-        <h1 class="title" *ngIf="isPending">연결 확인 중</h1>
+        <h1 class="title" *ngIf="isPending && connectionState !== 'error'">연결 확인 중</h1>
+        <h1 class="title error-title" *ngIf="connectionState === 'error'">연결 오류</h1>
         <h1 class="title" *ngIf="!isPending">🎉 연결 성공</h1>
 
-        <p class="connection-notice" *ngIf="isPending && connectionState !== 'delayed'">
+        <p class="connection-notice" *ngIf="isPending && connectionState !== 'delayed' && connectionState !== 'error'">
           연결에는 평균 <strong>3~5분 정도</strong> 소요됩니다.<br>
           <strong>연결이 완료될 때까지 이 창을 닫지 말고 기다려주세요.</strong>
         </p>
@@ -19,10 +20,11 @@
 
         <section class="connection-status" *ngIf="isPending" aria-live="polite">
             <div class="status-heading">
-                <span class="spinner" aria-hidden="true"></span>
+                <span class="spinner" *ngIf="connectionState !== 'error'" aria-hidden="true"></span>
                 <strong *ngIf="connectionState === 'checking'">연결을 확인하는 중입니다.</strong>
                 <strong *ngIf="connectionState === 'waiting'">아직 확인되지 않았습니다.</strong>
                 <strong *ngIf="connectionState === 'delayed'">연결 확인 시간이 지연되고 있습니다.</strong>
+                <strong *ngIf="connectionState === 'error'">연결을 중단했습니다.</strong>
             </div>
 
             <div class="progress-track" role="progressbar" aria-label="연결 확인 진행 상태"
@@ -40,13 +42,17 @@
                 템플릿을 연결할 수 없습니다.<br>
                 연결 가이드를 확인한 후 다시 시도해주시기 바랍니다.
             </p>
+            <p class="status-message error-message" *ngIf="connectionState === 'error'">
+                {{ connectionError }}<br>
+                중복된 템플릿을 정리한 뒤 다시 연결해주세요.
+            </p>
 
             <div class="delayed-actions" *ngIf="connectionState === 'delayed'">
                 <button type="button" class="retry-btn" (click)="retryConnection()">연결 재시도</button>
                 <a href="http://pf.kakao.com/_tGkqX/chat" target="_blank" rel="noopener noreferrer" class="inquiry-btn">문의하기</a>
             </div>
 
-            <p class="status-meta" *ngIf="connectionState !== 'delayed'">
+            <p class="status-meta" *ngIf="connectionState !== 'delayed' && connectionState !== 'error'">
                 확인 {{ checkCount }}회째 시도 중입니다.
             </p>
         </section>

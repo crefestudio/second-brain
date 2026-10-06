@@ -83,6 +83,12 @@ function isNotionDatabaseNotIndexedError(error: unknown): boolean {
     return /database.*(?:찾을 수 없습니다|not found)/i.test(message);
 }
 
+function migrationDuplicateTemplateMessage(error: unknown): string | null {
+    const message = error instanceof Error ? error.message : String(error);
+    const version = message.match(/LifeUp\s+(1\.3|1\.5)/i)?.[1];
+    return version ? `오류 : ${version} 버전에 템플릿이 중복으로 확인 됩니다.` : null;
+}
+
 async function retryNotionDatabaseDiscovery<T>(
     label: string,
     discover: () => Promise<T>,
@@ -807,6 +813,11 @@ export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) 
         } catch (error: any) {
             if (isNotionDatabaseNotIndexedError(error)) {
                 res.json({ success: true, connected: false, status: 'pending' });
+                return;
+            }
+            const duplicateMessage = migrationDuplicateTemplateMessage(error);
+            if (duplicateMessage) {
+                res.status(409).json({ success: false, code: 'MIGRATION_TEMPLATE_DUPLICATE', error: duplicateMessage });
                 return;
             }
             throw error;
@@ -3932,7 +3943,7 @@ export const requestKakaoVerification = onRequest(withCors(async (req, res) => {
     const userId: string = req.body.userId;
 
     const verificationId = crypto.randomUUID();
-    const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+    const code = crypto.randomInt(0, 10_000).toString().padStart(4, '0');
     const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
 
     const expiresAt =

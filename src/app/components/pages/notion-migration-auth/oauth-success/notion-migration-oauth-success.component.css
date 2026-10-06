@@ -22,6 +22,8 @@
   margin-bottom: 14px;
 }
 
+.error-title { color: #ff8d78; }
+
 .desc {
   font-size: 14px;
   line-height: 1.6;
@@ -173,6 +175,7 @@
 }
 
 .status-message { color: #d2d2d5; }
+.error-message { color: #ffad9b; }
 .status-meta { margin-top: 8px; color: #888890; font-size: 12px; }
 
 .delayed-actions {
