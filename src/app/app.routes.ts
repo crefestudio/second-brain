@@ -49,9 +49,11 @@ import { CustomerAdminComponent } from './components/pages/workspace/pages/custo
 import { MailAdminComponent } from './components/pages/workspace/pages/mail-admin/mail-admin.component';
 import { MemberAdminComponent } from './components/pages/workspace/pages/member-admin/member-admin.component';
 import { MarketingBlockAdminComponent } from './components/pages/workspace/pages/marketing-block-admin/marketing-block-admin.component';
+import { SalesAdminComponent } from './components/pages/workspace/pages/sales-admin/sales-admin.component';
 import { UnsubscribeComponent } from './components/pages/unsubscribe/unsubscribe.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 import { LifeupScrapbookUpgradeComponent } from './components/pages/upgrade/lifeup-scrapbook-upgrade.component';
+import { StoreRedirectComponent } from './components/pages/store-redirect/store-redirect.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
 //import { UpdateComponent } from './components/pages/life-up/pages/update/update.component';
 
@@ -61,6 +63,10 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'store/lifeup', component: StoreRedirectComponent },
+  { path: 'store/lifeup-reward', component: StoreRedirectComponent },
+  { path: 'store/lifeup-reward-sale', component: StoreRedirectComponent },
+  { path: 'store/lifeup-scrapbook', component: StoreRedirectComponent },
   { path: 'upgrade/lifeup-scrapbook', component: LifeupScrapbookUpgradeComponent },
   { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },
   { path: 'block', component: UnsubscribeComponent },
@@ -124,6 +130,10 @@ export const routes: Routes = [
         component: MemberAdminComponent
       },
       {
+        path: 'admin/sales',
+        component: SalesAdminComponent
+      },
+      {
         path: 'connect',
         component: AgentConnectComponentComponent
       },
@@ -138,6 +148,11 @@ export const routes: Routes = [
           {
             path: 'migration',
             component: LifeupMigrationComponent
+          },
+          {
+            path: 'template-transfer',
+            component: LifeupMigrationComponent,
+            data: { migrationMode: 'template-v15-to-lifeup-v15' }
           }
         ]
       },

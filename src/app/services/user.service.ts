@@ -167,6 +167,22 @@ const habitStatsFunctionsBaseUrl = 'https://asia-northeast3-notionable-secondbra
     providedIn: 'root',
 })
 export class UserService {
+    migrationMode = '';
+    migrationSessionMessage = '';
+    migrationHasOwnSession = false;
+    migrationCheckError = '';
+    get migrationParent(): string { return this.migrationMode ? 'templateTransfer' : 'migration'; }
+    get migrationPrefix(): string { return this.migrationMode ? 'notionTemplateTransfer' : 'notionMigration'; }
+    async beginTemplateTransferConnection(userId: string): Promise<string> {
+        const result = await firstValueFrom(this.http.post<{ url: string }>(
+            `${this.functionsBaseUrl}/notionMigrationAuth`, { userId, mode: this.migrationMode }, await this.migrationOptions()
+        ));
+        return result.url;
+    }
+    private async migrationOptions() {
+        return this.migrationMode && auth.currentUser
+            ? { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } } : {};
+    }
     private functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 
     public kakaoVerified$ = new Subject<KakaoVerificationStatus>();
@@ -192,14 +208,14 @@ export class UserService {
 
     async getMigrationRun(userId: string): Promise<any | null> {
         if (!userId) return null;
-        const parent = await getDoc(doc(firestore, 'users', userId, 'integrations', 'migration'));
+        const parent = await getDoc(doc(firestore, 'users', userId, 'integrations', this.migrationParent));
         const runId = parent.data()?.['migrationRunId'];
         if (runId) {
-            const run = await getDoc(doc(firestore, 'users', userId, 'integrations', 'migration', 'migration', runId));
+            const run = await getDoc(doc(firestore, 'users', userId, 'integrations', this.migrationParent, 'migration', runId));
             if (run.exists()) return { ...run.data(), runId };
         }
         const runs = await getDocs(query(
-            collection(firestore, 'users', userId, 'integrations', 'migration', 'migration'),
+            collection(firestore, 'users', userId, 'integrations', this.migrationParent, 'migration'),
             orderBy('createdAt', 'desc'), limit(1)
         ));
         const latest = runs.docs[0];
@@ -210,7 +226,7 @@ export class UserService {
         this.stopMigrationWatcher();
         this.migrationRunUnsubscribe = onSnapshot(
             query(
-                collection(firestore, 'users', userId, 'integrations', 'migration', 'migration'),
+                collection(firestore, 'users', userId, 'integrations', this.migrationParent, 'migration'),
                 orderBy('createdAt', 'desc'), limit(1)
             ),
             snapshot => {
@@ -225,7 +241,7 @@ export class UserService {
 
     startMigrationWatcher(userId: string, runId: string) {
         this.stopMigrationWatcher();
-        const runRef = doc(firestore, 'users', userId, 'integrations', 'migration', 'migration', runId);
+        const runRef = doc(firestore, 'users', userId, 'integrations', this.migrationParent, 'migration', runId);
         const onError = (error: Error) => this.migrationStatus$.next({ status: 'watch-error', error: error.message });
         this.migrationUnsubscribers = [
             onSnapshot(query(collection(runRef, 'results'), orderBy('order')), snapshot => {
@@ -998,7 +1014,7 @@ export class UserService {
         // completion can be mistaken for the listener's initial snapshot.
         const existingSnapshot = await getDoc(docRef);
         if (generation !== this.notionMigrationConnectWatchGeneration) return;
-        const connectionId = existingSnapshot.data()?.['notionMigrationConnectionId'] || '';
+        const connectionId = existingSnapshot.data()?.[`${this.migrationPrefix}ConnectionId`] || '';
 
         this.notionMigrationConnectUnsubscribe = onSnapshot(
             docRef,
@@ -1006,8 +1022,8 @@ export class UserService {
                 if (!snapshot.exists()) { return; }
 
                 const data = snapshot.data();
-                const updatedConnectionId = data['notionMigrationConnectionId'] || '';
-                if (data['notionMigrationAccessToken'] && updatedConnectionId && updatedConnectionId !== connectionId) {
+                const updatedConnectionId = data[`${this.migrationPrefix}ConnectionId`] || '';
+                if (data[`${this.migrationPrefix}AccessToken`] && updatedConnectionId && updatedConnectionId !== connectionId) {
                     this.notionMigrationConnected$.next();
                     this.stopNotionMigrationConnectWatcher();
                 }
@@ -1926,12 +1942,16 @@ export class UserService {
                 this.http.post<{
                     success: boolean;
                     connected: boolean;
+                    message?: string;
+                    hasOwnSession?: boolean;
                 }>(
                     `${this.functionsBaseUrl}/getMigrationConnectionStatus`,
-                    { userId }
+                    { userId, mode: this.migrationMode }, await this.migrationOptions()
                 )
             );
 
+            this.migrationSessionMessage = response.message || '';
+            this.migrationHasOwnSession = response.hasOwnSession === true;
             return response.connected ?? false;
         } catch (error) {
             console.error('getMigrationConnectionStatus failed', error);
@@ -1961,16 +1981,18 @@ export class UserService {
 
     async checkLifeUpMigration(userId: string): Promise<LifeUpMigrationCheckResult | null> {
         if (!userId) return null;
+        this.migrationCheckError = '';
 
         try {
             return await firstValueFrom(
                 this.http.post<LifeUpMigrationCheckResult>(
                     `${this.functionsBaseUrl}/checkLifeUpMigration`,
-                    { userId }
+                    { userId, mode: this.migrationMode }, await this.migrationOptions()
                 )
             );
-        } catch (error) {
+        } catch (error: any) {
             console.error('checkLifeUpMigration failed', error);
+            this.migrationCheckError = error?.error?.message || error?.error?.error || '사전 점검을 시작하지 못했습니다.';
             return null;
         }
     }
@@ -1985,14 +2007,14 @@ export class UserService {
 
     async getMigrationTemplateRootUrl(userId: string): Promise<string> {
         const response = await firstValueFrom(this.http.post<{ success: boolean; url?: string }>(
-            `${this.functionsBaseUrl}/getMigrationTemplateRootUrl`, { userId }
+            `${this.functionsBaseUrl}/getMigrationTemplateRootUrl`, { userId, mode: this.migrationMode }, await this.migrationOptions()
         ));
         return response.url || '';
     }
 
     async disconnectMigrationNotion(userId: string): Promise<boolean> {
         const response = await firstValueFrom(this.http.post<{ success: boolean }>(
-            `${this.functionsBaseUrl}/disconnectMigrationNotion`, { userId }
+            `${this.functionsBaseUrl}/disconnectMigrationNotion`, { userId, mode: this.migrationMode }, await this.migrationOptions()
         ));
         return response.success === true;
     }
@@ -2004,7 +2026,7 @@ export class UserService {
             return await firstValueFrom(
                 this.http.post<LifeUpMigrationResult>(
                     `${this.functionsBaseUrl}/migrateLifeUp`,
-                    { userId, runId, action }
+                    { userId, runId, action, mode: this.migrationMode }, await this.migrationOptions()
                 )
             );
         } catch (error: any) {
@@ -2045,7 +2067,7 @@ export class UserService {
             'users',
             userId,
             'integrations',
-            'migration'
+            this.migrationParent
         );
 
         const snapshot = await getDoc(migrationRef);
@@ -2062,7 +2084,7 @@ export class UserService {
             'users',
             userId,
             'integrations',
-            'migration',
+            this.migrationParent,
             'migrationCheck',
             runId
         );
@@ -2081,7 +2103,7 @@ export class UserService {
     watchNextMigrationCheckRun(userId: string, previousRunId: string, onRun: (runId: string) => void) {
         this.stopMigrationCheckWatcher();
         this.migrationCheckRunUnsubscribe = onSnapshot(
-            doc(firestore, 'users', userId, 'integrations', 'migration'),
+            doc(firestore, 'users', userId, 'integrations', this.migrationParent),
             snapshot => {
                 const runId = snapshot.data()?.['migrationCheckRunId'];
                 if (!runId || runId === previousRunId) return;
@@ -2107,7 +2129,7 @@ export class UserService {
             'users',
             userId,
             'integrations',
-            'migration',
+            this.migrationParent,
             'migrationCheck',
             runId,
             'results'
@@ -2146,7 +2168,7 @@ export class UserService {
             'users',
             userId,
             'integrations',
-            'migration',
+            this.migrationParent,
             'migrationCheck',
             runId
         );
@@ -2209,7 +2231,7 @@ export class UserService {
             'users',
             userId,
             'integrations',
-            'migration',
+            this.migrationParent,
             'migrationCheck',
             runId,
             'results'

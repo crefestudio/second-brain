@@ -108,6 +108,26 @@ const deps = (pages = []) => ({
     pages: async () => pages.map(id => ({ id, title: id }))
 });
 
+test('template transfer uses separate state and source/target roles while retaining legacy runs', async () => {
+    const db = fixture([]);
+    const resolved = [];
+    const result = await executeMigration(db, 'user', 'token', undefined, 'start', {
+        parentId: 'templateTransfer', sourceKey: 'source', targetKey: 'target', planIdentity: 'plan-a',
+        entries: [['note', {}]],
+        resolve: async (_, role) => { resolved.push(role); return role; },
+        pages: async () => [{ id: 'note-1', title: 'note' }]
+    });
+    assert.deepEqual(resolved, ['source', 'target']);
+    assert.deepEqual(moveCalls, ['note-1']);
+    assert.equal(db.records.get(runPath).status, 'migrating');
+    const transferPath = `users/user/integrations/templateTransfer/migration/${result.runId}`;
+    assert.equal(db.records.get(transferPath).success, true);
+    assert.equal(db.records.get(transferPath).planIdentity, 'plan-a');
+    await assert.rejects(executeMigration(db, 'user', 'token', result.runId, 'resume', {
+        ...deps(), parentId: 'templateTransfer', planIdentity: 'plan-b'
+    }), MigrationConflict);
+});
+
 test('resume preserves completed pages and reconciles a move whose result was lost', async () => {
     const db = fixture([['done', 'complete'], ['uncertain', 'migrating'], ['pending', 'pending']]);
     await executeMigration(db, 'user', 'token', 'run', 'resume', deps(['pending']));
@@ -116,6 +136,24 @@ test('resume preserves completed pages and reconciles a move whose result was lo
     assert.equal(db.records.get(runPath).completedCount, 3);
     assert.equal(db.records.get(runPath).totalCount, 3);
     assert.equal(db.records.get(runPath).success, true);
+});
+
+test('a changed preflight is rejected before any move starts', async () => {
+    const db = fixture([]);
+    db.records.set(root, { migrationRunId: 'run', migrationCheckRunId: 'new-check' });
+    await assert.rejects(executeMigration(db, 'user', 'token', 'run', 'resume', {
+        ...deps(['pending']), requiredCheckRunId: 'old-check'
+    }), MigrationConflict);
+    assert.deepEqual(moveCalls, []);
+});
+
+test('template transfer never moves a page back into the same data source', async () => {
+    const db = fixture([]);
+    const result = await executeMigration(db, 'user', 'token', undefined, 'start', {
+        ...deps(['pending']), parentId: 'templateTransfer', resolve: async () => 'same-db'
+    });
+    assert.deepEqual(moveCalls, []);
+    assert.equal(db.records.get(`users/user/integrations/templateTransfer/migration/${result.runId}`).success, false);
 });
 
 test('an active lease rejects a second worker', async () => {

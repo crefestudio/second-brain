@@ -30,8 +30,16 @@
           <strong>STEP {{ currentStep }}</strong>
         </div> -->
 
-        <div class="wizard-image">
-          <img src="assets/images/notion_connect_migration_guide.png" alt="노셔너블 마이그레이션 연결 가이드" class="guide-image">
+        <div class="wizard-image" *ngIf="!mode">
+          <img src="assets/images/notion_connect_migration_guide.png"
+            alt="노셔너블 마이그레이션 연결 가이드" class="guide-image">
+        </div>
+
+        <div class="wizard-description" *ngIf="mode">
+          <h2>개별 템플릿과 통합 라이프업 연결</h2>
+          <p>이전할 개별 라이프업 1.5 템플릿과 새 통합 라이프업 1.5를 선택해주세요.</p>
+          <p>연결된 데이터베이스에서 개별 템플릿을 자동으로 감지합니다. 여러 종류의 개별 템플릿이나 같은 데이터베이스의 복사본이 함께 연결되면 이전할 수 없습니다.</p>
+          <p>백업본은 연결하지 말고, 실제로 이전할 원본과 새 통합 템플릿을 연결해주세요.</p>
         </div>
 
         <!-- <div class="wizard-description" *ngIf="currentStep === 1">

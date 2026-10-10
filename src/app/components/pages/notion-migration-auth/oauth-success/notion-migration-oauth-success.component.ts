@@ -8,6 +8,7 @@ import { ActivatedRoute } from '@angular/router';
 @Component({
     selector: 'app-migration-oauth-success',
     standalone: true,
+    providers: [UserService],
     imports: [
         CommonModule
     ],
@@ -34,6 +35,7 @@ export class NotionMigrationOauthSuccessComponent implements OnInit, OnDestroy {
 
     ngOnInit(): void {
         this.route.queryParamMap.subscribe(params => {
+            this.userService.migrationMode = params.get('mode') === 'template-v15-to-lifeup-v15' ? 'template-v15-to-lifeup-v15' : '';
             const userId = params.get('userId');
             _log('OAuth callback userId =>', userId);
 

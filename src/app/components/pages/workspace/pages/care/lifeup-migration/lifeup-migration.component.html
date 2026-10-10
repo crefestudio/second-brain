@@ -21,24 +21,35 @@
 <!-- Notion 연결됨 -->
 <div *ngIf="userId" class="page lifeup-migration-page">
     <div class="page-header">
-        <h1>🔄 라이프업 업데이트</h1>
+        <h1>🔄 {{ isTemplateTransfer ? '라이프업 템플릿 간 데이터 이전' : '라이프업 업데이트' }}</h1>
 
         <div class="hero-box">
             <div class="hero-content">
                 <div class="hero-title">
-                    라이프업 1.3을 1.5로 업데이트합니다.
+                    {{ isTemplateTransfer ? '라이프업 1.5 템플릿 간 데이터 이전' : '라이프업 1.3을 1.5로 업데이트합니다.' }}
                 </div>
 
                 <div class="hero-description">
-                    현재 사용 중인 라이프업 1.3의 데이터를
-                    새 라이프업 1.5로 옮겨드립니다.
-                    <strong>데이터 이전 전에 반드시 기존 라이프업을 백업해주세요.</strong>
+                    @if (isTemplateTransfer) {
+                        스크랩북, 할 일, 노트, 메모 등 개별 템플릿의 데이터를 라이프업 통합 템플릿으로 이전합니다.
+                    } @else {
+                        현재 사용 중인 라이프업 1.3의 데이터를
+                        새 라이프업 1.5로 옮겨드립니다.
+                        <!-- <strong>데이터 이전 전에 반드시 기존 라이프업을 백업해주세요.</strong> -->
+                    }
                 </div>
             </div>
         </div>
     </div>
 
     <!-- 진행 상태 -->
+    <div class="info-box" *ngIf="migrationSessionMessage">
+        <div>
+            <p>{{ migrationSessionMessage }}</p>
+            <a class="secondary-btn" fragment="step-1"
+                [routerLink]="isTemplateTransfer ? '/workspace/care/migration' : '/workspace/care/template-transfer'">사용 중인 기능으로 이동</a>
+        </div>
+    </div>
     <section class="update-progress">
         <div class="progress-line"></div>
 
@@ -71,7 +82,11 @@
                     <div class="work-step">STEP 1</div>
                     <h2>백업 • 설치하기</h2>
                     <p>
-                        업데이트 전에 새 버전을 설치하고 현재 사용 중인 라이프업 1.3을 백업해주세요.
+                        @if (isTemplateTransfer) {
+                            업데이트 전에 새 라이프업 1.5를 설치하고 현재 사용 중인 개별 템플릿을 백업해주세요.
+                        } @else {
+                            업데이트 전에 새 버전을 설치하고 현재 사용 중인 라이프업 1.3을 백업해주세요.
+                        }
                     </p>
                 </div>
             </div>
@@ -83,13 +98,19 @@
                     <strong>라이프업 업데이트는 어떻게 진행되나요?</strong>
 
                     <p>
-                        업데이트는 새로운 <span class="p-strong">라이프업 1.5</span>를 설치한 후,
-                        현재 사용 중인 <span class="p-strong">라이프업 1.3</span>의 데이터를
-                        1.5 버전으로 옮기는 방식으로 진행됩니다.
+                        @if (isTemplateTransfer) {
+                            새로운 <span class="p-strong">통합 라이프업 1.5</span>를 설치한 후,
+                            현재 사용 중인 <span class="p-strong">개별 1.5 템플릿</span>의 데이터를
+                            통합 라이프업으로 옮기는 방식으로 진행됩니다.
+                        } @else {
+                            업데이트는 새로운 <span class="p-strong">라이프업 1.5</span>를 설치한 후,
+                            현재 사용 중인 <span class="p-strong">라이프업 1.3</span>의 데이터를
+                            1.5 버전으로 옮기는 방식으로 진행됩니다.
+                        }
                     </p>
 
                     <p>
-                        데이터 이전 과정에서 기존 1.3 템플릿의 데이터가
+                        데이터 이전 과정에서 기존 {{ isTemplateTransfer ? '개별 1.5' : '1.3' }} 템플릿의 데이터가
                         변경되거나 사라질 수 있기 때문에
                         <strong>업데이트 전에 반드시 백업해주세요.</strong>
                     </p>
@@ -102,7 +123,7 @@
                     <div class="task-number">1</div>
 
                     <div class="task-content">
-                        <strong>기존 라이프업 1.3 복제하기</strong>
+                        <strong>기존 라이프업 {{ isTemplateTransfer ? '1.5' : '1.3' }} 복제하기</strong>
                         <span>
                             현재 사용 중인 라이프업 페이지를 복제하여
                             백업본을 만들어주세요.
@@ -119,13 +140,13 @@
                     <div class="task-number">2</div>
 
                     <div class="task-content">
-                        <strong>라이프업 1.5 설치하기</strong>
+                        <strong>{{ isTemplateTransfer ? '새 라이프업 1.5 설치하기' : '라이프업 1.5 설치하기' }}</strong>
                         <span>
                             새로운 라이프업 1.5를 설치해주세요.
                         </span>
 
                         <div class="warning-text">
-                            ⚠️ 반드시 기존 1.3과
+                            ⚠️ 반드시 기존 {{ isTemplateTransfer ? '개별 1.5 템플릿과' : '1.3과' }}
                             <strong>같은 워크스페이스</strong>에 설치해주세요.
                         </div>
                     </div>
@@ -140,7 +161,7 @@
                 <div class="danger-title">⚠️ 백업은 반드시 해주세요.</div>
 
                 <p>
-                    데이터 이전 중 문제가 발생할 경우 백업한 1.3 버전을
+                    데이터 이전 중 문제가 발생할 경우 백업한 {{ isTemplateTransfer ? '개별 1.5 템플릿' : '1.3 버전' }}을
                     사용하여 복구할 수 있습니다.
                 </p>
 
@@ -177,7 +198,7 @@
                     <div class="work-step">STEP 2</div>
                     <h2>데이터 이전 연결</h2>
                     <p>
-                        1.3과 1.5의 데이터를 이전하기 위한 연결을 진행합니다.
+                        {{ isTemplateTransfer ? '개별 1.5 템플릿과 통합 라이프업을 연결합니다.' : '1.3과 1.5의 데이터를 이전하기 위한 연결을 진행합니다.' }}
                     </p>
                 </div>
 
@@ -203,8 +224,8 @@
 
                 <div class="template-box">
                     <div class="template-icon">📋</div>
-                    <strong>라이프업 1.3</strong>
-                    <span>기존 라이프업</span>
+                    <strong>{{ isTemplateTransfer ? '개별 라이프업 1.5' : '라이프업 1.3' }}</strong>
+                    <span>{{ isTemplateTransfer ? '스크랩북 등 개별 템플릿' : '기존 라이프업' }}</span>
                 </div>
 
                 <div class="connection-arrow">
@@ -230,7 +251,7 @@
                         <strong>데이터 이전 권한이 필요합니다.</strong>
 
                         <p>
-                            1.3에서 1.5로 데이터를 옮기려면
+                            {{ isTemplateTransfer ? '개별 1.5 템플릿에서 통합 라이프업으로 데이터를 옮기려면' : '1.3에서 1.5로 데이터를 옮기려면' }}
                             노셔너블 데이터 이전 API에
                             두 라이프업 템플릿의 접근 권한을 연결해야 합니다.
                         </p>
@@ -248,10 +269,10 @@
                     <h3>데이터 이전 템플릿 연결하기</h3>
 
                     <p>
-                        1.3과 1.5 템플릿을 데이터 이전 API에 연결합니다.
+                        {{ isTemplateTransfer ? '개별 1.5 템플릿과 통합 라이프업을 데이터 이전 API에 연결합니다.' : '1.3과 1.5 템플릿을 데이터 이전 API에 연결합니다.' }}
                     </p>
 
-                    <button class="primary-btn large" (click)="onClickConnectTemplate()">
+                    <button class="primary-btn large" [disabled]="!!migrationSessionMessage || connectionChangeBlocked" (click)="onClickConnectTemplate()">
                         데이터 이전 템플릿 연결하기
                     </button>
                 </div>
@@ -270,13 +291,19 @@
                     <p>
                         연결을 변경하시려면 아래 버튼을 눌러주세요.
                     </p>
-                    <button class="secondary-btn" (click)="onClickConnectTemplate()">
+                    <button class="secondary-btn" [disabled]="connectionChangeBlocked" (click)="onClickConnectTemplate()">
                         연결 변경
                     </button>
                 </div>
             </ng-container>
 
 
+            <div *ngIf="hasOwnMigrationSession || isMigrationConnected || isOpenNotionConnectWindow">
+                <button class="text-btn" [disabled]="connectionChangeBlocked" (click)="disconnectMigrationNotion()">
+                    {{ isMigrationConnected ? '데이터 이전 연결 해제' : '연결 요청 취소' }}
+                </button>
+                <p *ngIf="connectionChangeBlocked">점검·이전 작업이 끝난 뒤 연결을 해제할 수 있습니다.</p>
+            </div>
             <div class="work-footer">
 
                 <button class="text-btn" (click)="previousStep()">
@@ -301,6 +328,7 @@
                 <div>
                     <div class="work-step">STEP 3</div>
                     <h2>사전 점검</h2>
+                    <p *ngIf="isTemplateTransfer && sourceTemplate">자동 감지: {{ sourceTemplateLabel }} → 통합 라이프업 1.5</p>
 
                     <p>
                         데이터 이전을 시작하기 전에 필요한 항목을 확인합니다.
@@ -382,8 +410,8 @@
                     <li>참고 사항은 오류가 아니므로, <strong>오류가 없다면 마이그레이션을 진행하셔도 됩니다.</strong></li>
                 </ul>
 
-                <h3 class="migration-warning-guide-title">1.3 → 1.5 이전 경고 안내 가이드</h3>
-                <ul class="migration-warning-guide">
+                <h3 *ngIf="!isTemplateTransfer" class="migration-warning-guide-title">1.3 → 1.5 이전 경고 안내 가이드</h3>
+                <ul *ngIf="!isTemplateTransfer" class="migration-warning-guide">
                     <li><strong>연락처 DB</strong>의 <strong>직책 / 역할</strong> 프로퍼티가 <strong>직책</strong>으로, <strong>휴대폰</strong>이 <strong>휴대폰 번호</strong>로 바뀌었고 일부 프로퍼티가 추가되었습니다. 이전 결과에는 영향이 없습니다. <em class="guide-tag acknowledge">인지</em></li>
                     <li><strong>메모 DB</strong>의 <strong>중요도</strong> 프로퍼티 종류가 다중 선택에서 선택으로 바뀌었습니다. 중요도를 두 개 이상 지정했다면 <strong>중요</strong>로 통일됩니다.<em class="guide-tag acknowledge">인지</em>
                         <span class="guide-detail">(중요도는 <strong>중요</strong>, <strong>매우 중요</strong> 중 하나만 선택하는 항목이었으나, 이전 버전의 다중 선택 설정을 수정했습니다.)</span>
@@ -398,7 +426,7 @@
 
             <div class="check-action">
                 <button class="primary-btn large"
-                    [disabled]="migrationCheckStatus === 'CHECKING' && !forceStopAvailable"
+                    [disabled]="(isTemplateTransfer && migrationStarted) || (migrationCheckStatus === 'CHECKING' && !forceStopAvailable)"
                     (click)="forceStopAvailable ? forceStopMigrationCheck() : startCheckProcess()">
                     {{ forceStopAvailable ? '강제 종료' : (migrationCheckStatus === 'CHECKING' ? '검사 중...' : '검사하기') }}
                 </button>
@@ -409,7 +437,7 @@
                     ← 이전 단계
                 </button>
 
-                <button class="primary-btn" (click)="nextStep()">
+                <button class="primary-btn" [disabled]="isTemplateTransfer && !migrationCheckSuccess" (click)="nextStep()">
                     다음 단계 →
                 </button>
             </div>
@@ -428,7 +456,7 @@
                     <h2>데이터 이전하기</h2>
 
                     <p>
-                        준비가 완료되었습니다. 이제 1.3의 데이터를 1.5로 옮깁니다.
+                        {{ isTemplateTransfer ? sourceTemplateLabel + '의 데이터를 통합 라이프업 1.5로 옮깁니다.' : '준비가 완료되었습니다. 이제 1.3의 데이터를 1.5로 옮깁니다.' }}
                     </p>
                 </div>
             </div>
@@ -440,7 +468,7 @@
                 <h3>데이터 이전을 시작할 준비가 되었습니다.</h3>
 
                 <p>
-                    아래 버튼을 누르면 라이프업 1.3에서
+                    아래 버튼을 누르면 {{ isTemplateTransfer ? sourceTemplateLabel : '라이프업 1.3' }}에서
                     라이프업 1.5로 데이터 이전이 시작됩니다.
                 </p>
 
@@ -538,7 +566,7 @@
 
                 <div id="migration-notice-details" *ngIf="migrationNoticeExpanded">
                     <ul>
-                        <li><strong>1.3 이전 버전의 페이지 템플릿을 사용한 경우</strong><br>
+                        <li><strong>{{ isTemplateTransfer ? '개별 템플릿의 페이지 템플릿을 사용한 경우' : '1.3 이전 버전의 페이지 템플릿을 사용한 경우' }}</strong><br>
                             데이터 이전 과정에서 <strong>경고 메시지가 표시될 수 있습니다.</strong> 새 버전의 페이지 템플릿으로 변경하는 과정에서 기존 페이지 템플릿에 직접 작성하거나 수정한 내용은 자동으로 복원되지 않을 수 있습니다.<br>
                             경고 메시지가 표시된 경우 백업한 원본을 확인하여 필요한 내용을 직접 복사해주세요.</li>
                         <li><strong>페이지 템플릿이란?</strong><br>
@@ -787,7 +815,7 @@
 
             </div>
 
-            <button class="danger-btn large" (click)="disconnectMigrationNotion()">
+            <button class="danger-btn large" [disabled]="connectionChangeBlocked" (click)="disconnectMigrationNotion()">
                 데이터 이전 연결 해제
             </button>
 
@@ -801,4 +829,4 @@
     </section>
 </div>
 <app-lifebot-guide-modal [open]="isBackupGuideOpen" [initialSection]="guideInitialSection" (closed)="isBackupGuideOpen = false"></app-lifebot-guide-modal>
-} 
+}

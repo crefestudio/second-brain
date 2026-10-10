@@ -24,6 +24,11 @@ type DatabaseInfo = {
     excludedTemplateSections?: string[];
 };
 interface Dependencies {
+    parentId?: string;
+    sourceKey?: string;
+    targetKey?: string;
+    planIdentity?: string;
+    requiredCheckRunId?: string;
     entries: [string, DatabaseInfo][];
     resolve: (name: string, version: string) => Promise<string | null>;
     pages: (dataSourceId: string) => Promise<PageInfo[]>;
@@ -155,10 +160,13 @@ export async function executeMigration(
     action: string,
     dependencies: Dependencies
 ) {
-    const parent = db.collection('users').doc(userId).collection('integrations').doc('migration');
+    const parent = db.collection('users').doc(userId).collection('integrations').doc(dependencies.parentId || 'migration');
     const owner = randomUUID();
     const claimed = await db.runTransaction(async tx => {
         const parentSnap = await tx.get(parent);
+        if (dependencies.requiredCheckRunId && parentSnap.data()?.migrationCheckRunId !== dependencies.requiredCheckRunId) {
+            throw new MigrationConflict('사전 점검 또는 연결 상태가 변경되었습니다. 다시 확인해주세요.');
+        }
         const latestId = parentSnap.data()?.migrationRunId;
         if (requestedRunId && latestId && requestedRunId !== latestId) {
             throw new MigrationConflict('최신 이전 작업만 재시작할 수 있습니다. 새로고침해주세요.');
@@ -167,6 +175,9 @@ export async function executeMigration(
         const ref = parent.collection('migration').doc(runId);
         const snapshot = await tx.get(ref);
         const run = snapshot.data();
+        if (dependencies.planIdentity && run?.planIdentity && run.planIdentity !== dependencies.planIdentity) {
+            throw new MigrationConflict('사전 점검의 원본/대상 DB가 실행 기록과 다릅니다. 기존 연결을 복원해주세요.');
+        }
         const running = run && ['migrating', 'stopping'].includes(run.status) && expiresAt(run) > Date.now();
         if (action === 'stop') {
             if (!run) {
@@ -196,6 +207,7 @@ export async function executeMigration(
         }
         tx.set(ref, {
             runId,
+            ...(dependencies.planIdentity ? { planIdentity: dependencies.planIdentity } : {}),
             workerId: owner,
             status: 'migrating',
             success: false,
@@ -368,10 +380,13 @@ export async function executeMigration(
         // Discover every database before moving. Saved successes no longer appear in the source.
         for (const [dbName, info] of dependencies.entries) {
             await notify('이전 대상 조회 중...', dbName);
-            const source = await timed(`RESOLVE SOURCE db=${dbName}`, () => dependencies.resolve(dbName, '1.3'));
-            const target = await timed(`RESOLVE TARGET db=${dbName}`, () => dependencies.resolve(dbName, '1.5'));
+            const source = await timed(`RESOLVE SOURCE db=${dbName}`, () => dependencies.resolve(dbName, dependencies.sourceKey || '1.3'));
+            const target = await timed(`RESOLVE TARGET db=${dbName}`, () => dependencies.resolve(dbName, dependencies.targetKey || '1.5'));
             if (!source || !target) {
                 throw new MigrationUserError(`${dbName} 원본 또는 대상 DB를 찾을 수 없습니다.`);
+            }
+            if (dependencies.parentId === 'templateTransfer' && normalizeId(source) === normalizeId(target)) {
+                throw new MigrationUserError(`${dbName} 원본과 대상 DB가 같습니다.`);
             }
             const remaining = await timed(`PAGES FETCH db=${dbName}`, () => dependencies.pages(source));
             const targetPages = info.defaultMigration === 'replace' ? await timed(`TARGET PAGES FETCH db=${dbName}`, () => dependencies.pages(target))

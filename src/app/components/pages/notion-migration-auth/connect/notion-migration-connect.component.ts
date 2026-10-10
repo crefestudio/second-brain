@@ -11,6 +11,7 @@ import { UserService } from '../../../../services/user.service';
 @Component({
     selector: 'app-migration-connect',
     standalone: true,
+    providers: [UserService],
     templateUrl: './notion-migration-connect.component.html',
     imports: [CommonModule, FormsModule],
     styleUrls: ['./notion-migration-connect.component.css']
@@ -21,6 +22,7 @@ export class NotionMigrationConnectComponent implements OnInit {
     activeTab: 'installed' | 'not-installed' = 'installed';
 
     userId: string = '';
+    mode = '';
 
     selectTab(tab: 'installed' | 'not-installed') {
         this.activeTab = tab;
@@ -36,6 +38,7 @@ export class NotionMigrationConnectComponent implements OnInit {
 
     async connectProc() {
         const params = new URLSearchParams(window.location.search);
+        this.mode = params.get('mode') === 'template-v15-to-lifeup-v15' ? 'template-v15-to-lifeup-v15' : '';
         const token = params.get('token');
         if (!token) { return; }
 
@@ -49,13 +52,12 @@ export class NotionMigrationConnectComponent implements OnInit {
         this.userId = userId;
         const user: any = await UserService.getUser(userId);
 
-        _log('connectProc user =>', user);
         if (!user) {
             this.state = 'notjoin';
             return;
         }
 
-        if (user.notionMigrationAccessToken) {
+        if (this.mode ? user.notionTemplateTransferAccessToken : user.notionMigrationAccessToken) {
             this.state = 'connected';
         } else {
             this.state = 'notconnected';
@@ -75,7 +77,9 @@ export class NotionMigrationConnectComponent implements OnInit {
         }
 
         // 3. state를 query로 넘김
-        window.location.href = `${this.config.functionsBaseUrl}/notionMigrationAuth?userId=${userId}`;
+        this.userService.migrationMode = this.mode;
+        try { window.location.href = await this.userService.beginTemplateTransferConnection(userId); }
+        catch (error: any) { alert(error?.error?.error || '연결을 시작하지 못했습니다. 로그인 상태를 확인한 뒤 다시 시도해주세요.'); }
     }
 }
 

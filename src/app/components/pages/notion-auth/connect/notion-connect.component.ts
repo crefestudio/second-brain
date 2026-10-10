@@ -21,6 +21,7 @@ export class NotionConnectComponent implements OnInit {
     activeTab: 'installed' | 'not-installed' = 'installed';
 
     userId: string = '';
+    templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp';
 
     selectTab(tab: 'installed' | 'not-installed') {
         this.activeTab = tab;
@@ -54,6 +55,8 @@ export class NotionConnectComponent implements OnInit {
             this.state = 'notjoin';
             return;
         }
+
+        this.templateId = user.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
 
         if (user.notionAccessToken) {
             this.state = 'connected';

@@ -31,7 +31,7 @@
         </div> -->
 
         <div class="wizard-image">
-          <img src="assets/images/notion_connect_guide.png" alt="노셔너블 자동화 연결 가이드" class="guide-image">
+          <img [src]="templateId === 'lifeUpScrapbook' ? 'assets/images/notion_connect_guide_lifeup_scrapbook.png' : 'assets/images/notion_connect_guide.png'" alt="노셔너블 자동화 연결 가이드" class="guide-image">
         </div>
 
         <!-- <div class="wizard-description" *ngIf="currentStep === 1">

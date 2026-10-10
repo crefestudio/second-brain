@@ -1,4 +1,4 @@
-import { AfterViewChecked, Component, ElementRef, inject, OnDestroy, OnInit, QueryList, ViewChildren } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, HostListener, inject, OnDestroy, OnInit, QueryList, ViewChildren } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { RouterLink, ActivatedRoute } from '@angular/router';
@@ -13,6 +13,7 @@ import { LifebotGuideModalComponent } from '../../../../../common/lifebot-guide-
 @Component({
     selector: 'app-lifeup-migration',
     standalone: true,
+    providers: [UserService],
     imports: [CommonModule, RouterLink, LifebotGuideModalComponent],
     templateUrl: './lifeup-migration.component.html',
     styleUrl: './lifeup-migration.component.scss'
@@ -122,7 +123,11 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     }
 
     async disconnectMigrationNotion(): Promise<void> {
-        if (!window.confirm('마이그레이션 연결을 해제하면 이번 업데이트 기록이 모두 초기화됩니다. 계속할까요?')) return;
+        if (this.connectionChangeBlocked) return;
+        if (!window.confirm(this.isMigrationConnected
+            ? '데이터 이전 연결을 해제하면 이번 이전 기록이 초기화됩니다. 계속할까요?'
+            : '열어둔 노션 연결 창을 닫고 이 기능의 연결 요청을 취소할까요? 기존 이전 기록이 있다면 함께 초기화됩니다.')) return;
+        this.notionConnectWindow?.close();
         try {
             if (await this.userService.disconnectMigrationNotion(this.userId)) {
                 ToastService.show('데이터 이전 연결을 해제했습니다.');
@@ -130,9 +135,9 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             } else {
                 ToastService.error('데이터 이전 연결 해제에 실패했습니다.');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('[Migration] disconnect failed', error);
-            ToastService.error('데이터 이전 연결 해제에 실패했습니다.');
+            ToastService.error(error?.error?.error || '데이터 이전 연결 해제에 실패했습니다.');
         }
     }
 
@@ -214,6 +219,27 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     memberUid: string = '';
     userId: string = '';
     isMigrationConnected: boolean = false;
+    isTemplateTransfer = false;
+    migrationSessionMessage = '';
+    hasOwnMigrationSession = false;
+    get connectionChangeBlocked(): boolean {
+        return this.migrationCheckStatus === 'CHECKING' || this.migrationStatus === 'MIGRATING' || this.migrationStopPending;
+    }
+    @HostListener('window:focus')
+    async refreshConnectionState() {
+        if (!this.userId || this.destroyed) return;
+        try {
+            const connected = await this.userService.getMigrationConnectionStatus(this.userId);
+            if (this.destroyed) return;
+            this.isMigrationConnected = connected;
+            this.migrationSessionMessage = this.userService.migrationSessionMessage;
+            this.hasOwnMigrationSession = this.userService.migrationHasOwnSession;
+        } catch (error) {
+            console.error('[Migration] failed to refresh connection state', error);
+        }
+    }
+    sourceTemplate = '';
+    get sourceTemplateLabel(): string { return this.sourceTemplate.toLowerCase() === 'scrapbook' ? '라이프업 스크랩북' : this.sourceTemplate; }
 
     currentStep = 0;
 
@@ -249,6 +275,18 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     ) { }
 
     async ngOnInit() {
+        this.isTemplateTransfer = this.route.snapshot.data['migrationMode'] === 'template-v15-to-lifeup-v15';
+        this.userService.migrationMode = this.isTemplateTransfer ? 'template-v15-to-lifeup-v15' : '';
+        if (this.isTemplateTransfer) {
+            this.steps = [
+                { title: '백업 • 설치', description: '통합 템플릿 설치 및 기존 템플릿 백업' },
+                { title: '연결', description: '데이터 이전 권한 연결' },
+                { title: '사전 점검', description: '개별 템플릿 자동 감지 및 이전 가능 여부 확인' },
+                { title: '데이터 이전', description: '개별 템플릿 → 통합 라이프업 이전' },
+                { title: '결과 확인', description: '이전 결과 확인' },
+                { title: '완료', description: '업데이트 완료' }
+            ];
+        }
         const hasExplicitStep = this.restoreStepFromHash();
         this.migrationClock = setInterval(() => this.migrationNow = Date.now(), 1000);
 
@@ -262,6 +300,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         this.subscriptions.add(this.userService.migrationCheckStatus$.subscribe(status => {
             console.log('[Migration Check] watcher status:', status);
 
+            this.sourceTemplate = status.sourceTemplate || this.sourceTemplate;
             this.migrationCheckTotalCount = status.totalCount || 0;
 
             if (status.status !== 'complete') {
@@ -303,6 +342,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             this.resetMigrationState();
             this.resetMigrationCheckState();
             this.isMigrationConnected = true;
+            this.hasOwnMigrationSession = true;
+            this.migrationSessionMessage = '';
             this.isOpenNotionConnectWindow = false;
         }));
 
@@ -331,6 +372,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         this.clearForceStopTimer();
         this.userService.stopMigrationCheckWatcher();
         this.userService.stopMigrationWatcher();
+        this.userService.stopNotionMigrationConnectWatcher();
     }
 
     private resetMigrationState() {
@@ -358,6 +400,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         this.clearForceStopTimer();
         this.forceStopAvailable = false;
         this.migrationCheckRunId = '';
+        this.sourceTemplate = '';
         this.migrationCheckResults = [];
         this.migrationCheckTotalCount = 0;
         this.migrationCheckStatus = 'READY';
@@ -389,6 +432,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
 
     async startMigrationProcess() {
         if (!this.userId || this.migrationStarted) return;
+        if (this.isTemplateTransfer && !this.migrationCheckSuccess) return;
         this.migrationStarted = true;
         this.migrationStatus = 'MIGRATING';
         this.migrationCounting = true;
@@ -463,6 +507,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             return;
         }
 
+        this.sourceTemplate = run.sourceTemplate || '';
         this.migrationCheckRunId = run.runId;
         this.migrationCheckTotalCount = run.totalCount || 0;
         this.migrationCheckComplete = run.status === 'complete';
@@ -514,7 +559,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         if (this.migrationStarted) {
             this.currentStep = this.migrationComplete ? 4 : 3;
         } else if (this.migrationCheckComplete) {
-            this.currentStep = 3;
+            this.currentStep = this.isTemplateTransfer && !this.migrationCheckSuccess ? 2 : 3;
         } else if (this.isMigrationConnected) {
             this.currentStep = this.migrationCheckRunId ? 2 : 1;
         } else {
@@ -556,6 +601,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
 
         if (this.userId) {
             this.isMigrationConnected = await this.userService.getMigrationConnectionStatus(this.userId);
+            this.migrationSessionMessage = this.userService.migrationSessionMessage;
+            this.hasOwnMigrationSession = this.userService.migrationHasOwnSession;
         }
 
         _log(
@@ -570,6 +617,11 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         if (this.currentStep === 0 && !backupChecked?.checked) {
             ToastService.warning('백업 완료 여부를 확인해주세요.');
             return;
+        }
+
+        if (this.isTemplateTransfer) {
+            if (this.currentStep === 1 && !this.isMigrationConnected) return;
+            if (this.currentStep === 2 && !this.migrationCheckSuccess) return;
         }
 
         if (this.currentStep < this.steps.length - 1) {
@@ -609,6 +661,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
     // notion template 연결
 
     async onClickConnectTemplate() {
+        if (this.migrationSessionMessage || this.connectionChangeBlocked) return;
         this.isOpenNotionConnectWindow = true;
         // Open synchronously from the click so browsers do not block the OAuth popup.
         this.notionConnectWindow = window.open('', '_blank');
@@ -632,7 +685,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         const baseUrl = window.location.origin;
         const serviceName = 'notion-migration-auth';
         const setupPath = 'connect';
-        const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}`;
+        const url = `${baseUrl}/${serviceName}/${setupPath}?token=${encodeURIComponent(encryptedUserId)}&mode=${this.userService.migrationMode}`;
 
         if (connectWindow) {
             connectWindow.location.href = url;
@@ -706,6 +759,7 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
         console.log('[Migration Check] start result:', result);
 
         if (!result?.success || !result.runId) {
+            if (this.userService.migrationCheckError) ToastService.error(this.userService.migrationCheckError);
             // The request can fail while the server is still writing progress.
             if (this.migrationCheckRunId) return;
             this.userService.stopMigrationCheckWatcher();
@@ -755,6 +809,8 @@ export class LifeupMigrationComponent implements OnInit, OnDestroy, AfterViewChe
             return `${item.dbName} DB는 새 버전에서 더 이상 사용하지 않아 이전하지 않습니다.`;
         }
 
+        if (item.type === 'discovery') return item.message;
+        if (item.type === 'source-skipped') return `${item.dbName} DB는 개별 템플릿에 없어 건너뜁니다.`;
         if (item.type === 'not-found-old') {
             return `${item.dbName} DB를 1.3 버전에서 찾을 수 없습니다.`;
         }

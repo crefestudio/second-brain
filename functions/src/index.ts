@@ -27,7 +27,9 @@ import { formatKoreanDate, formatKoreanDateTime, resolveDateData, toNotionDate, 
 
 // notion
 import { Client } from "@notionhq/client";
+import { detectTransfer, discoverTransferDatabases, databaseIdentity, transferPlanKey, TransferPlan } from './template-transfer';
 import { executeMigration, MigrationConflict, migrationErrorMessage } from './lifeup-migration-runner';
+import { claimMigrationSession, finishMigrationSession, markMigrationConnected, SessionAction } from './migration-session';
 import { habitDayRange, uniqueHabitLogs } from './routine-utils';
 import { createPurchaseLogin, PurchaseLoginError } from './purchase-login';
 import { bindWorkspacePurchase, workspaceTemplate, WorkspaceConflict } from './workspace-purchase';
@@ -375,12 +377,85 @@ export const notionAuth = onRequest(withCors((req, res) => {
 // ----------------------
 // Notion Migration OAuth Auth
 // ----------------------
-export const notionMigrationAuth = onRequest(withCors((req, res) => {
-    const userId = req.query.userId;
+const TRANSFER_MODE = 'template-v15-to-lifeup-v15';
+function withMigrationSession(action: SessionAction, handler: any) {
+    return async (req: any, res: any) => {
+        const httpResponse = res;
+        let sendResponse = () => httpResponse.status(500).json({ success: false });
+        // Finish the transaction before ending the HTTP invocation.
+        res = {
+            statusCode: 200,
+            status(code: number) { this.statusCode = code; return this; },
+            json(body: any) { sendResponse = () => httpResponse.status(this.statusCode).json(body); return this; },
+            send(body: any) { sendResponse = () => httpResponse.status(this.statusCode).send(body); return this; },
+            redirect(url: string) { this.statusCode = 302; sendResponse = () => httpResponse.redirect(url); return this; }
+        };
+        let claim: Awaited<ReturnType<typeof claimMigrationSession>> | undefined;
+        try {
+            let userId = req.body?.userId || req.query?.userId;
+            let transfer = isTemplateTransfer(req);
+            let expectedSession: string | undefined;
+            if (action === 'callback') {
+                const raw = String(req.query.state || '');
+                const match = /^(transfer|migration):([a-f0-9-]{36})$/.exec(raw);
+                if (!match) throw new MigrationConflict('이전 연결 요청은 만료되었습니다. 다시 연결해주세요.');
+                const state = (await db.collection('templateTransferOAuthStates').doc(match[2]).get()).data();
+                if (!state || state.expiresAt < Date.now() || !state.sessionId) throw new MigrationConflict('연결 요청이 만료되었습니다. 다시 연결해주세요.');
+                userId = state.userId;
+                transfer = match[1] === 'transfer';
+                expectedSession = state.sessionId;
+            }
+            if (typeof userId !== 'string' || !userId || userId.includes('/')) return res.status(400).json({ success: false, error: 'Missing userId' });
+            if (transfer && action !== 'callback') await requireTransferOwner(req, userId);
+            claim = await claimMigrationSession(db, userId, transfer ? 'templateTransfer' : 'migration',
+                action === 'run' && req.body?.action === 'stop' ? 'stop' : action, expectedSession);
+            req.migrationSessionId = claim.sessionId;
+            return await handler(req, res);
+        } catch (error: any) {
+            const message = error instanceof MigrationConflict ? error.message : '연결 상태를 확인한 뒤 다시 시도해주세요.';
+            if (action === 'callback') return res.redirect('https://app.notionable.net/notion-migration-auth/fail?error=' + encodeURIComponent(message));
+            return res.status(error instanceof MigrationConflict ? 409 : 500).json({ success: false, code: 'MIGRATION_SESSION_CONFLICT', error: message, message });
+        } finally {
+            try {
+                if (claim) await finishMigrationSession(db, claim, action === 'disconnect' && res.statusCode < 300, req.migrationOAuthComplete === true);
+            } catch (error) {
+                console.error('[Migration Session] release failed', error);
+                sendResponse = () => httpResponse.status(503).json({ success: false, message: '연결 상태 저장을 완료하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+            }
+            sendResponse();
+        }
+    };
+}
+function isTemplateTransfer(req: any): boolean { return req.body?.mode === TRANSFER_MODE || req.query?.mode === TRANSFER_MODE; }
+async function requireTransferOwner(req: any, userId: string) {
+    const identity = await getCareIdentity(req);
+    const user = (await db.collection('users').doc(userId).get()).data();
+    if (!user || user.firebaseUid !== identity.uid) throw new Error('워크스페이스 접근 권한이 없습니다.');
+}
+function transferNames(): string[] {
+    return Object.entries(lifeUpMigrationDbInfo).filter(([, info]) => info.v15 && info.migration === 'all').map(([name]) => name);
+}
+async function resolveTransfer(accessToken: string) {
+    const plan = detectTransfer(await discoverTransferDatabases(accessToken), transferNames());
+    const pairs: TransferPlan['pairs'] = {};
+    for (const [name, pair] of Object.entries(plan.pairs)) {
+        pairs[name] = {
+            source: await NotionService.resolveDataSourceId(accessToken, pair.source),
+            target: await NotionService.resolveDataSourceId(accessToken, pair.target)
+        };
+    }
+    return { ...plan, pairs };
+}
+export const notionMigrationAuth = onRequest(withCors(withMigrationSession('connect', async (req: any, res: any) => {
+    const userId = req.query.userId || req.body?.userId;
     if (!userId) return res.status(400).send("userId is required");
 
     const redirectUri = encodeURIComponent(NOTION_MIGRATION_OAUTH_REDIRECT_URI);
-    const state = encodeURIComponent(userId as string);
+    const nonce = randomUUID();
+    await db.collection('templateTransferOAuthStates').doc(nonce).set({
+        userId, sessionId: (req as any).migrationSessionId, expiresAt: Date.now() + 10 * 60 * 1000
+    });
+    const state = encodeURIComponent(`${isTemplateTransfer(req) ? 'transfer' : 'migration'}:${nonce}`);
 
     const authUrl =
         "https://api.notion.com/v1/oauth/authorize" +
@@ -390,8 +465,8 @@ export const notionMigrationAuth = onRequest(withCors((req, res) => {
         `&redirect_uri=${redirectUri}` +
         `&state=${state}`;
 
-    return res.redirect(authUrl);
-}));
+    return req.method === 'POST' ? res.json({ url: authUrl }) : res.redirect(authUrl);
+})));
 
 
 
@@ -662,10 +737,24 @@ export const getNotionConnectionStatus = onRequest(withCors(async (req, res) => 
 }));
 
 // #migration
-export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 360 }, withCors(async (req, res) => {
-    const userId = (req.query.state as string) || "";
+export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 360 }, withCors(withMigrationSession('callback', async (req: any, res: any) => {
+    const rawState = (req.query.state as string) || "";
+    const transfer = rawState.startsWith('transfer:');
+    let userId = '';
+    const prefix = transfer ? 'notionTemplateTransfer' : 'notionMigration';
 
     try {
+        {
+            const nonce = rawState.slice(rawState.indexOf(':') + 1);
+            if (!/^[a-f0-9-]{36}$/.test(nonce)) throw new Error('잘못된 연결 요청입니다.');
+            const ref = db.collection('templateTransferOAuthStates').doc(nonce);
+            userId = await db.runTransaction(async tx => {
+                const state = (await tx.get(ref)).data();
+                if (!state || state.expiresAt < Date.now() || state.sessionId !== (req as any).migrationSessionId) throw new Error('연결 요청이 만료되었습니다. 다시 연결해주세요.');
+                tx.delete(ref);
+                return state.userId;
+            });
+        }
         const code = req.query.code as string | undefined;
 
         if (!userId) {
@@ -741,22 +830,23 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
         // visibility is eventually consistent, so defer that work to the
         // status endpoint that the success page polls.
         const pendingUserRef = db.collection("users").doc(userId);
-        const pendingMigrationRef = pendingUserRef.collection("integrations").doc("migration");
+        const pendingMigrationRef = pendingUserRef.collection("integrations").doc(transfer ? "templateTransfer" : "migration");
         await db.recursiveDelete(pendingMigrationRef);
         await pendingUserRef.set({
-            notionMigrationAccessToken: accessToken,
-            notionMigrationWorkspaceId: notionToken.workspace_id,
-            notionMigrationBotId: notionToken.bot_id,
-            notionMigrationConnectionStatus: 'pending',
-            notionMigrationConnectedAt: admin.firestore.FieldValue.delete(),
-            notionMigrationConnectionId: admin.firestore.FieldValue.delete(),
+            [`${prefix}AccessToken`]: accessToken,
+            [`${prefix}WorkspaceId`]: notionToken.workspace_id,
+            [`${prefix}BotId`]: notionToken.bot_id,
+            [`${prefix}ConnectionStatus`]: 'pending',
+            [`${prefix}ConnectedAt`]: admin.firestore.FieldValue.delete(),
+            [`${prefix}ConnectionId`]: admin.firestore.FieldValue.delete(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 
+        (req as any).migrationOAuthComplete = true;
         return res.redirect(
             `https://app.notionable.net/notion-migration-auth/success?userId=${encodeURIComponent(
                 userId
-            )}`
+            )}&mode=${transfer ? TRANSFER_MODE : ''}`
         );
 
     } catch (error: any) {
@@ -780,7 +870,7 @@ export const notionMigrationOAuthCallback = onRequest({ secrets: [NOTION_MIGRATI
             )}&error=${encodeURIComponent(errorMessage)}`
         );
     }
-}));
+})));
 
 // #migration
 export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) => {
@@ -800,21 +890,43 @@ export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) 
         const userRef = db.collection('users').doc(userId);
         const userSnap = await userRef.get();
         const user = userSnap.data();
-        const accessToken = user?.notionMigrationAccessToken;
+        const transfer = isTemplateTransfer(req);
+        if (transfer) await requireTransferOwner(req, userId);
+        const prefix = transfer ? 'notionTemplateTransfer' : 'notionMigration';
+        const accessToken = user?.[`${prefix}AccessToken`];
+
+        const session = (await userRef.collection('integrations').doc('migrationSession').get()).data();
+        const mode = transfer ? 'templateTransfer' : 'migration';
+        const otherPrefix = transfer ? 'notionMigration' : 'notionTemplateTransfer';
+        const hasOwnSession = !!accessToken || session?.mode === mode;
+        const reply = (body: any) => res.json({ ...body, hasOwnSession });
+        if ((session && session.mode !== mode) || user?.[`${otherPrefix}AccessToken`]) {
+            const activeLabel = transfer ? '1.3 → 1.5 업데이트' : '개별 1.5 템플릿 이전';
+            return reply({ success: true, connected: false, status: 'blocked',
+                message: `현재 ‘${activeLabel}’에서 연결을 사용 중입니다. 해당 기능에서 연결을 해제한 뒤 진행해주세요.` });
+        }
+        if (session?.awaitingOAuth || session?.action === 'disconnect' && session?.operationId) {
+            return reply({ success: true, connected: false, status: 'pending' });
+        }
 
         if (!accessToken) {
-            res.json({ success: true, connected: false, status: 'disconnected' });
+            reply({ success: true, connected: false, status: 'disconnected' });
             return;
         }
 
-        if (user?.notionMigrationConnectionStatus === 'connected') {
-            res.json({ success: true, connected: true, status: 'connected' });
+        if (user?.[`${prefix}ConnectionStatus`] === 'connected') {
+            reply({ success: true, connected: true, status: 'connected' });
             return;
         }
 
         try {
             // One quick attempt only. The browser performs the retry cadence,
             // keeping the Notion OAuth callback below its response deadline.
+            if (transfer) {
+                await discoverTransferDatabases(accessToken);
+                await markMigrationConnected(db, userId, 'templateTransfer', accessToken);
+                return reply({ success: true, connected: true, status: 'connected' });
+            }
             const lifeup13DataSourceId = await NotionService.resolveDataSourceIdByDbNameAndVersion(
                 accessToken, userId, 'note', '1.3'
             );
@@ -825,22 +937,17 @@ export const getMigrationConnectionStatus = onRequest(withCors(async (req, res) 
             // The OAuth callback clears an old run once when a user explicitly
             // reconnects. Do not clear it here: this endpoint is polled and a
             // late polling response must never erase a migration in progress.
-            await userRef.set({
-                notionMigrationConnectionStatus: 'connected',
-                notionMigrationConnectedAt: admin.firestore.FieldValue.serverTimestamp(),
-                notionMigrationConnectionId: randomUUID(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            await markMigrationConnected(db, userId, 'migration', accessToken);
 
             console.log('[Migration Connection Status] Connection verified', {
                 userId,
                 lifeup13DataSourceId,
                 lifeup15DataSourceId
             });
-            res.json({ success: true, connected: true, status: 'connected' });
+            reply({ success: true, connected: true, status: 'connected' });
         } catch (error: any) {
             if (isNotionDatabaseNotIndexedError(error)) {
-                res.json({ success: true, connected: false, status: 'pending' });
+                reply({ success: true, connected: false, status: 'pending' });
                 return;
             }
             const duplicateMessage = migrationDuplicateTemplateMessage(error);
@@ -861,9 +968,16 @@ export const getMigrationTemplateRootUrl = onRequest(withCors(async (req, res) =
         const userId = req.body?.userId;
         if (!userId) return res.status(400).json({ success: false, error: 'MISSING_USER_ID' });
         const user = (await db.collection('users').doc(userId).get()).data();
-        const accessToken = user?.notionMigrationAccessToken;
+        const transfer = isTemplateTransfer(req);
+        if (transfer) await requireTransferOwner(req, userId);
+        const accessToken = transfer ? user?.notionTemplateTransferAccessToken : user?.notionMigrationAccessToken;
         if (!accessToken) return res.status(400).json({ success: false, error: 'MIGRATION_NOT_CONNECTED' });
-        const databaseId = await NotionService.getDatabaseIdByDatabaseName(accessToken, 'lifeup info', '1.5');
+        let databaseId: string;
+        if (transfer) {
+            const matches = (await discoverTransferDatabases(accessToken)).filter(item => databaseIdentity(item.title).join('|') === 'lifeup info|15');
+            if (matches.length !== 1) throw new Error('통합 라이프업 정보 DB를 하나만 연결해주세요.');
+            databaseId = matches[0].id;
+        } else databaseId = await NotionService.getDatabaseIdByDatabaseName(accessToken, 'lifeup info', '1.5');
         const url = await NotionService.getRootPageUrl(accessToken, databaseId);
         return res.json({ success: true, url });
     } catch (error: any) {
@@ -872,19 +986,22 @@ export const getMigrationTemplateRootUrl = onRequest(withCors(async (req, res) =
     }
 }));
 
-export const disconnectMigrationNotion = onRequest(withCors(async (req, res) => {
+export const disconnectMigrationNotion = onRequest(withCors(withMigrationSession('disconnect', async (req: any, res: any) => {
     try {
         const userId = req.body?.userId;
         if (!userId) return res.status(400).json({ success: false, error: 'MISSING_USER_ID' });
+        const transfer = isTemplateTransfer(req);
+        if (transfer) await requireTransferOwner(req, userId);
+        const prefix = transfer ? 'notionTemplateTransfer' : 'notionMigration';
         const userRef = db.collection('users').doc(userId);
-        await db.recursiveDelete(userRef.collection('integrations').doc('migration'));
+        await db.recursiveDelete(userRef.collection('integrations').doc(transfer ? 'templateTransfer' : 'migration'));
         await userRef.set({
-            notionMigrationAccessToken: admin.firestore.FieldValue.delete(),
-            notionMigrationBotId: admin.firestore.FieldValue.delete(),
-            notionMigrationConnectedAt: admin.firestore.FieldValue.delete(),
-            notionMigrationConnectionId: admin.firestore.FieldValue.delete(),
-            notionMigrationConnectionStatus: admin.firestore.FieldValue.delete(),
-            notionMigrationWorkspaceId: admin.firestore.FieldValue.delete(),
+            [`${prefix}AccessToken`]: admin.firestore.FieldValue.delete(),
+            [`${prefix}BotId`]: admin.firestore.FieldValue.delete(),
+            [`${prefix}ConnectedAt`]: admin.firestore.FieldValue.delete(),
+            [`${prefix}ConnectionId`]: admin.firestore.FieldValue.delete(),
+            [`${prefix}ConnectionStatus`]: admin.firestore.FieldValue.delete(),
+            [`${prefix}WorkspaceId`]: admin.firestore.FieldValue.delete(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         return res.json({ success: true });
@@ -892,7 +1009,7 @@ export const disconnectMigrationNotion = onRequest(withCors(async (req, res) => 
         console.error('[Migration Disconnect] Failed', error);
         return res.status(500).json({ success: false, error: error?.message || 'DISCONNECT_FAILED' });
     }
-}));
+})));
 
 // #migration
 export const analyzeLifeUpMigrationSchema = onRequest(
@@ -1188,20 +1305,25 @@ const lifeUpMigrationDbInfo: Record<string, LifeUpMigrationDbInfo> = {
 
 
 // #migration
-export const checkLifeUpMigration = onRequest({ secrets: [NOTION_MIGRATION_TOKEN] }, withCors(async (req, res) => {
+export const checkLifeUpMigration = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 540 }, withCors(withMigrationSession('check', async (req: any, res: any) => {
     const userId = req.body?.userId;
+    const transfer = isTemplateTransfer(req);
 
     try {
         if (!userId) throw new Error("Missing userId");
 
+        if (transfer) await requireTransferOwner(req, userId);
         const userRef = db.collection("users").doc(userId);
         const snap = await userRef.get();
-        const accessToken = snap.data()?.notionMigrationAccessToken;
+        const accessToken = transfer ? snap.data()?.notionTemplateTransferAccessToken : snap.data()?.notionMigrationAccessToken;
 
         if (!accessToken) throw new Error("Migration Notion access token not found");
 
         const runId = `${Date.now()}`;
-        const migrationRef = userRef.collection("integrations").doc("migration");
+        const migrationRef = userRef.collection("integrations").doc(transfer ? "templateTransfer" : "migration");
+        if (transfer && (await migrationRef.get()).data()?.migrationRunId) {
+            throw new Error('이미 시작한 이전 작업이 있습니다. 이전 진행 화면에서 재개해주세요.');
+        }
         const checkRef = migrationRef.collection("migrationCheck").doc(runId);
         //const resultsRef = checkRef.collection("results");
 
@@ -1215,7 +1337,7 @@ export const checkLifeUpMigration = onRequest({ secrets: [NOTION_MIGRATION_TOKEN
         console.log(`[Migration Check] START runId=${runId}`);
 
         try {
-            await runLifeUpMigrationCheck(userId, accessToken, runId);
+            await runLifeUpMigrationCheck(userId, accessToken, runId, transfer);
         } catch (error: any) {
             console.error("[Migration Check] Failed", error);
 
@@ -1242,9 +1364,9 @@ export const checkLifeUpMigration = onRequest({ secrets: [NOTION_MIGRATION_TOKEN
             message: error?.message || "Migration check failed"
         });
     }
-}));
+})));
 
-async function runLifeUpMigrationCheck(userId: string, accessToken: string, runId: string) {
+async function runLifeUpMigrationCheck(userId: string, accessToken: string, runId: string, transfer = false) {
     const workerStartedAt = Date.now();
 
     console.log(`[Migration Check] WORKER START runId=${runId}`);
@@ -1252,13 +1374,18 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
     let success = true;
 
     const userRef = db.collection("users").doc(userId);
-    const migrationRef = userRef.collection("integrations").doc("migration");
+    const migrationRef = userRef.collection("integrations").doc(transfer ? "templateTransfer" : "migration");
     const checkRef = migrationRef.collection("migrationCheck").doc(runId);
     const resultsRef = checkRef.collection("results");
 
-    await migrationRef.set({
-        migrationCheckRunId: runId
-    }, { merge: true });
+    if (transfer) {
+        await db.runTransaction(async tx => {
+            if ((await tx.get(migrationRef)).data()?.migrationRunId) throw new Error('이미 시작한 이전 작업을 재개해주세요.');
+            tx.set(migrationRef, { migrationCheckRunId: runId }, { merge: true });
+        });
+    } else {
+        await migrationRef.set({ migrationCheckRunId: runId }, { merge: true });
+    }
 
     await checkRef.set({
         runId,
@@ -1268,12 +1395,23 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
+    let transferPlan: TransferPlan | undefined;
+    if (transfer) {
+        try {
+            transferPlan = await resolveTransfer(accessToken);
+            await checkRef.set({ plan: transferPlan, sourceTemplate: transferPlan.template }, { merge: true });
+        } catch (error: any) {
+            await resultsRef.doc('discovery').set({ dbName: '템플릿 자동 감지', status: 'error', type: 'discovery', message: error.message, count: 0, order: 0 });
+            await checkRef.update({ status: 'complete', success: false, error: error.message });
+            return;
+        }
+    }
     const migrationSnap = await migrationRef.get();
     const migrationData = migrationSnap.data() || {};
     const dataSourceCache = migrationData.datasources || {};
 
     const dbEntries = Object.entries(lifeUpMigrationDbInfo)
-        .filter(([_, info]) => info.v13 && info.migration === "all");
+        .filter(([_, info]) => (transfer ? info.v15 : info.v13) && info.migration === "all");
 
     let order = 0;
 
@@ -1292,7 +1430,10 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
             let oldDataSourceId: string | null = null;
             let newDataSourceId: string | null = null;
 
-            if (info.v15) {
+            if (transferPlan) {
+                oldDataSourceId = transferPlan.pairs[dbName]?.source || null;
+                newDataSourceId = transferPlan.pairs[dbName]?.target || null;
+            } else if (info.v15) {
                 for (const version of ["1.3", "1.5"] as const) {
                     const cacheKey = `${dbName}_${version}`;
 
@@ -1395,9 +1536,9 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
             } else if (!oldDataSourceId) {
                 result = {
                     dbName,
-                    status: "error",
+                    status: transfer ? "notification" : "error",
                     count: 0,
-                    type: "not-found-old"
+                    type: transfer ? "source-skipped" : "not-found-old"
                 };
             } else if (!newDataSourceId) {
                 result = {
@@ -1598,7 +1739,7 @@ async function runLifeUpMigrationCheck(userId: string, accessToken: string, runI
 
 
 // #migration
-export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 3600 }, withCors(async (req, res) => {
+export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], timeoutSeconds: 3600 }, withCors(withMigrationSession('run', async (req: any, res: any) => {
     const userId = req.body?.userId;
     if (typeof userId !== 'string' || !userId || userId.includes('/')) {
         return res.status(400).json({ success: false, message: '사용자 정보를 확인할 수 없습니다. 다시 로그인해주세요.' });
@@ -1614,6 +1755,30 @@ export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], time
     }
     try {
         const userRef = db.collection('users').doc(userId);
+        if (isTemplateTransfer(req)) {
+            await requireTransferOwner(req, userId);
+            const token = (await userRef.get()).data()?.notionTemplateTransferAccessToken;
+            if (!token) throw new MigrationConflict('개별 템플릿 이전 연결이 필요합니다.');
+            const parent = userRef.collection('integrations').doc('templateTransfer');
+            const state = (await parent.get()).data();
+            const check = state?.migrationCheckRunId
+                ? (await parent.collection('migrationCheck').doc(state.migrationCheckRunId).get()).data() : undefined;
+            if (!check?.success || !check.plan) throw new MigrationConflict('사전 점검을 먼저 통과해주세요.');
+            const plan = check.plan as TransferPlan;
+            if (action !== 'stop') {
+                const discovered = await resolveTransfer(token);
+                if (transferPlanKey(discovered) !== transferPlanKey(plan)) throw new MigrationConflict('연결된 DB가 사전 점검 이후 변경되었습니다. 기존 연결을 확인해주세요.');
+            }
+            const result = await executeMigration(db, userId, token, runId, action, {
+                parentId: 'templateTransfer', sourceKey: 'source', targetKey: 'target',
+                planIdentity: transferPlanKey(plan),
+                requiredCheckRunId: state!.migrationCheckRunId,
+                entries: Object.entries(lifeUpMigrationDbInfo).filter(([name]) => !!plan.pairs[name]),
+                resolve: async (name, role) => role === 'source' ? plan.pairs[name].source : plan.pairs[name].target,
+                pages: id => NotionService.getAllDataSourcePageInfo(token, id)
+            });
+            return res.status(200).json(result);
+        }
         const accessToken = (await userRef.get()).data()?.notionMigrationAccessToken;
         if (!accessToken) {
             return res.status(400).json({ success: false, message: '노션 연결 정보가 없습니다. 노션을 연결한 후 다시 시도해주세요.' });
@@ -1650,7 +1815,7 @@ export const migrateLifeUp = onRequest({ secrets: [NOTION_MIGRATION_TOKEN], time
             message: migrationErrorMessage(error)
         });
     }
-}));
+})));
 
 // ----------------------
 // Notion Database 조회
