@@ -64,8 +64,10 @@ import { AgentConnectComponentComponent } from './components/pages/workspace/pag
 
 export const routes: Routes = [
   { path: 'store/lifeup', component: StoreRedirectComponent },
+  { path: 'store/lifeup-r', component: StoreRedirectComponent },
   { path: 'store/lifeup-reward', component: StoreRedirectComponent },
   { path: 'store/lifeup-reward-sale', component: StoreRedirectComponent },
+  { path: 'store/lifeup-imweb', component: StoreRedirectComponent },
   { path: 'store/lifeup-scrapbook', component: StoreRedirectComponent },
   { path: 'upgrade/lifeup-scrapbook', component: LifeupScrapbookUpgradeComponent },
   { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },

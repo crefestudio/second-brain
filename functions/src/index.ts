@@ -2071,7 +2071,7 @@ function withUnsubscribe(mail: { subject: string; text: string; html: string }):
 }
 const ADMIN_EMAILS = new Set([
     'toto791@gmail.com',
-    // 'crefestudio@gmail.com'
+    'crefestudio@gmail.com'
 ]);
 
 type CareIdentity = { uid: string; email: string; isAdmin: boolean };
@@ -3176,6 +3176,141 @@ export const syncImwebPurchasersAdmin = onRequest({ secrets: [IMWEB_API_KEY, IMW
         if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
         return res.json({ success: true, ...await syncImwebPurchasers(imwebYesterdayStartKst()) });
     } catch (error) { logger.error('[Imweb] admin sync failed', error); return res.status(500).json({ error: '아임웹 구매자 정보를 갱신하지 못했습니다.' }); }
+}));
+
+const STORE_TRACKED_PRODUCTS = new Set(['lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-imweb', 'lifeup-scrapbook']);
+const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+async function youtubeContentTitle(videoId: string): Promise<string | null> {
+    if (!YOUTUBE_VIDEO_ID.test(videoId)) return null;
+    const cache = db.collection('youtubeContentCache').doc(videoId);
+    const cached = await cache.get();
+    const cachedTitle = cached.data()?.title;
+    if (typeof cachedTitle === 'string' && cachedTitle) return cachedTitle;
+    try {
+        const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`);
+        if (!response.ok) return null;
+        const title = String((await response.json() as any).title || '').trim().slice(0, 300);
+        if (title) await cache.set({ title, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        return title || null;
+    } catch { return null; }
+}
+
+export const recordStoreVisit = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const productPath = String(req.body?.productPath || '');
+    if (!STORE_TRACKED_PRODUCTS.has(productPath)) return res.status(400).json({ error: 'INVALID_PRODUCT' });
+    const clean = (value: unknown, maxLength: number) => String(value || '').trim().slice(0, maxLength);
+    await db.collection('storeVisits').add({
+        productPath,
+        location: clean(req.body?.location, 200),
+        referrer: clean(req.body?.referrer, 1000),
+        sessionId: clean(req.body?.sessionId, 80),
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return res.status(201).json({ recorded: true });
+}));
+
+export const resetStoreVisits = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+    const month = await currentKstMonth();
+    const start = Timestamp.fromDate(new Date(`${month.startDate}T00:00:00+09:00`));
+    const snapshot = await db.collection('storeVisits').where('createdAt', '>=', start).limit(10000).get();
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    return res.json({ deleted: snapshot.size });
+}));
+
+async function currentKstMonth(): Promise<{ key: string; startDate: string; endDate: string }> {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const value = (type: string) => String(parts.find(part => part.type === type)?.value || '');
+    return { key: `${value('year')}-${value('month')}`, startDate: `${value('year')}-${value('month')}-01`, endDate: `${value('year')}-${value('month')}-${value('day')}` };
+}
+
+export const syncYoutubeMonthlyViews = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+    const accessToken = String(req.body?.accessToken || '');
+    if (!accessToken || accessToken.length > 5000) return res.status(400).json({ error: 'YOUTUBE_AUTH_REQUIRED' });
+    const channelResponse = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!channelResponse.ok) return res.status(400).json({ error: `연결 채널 확인 실패 (${channelResponse.status}). YouTube Data API v3와 채널 조회 권한을 확인해주세요.` });
+    const channelData: any = await channelResponse.json();
+    const channels = (Array.isArray(channelData?.items) ? channelData.items : []).map((channel: any) => ({ id: channel.id, title: channel.snippet?.title || '' }));
+    logger.info('[YouTube Analytics] authenticated channel', { channels });
+    if (!channels.length) return res.status(400).json({ error: '이 계정에서 API로 접근 가능한 채널이 없습니다. Studio 초대 관리자는 YouTube API 권한이 부여되지 않습니다. 채널 소유 계정으로 연결해주세요.' });
+    const month = await currentKstMonth();
+    const start = Timestamp.fromDate(new Date(`${month.startDate}T00:00:00+09:00`));
+    const visits = await db.collection('storeVisits').where('createdAt', '>=', start).limit(10000).get();
+    const videoIds = [...new Set(visits.docs.map(doc => String(doc.data().location || '')).filter(id => YOUTUBE_VIDEO_ID.test(id)))];
+    const batch = db.batch();
+    let synced = 0;
+    const issues: string[] = [];
+    for (const videoId of videoIds) {
+        const metadataResponse = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (!metadataResponse.ok) return res.status(400).json({ error: `영상 채널 확인 실패 (${metadataResponse.status})` });
+        const metadata: any = await metadataResponse.json();
+        const owner = metadata.items?.[0]?.snippet;
+        const ownerChannelId = String(owner?.channelId || '');
+        const ref = db.collection('youtubeMonthlyViews').doc(month.key).collection('videos').doc(videoId);
+        if (!ownerChannelId) {
+            issues.push(`${videoId}: 영상 채널 ${owner?.channelTitle || '확인 불가'}와 연결 채널 ${channels.map((item: any) => item.title).join(', ')}이 다릅니다. 채널 소유 계정으로 연결해주세요.`);
+            batch.set(ref, { views: null, status: 'channel_not_found', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            continue;
+        }
+        // Studio collaborators can have Analytics access without the managed channel
+        // being returned by channels.list(mine=true); let Analytics enforce access.
+        const params = new URLSearchParams({ ids: `channel==${ownerChannelId}`, startDate: month.startDate, endDate: month.endDate, metrics: 'views', dimensions: 'video', filters: `video==${videoId}` });
+        const response = await fetch(`https://youtubeanalytics.googleapis.com/v2/reports?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (!response.ok) return res.status(400).json({ error: 'YouTube Analytics 조회에 실패했습니다. 채널 권한과 API 상태를 확인해주세요.' });
+        const report: any = await response.json();
+        const viewIndex = Array.isArray(report.columnHeaders) ? report.columnHeaders.findIndex((column: any) => column.name === 'views') : -1;
+        const rawViews = viewIndex >= 0 ? report.rows?.[0]?.[viewIndex] : undefined;
+        const viewCount = typeof rawViews === 'number' && Number.isFinite(rawViews) ? rawViews : null;
+        logger.info('[YouTube Analytics] monthly view response', { videoId, startDate: month.startDate, endDate: month.endDate, columnHeaders: report.columnHeaders || [], rows: report.rows || [], viewIndex, viewCount });
+        if (viewCount === null) issues.push(`${videoId}: ${month.startDate}~${month.endDate} 조회 데이터가 반환되지 않았습니다.`);
+        else synced++;
+        batch.set(ref, { views: viewCount, status: viewCount === null ? 'no_data' : 'ok', channelId: ownerChannelId, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    }
+    await batch.commit();
+    return res.json({ synced, month: month.key, message: `연결 채널: ${channels.map((item: any) => `${item.title} (${item.id})`).join(', ')}. ${synced}개 영상 갱신. ${issues.join(' ')}` });
+}));
+
+export const getStoreVisitSummary = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+    const currentMonth = await currentKstMonth();
+    const [year, month] = currentMonth.key.split('-').map(Number);
+    const monthStart = Timestamp.fromDate(new Date(Date.UTC(year, month - 1, 1) - (9 * 60 * 60 * 1000)));
+    const snapshot = await db.collection('storeVisits').where('createdAt', '>=', monthStart).orderBy('createdAt', 'desc').limit(10000).get();
+    const productViews: Record<string, number> = {};
+    const productSales: Record<string, { count: number; revenue: number }> = {};
+    const sources = new Map<string, { location: string; count: number }>();
+    snapshot.forEach(doc => {
+        const visit = doc.data();
+        const productPath = String(visit.productPath || '');
+        productViews[productPath] = (productViews[productPath] || 0) + 1;
+        const location = String(visit.location || '직접 유입');
+        const source = sources.get(location) || { location, count: 0 };
+        source.count++;
+        sources.set(location, source);
+    });
+    const sourceRows = [...sources.values()].sort((a, b) => b.count - a.count);
+    const purchases = await db.collection('purchasers').where('source', '==', 'latpeed').where('templateId', '==', 'lifeUp').get();
+    for (const purchase of purchases.docs.map(doc => doc.data())) {
+        const purchasedAt = String(purchase.purchasedAt || '');
+        const amount = Number(purchase.paymentAmount ?? String(purchase.amount || '').replace(/[^0-9]/g, ''));
+        if (!purchasedAt.startsWith(`${year}. ${month}.`) || amount !== 79000) continue;
+        const current = productSales.lifeup || { count: 0, revenue: 0 };
+        current.count++; current.revenue += amount; productSales.lifeup = current;
+    }
+    const titles = new Map(await Promise.all([...new Set(sourceRows.map(source => source.location).filter(location => YOUTUBE_VIDEO_ID.test(location)))].map(async videoId => [videoId, await youtubeContentTitle(videoId)] as const)));
+    const videoSources = sourceRows.filter(source => YOUTUBE_VIDEO_ID.test(source.location));
+    const viewDocs = videoSources.length ? await db.getAll(...videoSources.map(source => db.collection('youtubeMonthlyViews').doc(currentMonth.key).collection('videos').doc(source.location))) : [];
+    const monthlyViews = new Map(viewDocs.map(doc => [doc.id, doc.data()?.status === 'ok' && typeof doc.data()?.views === 'number' ? doc.data()!.views : null]));
+    return res.json({ month: currentMonth.key, totalViews: snapshot.size, productViews, productSales, sources: sourceRows.map(source => ({ ...source, title: titles.get(source.location) || null, sourceViews: monthlyViews.get(source.location) ?? null })) });
 }));
 
 export const latpeedPaymentWebhook = onRequest(
