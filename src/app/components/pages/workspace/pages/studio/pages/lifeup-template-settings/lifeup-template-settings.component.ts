@@ -87,7 +87,10 @@ export class LifeupTemplateSettingsComponent {
     }
 
     async updatePurchaseInfo(): Promise<void> {
-        const result = await UserService.updatePurchaseInfo(this.userId);
+        const result = await UserService.updatePurchaseInfo(
+            this.userId,
+            this.authService.templateId
+        );
 
         this.purchaseInfo = result.purchaseInfo;
         this.isLifeupPurchaser = result.isPurchaser;
@@ -108,7 +111,7 @@ export class LifeupTemplateSettingsComponent {
                 return;
             }
 
-            this.isLifeupTemplate = result.templateName === 'LIFEUP';
+            this.isLifeupTemplate = result.templateName.trim().toLowerCase().includes('lifeup');
 
             if (this.isLifeupTemplate) {
                 this.templateVersion = result.version;

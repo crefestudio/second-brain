@@ -36,6 +36,12 @@ export const appConfig: ApplicationConfig = {
                 lifeUpPassportUrls: {
                     '1.5': '/templateDownload/LifeUp1.5.pdf',
                 },
+                lifeUpScrapbookReleaseUrls: {
+                    '1.5': 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3f3eea79fd8c808fa425e6f222f33bfb?source=copy_link',
+                },
+                lifeUpScrapbookPassportUrls: {
+                    '1.5': '/templateDownload/LifeUp1.5-Scrapbook.pdf',
+                },
             },
         },
     ]

@@ -157,7 +157,7 @@ interface LifeUpMigrationResult {
 
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
-export type KakaoVerificationStatus = 'connected' | 'already-connected' | 'already-connected-to-another-workspace';
+export type KakaoVerificationStatus = 'connected' | 'already-connected' | 'already-connected-to-another-workspace' | 'already-connected-to-my-other-workspace' | 'already-connected-to-another-account';
 
 const functionsBaseUrl = 'https://us-central1-notionable-secondbrain.cloudfunctions.net';
 // `reconcileMyHabitStats` is deployed in asia-northeast3. It must not use the
@@ -178,6 +178,7 @@ export class UserService {
     public notionMigrationConnected$ = new Subject<void>();
     private notionMigrationConnectUnsubscribe?: () => void;
     private notionMigrationConnectWatchGeneration = 0;
+    verificationEmailError = '';
 
 
     // #migration
@@ -258,13 +259,13 @@ export class UserService {
 
     constructor(private http: HttpClient) { }
 
-    static async updatePurchaseInfo(userId: string) {
+    static async updatePurchaseInfo(userId: string, templateId = TEMPLATE_KEY_LIFEUP) {
         let purchaseInfo: any;
         if (isWidgetMode()) {
-            purchaseInfo = await UserService.getPurchaseInfoFromLocalStorage(TEMPLATE_KEY_LIFEUP);
+            purchaseInfo = await UserService.getPurchaseInfoFromLocalStorage(templateId);
         } else {
             if (userId) {
-                purchaseInfo = await UserService.getPurchaseInfo(userId, TEMPLATE_KEY_LIFEUP);
+                purchaseInfo = await UserService.getPurchaseInfo(userId, templateId);
             }
         }
         _log('updatePurchaseInfo userId, purchaseInfo, isWidgetMode =>', userId, purchaseInfo, isWidgetMode());
@@ -458,16 +459,20 @@ export class UserService {
         main verify
     */
 
-    async sendVerificationEmail(email: string): Promise<boolean> {
+    async sendVerificationEmail(email: string, templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp'): Promise<boolean> {
         if (!email) return false;
+        this.verificationEmailError = '';
 
         try {
             await firstValueFrom(
-                this.http.post(`${this.functionsBaseUrl}/sendVerificationEmail`, { email })
+                this.http.post(`${this.functionsBaseUrl}/sendVerificationEmail`, { email, templateId },
+                    auth.currentUser ? { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } } : {})
             );
             return true;
         } catch (error) {
-            console.error('sendVerificationEmail failed', error);
+            const response = error as { error?: { error?: string; message?: string }; message?: string };
+            this.verificationEmailError = response.error?.error || response.error?.message || response.message || '인증 메일 발송에 실패했습니다.';
+            console.warn('sendVerificationEmail rejected:', this.verificationEmailError);
             return false;
         }
     }
@@ -510,7 +515,7 @@ export class UserService {
             return result;
         } catch (error: any) {
             console.error('verifyCode failed', error.error?.error || error.message);
-            return null;
+            return { userId: '', accessKey: '', message: error.error?.message || '구매 인증에 실패했습니다. 다시 시도해주세요.' };
         }
     }
 
@@ -657,6 +662,14 @@ export class UserService {
 
     //     return purchaseSnap.exists();
     // }
+
+    async deleteWorkspace(userId: string): Promise<void> {
+        if (!auth.currentUser) throw new Error('로그인이 필요합니다.');
+        try {
+            await firstValueFrom(this.http.post(`${this.functionsBaseUrl}/deleteMyWorkspace`, { userId, confirmation: userId },
+                { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } }));
+        } catch (error: any) { throw new Error(error.error?.error || '워크스페이스를 삭제하지 못했습니다. 다시 시도해주세요.'); }
+    }
 
     async getPurchaseHistory(): Promise<any[]> {
         if (!auth.currentUser) throw new Error('Login required');
@@ -848,7 +861,7 @@ export class UserService {
             if (data['verificationId'] !== verificationId) { return; }
 
             const status = data['status'] as KakaoVerificationStatus | undefined;
-            if (data['verified'] === true || status === 'already-connected-to-another-workspace') {
+            if (data['verified'] === true || status === 'already-connected-to-another-workspace' || status === 'already-connected-to-my-other-workspace' || status === 'already-connected-to-another-account') {
                 this.kakaoVerified$.next(status ?? 'connected');
                 this.stopKakaoVerificationWatcher();
             }

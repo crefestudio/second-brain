@@ -12,6 +12,11 @@ export class SocialAuthService {
     readonly busy = signal(false);
     readonly error = signal('');
     readonly notice = signal('');
+    readonly workspaces = signal<Array<{userId: string; templateId: string; name: string}>>([]);
+    readonly activeWorkspaceId = signal('');
+    get workspaceName(): string {
+        return this.workspaces().find(item => item.userId === this.activeWorkspaceId())?.name || '라이프업';
+    }
     private ready?: Promise<void>;
     init(): Promise<void> {
         return this.ready ??= new Promise(resolve => {
@@ -28,15 +33,42 @@ export class SocialAuthService {
             }, () => { this.error.set('로그인 상태를 확인하지 못했습니다. 새로고침해주세요.'); resolve(); });
         });
     }
-    async session(): Promise<any> {
+    async session(userId?: string, templateId?: string): Promise<any> {
         await this.init();
         const user = auth.currentUser;
         if (!user) return null;
-        const response = await fetch(`${this.config.functionsBaseUrl}/getAppSession`, {
-            method: 'POST', headers: { Authorization: `Bearer ${await user.getIdToken()}` }
-        });
-        if (!response.ok) throw new Error('Session lookup failed');
-        return auth.currentUser?.uid === user.uid ? response.json() : null;
+        if (!user.email || !user.emailVerified) throw new Error('이메일 인증이 완료된 계정으로 로그인해주세요.');
+        let response: Response | undefined;
+        let networkError: unknown;
+        // A just-deployed Cloud Run revision can briefly close a request while
+        // warming. Retry only that transport failure; server responses remain
+        // authoritative and are never retried here.
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                response = await fetch(`${this.config.functionsBaseUrl}/getAppSession`, {
+                    method: 'POST', headers: { Authorization: `Bearer ${await user.getIdToken()}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, templateId })
+                });
+                break;
+            } catch (error) {
+                networkError = error;
+                if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+        if (!response) throw networkError instanceof Error ? networkError : new Error('로그인 정보를 확인하지 못했습니다.');
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '로그인 정보를 확인하지 못했습니다.');
+        if (auth.currentUser?.uid !== user.uid) return null;
+        this.workspaces.set(result.workspaces || []);
+        this.activeWorkspaceId.set(result.userId || '');
+        return result;
+    }
+    async switchWorkspace(userId: string): Promise<void> {
+        if (this.busy() || userId === this.activeWorkspaceId()) return;
+        this.busy.set(true); this.error.set('');
+        try { await this.session(userId); window.location.assign('/service'); }
+        catch { this.error.set('워크스페이스를 전환하지 못했습니다. 다시 시도해주세요.'); }
+        finally { this.busy.set(false); }
     }
     async refreshAccount(): Promise<void> {
         const user = auth.currentUser;
@@ -44,7 +76,7 @@ export class SocialAuthService {
         await user.reload();
         this.account.set(auth.currentUser);
     }
-    private async purchaseRequest(endpoint: string, payload: { email: string; code?: string }): Promise<any> {
+    private async purchaseRequest(endpoint: string, payload: { email: string; code?: string; templateId?: 'lifeUp' | 'lifeUpScrapbook' }): Promise<any> {
         const response = await fetch(`${this.config.functionsBaseUrl}/${endpoint}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
@@ -52,11 +84,11 @@ export class SocialAuthService {
         if (!response.ok) throw new Error(result.message || '인증 요청을 처리하지 못했습니다.');
         return result;
     }
-    async requestPurchaseCode(email: string): Promise<boolean> {
+    async requestPurchaseCode(email: string, templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp'): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true); this.error.set(''); this.notice.set('');
         try {
-            await this.purchaseRequest('requestPurchaseLoginCode', { email: email.trim().toLowerCase() });
+            await this.purchaseRequest('requestPurchaseLoginCode', { email: email.trim().toLowerCase(), templateId });
             this.notice.set('인증번호를 보냈습니다. 10분 안에 입력해주세요. 재발송은 1분 후 가능합니다.');
             return true;
         } catch (error) {
@@ -64,14 +96,14 @@ export class SocialAuthService {
             return false;
         } finally { this.busy.set(false); }
     }
-    async loginWithPurchase(email: string, code: string): Promise<boolean> {
+    async loginWithPurchase(email: string, code: string, templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp'): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true); this.error.set(''); this.notice.set('');
         try {
             await this.init();
             if (auth.currentUser) throw new Error('이미 로그인되어 있습니다. 계속하기 또는 로그아웃을 선택해주세요.');
             const result = await this.purchaseRequest('verifyPurchaseLoginCode', {
-                email: email.trim().toLowerCase(), code: code.trim()
+                email: email.trim().toLowerCase(), code: code.trim(), templateId
             });
             // Never store custom tokens or reuse the widget accessKey. The SDK maintains the session.
             await signInWithCustomToken(auth, result.token);

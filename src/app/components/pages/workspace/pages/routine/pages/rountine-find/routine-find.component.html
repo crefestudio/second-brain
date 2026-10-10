@@ -1,4 +1,7 @@
 <div class="page-header">
+    @if (showUpgradeNotice) {
+      <app-scrapbook-upgrade-card mode="popup" (closed)="showUpgradeNotice = false" />
+    }
     <h1>추천 습관 갤러리</h1>
     <p>
       일상에서 실천하기 좋은 습관들을 준비했어요.<br>원하는 습관 카드를 골라 내 루틴에 추가해보세요.

@@ -117,7 +117,7 @@
           <!-- 활성화 -->
           <td>
             <label class="switch">
-              <input type="checkbox" [(ngModel)]="agent.enabled" (change)="onChangeAgentEnabled(agent)">
+              <input type="checkbox" [(ngModel)]="agent.enabled" (change)="onChangeAgentEnabled(agent)" [disabled]="isAgentDisabled(agent)" [attr.aria-label]="agent.name + ' 사용 여부'">
               <span class="slider"></span>
             </label>
           </td>

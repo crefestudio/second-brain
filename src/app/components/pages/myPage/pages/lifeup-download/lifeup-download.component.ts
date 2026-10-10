@@ -1,7 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
 import { SocialAuthService } from '../../../../../services/social-auth.service';
@@ -24,17 +24,29 @@ export class LifeupDownloadComponent implements OnInit {
     isVerifying = false;
     verificationError = '';
     private verificationUid: string | null = null;
+    readonly templateId: 'lifeUp' | 'lifeUpScrapbook';
+    readonly productName: string;
 
-    readonly downloadUrl = inject(APP_CONFIG).lifeUpReleaseUrls['1.5'];
+    readonly downloadUrl: string;
     readonly reviewUrl = 'https://notionable.net/lifeup-review';
-    readonly passportUrl = inject(APP_CONFIG).lifeUpPassportUrls['1.5'];
+    readonly passportUrl: string;
+    readonly showReviewEvent: boolean;
 
     constructor(
         private readonly authService: AuthService,
         private readonly userService: UserService,
         private readonly router: Router,
-        private readonly socialAuth: SocialAuthService
-    ) {}
+        private readonly socialAuth: SocialAuthService,
+        route: ActivatedRoute
+    ) {
+        const config = inject(APP_CONFIG);
+        this.templateId = route.snapshot.data['product'] === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
+        const scrapbook = this.templateId === 'lifeUpScrapbook';
+        this.productName = scrapbook ? '라이프업 1.5 스크랩북' : '라이프업 1.5';
+        this.downloadUrl = (scrapbook ? config.lifeUpScrapbookReleaseUrls : config.lifeUpReleaseUrls)['1.5'];
+        this.passportUrl = (scrapbook ? config.lifeUpScrapbookPassportUrls : config.lifeUpPassportUrls)['1.5'];
+        this.showReviewEvent = !scrapbook;
+    }
 
     async ngOnInit(): Promise<void> {
         try {
@@ -48,14 +60,14 @@ export class LifeupDownloadComponent implements OnInit {
 
     private async loadPurchaseInfo(): Promise<void> {
         this.isPurchaser = false;
-        await this.authService.updateSession();
+        await this.authService.updateSession(this.templateId);
         const userId = this.authService.getUserId();
 
         if (!userId) {
             return;
         }
 
-        const result = await UserService.updatePurchaseInfo(userId);
+        const result = await UserService.updatePurchaseInfo(userId, this.templateId);
         this.isPurchaser = result.isPurchaser && result.purchaseInfo?.verified === true;
     }
 
@@ -84,12 +96,17 @@ export class LifeupDownloadComponent implements OnInit {
             await this.socialAuth.init();
             this.verificationUid = this.socialAuth.account()?.uid ?? null;
             this.purchaserEmail = value.toLowerCase();
+            const account = this.socialAuth.account();
+            if (account && (!account.emailVerified || account.email?.trim().toLowerCase() !== this.purchaserEmail)) {
+                this.verificationError = '구매 인증은 현재 라이프봇 계정의 이메일과 구매 이메일이 다르면 진행할 수 없습니다. 라이프봇에서 로그아웃한 후 다시 진행해 주세요.';
+                return;
+            }
             // Existing signed-in accounts link the purchase without switching identities.
             const sent = this.verificationUid
-                ? await this.userService.sendVerificationEmail(this.purchaserEmail)
-                : await this.socialAuth.requestPurchaseCode(this.purchaserEmail);
+                ? await this.userService.sendVerificationEmail(this.purchaserEmail, this.templateId)
+                : await this.socialAuth.requestPurchaseCode(this.purchaserEmail, this.templateId);
             if (!sent) {
-                this.verificationError = this.verificationUid ? '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
+                this.verificationError = this.verificationUid ? (this.userService.verificationEmailError || '인증 메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.')
                     : this.socialAuth.error();
                 return;
             }
@@ -118,13 +135,13 @@ export class LifeupDownloadComponent implements OnInit {
             }
             if (this.verificationUid) {
                 const result = await this.userService.verifyCode(
-                    this.purchaserEmail, this.verificationCode, this.verificationUid, 'lifeUp'
+                    this.purchaserEmail, this.verificationCode, this.verificationUid, this.templateId
                 );
                 if (!result?.userId) {
                     this.verificationError = result?.message || '구매 인증에 실패했습니다.';
                     return;
                 }
-            } else if (!await this.socialAuth.loginWithPurchase(this.purchaserEmail, this.verificationCode)) {
+            } else if (!await this.socialAuth.loginWithPurchase(this.purchaserEmail, this.verificationCode, this.templateId)) {
                 this.verificationError = this.socialAuth.error();
                 return;
             }

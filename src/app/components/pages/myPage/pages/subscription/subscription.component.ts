@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AuthService } from '../../../../../services/auth.service';
+import { SocialAuthService } from '../../../../../services/social-auth.service';
 import { UserService } from '../../../../../services/user.service';
 import { _log } from '../../../../../lib/cf-common/cf-common';
 
@@ -35,7 +35,7 @@ export class SubscriptionComponent implements OnInit {
 
     constructor(
         public router: Router,
-        private authService: AuthService,
+        private socialAuth: SocialAuthService,
         private userService: UserService
     ) { }
 
@@ -57,7 +57,7 @@ export class SubscriptionComponent implements OnInit {
 
     async ngOnInit() {
         try {
-            await this.updateSession();
+            await this.socialAuth.init();
             await this.updatePurchaseInfo();
         } catch (error) {
             this.loadError = '구매 내역을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.';
@@ -80,18 +80,15 @@ export class SubscriptionComponent implements OnInit {
     }
 
 
-    async updateSession() {
-        await this.authService.updateSession();
-        this.memberUid = this.authService.getMemberUid();
-        this.userId = this.authService.getUserId();
-        this.kakaoUserId = this.authService.getKakaoUserId();
-        this.notionAccessToken = this.authService.getNotionAccessToken();
-
-        if (!this.userId) {
-            console.error('사용자를 찾을 수 없습니다.');
-            // this.errorMessage = '사용자를 찾을 수 없습니다.';
+    async connectPurchase(purchase: any) {
+        if (!purchase.workspaceId) {
+            await this.router.navigate([purchase.templateId === 'lifeUpScrapbook' ? '/download/lifeup-scrapbook' : '/download/lifeup']);
             return;
         }
+        try {
+            await this.socialAuth.session(purchase.workspaceId);
+            window.location.assign('/workspace/connect');
+        } catch { this.loadError = '해당 상품의 워크스페이스로 이동하지 못했습니다. 다시 시도해주세요.'; }
     }
 
     submitVerification() {

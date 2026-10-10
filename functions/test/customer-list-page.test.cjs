@@ -20,6 +20,12 @@ test('filters find customers beyond the original first 100 and count all matches
     assert.equal(page({search:'고객250'}).customers[0].id, '0250');
     assert.equal(page({notifyFilter:'blocked'}).filteredCount, 0);
 });
+test('scrapbook values are accepted and filtered for both classifications', () => {
+    const result = new CustomerListPage(customerListOptions({memberFilter: 'scrapbook', membershipFilter: 'scrapbook'}));
+    result.add({id: 'scrapbook', memberType: 'scrapbook', membership: 'scrapbook'});
+    result.add({id: 'standard', memberType: 'standard', membership: 'standard'});
+    assert.deepEqual(result.result().customers.map(row => row.id), ['scrapbook']);
+});
 test('sorting applies globally before pagination', () => {
     const expected = [...rows].sort((a,b) => b.name.localeCompare(a.name,'ko') || a.id.localeCompare(b.id));
     assert.deepEqual(page({sort:'name'}).customers.map(r=>r.id), expected.slice(0,100).map(r=>r.id));

@@ -1,3 +1,20 @@
+@if (showDeleteWorkspace) {
+<div class="workspace-delete-overlay">
+  <section class="workspace-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="workspace-delete-title">
+    <h2 id="workspace-delete-title">이 워크스페이스를 삭제할까요?</h2>
+    <p>삭제 대상: <strong>{{ deletionTarget }}</strong></p>
+    <p>삭제하면 이 워크스페이스에서 라이프업 App을 이용할 수 없으며, 노션·카카오톡 연결과 접속 키가 해제됩니다. 사용자 화면에서는 복구할 수 없습니다.</p>
+    <p>다른 워크스페이스, 구매 내역, 노션에 저장된 원본 페이지는 삭제되지 않습니다.</p>
+    <label for="workspace-delete-confirmation">삭제하려면 워크스페이스 ID <strong>{{ deletionTarget }}</strong>를 입력해주세요.</label>
+    <input id="workspace-delete-confirmation" [(ngModel)]="deletionConfirmation" [disabled]="deletingWorkspace" autocomplete="off">
+    @if (deletionError) { <p role="alert">{{ deletionError }}</p> }
+    <div class="workspace-delete-actions">
+      <button type="button" class="detail-btn" [disabled]="deletingWorkspace" (click)="showDeleteWorkspace = false">취소</button>
+      <button type="button" class="detail-btn workspace-delete-button" [disabled]="deletingWorkspace || deletionConfirmation !== deletionTarget" (click)="deleteWorkspace()">{{ deletingWorkspace ? '삭제 중…' : '워크스페이스 삭제' }}</button>
+    </div>
+  </section>
+</div>
+}
 @if(isLoading) {
 <div class="page-loading">
   <div class="loading-spinner"></div>
@@ -87,9 +104,6 @@
             @if (isLifeupPurchaser && purchaseInfo && purchaseInfo.email) {
             <div class="verified-email">
               ✓ {{ purchaseInfo.email }}
-              <button class="remove-btn" (click)="removeLifeupPurchase()">
-                초기화
-              </button>
             </div>
             } @else {
             @if (!requestPurchaserCheck) {
@@ -149,6 +163,7 @@
               <button class="detail-btn" (click)="showPurchaseDetail = !showPurchaseDetail">
                 {{ showPurchaseDetail ? '접기' : '템플릿 구매정보 보기' }}
               </button>
+              <button class="detail-btn workspace-delete-button" (click)="openDeleteWorkspace()">이 계정 삭제</button>
               <!-- &nbsp;&nbsp;
               <button class="detail-btn" (click)="showWorkspaceDetail = !showWorkspaceDetail">
                 {{ showWorkspaceDetail ? '접기' : '워크스페이스 정보 보기' }}

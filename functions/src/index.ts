@@ -1,6 +1,8 @@
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { purchaseEmailError } from './purchase-email-policy';
+import { archiveWorkspace, WorkspaceDeletionError } from './workspace-deletion';
 import { logger } from 'firebase-functions';
 
 import { Resend } from "resend";
@@ -28,11 +30,12 @@ import { Client } from "@notionhq/client";
 import { executeMigration, MigrationConflict, migrationErrorMessage } from './lifeup-migration-runner';
 import { habitDayRange, uniqueHabitLogs } from './routine-utils';
 import { createPurchaseLogin, PurchaseLoginError } from './purchase-login';
+import { bindWorkspacePurchase, workspaceTemplate, WorkspaceConflict } from './workspace-purchase';
 import { createPurchaseInvitations, InvitationError } from './purchase-invitations';
 import { deleteAccountData } from './account-deletion';
 import { createMailQueue } from './mail-queue';
 import { CustomerListPage, customerListOptions } from './customer-list-page';
-import { addCustomerGrade, normalizedCustomerPhone } from './customer-grades';
+import { addCustomerGrade, CustomerGrade, normalizedCustomerPhone } from './customer-grades';
 import { resolveTaskKinds } from './task-classification';
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -63,6 +66,13 @@ const NOTION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cl
 
 const NOTION_MIGRATION_TOKEN = defineSecret("NOTION_MIGRATION_TOKEN");
 const LATPEED_WEBHOOK_SECRET = defineSecret("LATPEED_WEBHOOK_SECRET");
+// Imweb credentials and product mapping are intentionally secrets: the mapping
+// is deployment configuration and must not be exposed to the browser.
+// IMWEB_PRODUCT_SKU_MAP example:
+// {"LIFEUP-SKU":{"templateId":"lifeUp","memberType":"standard"},"SCRAPBOOK-SKU":{"templateId":"lifeUpScrapbook"}}
+const IMWEB_API_KEY = defineSecret("IMWEB_API_KEY");
+const IMWEB_API_SECRET = defineSecret("IMWEB_API_SECRET");
+const IMWEB_PRODUCT_SKU_MAP = defineSecret("IMWEB_PRODUCT_SKU_MAP");
 const NOTION_MIGRATION_OAUTH_REDIRECT_URI = "https://us-central1-notionable-secondbrain.cloudfunctions.net/notionMigrationOAuthCallback"; // 노션에 등록되서 바꿀 수 없음
 
 // A newly duplicated Notion template can take a little while to be included in
@@ -139,6 +149,24 @@ async function retryNotionDatabaseDiscovery<T>(
 
 const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net"];
 
+async function mergeActiveWorkspace(ref: admin.firestore.DocumentReference, data: admin.firestore.DocumentData): Promise<void> {
+    await db.runTransaction(async tx => {
+        const workspace = await tx.get(ref);
+        if (!workspace.exists || workspace.data()?.deletionStatus === 'archived') throw new Error('WORKSPACE_DELETED');
+        tx.set(ref, data, { merge: true });
+    });
+}
+
+const LIFEUP_TEMPLATE_DATABASES = ["lifeup info", "apps", "note", "task", "memo", "reference", "contact"];
+const LIFEUP_SCRAPBOOK_TEMPLATE_DATABASES = ["lifeup info", "apps", "reference", "reference tag", "reference sub tag", "reference type"];
+
+async function templateDatabaseNames(userId: string): Promise<string[]> {
+    const workspace = (await db.collection('users').doc(userId).get()).data();
+    return workspaceTemplate(workspace || {}) === 'lifeUpScrapbook'
+        ? LIFEUP_SCRAPBOOK_TEMPLATE_DATABASES
+        : LIFEUP_TEMPLATE_DATABASES;
+}
+
 async function completeNotionTemplateConnection(
     userId: string,
     accessToken: string,
@@ -146,7 +174,7 @@ async function completeNotionTemplateConnection(
     botId?: string,
     duplicatedTemplateId?: string
 ): Promise<void> {
-    const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact", "apps", "lifeup info"];
+    const dbNames = await templateDatabaseNames(userId);
     const dbMap = await NotionService.updateTemplateDbs(accessToken, dbNames);
     const missing = dbNames.filter(name => !dbMap?.[name]);
     if (missing.length) throw new Error(`Template databases not found: ${missing.join(', ')}`);
@@ -154,7 +182,7 @@ async function completeNotionTemplateConnection(
     const userRef = db.collection("users").doc(userId);
     const user = (await userRef.get()).data();
     const kakaoUserId = user?.kakaoUserId;
-    await userRef.set({
+    await mergeActiveWorkspace(userRef, {
         notionAccessToken: accessToken,
         notionConnection: {
             workspaceId,
@@ -166,7 +194,7 @@ async function completeNotionTemplateConnection(
         },
         notionConnectionId: randomUUID(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    });
 
     try {
         const templateInfo = await NotionService.fetchLifeupTemplateInfoFromNotion(userId);
@@ -454,7 +482,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutS
             `https://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(userId)}`
         );
 
-        const dbNames = ["note", "task", "memo", "reference", "memo tag", "reference tag", "contact", "apps", "lifeup info"];
+        const dbNames = await templateDatabaseNames(userId);
         const dbMap = await retryNotionDatabaseDiscovery(
             "LifeUp template databases",
             () => NotionService.updateTemplateDbs(notionToken.access_token, dbNames)
@@ -473,7 +501,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutS
         const kakaoUserId = user?.kakaoUserId;
 
         // users
-        await userRef.set({
+        await mergeActiveWorkspace(userRef, {
             notionAccessToken: notionToken.access_token,
             notionConnection: {
                 workspaceId: notionToken.workspace_id,
@@ -483,7 +511,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutS
                 connectedAt: admin.firestore.FieldValue.serverTimestamp()
             },
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
 
         // 템플릿 정보 가져오기
         let templateInfo: LifeupTemplateInfo | null = null;
@@ -1923,7 +1951,13 @@ function lifeupEffectiveAmount(purchase: { purchaseOption?: unknown; amount?: un
  * 옵션명은 판매 시점마다 달라질 수 있어 이름 전체가 아니라 등급 키워드를 우선 사용한다.
  * 프리미엄 키워드는 기존 회원의 승격 상품에도 사용되므로 다른 조건보다 먼저 확인한다.
  */
-function lifeupMemberType(purchase: { purchaseOption?: unknown; amount?: unknown }): LifeupMemberType | null {
+function lifeupMemberType(purchase: { purchaseOption?: unknown; amount?: unknown; source?: unknown; templateId?: unknown; memberType?: unknown }): LifeupMemberType | null {
+    // Imweb products are selected by the server-side SKU allow-list. Their
+    // price is recorded separately, so a completed complimentary order is
+    // still a valid purchase. Latpeed deliberately keeps its option/amount
+    // based legacy policy below.
+    if (purchase.source === 'imweb' && purchase.templateId === 'lifeUp' &&
+        (purchase.memberType === 'standard' || purchase.memberType === 'premium')) return purchase.memberType;
     const option = typeof purchase.purchaseOption === 'string'
         ? purchase.purchaseOption.replace(/\s+/g, '').toLowerCase()
         : '';
@@ -2297,12 +2331,13 @@ function escapeEmailHtml(value: string): string {
     }[character]!));
 }
 
-type LifeupEmailTemplateId = 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update';
+type LifeupEmailTemplateId = 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome';
 const LIFEUP_EMAIL_TEMPLATES: ReadonlyArray<{ id: LifeupEmailTemplateId; name: string }> = [
-    { id: 'standard-purchaser-update', name: '기존 일반 구매자 업데이트 안내' },
-    { id: 'premium-purchaser-update', name: '프리미엄 구매자 업데이트 안내' },
-    { id: 'standard-purchaser-welcome', name: '[자동 발송] 일반 구매자 / 구매 시' },
-    { id: 'premium-purchaser-welcome', name: '[자동 발송] 프리미엄 구매자 / 구매 시' },
+    { id: 'standard-purchaser-update', name: '라이프업 - 일반 - 업데이트' },
+    { id: 'premium-purchaser-update', name: '라이프업 - 프리미엄 - 업데이트' },
+    { id: 'standard-purchaser-welcome', name: '(자동) 라이프업 - 일반 - 월컴 - 구매시' },
+    { id: 'premium-purchaser-welcome', name: '(자동) 라이프업 - 프리미엄 - 월컴 - 구매시' },
+    { id: 'scrapbook-purchaser-welcome', name: '(자동) 라이프업 - 스크랩북 - 일반 - 웰컴 - 구매시' },
 ];
 const LIFEUP_EMAIL_VARIABLES = {
     lifeupbotUrl: 'https://notionable.net/app',
@@ -2315,6 +2350,8 @@ const LIFEUP_EMAIL_VARIABLES = {
     installYoutubeUrl: 'https://www.youtube.com/shorts/QnR_gnGWOQE',
     lifeupPassportUrl: 'https://app.notionable.net/templateDownload/LifeUp1.5.pdf',
     lifeupTemplateReleaseUrl: 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3e3eea79fd8c80b39dc7e4aa9c8982ec?source=copy_link',
+    lifeupScrapbookPassportUrl: 'https://app.notionable.net/templateDownload/LifeUp1.5-Scrapbook.pdf',
+    lifeupScrapbookReleaseUrl: 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-1-5-3f3eea79fd8c808fa425e6f222f33bfb?source=copy_link',
     reviewUrl: 'https://notionable.net/lifeup-review'
 } as const;
 
@@ -2768,6 +2805,214 @@ export const redeemLifeupInvitation = onRequest(withCors(async (req, res) => {
     }
 }));
 
+type ImwebProductConfig = { templateId: 'lifeUp' | 'lifeUpScrapbook'; memberType?: LifeupMemberType };
+let imwebLastRequestAt = 0;
+
+function imwebProductMap(): Map<string, ImwebProductConfig> {
+    let parsed: unknown;
+    try { parsed = JSON.parse(IMWEB_PRODUCT_SKU_MAP.value()); }
+    catch { throw new Error('IMWEB_PRODUCT_SKU_MAP 설정이 올바른 JSON이 아닙니다.'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('IMWEB_PRODUCT_SKU_MAP 설정이 필요합니다.');
+    const result = new Map<string, ImwebProductConfig>();
+    for (const [sku, raw] of Object.entries(parsed as Record<string, unknown>)) {
+        const product = raw as ImwebProductConfig;
+        if (!sku || !product || !['lifeUp', 'lifeUpScrapbook'].includes(product.templateId)) continue;
+        result.set(sku.trim(), { templateId: product.templateId, memberType: product.memberType === 'premium' ? 'premium' : product.memberType === 'standard' ? 'standard' : undefined });
+    }
+    if (!result.size) throw new Error('IMWEB_PRODUCT_SKU_MAP에 LIFEUP SKU를 등록해주세요.');
+    return result;
+}
+
+function selectBestPurchaserForTemplate(templateId: string, records: PurchaserRecord[]): PurchaserRecord | null {
+    if (templateId !== 'lifeUpScrapbook') return selectBestPurchaser(records);
+    return records.filter(record => !isLifeupUpgrade(record.data)).reduce<PurchaserRecord | null>((best, candidate) =>
+        !best || purchaserTimestamp(candidate.data) > purchaserTimestamp(best.data) ? candidate : best, null);
+}
+
+async function imwebAccessToken(): Promise<string> {
+    const response = await fetch('https://api.imweb.me/v2/auth', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // Secret Manager values can retain a trailing newline from copy/paste.
+        // Imweb returns HTTP 200 but no token for that malformed credential.
+        body: JSON.stringify({ key: IMWEB_API_KEY.value().trim(), secret: IMWEB_API_SECRET.value().trim() })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.access_token) throw new Error(`아임웹 인증 실패 (${response.status})`);
+    return String(payload.access_token);
+}
+
+async function imwebGet(path: string, token: string, query: Record<string, string | number> = {}): Promise<any> {
+    // Imweb's list APIs are limited to one request per second. This process
+    // local guard also keeps item lookups from immediately following a list
+    // request too quickly.
+    const waitMs = Math.max(0, 1050 - (Date.now() - imwebLastRequestAt));
+    if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+    const url = new URL(`https://api.imweb.me/v2/shop/${path}`);
+    Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, String(value)));
+    const response = await fetch(url, { headers: { 'Content-Type': 'application/json', 'access-token': token } });
+    imwebLastRequestAt = Date.now();
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || Number(payload?.code || 200) >= 400) throw new Error(`아임웹 주문 조회 실패 (${response.status})`);
+    return payload?.data || payload;
+}
+
+function imwebItems(value: unknown): any[] {
+    if (Array.isArray(value)) return value.flatMap(imwebItems);
+    if (!value || typeof value !== 'object') return [];
+    const row = value as Record<string, any>;
+    const childKeys = ['list', 'items', 'prod_orders', 'prodOrders', 'data'];
+    return [row, ...childKeys.flatMap(key => imwebItems(row[key]))];
+}
+
+function imwebSkus(value: unknown): string[] {
+    // Imweb's product-order response uses prod_sku_no / prod_custom_code,
+    // while some API versions expose the shorter aliases below.
+    return [...new Set(imwebItems(value).flatMap(item => [item.sku, item.product_sku, item.productSku, item.option_sku, item.optionSku, item.prod_sku_no, item.prodSkuNo, item.prod_custom_code, item.prodCustomCode])
+        .filter((sku): sku is string => typeof sku === 'string' && sku.trim().length > 0).map(sku => sku.trim()))];
+}
+
+// SKU identifies a purchasable Imweb item; it is not the customer-facing
+// option name. Products without options must therefore leave purchaseOption blank.
+function imwebPurchaseOption(value: unknown, matchedSku: string): string {
+    const item = imwebItems(value).find(candidate => imwebSkus(candidate).includes(matchedSku));
+    if (!item) return '';
+    const option = item.option_name ?? item.optionName ?? item.option_title ?? item.optionTitle ?? item.option_value ?? item.optionValue;
+    if (typeof option === 'string' || typeof option === 'number') return String(option).trim();
+    if (Array.isArray(option)) return option.map(value => typeof value === 'string' ? value : value?.name || value?.label || value?.value || '')
+        .filter(Boolean).join(' ').trim();
+    return String(option?.name || option?.label || option?.value || '').trim();
+}
+
+function formatImwebDate(value: unknown): string {
+    const seconds = typeof value === 'number' ? value : Number(value);
+    const date = Number.isFinite(seconds) ? new Date(seconds * 1000) : new Date();
+    return formatLatpeedDate(date.toISOString());
+}
+
+// Imweb imports deliberately never backfill historical orders.  Use the
+// calendar boundary in Korea (not a rolling 24-hour window) so every sync
+// starts at 00:00 yesterday, regardless of when the administrator runs it.
+function imwebYesterdayStartKst(now = new Date()): number {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
+        .formatToParts(now).reduce<Record<string, string>>((result, part) => { result[part.type] = part.value; return result; }, {});
+    return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) - 1, 0, 0, 0) - 9 * 60 * 60 * 1000;
+}
+
+async function syncImwebPurchasers(sinceMs: number): Promise<{ scanned: number; imported: number; updated: number; skipped: number; productCounts: Record<string, number> }> {
+    const token = await imwebAccessToken(); const skuMap = imwebProductMap();
+    let scanned = 0; let imported = 0; let updated = 0; let skipped = 0; const productCounts: Record<string, number> = {};
+    const seenOrderIds = new Set<string>(); const to = Math.floor(Date.now() / 1000);
+    // Free orders can move directly to purchase confirmation, while ordinary
+    // paid orders first appear as payment complete. Imweb permits one status
+    // filter per request, so merge both result sets by order number.
+    for (const status of ['PAY_COMPLETE', 'PURCHASE_CONFIRMATION']) {
+        let offset = 1;
+        while (true) {
+            const data = await imwebGet('orders', token, { status, order_date_from: Math.floor(sinceMs / 1000), order_date_to: to, order_version: 'v2', offset, limit: 100 });
+            const orders = Array.isArray(data?.list) ? data.list : Array.isArray(data) ? data : [];
+            for (const order of orders) {
+                const orderId = String(order?.order_no || order?.orderNo || '').trim();
+                if (!orderId || seenOrderIds.has(orderId)) { if (!orderId) skipped++; continue; }
+                seenOrderIds.add(orderId);
+            scanned++;
+            const purchaserRef = db.collection('purchasers').doc(`imweb_${crypto.createHash('sha256').update(orderId).digest('hex')}`);
+            const existing = await purchaserRef.get();
+            const statusLabel = status === 'PURCHASE_CONFIRMATION' ? '구매 확정' : '결제 완료';
+            // The order ID is immutable. Once it has been imported, a repeat
+            // overlap scan only needs to reflect a possible payment-status
+            // change; it does not need another product-detail API request.
+            if (existing.exists) {
+                if (existing.data()?.status !== statusLabel) {
+                    await purchaserRef.update({ status: statusLabel, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                    updated++;
+                }
+                continue;
+            }
+            const itemData = await imwebGet(`orders/${encodeURIComponent(orderId)}/prod-orders`, token, { order_version: 'v2' });
+            const matchedSku = imwebSkus(itemData).find(sku => skuMap.has(sku));
+            if (!matchedSku) { skipped++; continue; }
+            const product = skuMap.get(matchedSku)!;
+            productCounts[product.templateId] = (productCounts[product.templateId] || 0) + 1;
+            const orderer = order?.orderer || {};
+            const email = String(orderer?.email || orderer?.account || '').trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped++; logger.warn('[Imweb] order skipped: missing account email', { orderId }); continue; }
+            const payment = order?.payment || {};
+            const paymentAmount = Number(payment?.payment_amount ?? payment?.paymentAmount ?? payment?.total_price ?? 0);
+            const purchaser = {
+                amount: `${Number.isFinite(paymentAmount) ? paymentAmount.toLocaleString('ko-KR') : '0'}원`, paymentAmount: Number.isFinite(paymentAmount) ? paymentAmount : 0,
+                purchaseKind: paymentAmount > 0 ? 'paid' : 'free', email, name: String(orderer?.name || '').trim(),
+                phone: String(orderer?.call || '').trim(), notify: '미수집', paymentMethod: String(payment?.pay_type || payment?.payType || ''),
+                purchaseOption: imwebPurchaseOption(itemData, matchedSku), productSku: matchedSku, purchasedAt: formatImwebDate(order?.order_time ?? order?.orderTime),
+                status: statusLabel, templateId: product.templateId, orderId, source: 'imweb',
+                memberType: product.templateId === 'lifeUp' ? (product.memberType || 'standard') : null,
+                purchaseEligible: product.templateId === 'lifeUp', upgradeOnly: false,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            try {
+                await purchaserRef.create({ ...purchaser, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+                imported++;
+            } catch (error: any) {
+                // A manual sync or the daily reconciliation can race this
+                // scheduler. The document creator owns the trigger; this run
+                // only needs to leave its latest safe purchase fields behind.
+                if (error?.code !== 6 && error?.code !== 'already-exists') throw error;
+                await purchaserRef.set({ ...purchaser, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+                updated++;
+            }
+        }
+            if (orders.length < 100) break;
+            offset++;
+        }
+    }
+    return { scanned, imported, updated, skipped, productCounts };
+}
+
+const IMWEB_SYNC_STATE = 'imwebPurchasers';
+const IMWEB_SYNC_OVERLAP_MS = 15 * 60 * 1000;
+
+async function syncImwebPurchasersIncrementally(): Promise<{ sinceMs: number; scanned: number; imported: number; updated: number; skipped: number; productCounts: Record<string, number> }> {
+    const stateRef = db.collection('systemState').doc(IMWEB_SYNC_STATE);
+    const state = (await stateRef.get()).data();
+    const checkpoint = Number(state?.lastSuccessfulAtMs || 0);
+    // First execution preserves the existing one-day import behavior. Later
+    // executions re-read a short overlap to absorb late Imweb updates.
+    const sinceMs = checkpoint > 0 ? Math.max(0, checkpoint - IMWEB_SYNC_OVERLAP_MS) : imwebYesterdayStartKst();
+    const result = await syncImwebPurchasers(sinceMs);
+    await stateRef.set({ lastSuccessfulAtMs: Date.now(), lastSuccessfulAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastSinceMs: sinceMs, lastResult: { scanned: result.scanned, imported: result.imported, updated: result.updated, skipped: result.skipped } }, { merge: true });
+    return { sinceMs, ...result };
+}
+
+function imwebProductLabel(templateId: string): string {
+    return templateId === 'lifeUp' ? '라이프업' : templateId === 'lifeUpScrapbook' ? '라이프업 1.5 스크랩북' : templateId;
+}
+
+export const syncImwebPurchasersDaily = onSchedule({ schedule: '0 18 * * *', timeZone: 'Asia/Seoul', timeoutSeconds: 540, secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] }, async () => {
+    const result = await syncImwebPurchasers(imwebYesterdayStartKst());
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+    const lines = Object.entries(result.productCounts).map(([templateId, count]) => `- ${imwebProductLabel(templateId)}: ${count}건`);
+    const text = `[아임웹 판매 관리 리포트]\n기준: 어제 00:00부터 (${date} 18:00)\n\n${lines.length ? lines.join('\n') : '- 결제 완료 주문 없음'}\n\n조회 ${result.scanned}건 / 신규 저장 ${result.imported}건 / 상태 갱신 ${result.updated}건 / SKU 또는 이메일 제외 ${result.skipped}건`;
+    const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: LATPEED_ADMIN_EMAIL,
+        subject: `[판매 관리] 아임웹 일일 결제 리포트 · ${date}`, text, html: `<p>${text.replace(/\n/g, '<br>')}</p>` }, 'high', `imweb-daily-sales:${date}`);
+    if (sent.error) throw new Error('IMWEB_DAILY_REPORT_QUEUE_FAILED');
+    logger.info('[Imweb] daily purchaser sync completed', result);
+});
+
+// New Imweb orders become purchaser documents within about ten minutes. The
+// onDocumentCreated receiver then queues the appropriate welcome mail once.
+export const syncImwebPurchasersEveryTenMinutes = onSchedule({ schedule: 'every 10 minutes', timeZone: 'Asia/Seoul', timeoutSeconds: 540, maxInstances: 1, secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] }, async () => {
+    const result = await syncImwebPurchasersIncrementally();
+    logger.info('[Imweb] incremental purchaser sync completed', result);
+});
+
+export const syncImwebPurchasersAdmin = onRequest({ secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] }, withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
+        return res.json({ success: true, ...await syncImwebPurchasers(imwebYesterdayStartKst()) });
+    } catch (error) { logger.error('[Imweb] admin sync failed', error); return res.status(500).json({ error: '아임웹 구매자 정보를 갱신하지 못했습니다.' }); }
+}));
+
 export const latpeedPaymentWebhook = onRequest(
     { secrets: [LATPEED_WEBHOOK_SECRET], timeoutSeconds: 10 },
     async (req, res) => {
@@ -2895,21 +3140,31 @@ const purchaseLogin = createPurchaseLogin({
         }, 'high', undefined, true);
         if (result.error) throw new Error('LOGIN_EMAIL_DELIVERY_FAILED');
     },
-    purchase: async email => {
-        const records = await findPurchaserRecords('lifeUp', email);
-        const best = selectBestPurchaser(records);
+    purchase: async (email, templateId) => {
+        const records = await findPurchaserRecords(templateId, email);
+        const best = selectBestPurchaserForTemplate(templateId, records);
         return best ? {
             purchaser: best.data, purchaserIds: records.map(record => record.id),
-            memberType: best.memberType!
+            memberType: templateId === 'lifeUp' ? best.memberType! : 'standard'
         } : null;
     }
 });
 
-export const requestPurchaseLoginCode = onRequest(withCors(async (req, res) => {
+export const requestPurchaseLoginCode = onRequest({ secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] }, withCors(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (req.method !== 'POST') return res.status(405).json({ message: 'POST required' });
     try {
-        await purchaseLogin.request(req.body?.email, req.ip || '');
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        // Avoid an external lookup for ordinary returning purchasers. A fresh
+        // Imweb order is synced only when this email is not registered yet.
+        const templateId = req.body?.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
+        if (!selectBestPurchaserForTemplate(templateId, await findPurchaserRecords(templateId, email))) {
+            await syncImwebPurchasers(imwebYesterdayStartKst());
+        }
+        if (!selectBestPurchaserForTemplate(templateId, await findPurchaserRecords(templateId, email))) {
+            throw new PurchaseLoginError(403, '구매 내역을 찾을 수 없습니다. 구매 시 입력한 이메일을 확인해주세요.');
+        }
+        await purchaseLogin.request(req.body?.email, req.ip || '', templateId);
         return res.json({ success: true });
     } catch (error) {
         return res.status(error instanceof PurchaseLoginError ? error.status : 500).json({
@@ -2933,16 +3188,34 @@ export const verifyPurchaseLoginCode = onRequest(withCors(async (req, res) => {
 }));
 
 export const sendVerificationEmail = onRequest(
+    { secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] },
     withCors(async (req, res) => {
         const email: string = req.body.email;
         if (!email) return res.status(400).json({ error: '이메일이 필요합니다.' });
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) return res.status(400).json({ error: '이메일 형식이 올바르지 않습니다.' });
 
+        const normalizedEmail = email.trim().toLowerCase();
+        if (req.headers.authorization) {
+            let identity: admin.auth.DecodedIdToken;
+            try { identity = await admin.auth().verifyIdToken(req.headers.authorization.replace(/^Bearer /, ''), true); }
+            catch { return res.status(401).json({ error: '로그인 후 다시 인증해주세요.' }); }
+            const policyError = purchaseEmailError(identity, normalizedEmail);
+            if (policyError) return res.status(403).json({ error: policyError });
+        }
+        const templateId = req.body?.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
+        if (!selectBestPurchaserForTemplate(templateId, await findPurchaserRecords(templateId, normalizedEmail))) {
+            await syncImwebPurchasers(imwebYesterdayStartKst());
+        }
+        if (!selectBestPurchaserForTemplate(templateId, await findPurchaserRecords(templateId, normalizedEmail))) {
+            return res.status(403).json({ error: '구매 내역을 찾을 수 없습니다. 구매 시 입력한 이메일을 확인해주세요.' });
+        }
+
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
 
-        await db.collection('email_verifications').doc(email).set({
+        await db.collection('email_verifications').doc(normalizedEmail).set({
+            templateId,
             code: hashedCode,
             expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 10 * 60 * 1000),
             attempts: 0,
@@ -2972,22 +3245,40 @@ export const getPurchaseHistory = onRequest(withCors(async (req, res) => {
     } catch { return res.status(401).json({ error: 'Login required' }); }
     try {
         const account = (await db.collection('appAccounts').doc(identity.uid).get()).data();
-        if (!account?.userId) return res.json({ purchases: [] });
-        const workspaceRef = db.collection('users').doc(account.userId);
-        const workspace = (await workspaceRef.get()).data();
-        if (workspace?.firebaseUid !== identity.uid) return res.status(403).json({ error: 'Account mismatch' });
-        const linked = (await workspaceRef.collection('purchases').doc('lifeUp').get()).data();
-        if (linked?.verified !== true || !linked.purchaser?.email) return res.json({ purchases: [] });
-        const records = await findPurchaserRecords('lifeUp', linked.purchaser.email);
-        const best = selectBestPurchaser(records);
+        if (account?.deletionStatus === 'pending') return res.status(409).json({ error: 'ACCOUNT_DELETION_PENDING' });
+        const owned = await db.collection('users').where('firebaseUid', '==', identity.uid).get();
         const fields = ['name', 'phone', 'email', 'amount', 'paymentMethod', 'purchasedAt', 'notify', 'purchaseOption', 'status'];
-        const purchases = records.sort((a, b) => purchaserTimestamp(b.data) - purchaserTimestamp(a.data)).map(record => ({
+        const groups = await Promise.all(['lifeUp', 'lifeUpScrapbook'].map(async templateId => {
+            const emails = new Set<string>();
+            // Only a verified Auth email or a server-verified purchase link
+            // proves ownership. Never use a client-supplied email or active userId.
+            if (identity.email_verified && identity.email) emails.add(identity.email.trim().toLowerCase());
+            const links = await Promise.all(owned.docs.map(async doc => ({ doc,
+                link: (await doc.ref.collection('purchases').doc(templateId).get()).data() })));
+            for (const { link } of links) {
+                if (link?.verified === true && link.purchaser?.email) emails.add(String(link.purchaser.email).trim().toLowerCase());
+            }
+            const found = await Promise.all([...emails].map(email => findPurchaserRecords(templateId, email)));
+            const records = [...new Map(found.flat().map(record => [record.id, record])).values()];
+            const best = selectBestPurchaserForTemplate(templateId, records);
+            return records.map(record => {
+                const workspace = links.find(({ doc, link }) => workspaceTemplate(doc.data()) === templateId && link?.verified === true &&
+                    String(link.purchaser?.email || '').trim().toLowerCase() === String(record.data.email || '').trim().toLowerCase())?.doc;
+                return {
             ...Object.fromEntries(fields.map(field => [field, record.data[field] ?? ''])),
             id: record.id,
+            templateId,
+            productName: templateId === 'lifeUpScrapbook' ? '라이프업 스크랩북' : '라이프업',
+            workspaceId: workspace?.id || '',
+            connected: !!workspace?.data().kakaoUserId && !!workspace?.data().notionAccessToken,
             active: record.id === best?.id,
-            memberType: record.id === best?.id ? best.memberType : lifeupMemberType(record.data),
-            upgradeOnly: isLifeupUpgrade(record.data)
+            memberType: templateId === 'lifeUpScrapbook' ? 'standard' : record.id === best?.id ? best.memberType : lifeupMemberType(record.data),
+            upgradeOnly: templateId === 'lifeUp' && isLifeupUpgrade(record.data),
+            sortTime: purchaserTimestamp(record.data)
+                };
+            });
         }));
+        const purchases = groups.flat().sort((a, b) => b.sortTime - a.sortTime).map(({ sortTime, ...purchase }) => purchase);
         return res.json({ purchases });
     } catch (error) {
         logger.error('Purchase history lookup failed', error);
@@ -3002,8 +3293,11 @@ export const listLifeupPurchasers = onRequest(withCors(async (req, res) => {
     try {
         const identity = await getCareIdentity(req);
         if (!identity.isAdmin) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
-        const snapshot = await db.collection('purchasers').where('templateId', '==', 'lifeUp').get();
-        const purchasers = snapshot.docs.filter(doc => isLifeupPaidPurchase(doc.data())).map(doc => {
+        const snapshot = await db.collection('purchasers').where('templateId', 'in', ['lifeUp', 'lifeUpScrapbook']).get();
+        // Historical zero-price Latpeed options stay excluded. Newly synced
+        // Imweb orders are already SKU-approved, so zero-price Imweb orders
+        // are intentionally included as complimentary purchasers.
+        const purchasers = snapshot.docs.filter(doc => doc.data().source === 'imweb' || isLifeupPaidPurchase(doc.data())).map(doc => {
             const data = doc.data();
             const memberType = lifeupMemberType(data);
             return {
@@ -3017,6 +3311,49 @@ export const listLifeupPurchasers = onRequest(withCors(async (req, res) => {
         if (error instanceof Error && error.message === 'LOGIN_REQUIRED') return res.status(401).json({ error: '로그인이 필요합니다.' });
         logger.error('LifeUp purchaser admin list failed', error);
         return res.status(500).json({ error: '구매자 목록을 불러오지 못했습니다.' });
+    }
+}));
+
+type ManualLifeupProduct = 'standard' | 'premium' | 'upgrade' | 'scrapbook';
+function manualPurchaseText(value: unknown, field: string, maxLength: number): string {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (!text || text.length > maxLength || [...text].some(character => character.charCodeAt(0) < 32)) throw new Error(`${field}을(를) 확인해주세요.`);
+    return text;
+}
+export const createManualLifeupPurchase = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const identity = await getCareIdentity(req);
+        if (!identity.isAdmin) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
+        const name = manualPurchaseText(req.body?.name, '이름', 80);
+        const email = manualPurchaseText(req.body?.email, '이메일', 254).toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: '이메일을 확인해주세요.' });
+        const phone = manualPurchaseText(req.body?.phone, '휴대폰 번호', 30);
+        if (!/^\d{9,15}$/.test(phone.replace(/\D/g, ''))) return res.status(400).json({ error: '휴대폰 번호를 확인해주세요.' });
+        const product = req.body?.product as ManualLifeupProduct;
+        if (!['standard', 'premium', 'upgrade', 'scrapbook'].includes(product)) return res.status(400).json({ error: '상품을 선택해주세요.' });
+        const amount = Number(req.body?.amount);
+        if (!Number.isSafeInteger(amount) || amount <= 0) return res.status(400).json({ error: '결제 금액은 1원 이상으로 입력해주세요.' });
+        const purchasedAtValue = manualPurchaseText(req.body?.purchasedAt, '구매 일시', 40);
+        const purchasedAtDate = new Date(purchasedAtValue);
+        if (Number.isNaN(purchasedAtDate.getTime())) return res.status(400).json({ error: '구매 일시를 확인해주세요.' });
+        const productInfo = {
+            standard: { templateId: 'lifeUp', memberType: 'standard' as LifeupMemberType, purchaseOption: '라이프업', upgradeOnly: false },
+            premium: { templateId: 'lifeUp', memberType: 'premium' as LifeupMemberType, purchaseOption: '라이프업 프리미엄', upgradeOnly: false },
+            upgrade: { templateId: 'lifeUp', memberType: 'premium' as LifeupMemberType, purchaseOption: '프리미엄 승격', upgradeOnly: true },
+            scrapbook: { templateId: 'lifeUpScrapbook', memberType: null, purchaseOption: '라이프업 스크랩북', upgradeOnly: false }
+        }[product];
+        const purchaserRef = db.collection('purchasers').doc(`manual_${nanoid()}`);
+        const purchaser = { ...productInfo, name, email, phone, amount: `${amount.toLocaleString('ko-KR')}원`, paymentAmount: amount, paymentMethod: '수기 등록',
+            purchasedAt: formatLatpeedDate(purchasedAtDate.toISOString()), status: '결제 완료', notify: '미수집', source: 'manual', registrationStatus: 'manual',
+            purchaseEligible: productInfo.templateId === 'lifeUp' && !productInfo.upgradeOnly, registeredBy: identity.email,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+        await purchaserRef.create(purchaser);
+        return res.status(201).json({ success: true, purchaser: { id: purchaserRef.id, ...purchaser } });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : '수기 주문 등록에 실패했습니다.';
+        logger.error('Manual LifeUp purchase creation failed', error);
+        return res.status(message.includes('확인해주세요') ? 400 : 500).json({ error: message });
     }
 }));
 
@@ -3259,16 +3596,32 @@ export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency:
         const blockedPhones = new Set(marketingBlocks.docs.map(doc => customerPhone(doc.data().phone)).filter(Boolean));
         // Read purchase records in bounded batches; legacy phone formatting varies.
         // Retain only normalized phone -> highest grade, not purchase documents.
-        const grades = new Map<string, LifeupMemberType>();
+        const grades = new Map<string, CustomerGrade>();
         let purchaseAfter: admin.firestore.QueryDocumentSnapshot | undefined;
         while (true) {
-            let query = db.collection('purchasers').where('templateId', '==', 'lifeUp')
-                .orderBy(admin.firestore.FieldPath.documentId()).select('phone', 'purchaseOption', 'amount').limit(100);
+            let query = db.collection('purchasers').where('templateId', 'in', ['lifeUp', 'lifeUpScrapbook'])
+                .orderBy(admin.firestore.FieldPath.documentId()).select('phone', 'purchaseOption', 'amount', 'templateId', 'source', 'memberType').limit(100);
             if (purchaseAfter) query = query.startAfter(purchaseAfter);
             const snapshot = await query.get();
-            for (const doc of snapshot.docs) addCustomerGrade(grades, doc.data().phone, lifeupMemberType(doc.data()));
+            for (const doc of snapshot.docs) {
+                const purchase = doc.data();
+                addCustomerGrade(grades, purchase.phone, purchase.templateId === 'lifeUpScrapbook' ? 'scrapbook' : lifeupMemberType(purchase));
+            }
             if (snapshot.size < 100) break;
             purchaseAfter = snapshot.docs[snapshot.size - 1];
+        }
+        // Membership is determined by the workspace a customer actually owns,
+        // not merely by whether an authentication preference document exists.
+        const workspaceMemberships = new Map<string, CustomerGrade>();
+        const membershipRanks: Record<CustomerGrade, number> = { scrapbook: 1, standard: 2, premium: 3 };
+        const workspaces = await db.collection('users').select('email', 'templateId', 'memberType').get();
+        for (const workspace of workspaces.docs) {
+            const data = workspace.data();
+            const email = customerEmail(data.email);
+            if (!email) continue;
+            const membership: CustomerGrade = workspaceTemplate(data) === 'lifeUpScrapbook' ? 'scrapbook' : data.memberType === 'premium' ? 'premium' : 'standard';
+            const current = workspaceMemberships.get(email);
+            if (!current || membershipRanks[membership] > membershipRanks[current]) workspaceMemberships.set(email, membership);
         }
         let after: admin.firestore.QueryDocumentSnapshot | undefined;
         while (true) {
@@ -3285,9 +3638,13 @@ export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency:
                     const preferences = await Promise.all(refs.map(ref => ref.get()));
                     const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
                     const memberType = grades.get(customerPhone(data.phone)) || null;
+                    const membership = [...new Set([...(Array.isArray(data.emails) ? data.emails : []), data.email].map(customerEmail).filter(Boolean))]
+                        .map(email => workspaceMemberships.get(email))
+                        .filter((value): value is CustomerGrade => Boolean(value))
+                        .sort((a, b) => membershipRanks[b] - membershipRanks[a])[0] || 'none';
                     const blocked = [...(Array.isArray(data.emails) ? data.emails : []), data.email].map(customerEmail).some(email => blockedEmails.has(email)) || blockedPhones.has(customerPhone(data.phone));
                     return {
-                        id: doc.id, ...data, memberType, membership: preferences.length ? memberType === 'premium' ? 'premium' : 'standard' : 'none',
+                        id: doc.id, ...data, memberType, membership,
                         notificationConsent: blocked ? '차단' : explicit === undefined ? (data.notificationConsent === '차단' ? '미응답' : data.notificationConsent || '미응답') : explicit ? '예' : '아니오'
                     };
                 }));
@@ -3368,7 +3725,9 @@ export const sendLifeupCustomerMail = onRequest({ timeoutSeconds: 540 }, withCor
                         ? lifeupPremiumPurchaserUpdateMail(recipient.name)
                     : template === 'premium-purchaser-welcome'
                         ? lifeupPremiumWelcomeMail(recipient.name)
-                        : lifeupWelcomeMail(recipient.name, LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl));
+                        : template === 'scrapbook-purchaser-welcome'
+                            ? lifeupScrapbookWelcomeMail(recipient.name)
+                            : lifeupWelcomeMail(recipient.name, LIFEUP_EMAIL_VARIABLES.lifeupTemplateReleaseUrl));
                 const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: email, ...mail }, 'normal', `manual:${identity.uid}:${requestId}:${template}:${email}`, false, firstAttemptAt + index, index + 1);
                 results.push({ sent: !sent.error, customerIds: recipient.customerIds });
             } catch (error) {
@@ -3425,9 +3784,59 @@ export const listMarketingBlocks = onRequest(withCors(async (req, res) => {
 // free customer CSV rows away from authentication and entitlement checks.
 export const addLifeupPurchaserToCustomers = onDocumentCreated({ document: 'purchasers/{purchaserId}', retry: true, timeoutSeconds: 120 }, async event => {
     const purchaser = event.data?.data();
-    if (!purchaser || purchaser.templateId !== 'lifeUp') return;
+    if (!purchaser || !['lifeUp', 'lifeUpScrapbook'].includes(purchaser.templateId)) return;
+    if (purchaser.templateId === 'lifeUpScrapbook') {
+        await receiveLifeupScrapbookPurchase(event.data!.ref, purchaser);
+        return;
+    }
     await receiveLifeupPurchase(event.data!.ref, purchaser);
 });
+
+function lifeupScrapbookWelcomeMail(name: string): { subject: string; text: string; html: string } {
+    const base = lifeupWelcomeMail(name, LIFEUP_EMAIL_VARIABLES.lifeupScrapbookReleaseUrl);
+    const productName = '라이프업 1.5 스크랩북';
+    let html = base.html.split(LIFEUP_PASSPORT_URL).join(LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl)
+        .split('라이프업 1.5 다운로드').join(`${productName} 다운로드`)
+        .split('라이프업 1.5</strong>').join(`${productName}</strong>`);
+    // The scrapbook welcome follows the standard mail, except it has no review section.
+    const reviewLinkIndex = html.indexOf(`href="${LIFEUP_EMAIL_VARIABLES.reviewUrl}"`);
+    if (reviewLinkIndex >= 0) {
+        const sectionStart = html.lastIndexOf('<table', reviewLinkIndex);
+        const sectionEnd = html.indexOf('</div>', reviewLinkIndex);
+        if (sectionStart >= 0 && sectionEnd >= 0) html = html.slice(0, sectionStart) + html.slice(sectionEnd + 6);
+    }
+    return {
+        subject: '라이프업 1.5 스크랩북 구매 안내 및 보관용 PDF를 보내드립니다',
+        text: base.text.split('라이프업 1.5 다운로드').join(`${productName} 다운로드`)
+            .replace(LIFEUP_PASSPORT_URL, LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl)
+            .replace(/\n리뷰 작성:.*\n/, '\n'),
+        html
+    };
+
+    const { lifeupScrapbookReleaseUrl, lifeupScrapbookPassportUrl, lifeupCareUrl } = LIFEUP_EMAIL_VARIABLES;
+    const greeting = name.trim() ? `${name.trim()}님,\n` : '';
+    const greetingHtml = name.trim() ? `${escapeEmailHtml(name.trim())}님,` : '안녕하세요,';
+    return {
+        subject: '라이프업 1.5 스크랩북 구매 안내 및 보관용 PDF를 보내드립니다',
+        text: `${greeting}라이프업 1.5 스크랩북 구매를 환영합니다. 🎉\n\n다운로드: ${lifeupScrapbookReleaseUrl}\n보관용 PDF: ${lifeupScrapbookPassportUrl}\n\n사용 중 도움이 필요하시면 라이프업 케어를 이용해주세요.\n${lifeupCareUrl}`,
+        html: `<div style="margin:0;background:#f5f6f8;padding:32px 16px;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f"><div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px"><div style="padding:32px"><p style="margin:0 0 24px;font-size:18px;font-weight:700">🧠 Notionable</p><h1 style="margin:0 0 16px;font-size:26px;line-height:1.45;color:#171717">${greetingHtml}<br>라이프업 1.5 스크랩북 구매를 환영합니다. 🎉</h1><p style="margin:0;font-size:16px;line-height:1.8;color:#555">아래 링크에서 라이프업 1.5 스크랩북을 다운로드하고 시작해보세요.</p><hr style="border:0;border-top:1px solid #eceef1;margin:32px 0"><h2 style="font-size:20px">📥 라이프업 1.5 스크랩북 다운로드</h2><a href="${lifeupScrapbookReleaseUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#fff;font-weight:700;text-decoration:none">스크랩북 다운로드 →</a><hr style="border:0;border-top:1px solid #eceef1;margin:32px 0"><h2 style="font-size:20px">📄 보관용 PDF</h2><p style="margin:0 0 18px;line-height:1.8;color:#555">설치 링크와 이용 안내를 보관용 PDF로도 확인하실 수 있습니다.</p><a href="${lifeupScrapbookPassportUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-weight:700;text-decoration:none">보관용 PDF 열기 →</a><hr style="border:0;border-top:1px solid #eceef1;margin:32px 0"><h2 style="font-size:20px">🛡️ 라이프업 케어</h2><a href="${lifeupCareUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-weight:700;text-decoration:none">라이프업 케어로 이동하기 →</a></div></div></div>`
+    };
+}
+
+async function receiveLifeupScrapbookPurchase(purchaserRef: admin.firestore.DocumentReference, purchaser: admin.firestore.DocumentData): Promise<void> {
+    await registerPurchaserCustomer(purchaser);
+    const recipients = [...new Set([LATPEED_ADMIN_EMAIL, customerEmail(purchaser.email)])]
+        .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    const deliveries = await Promise.all(recipients.map(async email => {
+        const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: email,
+            ...withUnsubscribe(lifeupScrapbookWelcomeMail(String(purchaser.name || ''))) }, 'high', `purchase-scrapbook-welcome:${purchaserRef.id}:${email}`);
+        if (sent.error) throw new Error('PURCHASE_MAIL_QUEUE_FAILED');
+        return { email, queueId: sent.data?.id || '', status: 'queued' };
+    }));
+    await purchaserRef.update({ 'welcomeEmail.status': 'queued', 'welcomeEmail.recipients': deliveries,
+        'welcomeEmail.queuedAt': admin.firestore.FieldValue.serverTimestamp(), 'reception.status': 'completed',
+        'reception.completedAt': admin.firestore.FieldValue.serverTimestamp() });
+}
 
 async function receiveLifeupPurchase(purchaserRef: admin.firestore.DocumentReference, purchaser: admin.firestore.DocumentData): Promise<void> {
     await registerPurchaserCustomer(purchaser);
@@ -3523,30 +3932,66 @@ export const validateLifeupPurchaserCsv = onRequest(withCors(async (req, res) =>
     }
 }));
 
+export const deleteMyWorkspace = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    let identity: admin.auth.DecodedIdToken;
+    try { identity = await admin.auth().verifyIdToken((req.headers.authorization || '').replace(/^Bearer /, ''), true); }
+    catch { return res.status(401).json({ error: '로그인 후 다시 시도해주세요.' }); }
+    const userId = req.body?.userId;
+    if (typeof userId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(userId) || req.body?.confirmation !== userId)
+        return res.status(400).json({ error: '삭제할 워크스페이스를 확인해주세요.' });
+    try {
+        await archiveWorkspace(db, identity.uid, userId);
+        return res.json({ success: true });
+    } catch (error) {
+        if (error instanceof WorkspaceDeletionError) return res.status(error.status).json({ error: error.message });
+        logger.error('Workspace deletion failed', error);
+        return res.status(500).json({ error: '워크스페이스 삭제에 실패했습니다. 다시 시도해주세요.' });
+    }
+}));
+
 export const getAppSession = onRequest(withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
     let identity: admin.auth.DecodedIdToken;
     try {
         identity = await admin.auth().verifyIdToken((req.headers.authorization || '').replace(/^Bearer /, ''), true);
     } catch { return res.status(401).json({ error: 'Login required' }); }
-    const accountRef = db.collection('appAccounts').doc(identity.uid);
-    const account = await accountRef.get();
-    if (account.data()?.deletionStatus === 'pending') return res.status(409).json({ error: 'ACCOUNT_DELETION_PENDING' });
-    if (!account.exists) {
-        await accountRef.set({ createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    const policyError = purchaseEmailError(identity);
+    if (policyError) return res.status(403).json({ error: policyError });
+    try {
+        const result = await db.runTransaction(async tx => {
+            const accountRef = db.collection('appAccounts').doc(identity.uid);
+            const [account, owned] = await Promise.all([
+                tx.get(accountRef), tx.get(db.collection('users').where('firebaseUid', '==', identity.uid))
+            ]);
+            const binding = account.data() || {};
+            if (binding.deletionStatus === 'pending') return { status: 409, error: 'ACCOUNT_DELETION_PENDING' };
+            const requestedId = String(req.body?.userId || '');
+            if (requestedId && !owned.docs.some(doc => doc.id === requestedId))
+                return { status: 403, error: 'Account mismatch' };
+            const requestedTemplate = String(req.body?.templateId || '');
+            const current = (requestedTemplate && !requestedId
+                ? owned.docs.find(doc => workspaceTemplate(doc.data()) === requestedTemplate)
+                : owned.docs.find(doc => doc.id === (requestedId || binding.userId)))
+                || owned.docs.find(doc => doc.id === binding.userId) || owned.docs[0];
+            const userId = current?.id || '';
+            if (!account.exists || binding.userId !== userId) tx.set(accountRef, {
+                ...(!account.exists ? { createdAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
+                userId: userId || admin.firestore.FieldValue.delete()
+            }, { merge: true });
+            const workspaces = owned.docs.map(doc => ({ userId: doc.id, templateId: workspaceTemplate(doc.data()),
+                name: workspaceTemplate(doc.data()) === 'lifeUpScrapbook' ? '라이프업 스크랩북' : '라이프업' }));
+            const workspace = current?.data();
+            return { status: 200, userId, workspaces,
+                templateId: workspace ? workspaceTemplate(workspace) : '',
+                kakaoUserId: workspace?.kakaoUserId || '', notionConnected: !!workspace?.notionAccessToken };
+        });
+        const { status, ...payload } = result;
+        return res.status(status).json(payload);
+    } catch (error) {
+        logger.error('Workspace session lookup failed', error);
+        return res.status(500).json({ error: 'SESSION_LOOKUP_FAILED' });
     }
-    // Recover stale/manual bindings from verified ownership. This is deliberately
-    // not a transaction: session lookup must remain fast during login.
-    const binding = account.data() || {};
-    const owned = await db.collection('users').where('firebaseUid', '==', identity.uid).limit(2).get();
-    const current = owned.docs.find(doc => doc.id === binding.userId);
-    if (!current && owned.size > 1) return res.status(409).json({ error: 'AMBIGUOUS_WORKSPACE_BINDING' });
-    const userId = current?.id || owned.docs[0]?.id || '';
-    if (binding.userId !== userId) await accountRef.set({ userId: userId || admin.firestore.FieldValue.delete() }, { merge: true });
-    if (!userId) return res.json({ userId: '' });
-    const workspace = (await db.collection('users').doc(userId).get()).data();
-    if (!workspace || workspace.firebaseUid !== identity.uid) return res.status(403).json({ error: 'Account mismatch' });
-    return res.json({ userId, kakaoUserId: workspace.kakaoUserId || '', notionConnected: !!workspace.notionAccessToken });
 }));
 
 async function initialMarketingConsent(email: string): Promise<boolean> {
@@ -3735,6 +4180,8 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             try {
                 const identity = await admin.auth().verifyIdToken((req.headers.authorization || '').replace(/^Bearer /, ''), true);
                 firebaseUid = identity.uid;
+                const policyError = purchaseEmailError(identity, typeof email === 'string' ? email : '');
+                if (policyError) return res.status(403).json({ message: policyError });
             } catch { return res.status(401).json({ message: '로그인 후 다시 인증해주세요.' }); }
         }
 
@@ -3768,7 +4215,11 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             code: string;
             expiresAt: admin.firestore.Timestamp;
             attempts?: number;
+            templateId?: string;
         };
+
+        if (data.templateId && data.templateId !== (templateId || 'lifeUp'))
+            return res.status(400).json({ message: '다른 상품의 인증번호입니다. 해당 상품에서 다시 요청해주세요.' });
 
         const hashedInput = crypto.createHash('sha256')
             .update(nomalizedCode)
@@ -3799,7 +4250,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
         let bestPurchaser: PurchaserRecord | null = null;
         if (templateId) {
             purchaserRecords = await findPurchaserRecords(templateId, nomalizedEMail);
-            bestPurchaser = selectBestPurchaser(purchaserRecords);
+            bestPurchaser = selectBestPurchaserForTemplate(templateId, purchaserRecords);
             if (!bestPurchaser) {
                 return res.status(200).json({
                     message: '유료 라이프업 구매 정보를 찾을 수 없습니다. 구매 이메일을 확인해주세요.'
@@ -3807,23 +4258,37 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             }
         }
 
+        if (firebaseUid) {
+            if (!['lifeUp', 'lifeUpScrapbook'].includes(templateId) || !bestPurchaser)
+                return res.status(400).json({ message: '인증할 상품을 선택해주세요.' });
+            const userId = await bindWorkspacePurchase(db, firebaseUid, nomalizedEMail, templateId, {
+                purchaser: bestPurchaser.data, purchaserIds: purchaserRecords.map(record => record.id),
+                memberType: templateId === 'lifeUp' ? bestPurchaser.memberType : 'standard'
+            }, { ref: docRef, hash: hashedInput });
+            const workspace = (await db.collection('users').doc(userId).get()).data();
+            const key = workspace?.accessKey ? { accessKey: workspace.accessKey } : await UserService.createAndSetUserAccessKey(userId);
+            return res.json({ userId, accessKey: key.accessKey });
+        }
+
         // 인증 성공
         // 위젯 모드에서는 memberId가 없고,
         // 홈페이지 워크스페이스 모드에서는 memberId가 전달됩니다.
         const userQuerySnap = await db.collection('users')
             .where('email', '==', nomalizedEMail)
-            .limit(1)
             .get();
+        const widgetWorkspaces = userQuerySnap.docs.filter(doc => workspaceTemplate(doc.data()) === (templateId || 'lifeUp'));
+        if (widgetWorkspaces.length > 1) return res.status(409).json({ message: '중복된 워크스페이스가 있습니다. 관리자에게 문의해주세요.' });
 
         let userId: string;
         let accessKeyData: CreateUserAccessKeyResult;
 
-        if (userQuerySnap.empty || userQuerySnap.docs.length === 0) {
+        if (widgetWorkspaces.length === 0) {
             // 기존 userId가 없는 경우 새로 생성
             userId = nanoid(6);
 
             const userData: any = {
                 email: nomalizedEMail,
+                templateId: templateId || 'lifeUp',
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             };
 
@@ -3838,7 +4303,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             accessKeyData = await UserService.createAndSetUserAccessKey(userId);
 
         } else {
-            const userDoc = userQuerySnap.docs[0];
+            const userDoc = widgetWorkspaces[0];
 
             if (!userDoc) {
                 throw new Error('User document unexpectedly missing');
@@ -3883,29 +4348,6 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
             }
         }
 
-        if (firebaseUid) {
-            const accountRef = db.collection('appAccounts').doc(firebaseUid);
-            const workspaceRef = db.collection('users').doc(userId);
-            await db.runTransaction(async transaction => {
-                const [account, workspace, verification] = await Promise.all([transaction.get(accountRef), transaction.get(workspaceRef), transaction.get(docRef)]);
-                if (account.data()?.deletionStatus === 'pending') throw new Error('ACCOUNT_DELETION_PENDING');
-                if (!verification.exists || verification.data()?.code !== hashedInput ||
-                    verification.data()?.expiresAt.toMillis() < Date.now()) {
-                    throw new Error('인증번호가 만료되었거나 이미 사용되었습니다.');
-                }
-                if ((account.data()?.userId && account.data()?.userId !== userId) ||
-                    (workspace.data()?.firebaseUid && workspace.data()?.firebaseUid !== firebaseUid)) {
-                    throw new Error('이미 다른 계정에 연결되어 있습니다. 관리자에게 문의해주세요.');
-                }
-                transaction.set(accountRef, { userId,
-                    ...(bestPurchaser?.data.source === 'invitation' && account.data()?.marketingConsentSource !== 'user'
-                        ? { invitationMarketingConsentRequired: true } : {})
-                }, { merge: true });
-                transaction.update(workspaceRef, { firebaseUid });
-                transaction.delete(docRef);
-            });
-        }
-
         if (templateId) {
             await db.collection('users').doc(userId).collection('purchases').doc(templateId).set({
                 verified: true,
@@ -3931,6 +4373,7 @@ export const verifyCode = onRequest(withCors(async (req, res) => {
 
     } catch (error: any) {
         console.error('verifyCode error:', error);
+        if (error instanceof WorkspaceConflict) return res.status(409).json({ message: error.message });
 
         return res.status(500).json({
             message: '서버 오류가 발생했습니다.',
@@ -4710,6 +5153,9 @@ class NotionService {
         if (!accessToken) {
             throw new Error("NOTION_NOT_CONNECTED");
         }
+        if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' && aiResult.db !== 'reference') {
+            throw new Error('SCRAPBOOK_REFERENCE_ONLY');
+        }
         const notion = new Client({ auth: accessToken });
         const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
         console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
@@ -4717,7 +5163,7 @@ class NotionService {
 
         // entity있으면 entity만, 컨텐츠까지 넣으면 중복됨
         const entityBlocks = this.buildContentBlocks(entity);
-        const contentBlocks = entityBlocks.length > 0
+        const contentBlocks = aiResult.scrapbookConfirmed ? this.buildAiContentBlocks(aiResult.content) : entityBlocks.length > 0
             ? entityBlocks
             : this.buildAiContentBlocks(aiResult.content);
 
@@ -4780,6 +5226,9 @@ class NotionService {
 
         let properties: any;
         let cover: any;
+        if (aiResult.scrapbookConfirmed && aiResult.scrapbookSourceDb === 'contact' && entity?.imageUrl) {
+            cover = { type: 'external', external: { url: entity.imageUrl } };
+        }
         const normalizePropertyValue = (value?: string) => {
             if (!value) return value;
 
@@ -10880,6 +11329,36 @@ async function processKakaoAgent(
     try {
         let t = Date.now();
 
+        if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' && userMessage.trim() === '저장') {
+            const pending = await getLastAssistantContext(userId);
+            if (!pending?.result?.scrapbookPending) {
+                await resposeKakaoMessageByCallbackUrl('저장할 대기 내용이 없습니다. 저장할 내용을 다시 보내 주세요.', callbackUrl);
+                return;
+            }
+            const original = pending.result;
+            const contact = { ...pending.entity, ...original.entity };
+            const contactLabels: Record<string, string> = { name: '이름', company: '회사', department: '부서', position: '직책', phone: '전화', mobile: '휴대폰', fax: '팩스', email: '이메일', address: '주소', website: '웹사이트', ocrText: '명함 원문' };
+            const contactFields = Object.keys(contactLabels);
+            const content = [pending.userMessage, original.content,
+                original.db === 'contact' ? contactFields.filter(key => contact[key]).map(key => `${contactLabels[key]}: ${contact[key]}`).join('\n') : pending.aiEntityMessage
+            ].filter(Boolean).join('\n\n');
+            const converted = { ...original, action: 'create', db: 'reference', type: undefined,
+                content, scrapbookConfirmed: true, scrapbookSourceDb: original.db, scrapbookPending: false,
+                contextId: pending.contextId, response: '스크랩북에 저장했습니다.' };
+            try {
+                const pageId = await NotionService.createDbItemFromAiResult(userId, converted, contact);
+                if (!pageId) throw new Error('SCRAPBOOK_SAVE_FAILED');
+                await db.collection('users').doc(userId).collection('assistantContext').doc(pending.contextId).update({
+                    pageId, result: removeUndefined(converted)
+                });
+                await resposeKakaoMessageByCallbackUrl(converted.response, callbackUrl);
+            } catch (error) {
+                logger.error('[Scrapbook] confirmed save failed', { userId, error });
+                await resposeKakaoMessageByCallbackUrl('스크랩북에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.', callbackUrl);
+            }
+            return;
+        }
+
         console.log("[KAKAO] processAssistantEntity START", {
             userId,
             userMessage
@@ -10984,6 +11463,13 @@ async function processKakaoAgent(
         }
 
         ////////////////////////////////////////////////////////////////////////////////////
+
+        if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' &&
+            ['create', 'correct'].includes(enrichedResult.action) && enrichedResult.db !== 'reference') {
+            enrichedResult.scrapbookPending = true;
+            enrichedResult.action = 'scrapbookPending';
+            enrichedResult.response = `할 일로 분류되어 저장하지 않았습니다.\n스크랩북에 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/lifeup-scrapbook`;
+        }
 
         const payload: any = {
             userMessage,
@@ -14557,7 +15043,7 @@ async function processVerificationCode(
         .doc(userId)
         .get();
 
-    if (!targetUserSnap.exists) {
+    if (!targetUserSnap.exists || targetUserSnap.data()?.deletionStatus === 'archived') {
         //인증번호가 다릅니다.\n인증번호를 확인 후 다시 보내주세요.
         return sendInvalidVerificationCode(res);
     }
@@ -14565,13 +15051,13 @@ async function processVerificationCode(
     ///////////////////////////////////////////////////
     const connectionResult = await connectKakaoUser(userId, kakaoUserId);
 
-    if (connectionResult === 'already-connected-to-another-workspace') {
+    if (connectionResult !== 'connected' && connectionResult !== 'already-connected') {
         await matchedDoc.ref.update({
             status: connectionResult,
             completedAt: admin.firestore.FieldValue.serverTimestamp(),
             kakaoUserId
         });
-        return sendAlreadyConnectedKakaoMessage(res);
+        return sendKakaoConnectionConflictMessage(res, connectionResult);
     }
 
     ///////////////////////////////////////////////////
@@ -14589,7 +15075,12 @@ async function processVerificationCode(
 ///////////////////////////////////////////////////////
 // kakao connect user
 
-type KakaoConnectionResult = 'connected' | 'already-connected' | 'already-connected-to-another-workspace';
+type KakaoConnectionResult =
+    | 'connected'
+    | 'already-connected'
+    | 'already-connected-to-another-workspace'
+    | 'already-connected-to-my-other-workspace'
+    | 'already-connected-to-another-account';
 
 export async function connectKakaoUser(uid: string, kakaoUserId: string): Promise<KakaoConnectionResult> {
     try {
@@ -14604,11 +15095,20 @@ export async function connectKakaoUser(uid: string, kakaoUserId: string): Promis
                 transaction.get(userRef),
                 transaction.get(connRef)
             ]);
+            if (!userDoc.exists || userDoc.data()?.deletionStatus === 'archived') throw new Error('WORKSPACE_DELETED');
             const connectedUid = connectionDoc.exists
                 ? connectionDoc.data()?.uid ?? connectionDoc.data()?.userId
                 : '';
 
             if (connectedUid && connectedUid !== uid) {
+                const connectedWorkspace = await transaction.get(db.collection('users').doc(connectedUid));
+                const currentOwnerUid = String(userDoc.data()?.firebaseUid || '');
+                const connectedOwnerUid = String(connectedWorkspace.data()?.firebaseUid || '');
+                if (currentOwnerUid && connectedOwnerUid) {
+                    return currentOwnerUid === connectedOwnerUid
+                        ? 'already-connected-to-my-other-workspace' as const
+                        : 'already-connected-to-another-account' as const;
+                }
                 return 'already-connected-to-another-workspace' as const;
             }
             if (connectedUid === uid) {
@@ -14767,11 +15267,13 @@ function sendExpiredVerificationCode(
     );
 }
 
-function sendAlreadyConnectedKakaoMessage(res: any) {
-    return resposeKakaoMessage(
-        '이 카카오톡 계정은 이미 다른 워크스페이스에 연결되어 있습니다. 기존 연결을 해제한 뒤 다시 시도해 주세요.',
-        res
-    );
+function sendKakaoConnectionConflictMessage(res: any, result: KakaoConnectionResult) {
+    const message = result === 'already-connected-to-my-other-workspace'
+        ? '이 카카오톡 계정은 내 다른 라이프업 템플릿에 이미 연결되어 있습니다. 기존 템플릿의 연결을 해제한 뒤 다시 시도해 주세요.'
+        : result === 'already-connected-to-another-account'
+            ? '이 카카오톡 계정은 다른 계정의 라이프업 템플릿에 이미 연결되어 있습니다. 해당 계정에서 연결을 해제한 뒤 다시 시도해 주세요.'
+            : '이 카카오톡 계정은 이미 다른 워크스페이스에 연결되어 있습니다. 기존 연결을 해제한 뒤 다시 시도해 주세요.';
+    return resposeKakaoMessage(message, res);
 }
 
 function sendConnectedMessage(
@@ -15109,6 +15611,20 @@ export interface RecordMyDailyHabitStatsResult {
     today?: DailyHabitStatsResult;
 }
 
+/** 루틴 관리 비서가 꺼져 있으면 스케줄과 수동 호출을 모두 중단한다. 기존 사용자는 설정 전까지 기본 ON이다. */
+async function isRoutineAutomationEnabled(userId: string): Promise<boolean> {
+    const routine = await db.collection('users').doc(userId).collection('integrations').doc('routine').get();
+    return routine.data()?.enabled !== false;
+}
+
+function sendRoutineAutomationDisabled(res: any): void {
+    res.status(409).json({
+        success: false,
+        code: 'ROUTINE_AUTOMATION_DISABLED',
+        message: '루틴 관리 비서가 정지되어 있어 루틴 자동화를 실행할 수 없습니다.'
+    });
+}
+
 export const reconcileMyHabitStats = onRequest({ region: 'asia-northeast3', timeoutSeconds: 540, memory: '512MiB' }, withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ success: false });
     let identity: admin.auth.DecodedIdToken;
@@ -15118,6 +15634,9 @@ export const reconcileMyHabitStats = onRequest({ region: 'asia-northeast3', time
     const userId = (await db.collection('appAccounts').doc(identity.uid).get()).data()?.userId;
     if (!userId || (await db.collection('users').doc(userId).get()).data()?.firebaseUid !== identity.uid) {
         return res.status(403).json({ success: false });
+    }
+    if (!await isRoutineAutomationEnabled(userId)) {
+        return sendRoutineAutomationDisabled(res);
     }
     const scope = req.body?.scope;
     if (scope !== 'all' && scope !== 'today') return res.status(400).json({ success: false });
@@ -15153,6 +15672,7 @@ export const createDailyHabitLogs = onSchedule({
         await Promise.all(
             batch.map(async (userDoc) => {
                 try {
+                    if (!await isRoutineAutomationEnabled(userDoc.id)) return;
                     await RoutineService.createDailyHabitLogs(
                         userDoc.id,
                         targetDate,
@@ -15190,6 +15710,7 @@ export const recordDailyHabitStats = onSchedule({
         await Promise.all(
             batch.map(async (userDoc) => {
                 try {
+                    if (!await isRoutineAutomationEnabled(userDoc.id)) return;
                     await RoutineService.recordDailyHabitStats(
                         userDoc.id,
                         targetDate
@@ -15223,6 +15744,11 @@ export const recordMyDailyHabitStatsWithUserId = onRequest(
                     success: false,
                     message: 'userId가 필요합니다.'
                 });
+                return;
+            }
+
+            if (!await isRoutineAutomationEnabled(userId)) {
+                sendRoutineAutomationDisabled(res);
                 return;
             }
 
@@ -15296,6 +15822,11 @@ export const createMyDailyHabitLogsWithUserId = onRequest({ timeoutSeconds: 540 
             return;
         }
 
+        if (!await isRoutineAutomationEnabled(userId)) {
+            sendRoutineAutomationDisabled(res);
+            return;
+        }
+
         const { targetDate, targetDay } = getTargetDay();
 
         logger.info('[HabitTest] 생성 대상', {
@@ -15353,6 +15884,11 @@ export const syncMyHabitsWithUserId = onRequest({ timeoutSeconds: 540 }, withCor
         logger.info('[HabitSync] 동기화 대상', {
             userId
         });
+
+        if (!await isRoutineAutomationEnabled(userId)) {
+            sendRoutineAutomationDisabled(res);
+            return;
+        }
 
         const habitId = req.body?.habitId;
         if (habitId !== undefined && (typeof habitId !== 'string' || !habitId || habitId.includes('/'))) {
@@ -16418,6 +16954,43 @@ export const getNotionGoals = onRequest(withCors(async (req, res) => {
     }
 }));
 
+// Workspace-scoped upgrade event. The server is the sole writer so the timer is
+// shared by every browser that opens the same Scrapbook workspace.
+export const getScrapbookUpgradeEvent = onRequest(
+    withCors(async (req, res) => {
+        if (req.method !== 'POST') { res.status(405).end(); return; }
+        let identity: admin.auth.DecodedIdToken;
+        try {
+            identity = await admin.auth().verifyIdToken((req.headers.authorization || '').replace(/^Bearer /, ''), true);
+        } catch { res.status(401).json({ error: 'LOGIN_REQUIRED' }); return; }
+        const workspaceId = String(req.body?.workspaceId ?? '');
+        if (!workspaceId || workspaceId.includes('/')) {
+            res.status(400).json({ error: 'MISSING_WORKSPACE_ID' });
+            return;
+        }
+
+        const workspaceRef = db.collection('users').doc(workspaceId);
+        const result = await db.runTransaction(async transaction => {
+            const snapshot = await transaction.get(workspaceRef);
+            const account = await transaction.get(db.collection('appAccounts').doc(identity.uid));
+            if (!snapshot.exists || snapshot.data()?.firebaseUid !== identity.uid ||
+                snapshot.data()?.templateId !== 'lifeUpScrapbook' ||
+                snapshot.data()?.deletionStatus === 'archived' || account.data()?.deletionStatus === 'pending') return null;
+            const existing = snapshot.data()?.scrapbookUpgradeEventFirstSeenAt;
+            if (existing?.toMillis) return existing.toMillis();
+
+            const now = admin.firestore.Timestamp.now();
+            transaction.set(workspaceRef, {
+                scrapbookUpgradeEventFirstSeenAt: now
+            }, { merge: true });
+            return now.toMillis();
+        });
+
+        if (result === null) { res.status(403).json({ error: 'SCRAPBOOK_WORKSPACE_REQUIRED' }); return; }
+        res.json({ firstSeenAt: result, serverNow: Date.now() });
+    })
+);
+
 // #template
 // #lifeup template
 export const getLifeupTemplateInfo = onRequest(
@@ -16443,10 +17016,9 @@ export const getLifeupTemplateInfo = onRequest(
             console.error("[getLifeupTemplateInfo] error =", error);
 
             if (error.message === "NOTION_NOT_CONNECTED") {
-                res.status(400).json({
-                    success: false,
-                    error: "NOTION_NOT_CONNECTED"
-                });
+                // A workspace may be purchased before its Notion template is
+                // connected. That is an empty state, not a failed request.
+                res.status(200).json({ success: true, data: null });
                 return;
             }
 

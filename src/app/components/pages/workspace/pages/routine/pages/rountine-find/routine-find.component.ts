@@ -5,11 +5,13 @@ import { AuthService } from '../../../../../../../services/auth.service';
 import { UserService } from '../../../../../../../services/user.service';
 import { _log } from '../../../../../../../lib/cf-common/cf-common';
 import { ToastService } from '../../../../../../../services/toast.service';
+import { ScrapbookUpgradeEventService } from '../../../../../../../services/scrapbook-upgrade-event.service';
+import { ScrapbookUpgradeCardComponent } from '../../../../../../common/scrapbook-upgrade-card.component';
 
 @Component({
     selector: 'app-routine-find',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, ScrapbookUpgradeCardComponent],
     templateUrl: './routine-find.component.html',
     styleUrls: ['./routine-find.component.scss']
 })
@@ -105,7 +107,8 @@ export class RoutineFindComponent {
     constructor(
         private authService: AuthService,
         private userService: UserService,
-        private toastService: ToastService
+        private toastService: ToastService,
+        private upgradeEvent: ScrapbookUpgradeEventService
         // private activateRouter: ActivatedRoute,
         // private router: Router
         //private appStatisticsStore: AppStatisticsStore,
@@ -155,14 +158,32 @@ export class RoutineFindComponent {
     }
 
     async addHabit(habit: any) {
-        if (this.addingHabits.has(habit)) return;
+        if (this.addingHabits.has(habit) || this.upgradeLoading || this.showUpgradeNotice) return;
         if (!this.memberUid) {
             ToastService.show('로그인이 필요합니다.');
             return;
         }
 
         if (!this.userId) {
-            ToastService.show('먼저 연결관리에서 라이프봇 연결을 진행해주세요.');
+            ToastService.show('먼저 연결 설정에서 구매인증을 완료해주세요.');
+            return;
+        }
+
+        // A workspace must exist before its template can determine permission.
+        if (this.authService.templateId !== 'lifeUp') {
+            if (this.authService.templateId === 'lifeUpScrapbook') {
+                this.upgradeLoading = true;
+                this.addingHabits.add(habit);
+                try { await this.upgradeEvent.initialize(this.userId); }
+                catch { /* Show the regular upgrade link if loading fails. */ }
+                finally {
+                    this.upgradeLoading = false;
+                    this.addingHabits.delete(habit);
+                }
+                this.showUpgradeNotice = true;
+            } else {
+                ToastService.show('현재 템플릿에서는 루틴 추가를 지원하지 않습니다.');
+            }
             return;
         }
 
@@ -189,6 +210,9 @@ export class RoutineFindComponent {
     isAddingHabit(habit: any): boolean {
         return this.addingHabits.has(habit);
     }
+    showUpgradeNotice = false;
+    private upgradeLoading = false;
+    get upgradeUrl(): string { return this.upgradeEvent.upgradeUrl; }
 
     get filteredHabits() {
         if (!this.selectedCategory || this.selectedCategory === '전체') {

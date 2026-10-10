@@ -20,6 +20,13 @@ test('premium remains highest grade regardless of purchase order', () => {
     assert.equal(grades.size, 1);
     assert.equal(grades.get('01012345678'), 'premium');
 });
+test('scrapbook is retained unless the customer has a LifeUp purchase', () => {
+    const grades = new Map();
+    addCustomerGrade(grades, '010-1234-5678', 'scrapbook');
+    assert.equal(grades.get('01012345678'), 'scrapbook');
+    addCustomerGrade(grades, '01012345678', 'standard');
+    assert.equal(grades.get('01012345678'), 'standard');
+});
 test('140 formatted standard purchases remain standard across result pages', () => {
     const grades = new Map();
     const rows = Array.from({length: 140}, (_, i) => {

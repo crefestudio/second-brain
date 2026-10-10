@@ -1,0 +1,6 @@
+:host { display: block; min-height: 100dvh; background: #07090d; }
+.upgrade-page { min-height: 100dvh; display: grid; place-items: center; padding: 16px; }
+.upgrade-page app-scrapbook-upgrade-card { width: 100%; }
+.loading { display: grid; place-items: center; min-height: 400px; }
+.loading-spinner { width: 28px; height: 28px; border: 3px solid #2a3140; border-top-color: #7fb7ff; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

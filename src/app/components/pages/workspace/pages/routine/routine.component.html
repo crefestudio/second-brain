@@ -1,30 +1,23 @@
 <div class="routine-layout">
-
   <div class="routine-header">
     <nav class="sub-menu">
-      <a routerLink="/workspace/routine/dashboard" routerLinkActive="active" class="sub-menu-item">
-        대시보드
-      </a>
-      <a routerLink="/workspace/routine/myroutine" routerLinkActive="active" class="sub-menu-item">
-        내 루틴
-      </a>
-      <a routerLink="/workspace/routine/find" routerLinkActive="active" class="sub-menu-item">
-        추천 습관
-      </a>
+      <a routerLink="/workspace/routine/dashboard" routerLinkActive="active" class="sub-menu-item">대시보드</a>
+      <a routerLink="/workspace/routine/myroutine" routerLinkActive="active" class="sub-menu-item">내 루틴</a>
+      <a routerLink="/workspace/routine/find" routerLinkActive="active" class="sub-menu-item">추천 습관</a>
     </nav>
   </div>
-
-  <div class="routine-notice">
-    <div class="routine-notice-content">
-      루틴 서비스는 현재 <strong>시험 운영 중</strong>이며, 12월 1일 정식 오픈 예정입니다.
-      <!-- <a href="#">자세히 보기</a> -->
-    </div>
-    <!-- <button type="button" class="routine-notice-close" aria-label="닫기">×</button> -->
-  </div>
-
-
   <div class="routine-content">
-    <router-outlet></router-outlet>
+    @if (isLoading) { <p class="routine-status" role="status">워크스페이스 정보를 불러오는 중입니다.</p> }
+    @else if (sessionLoadFailed) { <p class="routine-status" role="alert">워크스페이스 정보를 불러오지 못했습니다. 다시 시도해 주세요.</p> }
+    @else if (!hasWorkspace && !isRecommendedHabits) {
+      <section class="notion-connect-box">
+        <h2>구매인증 후 이용할 수 있습니다.</h2>
+        <a class="notion-connect-btn" routerLink="/workspace/connect">구매인증 및 연결 설정</a>
+      </section>
+    }
+    @else if (showUnsupportedNotice) {
+      <app-scrapbook-upgrade-card />
+    }
+    @else { <router-outlet></router-outlet> }
   </div>
-
 </div>

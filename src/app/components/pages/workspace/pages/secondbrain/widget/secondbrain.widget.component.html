@@ -2,6 +2,9 @@
      [class.widget-mode]="isWidgetMode"
      [class.app-mode]="!isWidgetMode">
   <div class="center-box">
+    @if (showUnsupportedNotice) {
+      <app-scrapbook-upgrade-card />
+    }
     <!-- connect-button -->
     <div *ngIf="state=='connect-button'">
       <button class="connect-btn" (click)="onClickConnectBtn()">

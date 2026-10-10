@@ -7,7 +7,7 @@
 <div class="page-container">
   <div class="page-header">
     <h1>구매 정보</h1>
-    <p>전체 구매 내역을 확인합니다. 현재 적용 중인 구매에서 다운로드와 라이프봇 연결을 이용할 수 있습니다.</p>
+    <p>로그인한 계정의 전체 구매 내역입니다. 워크스페이스 선택과 관계없이 표시됩니다.</p>
   </div>
   @if (loadError) {
     <p role="alert">{{ loadError }}</p>
@@ -26,23 +26,24 @@
         <tr>
           <td>{{ purchaseDate(purchase.purchasedAt) }}</td>
           <td>
-            <div>{{ purchase.purchaseOption || '라이프업' }}</div>
+            <div>{{ purchase.productName }}</div>
+            @if (purchase.purchaseOption) { <div>{{ purchase.purchaseOption }}</div> }
             <div class="purchase-status">{{ purchase.active ? '현재 적용 중' : purchase.upgradeOnly ? '서비스 등급 승격 내역' : '현재 적용 제외' }}</div>
           </td>
           <td>{{ purchase.memberType === 'premium' ? '프리미엄' : purchase.memberType === 'standard' ? '일반' : '해당 없음' }}</td>
           <td><button class="verify-btn" (click)="expandedPurchaseId = expandedPurchaseId === purchase.id ? '' : purchase.id">
             {{ expandedPurchaseId === purchase.id ? '접기' : '상세 정보' }}
           </button></td>
-          <td><button class="verify-btn" [disabled]="!purchase.active" (click)="router.navigate(['/download/lifeup'])">다운로드</button></td>
+          <td><button class="verify-btn" [disabled]="!purchase.active" (click)="router.navigate([purchase.templateId === 'lifeUpScrapbook' ? '/download/lifeup-scrapbook' : '/download/lifeup'])">다운로드</button></td>
           <td>
             @if (purchase.active) { <span class="badge success">확인됨</span> }
             @else { <button class="verify-btn" disabled>구매 확인</button> }
           </td>
           <td>
-            @if (purchase.active && kakaoUserId && notionAccessToken) {
+            @if (purchase.active && purchase.connected) {
               <span class="badge success">연결됨</span>
             } @else {
-              <button class="verify-btn" [disabled]="!purchase.active" (click)="router.navigate(['/workspace/connect'])">라이프봇 연결</button>
+              <button class="verify-btn" [disabled]="!purchase.active" (click)="connectPurchase(purchase)">라이프봇 연결</button>
             }
           </td>
         </tr>
@@ -53,7 +54,7 @@
             <tr><th>이메일</th><td>{{ purchase.email }}</td><th>결제 상태</th><td>{{ purchase.status }}</td></tr>
             <tr><th>결제 금액</th><td>{{ purchase.amount }}</td><th>결제 수단</th><td>{{ purchase.paymentMethod }}</td></tr>
             <tr><th>구매 일시</th><td>{{ purchase.purchasedAt }}</td><th>알림 수신</th><td>{{ purchase.notify }}</td></tr>
-            <tr><th>구매 옵션</th><td colspan="3">{{ purchase.purchaseOption }}</td></tr>
+            @if (purchase.purchaseOption) { <tr><th>구매 옵션</th><td colspan="3">{{ purchase.purchaseOption }}</td></tr> }
           </tbody></table>
         </td></tr>
         }

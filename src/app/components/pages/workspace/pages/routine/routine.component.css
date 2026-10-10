@@ -2,6 +2,46 @@
   padding: 24px;
 }
 
+.routine-status {
+  margin: 80px auto;
+  text-align: center;
+  color: #9ca3af;
+}
+
+.notion-connect-box {
+  width: calc(100% - 32px);
+  max-width: 500px;
+  margin: 80px auto;
+  padding: 40px 30px;
+  box-sizing: border-box;
+  text-align: center;
+  background: #151a21;
+  border: 1px solid #2a313b;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+}
+
+.notion-connect-icon { margin-bottom: 16px; font-size: 32px; }
+.notion-connect-box h2 { margin: 0 0 10px; color: #f3f4f6; font-size: 20px; font-weight: 600; }
+.notion-connect-box p { margin: 0 0 24px; color: #9ca3af; font-size: 14px; line-height: 1.7; }
+.notion-connect-box strong { color: #f3f4f6; }
+.notion-connect-btn {
+  display: inline-block;
+  padding: 10px 22px;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background .15s ease;
+}
+.notion-connect-btn:hover { background: #1d4ed8; }
+.upgrade-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgb(7 9 13 / 70%); backdrop-filter: blur(4px); }
+.upgrade-popup { position: relative; width: min(420px, 100%); padding: 38px 26px 22px; border-radius: 20px; background: #1c2028; color: #edf1f7; text-align: center; box-shadow: 0 24px 80px #00000066; }
+.upgrade-popup h2 { margin: 10px 0; font-size: 21px; }.upgrade-popup p { color: #a6afbf; line-height: 1.7; }.upgrade-close { position: absolute; top: 12px; right: 16px; border: 0; background: none; color: #a2aaba; font-size: 26px; }.upgrade-timer { display: block; margin: 18px 0; color: #bdd5ff; font-size: 32px; font-variant-numeric: tabular-nums; }.upgrade-later { margin-top: 10px; border: 0; background: none; color: #a2aaba; }
+
 .routine-header {
   display: flex;
   justify-content: center;

@@ -1,5 +1,5 @@
 import { createHash, randomInt, randomUUID } from 'crypto';
-import { nanoid } from 'nanoid';
+import { bindWorkspacePurchase, workspaceTemplate, WorkspaceConflict } from './workspace-purchase';
 import type * as admin from 'firebase-admin';
 
 export class PurchaseLoginError extends Error {
@@ -16,7 +16,7 @@ interface Dependencies {
     db: admin.firestore.Firestore;
     auth: admin.auth.Auth;
     send: (email: string, code: string) => Promise<void>;
-    purchase: (email: string) => Promise<Purchase | null>;
+    purchase: (email: string, templateId: 'lifeUp' | 'lifeUpScrapbook') => Promise<Purchase | null>;
 }
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -31,7 +31,7 @@ function emailAddress(value: unknown): string {
 export function createPurchaseLogin(deps: Dependencies) {
     const { db, auth } = deps;
     return {
-        async request(value: unknown, ip: string): Promise<void> {
+        async request(value: unknown, ip: string, templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp'): Promise<void> {
             const email = emailAddress(value);
             const key = digest(email);
             const ref = db.collection('appLoginChallenges').doc(key);
@@ -48,7 +48,7 @@ export function createPurchaseLogin(deps: Dependencies) {
                 if (previous?.sentAt > now - 60000 || requests >= 5 || ipRequests >= 30) {
                     throw new PurchaseLoginError(429, '인증번호 요청이 많습니다. 잠시 후 다시 시도해주세요.');
                 }
-                tx.set(ref, { requestId, codeHash: digest(key + ':' + code), expiresAt: now + 600000,
+                tx.set(ref, { requestId, templateId, codeHash: digest(key + ':' + code), expiresAt: now + 600000,
                     attempts: 0, sentAt: now, requests: requests + 1,
                     windowStartedAt: requests ? previous.windowStartedAt : now, consumed: false });
                 tx.set(rateRef, { requests: ipRequests + 1,
@@ -78,20 +78,26 @@ export function createPurchaseLogin(deps: Dependencies) {
                     return false;
                 }
                 tx.update(ref, { consumed: true, codeHash: '' });
-                return true;
+                return data.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' as const : 'lifeUp' as const;
             });
             if (!accepted) throw new PurchaseLoginError(401, '인증번호가 틀리거나 만료되었습니다. 다시 요청해주세요.');
-            const purchase = await deps.purchase(email);
+            const templateId = accepted;
+            const purchase = await deps.purchase(email, templateId);
             if (!purchase) throw new PurchaseLoginError(403, '유료 라이프업 구매 내역을 찾지 못했습니다. 구매 이메일을 확인해주세요.');
 
-            const query = db.collection('users').where('email', '==', email).limit(2);
-            const matches = await query.get();
-            if (matches.size > 1) throw new PurchaseLoginError(409, '중복된 계정이 있습니다. 관리자에게 문의해주세요.');
-            const existing = matches.docs[0];
+            const matches = await db.collection('users').where('email', '==', email).get();
+            const candidates = matches.docs.filter(doc => workspaceTemplate(doc.data()) === templateId);
+            if (candidates.length > 1) throw new PurchaseLoginError(409, '중복된 워크스페이스가 있습니다. 관리자에게 문의해주세요.');
+            const existing = candidates[0];
+            // Legacy links may point at a different login email. Never issue
+            // that account's token merely because its purchase email was verified.
+            const relatedOwners = [...new Set(matches.docs.map(doc => doc.data().firebaseUid as string).filter(Boolean))];
+            const boundUid = existing?.data().firebaseUid || (relatedOwners.length === 1 ? relatedOwners[0] : '');
+            if (!boundUid && relatedOwners.length > 1)
+                throw new PurchaseLoginError(409, '구매 이메일이 여러 계정에 연결되어 있습니다. 사용할 계정으로 로그인 후 인증해주세요.');
             let account: admin.auth.UserRecord;
-            if (existing?.data().firebaseUid) {
-                // Preserve the existing Google account and all workspace ownership rules.
-                account = await auth.getUser(existing.data().firebaseUid);
+            if (boundUid) {
+                account = await auth.getUser(boundUid);
             } else {
                 try { account = await auth.getUserByEmail(email); }
                 catch (error) {
@@ -103,37 +109,16 @@ export function createPurchaseLogin(deps: Dependencies) {
                     }
                 }
             }
-            if (account.disabled) throw new PurchaseLoginError(403, '사용이 중지된 계정입니다. 관리자에게 문의해주세요.');
+            if (account.disabled) throw new PurchaseLoginError(403, '사용이 중지된 계정입니다.');
+            if (!account.email || account.email.trim().toLowerCase() !== email)
+                throw new PurchaseLoginError(409, '이 구매는 다른 이메일의 계정에 연결되어 있습니다. 관리자에게 구매 연결 정리를 요청해주세요.');
+            if (!account.emailVerified) await auth.updateUser(account.uid, { emailVerified: true });
             const uid = account.uid;
-            const userId = existing?.id || nanoid(6);
-            const workspaceRef = db.collection('users').doc(userId);
-            const accountRef = db.collection('appAccounts').doc(uid);
-            await db.runTransaction(async tx => {
-                const [currentMatches, workspace, binding] = await Promise.all([
-                    tx.get(query), tx.get(workspaceRef), tx.get(accountRef)
-                ]);
-                const currentWorkspace = workspace.data() || {};
-                const currentBinding = binding.data() || {};
-                if (currentBinding.deletionStatus === 'pending') throw new PurchaseLoginError(409, '회원 탈퇴 처리 중입니다.');
-                // A randomly generated widget address must never overwrite another workspace.
-                if (!existing && workspace.exists) {
-                    throw new PurchaseLoginError(409, '워크스페이스 주소가 중복되었습니다. 다시 인증해주세요.');
-                }
-                if (currentMatches.docs.some(doc => doc.id !== userId) ||
-                    (currentWorkspace.firebaseUid && currentWorkspace.firebaseUid !== uid) ||
-                    (currentBinding.userId && currentBinding.userId !== userId)) {
-                    throw new PurchaseLoginError(409, '다른 계정 연결이 확인되었습니다. 관리자에게 문의해주세요.');
-                }
-                tx.set(workspaceRef, { email, firebaseUid: uid, memberType: purchase.memberType,
-                    ...(!workspace.exists ? { createdAt: new Date() } : {}) }, { merge: true });
-                tx.set(accountRef, { userId,
-                    ...(purchase.purchaser.source === 'invitation' && currentBinding.marketingConsentSource !== 'user'
-                        ? { invitationMarketingConsentRequired: true } : {})
-                }, { merge: true });
-                tx.set(workspaceRef.collection('purchases').doc('lifeUp'), {
-                    verified: true, ...purchase, verifiedAt: new Date()
-                }, { merge: true });
-            });
+            try { await bindWorkspacePurchase(db, uid, email, templateId, { ...purchase }); }
+            catch (error) {
+                if (error instanceof WorkspaceConflict) throw new PurchaseLoginError(409, error.message);
+                throw error;
+            }
             // The widget key and unverified memberUID never enter this login flow.
             return { token: await auth.createCustomToken(uid) };
         }

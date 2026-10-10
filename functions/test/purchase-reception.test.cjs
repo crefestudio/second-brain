@@ -17,7 +17,8 @@ test('only authenticated admins can create invitations; redemption ignores clien
         }
     };
     vm.createContext(context);
-    const handlers = source.slice(source.indexOf('export const createLifeupInvitation'), source.indexOf('export const latpeedPaymentWebhook'));
+    const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
+    const handlers = ast.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => ['createLifeupInvitation', 'redeemLifeupInvitation'].includes(declaration.name.getText(ast)))).map(node => node.getText(ast)).join('\n');
     vm.runInContext(ts.transpile(handlers, { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }), context);
     const response = () => ({ code: 200, setHeader() {}, status(code) { this.code = code; return this; }, json(data) { this.data = data; return this; } });
     const req = { method: 'POST', body: { email: 'guest@example.com', memberType: 'premium' } };
@@ -73,6 +74,28 @@ test('standard sends no premium mail; zero amount sends no purchase mail', async
     const free = fixture();
     await free.receive({ email: 'guest@example.com', purchaseOption: '라이프업 프리미엄', amount: '0원' });
     assert.equal(free.queued.size, 0);
+});
+
+test('a newly imported scrapbook order queues its scrapbook welcome mail once per recipient', async () => {
+    const queued = new Map(); const customerEmails = [];
+    const context = {
+        registerPurchaserCustomer: async purchaser => customerEmails.push(purchaser.email),
+        customerEmail: email => email.trim().toLowerCase(), LATPEED_ADMIN_EMAIL: 'admin@example.com',
+        LIFEUP_EMAIL_VARIABLES: { lifeupScrapbookReleaseUrl: 'https://example.com/download', lifeupScrapbookPassportUrl: 'https://example.com/pdf', lifeupCareUrl: 'https://example.com/care' },
+        escapeEmailHtml: value => value, withUnsubscribe: mail => mail,
+        admin: { firestore: { FieldValue: { serverTimestamp: () => 123 } } },
+        mailQueue: { send: async (mail, priority, key) => { queued.set(key, { mail, priority }); return { data: { id: key } }; } }
+    };
+    vm.createContext(context);
+    const receive = source.slice(source.indexOf('function lifeupScrapbookWelcomeMail'), source.indexOf('async function receiveLifeupPurchase'));
+    vm.runInContext(ts.transpile(receive, { target: ts.ScriptTarget.ES2020 }), context);
+    const updates = [];
+    await context.receiveLifeupScrapbookPurchase({ id: 'imweb-order', update: async value => updates.push(value) },
+        { templateId: 'lifeUpScrapbook', email: 'buyer@example.com', name: 'Buyer' });
+    assert.equal(customerEmails[0], 'buyer@example.com');
+    assert.equal(queued.size, 2);
+    assert.ok([...queued.keys()].every(key => key.startsWith('purchase-scrapbook-welcome:imweb-order:')));
+    assert.equal(updates[0]['welcomeEmail.status'], 'queued');
 });
 
 test('invitation customer registration does not turn unanswered consent into opt-out', async () => {

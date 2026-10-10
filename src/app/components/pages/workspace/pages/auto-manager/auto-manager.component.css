@@ -265,6 +265,11 @@ input:checked + .slider::before {
   transform: translateX(20px);
 }
 
+.switch input:disabled + .slider {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
 .category-path {
   display: flex;
   align-items: center;

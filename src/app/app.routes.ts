@@ -51,6 +51,7 @@ import { MemberAdminComponent } from './components/pages/workspace/pages/member-
 import { MarketingBlockAdminComponent } from './components/pages/workspace/pages/marketing-block-admin/marketing-block-admin.component';
 import { UnsubscribeComponent } from './components/pages/unsubscribe/unsubscribe.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
+import { LifeupScrapbookUpgradeComponent } from './components/pages/upgrade/lifeup-scrapbook-upgrade.component';
 //import { WorkspaceHomeComponent } from './components/pages/workspace-home/workspace-home.component';
 //import { UpdateComponent } from './components/pages/life-up/pages/update/update.component';
 
@@ -60,6 +61,7 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'upgrade/lifeup-scrapbook', component: LifeupScrapbookUpgradeComponent },
   { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },
   { path: 'block', component: UnsubscribeComponent },
   { path: 'unsubscribe', redirectTo: 'block', pathMatch: 'full' },
@@ -67,6 +69,11 @@ export const routes: Routes = [
   {
     path: 'download/lifeup',
     component: LifeupDownloadComponent
+  },
+  {
+    path: 'download/lifeup-scrapbook',
+    component: LifeupDownloadComponent,
+    data: { product: 'lifeUpScrapbook' }
   },
   {
     path: '',

@@ -33,6 +33,31 @@ const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 export class AgentConnectComponentComponent implements OnInit {
 
     isLoading = true;
+    showDeleteWorkspace = false;
+    deletingWorkspace = false;
+    deletionConfirmation = '';
+    deletionError = '';
+    deletionTarget = '';
+
+    openDeleteWorkspace() {
+        this.deletionTarget = this.userId;
+        this.deletionConfirmation = '';
+        this.deletionError = '';
+        this.showDeleteWorkspace = true;
+    }
+
+    async deleteWorkspace() {
+        if (this.deletingWorkspace || this.deletionConfirmation !== this.deletionTarget || !this.deletionTarget) return;
+        this.deletingWorkspace = true;
+        this.deletionError = '';
+        try {
+            await this.userService.deleteWorkspace(this.deletionTarget);
+            window.location.assign('/workspace/connect');
+        } catch (error) {
+            this.deletionError = error instanceof Error ? error.message : '워크스페이스 삭제에 실패했습니다.';
+            this.deletingWorkspace = false;
+        }
+    }
 
     memberUid: string = '';
     userId: string = '';
@@ -105,8 +130,13 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     async initData() {
-        await this.updateSession();
-        await this.updatePurchaseInfo();
+        try {
+            await this.updateSession();
+            await this.updatePurchaseInfo();
+        } catch (error) {
+            console.warn('연결 설정 세션 조회 실패', error);
+            this.errorMessage = '로그인 정보를 불러오지 못했습니다. 잠시 후 새로고침해주세요.';
+        }
     }
 
     // 화면 아무 곳이나 클릭 시 닫힘
@@ -181,7 +211,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
         this.isVerifying = true;
         try {
-            const purchaserInfo: any | null = await this.userService.verifyPurchaser(TEMPLATE_KEY_LIFEUP, email, phone);
+            const purchaserInfo: any | null = await this.userService.verifyPurchaser(this.authService.templateId, email, phone);
             _log('submitVerification purchaserInfo =>', purchaserInfo);
             if (!purchaserInfo) {
                 //this.errorMessage = '구매정보를 찾을 수 없습니다.';
@@ -231,7 +261,7 @@ export class AgentConnectComponentComponent implements OnInit {
         // 없으면 로컬호스트 참조
 
         if (this.userId) {
-            const result = await UserService.updatePurchaseInfo(this.userId);
+            const result = await UserService.updatePurchaseInfo(this.userId, this.authService.templateId);
             this.purchaseInfo = result.purchaseInfo;
             this.isLifeupPurchaser = result.isPurchaser;
             this.purchaseEmailVerified = result.purchaseInfo?.verified === true;
@@ -249,20 +279,6 @@ export class AgentConnectComponentComponent implements OnInit {
         }
     }
 
-    async removeLifeupPurchase(): Promise<void> {
-        if (this.userId) {
-            await UserService.deletePurchase(
-                this.userId,
-                this.purchaseInfo.templateId
-            );
-        }
-        UserService.deletePurchaseInfoLocalStorage(TEMPLATE_KEY_LIFEUP);
-        this.purchaseInfo = null;
-        this.isLifeupPurchaser = false;
-        this.purchaseEmailVerified = false;
-        this.isRequestMailCheck = false;
-        this.codeArray = Array(6).fill('');
-    }
 
 
     onRequestMailCheck() {
@@ -300,7 +316,7 @@ export class AgentConnectComponentComponent implements OnInit {
         }
 
         try {
-            const isSuccess = await this.userService.sendVerificationEmail(email.toLowerCase().trim());
+            const isSuccess = await this.userService.sendVerificationEmail(email.toLowerCase().trim(), this.authService.templateId);
 
             if (!isSuccess) {
                 this.errorMessage = '인증 메일 발송에 실패했습니다.';
@@ -413,7 +429,7 @@ export class AgentConnectComponentComponent implements OnInit {
                 this.email,
                 this.getVerificationCode(),
                 this.memberUid,
-                TEMPLATE_KEY_LIFEUP
+                this.authService.templateId
             );
 
             _log('submitCertificationNumber result =>', result);
@@ -532,8 +548,16 @@ export class AgentConnectComponentComponent implements OnInit {
         this.userService.startKakaoVerificationWatcher(this.userId, this.kakaoVerificationId);
     }
 
-    onComplateKakaoConnect(status: 'connected' | 'already-connected' | 'already-connected-to-another-workspace') {
+    onComplateKakaoConnect(status: 'connected' | 'already-connected' | 'already-connected-to-another-workspace' | 'already-connected-to-my-other-workspace' | 'already-connected-to-another-account') {
         this.isWaitingKakaoVerification = false;
+        if (status === 'already-connected-to-my-other-workspace') {
+            this.kakaoVerificationError = '이 카카오톡 계정은 내 다른 라이프업 템플릿에 이미 연결되어 있습니다. 기존 템플릿의 연결을 해제한 뒤 다시 시도해 주세요.';
+            return;
+        }
+        if (status === 'already-connected-to-another-account') {
+            this.kakaoVerificationError = '이 카카오톡 계정은 다른 계정의 라이프업 템플릿에 이미 연결되어 있습니다. 해당 계정에서 연결을 해제한 뒤 다시 시도해 주세요.';
+            return;
+        }
         if (status === 'already-connected-to-another-workspace') {
             this.kakaoVerificationError = '이 카카오톡 계정은 이미 다른 워크스페이스에 연결되어 있습니다. 기존 연결을 해제한 뒤 다시 시도해 주세요.';
             return;

@@ -54,6 +54,19 @@ export class AutoManagerComponent {
             enabled: false,
             tooltip:
                 '카카오톡으로 입력된 내용을 자동으로 분석하여 노션 데이터베이스에 저장합니다.'
+        },
+        {
+            id: 'routine',
+            category: ['LifeUp', '루틴'],
+            name: '루틴 관리 비서',
+            description: [
+                '매 정시에 루틴 기록을 노션에 생성',
+                '매 정시에 노션에서 루틴 기록 수신 및 기록',
+                '새로운 루틴을 노션에 추가'
+            ],
+            status: 'running',
+            enabled: true,
+            tooltip: '루틴 기록 생성과 노션 동기화를 자동으로 관리합니다.'
         }
     ];
 
@@ -77,8 +90,8 @@ export class AutoManagerComponent {
         this.automationAgents =
             this.automationAgents.map(agent => ({
                 ...agent,
-                enabled: automations[agent.id]?.enabled ?? false,
-                status: automations[agent.id]?.enabled ? 'running' : 'waiting'
+                enabled: automations[agent.id]?.enabled ?? agent.enabled,
+                status: (automations[agent.id]?.enabled ?? agent.enabled) ? 'running' : 'waiting'
             }));
     }
 
@@ -89,7 +102,7 @@ export class AutoManagerComponent {
         this.kakaoUserId = this.authService.getKakaoUserId();
         this.notionAccessToken = this.authService.getNotionAccessToken();
 
-        this.updatePurchaseInfo()
+        await this.updatePurchaseInfo();
 
         _log('updateSession memberUid, userId, notionAccessToken =>', this.memberUid, this.userId, this.kakaoUserId, this.notionAccessToken);
 
@@ -103,13 +116,14 @@ export class AutoManagerComponent {
     isLifeupPurchaser: boolean = false;
     purchaseInfo: any = null;
     async updatePurchaseInfo() {
-        const result = await UserService.updatePurchaseInfo(this.userId);
+        const result = await UserService.updatePurchaseInfo(this.userId, this.authService.templateId);
         this.purchaseInfo = result.purchaseInfo;
         this.isLifeupPurchaser = result.isPurchaser;
     }
 
 
     async onChangeAgentEnabled(agent: any) {
+        if (this.isAgentDisabled(agent)) return;
         const oldValue = !agent.enabled;
         const result = await UserService.updateUserAutomation(
             this.userId,
@@ -125,6 +139,10 @@ export class AutoManagerComponent {
             agent.enabled = oldValue;
             ToastService.error('상태 변경에 실패하였습니다.');
         }
+    }
+
+    isAgentDisabled(agent: any): boolean {
+        return agent.id === 'kakao-capture' && !this.kakaoUserId;
     }
 }
 

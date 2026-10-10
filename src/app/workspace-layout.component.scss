@@ -71,10 +71,12 @@
     summary strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
     summary:focus-visible { outline: 2px solid #7aa2f7; outline-offset: 2px; }
     &[open] summary { background: #24262b; }
-    &[open] .account-chevron { transform: rotate(180deg); }
+    &[open] .account-chevron svg { transform: rotate(180deg); }
     summary::-webkit-details-marker { display: none; }
     summary:hover { background: #24262b; }
-    summary span { margin-left: auto; }
+    .account-chevron { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; }
+    .account-chevron svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; transition: transform .2s ease; }
+    .account-divider { height: 1px; margin: 8px 8px; background: rgba(255, 255, 255, .12); }
     .account-dropdown { 
         font-size: 14px;
         position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 100; padding: 8px 6px 10px; background: #1a1b1e; border: 1px solid #41434a; border-radius: 8px; box-shadow: 0 -8px 30px #0008;
@@ -198,12 +200,26 @@
 /* ===== Arrow ===== */
 
 .arrow {
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
     color: #cdcdcd;
-    transition: all .2s ease;
 }
 
-.arrow.open {
+.arrow svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform .2s ease;
+}
+
+.arrow.open svg {
     transform: rotate(180deg);
 }
 

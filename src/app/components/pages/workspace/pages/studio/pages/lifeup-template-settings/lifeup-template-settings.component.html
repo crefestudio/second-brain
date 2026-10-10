@@ -11,11 +11,11 @@
 
     @if (!userId || !isLifeupPurchaser) {
     <!-- Notion 연결 안 됨 -->
-    <div *ngIf="!userId" class="notificaton-box">
+    <div class="notificaton-box">
         <div class="notificaton-icon">🔗</div>
-        <h2>라이프업 템플릿 구매인증이 필요합니다</h2>
+        <h2>템플릿 구매인증이 필요합니다</h2>
         <p>
-            스튜디오를 사용하려면 라이프업 템플릿 구매인증을 <br>
+            스튜디오를 사용하려면 템플릿 구매인증을 <br>
             먼저 진행해주세요.
         </p>
         <button type="button" class="notificaton-btn" routerLink="/workspace/connect">
@@ -33,10 +33,10 @@
             <span>라이프업 관리</span>
         </div> -->
 
-        <h1>내 라이프업</h1>
+        <h1>내 템플릿</h1>
 
         <p>
-            라이프업 노션 템플릿을 설정하고 관리합니다.
+            연결된 Notion 템플릿을 확인하고 관리합니다.
         </p>
     </div>
 
@@ -48,11 +48,10 @@
         </div>
 
         <div class="connection-content">
-            <h2>라이프업 템플릿을 확인할 수 없습니다.</h2>
+            <h2>Notion 템플릿 연결이 필요합니다.</h2>
 
             <p>
-                라이프봇과 연결된 Notion에서 라이프업 템플릿을 찾을 수 없습니다.
-                연결 설정에서 Notion 연결 상태를 확인해주세요.
+                구매인증은 완료되었습니다. 연결 설정에서 Notion 템플릿을 연결해주세요.
             </p>
         </div>
 
@@ -77,7 +76,7 @@
         </div>
 
         <button class="open-btn" (click)="openLifeup()">
-            내 라이프업 열기
+            내 템플릿 열기
         </button>
     </div>
 
@@ -134,7 +133,7 @@
                     </span>
 
                     <button class="open-btn small" (click)="openLifeup()">
-                        내 라이프업 열기
+                        내 템플릿 열기
                     </button>
                 </div>
             </div>

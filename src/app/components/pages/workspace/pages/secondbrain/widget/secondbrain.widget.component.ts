@@ -12,6 +12,8 @@ import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 
 import { UserService, SecondBrainLocalSession } from '../../../../../../services/user.service';
 import { _log } from '../../../../../../lib/cf-common/cf-common';
+import { ScrapbookUpgradeEventService } from '../../../../../../services/scrapbook-upgrade-event.service';
+import { ScrapbookUpgradeCardComponent } from '../../../../../common/scrapbook-upgrade-card.component';
 
 
 /*
@@ -79,7 +81,7 @@ const pageIcon = `data:image/svg+xml;utf8,
     selector: 'app-secondbrain-widget',
     standalone: true,
     templateUrl: './secondbrain.widget.component.html',
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, ScrapbookUpgradeCardComponent],
     styleUrls: ['./secondbrain.widget.component.css']
 })
 export class SecondBrainWidgetComponent implements AfterViewInit {
@@ -111,6 +113,11 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     isMenuOpen = false;
     isDisconnectConfirmOpen = false;
     isLogoutConfirmOpen = false;
+    showUpgradePopup = false;
+    showUnsupportedNotice = false;
+    private workspaceFeatureAllowed = false;
+    upgradeUrl = 'https://www.latpeed.com/products/ozVuQ';
+    private upgradeTimer?: ReturnType<typeof setInterval>;
 
     errorMessage: string = '';
     warnMessage: string = '';
@@ -134,7 +141,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         private userService: UserService,
         private eventListenerService: EventListenerService,
         private sanitizer: DomSanitizer,
-        private authService: AuthService
+        private authService: AuthService,
+        private upgradeEvent: ScrapbookUpgradeEventService
     ) { }
 
     get isWidgetMode(): boolean {
@@ -170,7 +178,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.userId = this.authService.getUserId();
         this.notionAccessToken = this.authService.getNotionAccessToken();
         _log('updateSession userId, notionAccessToken =>', this.userId, this.notionAccessToken);
-        await this.updatePurchaseInfo()
     }
 
     isLifeupPurchaser: boolean = false;
@@ -185,6 +192,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
 
     ngOnDestroy() {
+        clearInterval(this.upgradeTimer);
         // 🔥 컴포넌트 제거 시 리스너 해제
         this.unsubscribe?.();
         document.body.classList.remove('secondbrain-widget-page');
@@ -192,6 +200,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     initEvent(userId: string) {
+        if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
         // event
         this.unsubscribe = this.eventListenerService.listenUserEventsRealtime(userId, event => {
             this.onEvent(event);
@@ -200,6 +209,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     onEvent(event: UserEvent) {
+        if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
         if (!this.userId) return;
 
         // 위젯모드라면 로컬 세션을 체크해서 이벤트 처리를 막는다.
@@ -221,6 +231,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     async updateGraphData() {
+        if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
         if (!this.userId) { return; }
         // let session = this.getLocalSession(this.userId)
         // if(!session || !session.accessKey) { return; }
@@ -244,6 +255,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     showToast(message: string, duration = 3500) {
+        if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
         this.toastMessage = this.sanitizer.bypassSecurityTrustHtml(message);;
         this.isShowToast = true;
 
@@ -290,9 +302,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             userId: this.userId
         });
 
-        this.showToast('세컨드브레인 위젯을 시작합니다.');
-
         if (this.isWidgetMode) {
+            this.showToast('세컨드브레인 위젯을 시작합니다.');
             return await this.stateProcWidget();
         }
         return await this.stateProcWorkspace();
@@ -349,16 +360,34 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     private async stateProcWorkspace(): Promise<boolean> {
+        this.workspaceFeatureAllowed = false;
+        this.isShowToast = false;
+        this.unsubscribe?.();
+        this.unsubscribe = undefined;
         await this.updateSession();
 
-        _log('stateProcWorkspace userId, isLifeupPurchaser, notionAccessToken =>', this.userId, this.isLifeupPurchaser, this.notionAccessToken);
+        if (this.userId && this.authService.templateId === 'lifeUpScrapbook') {
+            this.showUnsupportedNotice = true;
+            this.state = 'unsupported';
+            try { await this.upgradeEvent.initialize(this.userId); }
+            catch { return false; }
+            this.showUpgradePopup = this.upgradeEvent.isActive;
+            this.upgradeUrl = this.upgradeEvent.upgradeUrl;
+            clearInterval(this.upgradeTimer);
+            this.upgradeTimer = setInterval(() => {
+                this.upgradeUrl = this.upgradeEvent.upgradeUrl;
+                if (!this.upgradeEvent.isActive) this.showUpgradePopup = false;
+            }, 1000);
+            return false;
+        }
+
+        if (!this.userId) { this.state = 'connect-button'; return false; }
+        await this.updatePurchaseInfo();
 
         if (!this.userId || !this.isLifeupPurchaser) {
             this.state = 'connect-button';
             return false;
         }
-
-        this.initEvent(this.userId);
 
         if (!this.notionAccessToken) {
             this.state = 'connect-notion';
@@ -367,12 +396,18 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
         this.state = 'graph';
 
+        this.workspaceFeatureAllowed = true;
+        this.initEvent(this.userId);
+        this.showToast('세컨드브레인 위젯을 시작합니다.');
+
         setTimeout(() => {
             this.loadGraph();
         }, 1);
 
         return true;
     }
+
+    closeUpgradePopup(): void { this.showUpgradePopup = false; }
 
 
     // async stateProc(): Promise<boolean> {
@@ -641,6 +676,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     private network?: Network;
     async loadGraph(graphType: string = "note-keyword") {
+        if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
         try {
             let graphTypeName = "";
 

@@ -4,9 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { CareRequestService } from '../../../../../services/care-request.service';
 import { CustomerAdminService, LifeupCustomer } from '../../../../../services/customer-admin.service';
 
-type MemberFilter = 'all' | 'standard' | 'premium' | 'none';
+type MemberFilter = 'all' | 'standard' | 'premium' | 'scrapbook' | 'none';
 type NotifyFilter = 'all' | 'yes' | 'no' | 'blocked';
-type MembershipFilter = 'all' | 'premium' | 'standard' | 'none';
+type MembershipFilter = 'all' | 'premium' | 'standard' | 'scrapbook' | 'none';
 
 @Component({ selector: 'app-customer-admin', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './customer-admin.component.html', styleUrl: './customer-admin.component.scss' })
 export class CustomerAdminComponent implements OnInit, OnDestroy {
@@ -18,7 +18,7 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
     isLoading = true; isImporting = false; isSendingMail = false; isLoadingMore = false; hasMore = false; errorMessage = ''; csvMessage = ''; mailMessage = '';
     private nextCursor: string | null = null;
     customers: LifeupCustomer[] = []; totalCustomerCount = 0; selectedCustomer: LifeupCustomer | null = null; selectedIds = new Set<string>();
-    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: '' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' = '';
+    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: '' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome' = '';
     constructor(private readonly care: CareRequestService, private readonly customerAdmin: CustomerAdminService) {}
 
     async ngOnInit(): Promise<void> {
@@ -53,8 +53,8 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
     toggleAll(): void { const selected = this.allVisibleSelected; for (const customer of this.filteredCustomers) selected ? this.selectedIds.delete(customer.id) : this.selectedIds.add(customer.id); }
     toggle(customer: LifeupCustomer): void { this.selectedIds.has(customer.id) ? this.selectedIds.delete(customer.id) : this.selectedIds.add(customer.id); }
     toggleDetail(customer: LifeupCustomer): void { this.selectedCustomer = this.selectedCustomer?.id === customer.id ? null : customer; }
-    serviceLabel(customer: LifeupCustomer): string { return customer.memberType === 'premium' ? '라이프업 프리미엄' : customer.memberType === 'standard' ? '라이프업 일반' : '비구매자'; }
-    membershipLabel(customer: LifeupCustomer): string { return customer.membership === 'premium' ? '프리미엄 회원' : customer.membership === 'standard' ? '일반 회원' : '비회원'; }
+    serviceLabel(customer: LifeupCustomer): string { return customer.memberType === 'premium' ? '라이프업 프리미엄' : customer.memberType === 'standard' ? '라이프업' : customer.memberType === 'scrapbook' ? '라이프업 스크랩북' : '비구매자'; }
+    membershipLabel(customer: LifeupCustomer): string { return customer.membership === 'premium' ? '라이프업 프리미엄 회원' : customer.membership === 'standard' ? '라이프업 회원' : customer.membership === 'scrapbook' ? '라이프업 스크랩북 회원' : '비회원'; }
     detailEntries(customer: LifeupCustomer): Array<{ key: string; value: string }> { return Object.entries(customer).map(([key, value]) => ({ key, value: Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '') })); }
 
     async sendSelectedMail(): Promise<void> {

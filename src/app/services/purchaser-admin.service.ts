@@ -8,6 +8,7 @@ export type LifeupPurchaser = {
     memberType?: 'standard' | 'premium' | null; purchaseEligible?: boolean; upgradeOnly?: boolean;
     [key: string]: unknown;
 };
+export type ManualLifeupPurchase = { name: string; email: string; phone: string; product: 'standard' | 'premium' | 'upgrade' | 'scrapbook'; amount: number; purchasedAt: string };
 
 @Injectable({ providedIn: 'root' })
 export class PurchaserAdminService {
@@ -27,6 +28,22 @@ export class PurchaserAdminService {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'CSV 대조에 실패했습니다.');
         return payload;
+    }
+    async syncImwebPurchasers(): Promise<{ scanned: number; imported: number; skipped: number }> {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('로그인이 필요합니다.');
+        const response = await fetch(`${this.baseUrl}/syncImwebPurchasersAdmin`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: '{}' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || '아임웹 구매자 정보를 갱신하지 못했습니다.');
+        return payload;
+    }
+    async createManualLifeupPurchase(purchase: ManualLifeupPurchase): Promise<LifeupPurchaser> {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('로그인이 필요합니다.');
+        const response = await fetch(`${this.baseUrl}/createManualLifeupPurchase`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(purchase) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || '수기 주문 등록에 실패했습니다.');
+        return payload.purchaser;
     }
 }
 

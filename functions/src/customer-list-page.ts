@@ -11,8 +11,8 @@ export function customerListOptions(body: Record<string, unknown>) {
     };
     return {
         search: String(body.search || '').trim().toLowerCase().slice(0, 200),
-        memberFilter: choice('memberFilter', ['all', 'standard', 'premium', 'none'], 'all'),
-        membershipFilter: choice('membershipFilter', ['all', 'standard', 'premium', 'none'], 'all'),
+        memberFilter: choice('memberFilter', ['all', 'standard', 'premium', 'scrapbook', 'none'], 'all'),
+        membershipFilter: choice('membershipFilter', ['all', 'standard', 'premium', 'scrapbook', 'none'], 'all'),
         notifyFilter: choice('notifyFilter', ['all', 'yes', 'no', 'blocked'], 'all'),
         sort: choice('sort', ['purchasedAt', 'name', 'phone'], 'purchasedAt'),
         direction: choice('direction', ['asc', 'desc'], 'desc')

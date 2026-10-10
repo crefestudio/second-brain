@@ -9,13 +9,15 @@ export class AuthService {
 
     userId = '';            // 워크스페이스 id : user - template - notion - kakao
     memberUid = '';         // Firebase Authentication UID
+    templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp';
     kakaoUserId = '';       // 카카오톡 연결 여부
     notionAccessToken = ''; // 노션 연결 여부
 
-    async updateSession(): Promise<void> {
-        const user = await this.socialAuth.session();
+    async updateSession(templateId?: string): Promise<void> {
+        const user = await this.socialAuth.session(undefined, templateId);
         this.memberUid = this.socialAuth.account()?.uid ?? '';
-        this.userId = user?.userId ?? '';        
+        this.templateId = user?.templateId || 'lifeUp';
+        this.userId = templateId && user?.templateId !== templateId ? '' : user?.userId ?? '';
         this.kakaoUserId = user?.kakaoUserId ?? '';
         this.notionAccessToken = user?.notionConnected ? 'connected' : '';
           

@@ -29,6 +29,8 @@ export class WorkspaceLayoutComponent implements OnInit {
     adminOpen = true;
     async ngOnInit() {
         await this.auth.init();
+        try { await this.auth.session(); }
+        catch { this.auth.error.set('워크스페이스 정보를 불러오지 못했습니다.'); }
         if (this.auth.account() && !this.router.url.startsWith('/mypage/profile')) {
             try {
                 const profile = await this.profileSettings.get();

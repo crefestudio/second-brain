@@ -75,6 +75,10 @@ export class WorkspaceComponent implements OnInit {
     }
 
     async loadLifeupTemplateInfo(): Promise<void> {
+        if (!this.userId || !this.notionAccessToken) {
+            this.templateUrl = null;
+            return;
+        }
         try {
             const info: any = await this.userService.getLifeupTemplateInfo(this.userId);
             this.templateUrl = info?.pageUrls?.root ?? null;
@@ -85,6 +89,7 @@ export class WorkspaceComponent implements OnInit {
     }
 
     async openLifeup(): Promise<void> {
+        if (!this.userId || !this.notionAccessToken) return;
         try {
             const info: any = await this.userService.getLifeupTemplateInfo(this.userId);
             const url = info?.pageUrls?.root;
