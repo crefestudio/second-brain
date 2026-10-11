@@ -12,6 +12,9 @@ import {
 
 import { filter } from 'rxjs/operators';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
+import { auth } from './firebase';
+import { APP_CONFIG } from './config/app-config.token';
+import { inject } from '@angular/core';
 
 @Component({
     selector: 'app-root',
@@ -25,6 +28,7 @@ import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
     styleUrl: './app.component.scss'
 })
 export class AppComponent implements OnInit {
+    private readonly functionsBaseUrl = inject(APP_CONFIG).functionsBaseUrl;
 
     currentPath = '/service';
 
@@ -54,10 +58,12 @@ export class AppComponent implements OnInit {
             .subscribe(() => {
                 this.currentPath = this.router.url;
                 this.notifyEmbedRouteChange();
+                void this.recordSiteVisit();
             });
     }
 
     ngOnInit(): void {
+        void this.recordSiteVisit();
         this.watchForAppUpdate();
         this.toastService.toast$.subscribe((toast) => {
             this.toastMessage = toast.message;
@@ -72,6 +78,20 @@ export class AppComponent implements OnInit {
 
         // 사용법 테스트
         //ToastService.show('저장되었습니다.');
+    }
+
+    private async recordSiteVisit(): Promise<void> {
+        if (this.currentPath.startsWith('/store/') || !document.referrer) return;
+        const source = (() => { try { const host = new URL(document.referrer).hostname.toLowerCase().replace(/^www\./, ''); return host.endsWith('notionable.net') ? '' : host; } catch { return ''; } })();
+        if (!source) return;
+        try {
+            await auth.authStateReady();
+            const token = await auth.currentUser?.getIdToken();
+            const key = 'site-tracking-browser';
+            let sessionId = localStorage.getItem(key);
+            if (!sessionId) { sessionId = crypto.randomUUID(); localStorage.setItem(key, sessionId); }
+            await fetch(`${this.functionsBaseUrl}/recordSiteVisit`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, keepalive: true, body: JSON.stringify({ referrer: document.referrer, path: this.currentPath, sessionId }) });
+        } catch { /* Analytics must never interrupt navigation. */ }
     }
 
     private watchForAppUpdate(): void {

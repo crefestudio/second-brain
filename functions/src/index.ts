@@ -2,6 +2,9 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { purchaseEmailError } from './purchase-email-policy';
+import { summarizeProductSales } from './sales-summary';
+import { marketingReport } from './marketing-report';
+import { saveStoreVisit, saveTrackingVisit } from './store-visit';
 import { archiveWorkspace, WorkspaceDeletionError } from './workspace-deletion';
 import { logger } from 'firebase-functions';
 
@@ -3178,7 +3181,7 @@ export const syncImwebPurchasersAdmin = onRequest({ secrets: [IMWEB_API_KEY, IMW
     } catch (error) { logger.error('[Imweb] admin sync failed', error); return res.status(500).json({ error: '아임웹 구매자 정보를 갱신하지 못했습니다.' }); }
 }));
 
-const STORE_TRACKED_PRODUCTS = new Set(['lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-imweb', 'lifeup-scrapbook']);
+const STORE_TRACKED_PRODUCTS = new Set(['lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-imweb', 'lifeup-scrapbook', 'bizup-custom']);
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 async function youtubeContentTitle(videoId: string): Promise<string | null> {
@@ -3201,26 +3204,81 @@ export const recordStoreVisit = onRequest(withCors(async (req, res) => {
     const productPath = String(req.body?.productPath || '');
     if (!STORE_TRACKED_PRODUCTS.has(productPath)) return res.status(400).json({ error: 'INVALID_PRODUCT' });
     const clean = (value: unknown, maxLength: number) => String(value || '').trim().slice(0, maxLength);
-    await db.collection('storeVisits').add({
+    // Keep the time at which the redirect began.  A redirect request may finish
+    // after an admin has reset the dashboard, in which case it is old test data
+    // and must not repopulate the freshly reset totals.
+    const requestedAtMs = Number(req.body?.requestedAt);
+    const occurredAt = Number.isFinite(requestedAtMs) && Math.abs(Date.now() - requestedAtMs) <= 24 * 60 * 60 * 1000
+        ? Timestamp.fromMillis(requestedAtMs)
+        : Timestamp.now();
+    const sessionId = clean(req.body?.sessionId, 80);
+    if (!sessionId) return res.status(400).json({ error: 'SESSION_REQUIRED' });
+    const result = await saveStoreVisit(db, {
         productPath,
         location: clean(req.body?.location, 200),
         referrer: clean(req.body?.referrer, 1000),
-        sessionId: clean(req.body?.sessionId, 80),
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        sessionId,
+        occurredAt
     });
-    return res.status(201).json({ recorded: true });
+    return res.status(result.recorded ? 201 : 200).json(result);
+}));
+
+function externalReferrer(value: unknown): string {
+    try {
+        const url = new URL(String(value || ''));
+        const host = url.hostname.toLowerCase().replace(/^www\./, '');
+        return host.endsWith('notionable.net') ? '' : host.slice(0, 200);
+    } catch { return ''; }
+}
+
+function imwebVisitTarget(path: string): string {
+    try {
+        const url = new URL(path, 'https://notionable.net');
+        if (url.pathname !== '/store/' && url.pathname !== '/store') return '';
+        const idx = url.searchParams.get('idx');
+        if (idx === '1') return '라이프업 (아임웹)';
+        if (idx === '6') return '라이프업 스크랩북 (아임웹)';
+    } catch { /* Keep an unrecognized path as a generic site visit. */ }
+    return '';
+}
+
+async function isAdminVisit(req: any): Promise<boolean> {
+    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!token) return false;
+    try {
+        const account = await admin.auth().getUser((await admin.auth().verifyIdToken(token, true)).uid);
+        return account.emailVerified && ADMIN_EMAILS.has(String(account.email || '').trim().toLowerCase());
+    } catch { return false; }
+}
+
+export const recordSiteVisit = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (await isAdminVisit(req)) return res.status(200).json({ recorded: false, ignored: 'ADMIN' });
+    const location = externalReferrer(req.body?.referrer);
+    const path = String(req.body?.path || '').trim().slice(0, 300);
+    const sessionId = String(req.body?.sessionId || '').trim().slice(0, 80);
+    if (!location || !sessionId || !path || path.startsWith('/store/')) return res.status(200).json({ recorded: false, ignored: 'NO_EXTERNAL_REFERRER' });
+    const result = await saveTrackingVisit(db, 'siteVisits', { location, referrer: String(req.body?.referrer || '').slice(0, 1000), sessionId, path, targetName: imwebVisitTarget(path), occurredAt: Timestamp.now() });
+    return res.status(result.recorded ? 201 : 200).json(result);
 }));
 
 export const resetStoreVisits = onRequest(withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
-    const month = await currentKstMonth();
-    const start = Timestamp.fromDate(new Date(`${month.startDate}T00:00:00+09:00`));
-    const snapshot = await db.collection('storeVisits').where('createdAt', '>=', start).limit(10000).get();
-    const batch = db.batch();
-    snapshot.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
-    return res.json({ deleted: snapshot.size });
+    const resetAt = Timestamp.now();
+    // Write the fence before deletion so a delayed redirect request cannot put
+    // a pre-reset visit back into the summary after this endpoint returns.
+    await db.collection('storeVisitSettings').doc('reset').set({ resetAt });
+    let deleted = 0;
+    while (true) {
+        const snapshot = await db.collection('storeVisits').limit(400).get();
+        if (snapshot.empty) break;
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        deleted += snapshot.size;
+    }
+    return res.json({ deleted, resetAt: resetAt.toDate().toISOString() });
 }));
 
 async function currentKstMonth(): Promise<{ key: string; startDate: string; endDate: string }> {
@@ -3281,36 +3339,95 @@ export const syncYoutubeMonthlyViews = onRequest(withCors(async (req, res) => {
 export const getStoreVisitSummary = onRequest(withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+    if (typeof req.body?.detailProduct === 'string') {
+        const { currentMonth, snapshot } = await monthlyStoreVisits();
+        const logs = snapshot.docs
+            .filter(doc => String(doc.data().productPath || '') === req.body.detailProduct)
+            .slice(0, 10)
+            .map(doc => ({ id: doc.id, location: String(doc.data().location || ''), createdAt: doc.data().createdAt.toDate().toISOString() }));
+        const titles = new Map(await Promise.all([...new Set(logs.map(log => log.location).filter(location => YOUTUBE_VIDEO_ID.test(location)))].map(async videoId => [videoId, await youtubeContentTitle(videoId)] as const)));
+        return res.json({ month: currentMonth.key, logs: logs.map(log => ({ ...log, title: titles.get(log.location) || null })), capped: snapshot.size === 10000 });
+    }
+    if (typeof req.body?.detailSource === 'string') {
+        const { currentMonth, snapshot, start } = await monthlyStoreVisits();
+        const logs = snapshot.docs.filter(doc => String(doc.data().location || '직접 유입') === req.body.detailSource).map(doc => ({
+            id: doc.id, productPath: String(doc.data().productPath || ''),
+            createdAt: doc.data().createdAt.toDate().toISOString()
+        })) as Array<{ id: string; productPath: string; path?: string; targetName?: string; createdAt: string }>;
+        const siteSnapshot = await db.collection('siteVisits').where('createdAt', '>=', start).orderBy('createdAt', 'desc').limit(10000).get();
+        siteSnapshot.forEach(doc => {
+            const visit = doc.data();
+            if (String(visit.location || '') !== req.body.detailSource) return;
+            logs.push({ id: `site-${doc.id}`, productPath: 'site', path: String(visit.path || '/'), targetName: String(visit.targetName || ''), createdAt: visit.createdAt.toDate().toISOString() });
+        });
+        logs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        return res.json({ month: currentMonth.key, logs, capped: snapshot.size === 10000 || siteSnapshot.size === 10000 });
+    }
+    return res.json(await storeVisitSummary());
+}));
+
+async function monthlyStoreVisits() {
     const currentMonth = await currentKstMonth();
     const [year, month] = currentMonth.key.split('-').map(Number);
     const monthStart = Timestamp.fromDate(new Date(Date.UTC(year, month - 1, 1) - (9 * 60 * 60 * 1000)));
-    const snapshot = await db.collection('storeVisits').where('createdAt', '>=', monthStart).orderBy('createdAt', 'desc').limit(10000).get();
+    const reset = await db.collection('storeVisitSettings').doc('reset').get();
+    const resetAt = reset.data()?.resetAt;
+    const start = resetAt instanceof Timestamp && resetAt.toMillis() > monthStart.toMillis() ? resetAt : monthStart;
+    const snapshot = await db.collection('storeVisits').where('createdAt', '>=', start).orderBy('createdAt', 'desc').limit(10000).get();
+    return { currentMonth, snapshot, start };
+}
+
+async function storeVisitSummary() {
+    const { currentMonth, snapshot, start } = await monthlyStoreVisits();
     const productViews: Record<string, number> = {};
-    const productSales: Record<string, { count: number; revenue: number }> = {};
-    const sources = new Map<string, { location: string; count: number }>();
+    const sources = new Map<string, { location: string; count: number; siteVisits: number }>();
     snapshot.forEach(doc => {
         const visit = doc.data();
         const productPath = String(visit.productPath || '');
         productViews[productPath] = (productViews[productPath] || 0) + 1;
         const location = String(visit.location || '직접 유입');
-        const source = sources.get(location) || { location, count: 0 };
+        const source = sources.get(location) || { location, count: 0, siteVisits: 0 };
         source.count++;
         sources.set(location, source);
     });
-    const sourceRows = [...sources.values()].sort((a, b) => b.count - a.count);
-    const purchases = await db.collection('purchasers').where('source', '==', 'latpeed').where('templateId', '==', 'lifeUp').get();
-    for (const purchase of purchases.docs.map(doc => doc.data())) {
-        const purchasedAt = String(purchase.purchasedAt || '');
-        const amount = Number(purchase.paymentAmount ?? String(purchase.amount || '').replace(/[^0-9]/g, ''));
-        if (!purchasedAt.startsWith(`${year}. ${month}.`) || amount !== 79000) continue;
-        const current = productSales.lifeup || { count: 0, revenue: 0 };
-        current.count++; current.revenue += amount; productSales.lifeup = current;
-    }
+    const siteSnapshot = await db.collection('siteVisits').where('createdAt', '>=', start).limit(10000).get();
+    siteSnapshot.forEach(doc => {
+        const location = String(doc.data().location || '직접 유입');
+        const source = sources.get(location) || { location, count: 0, siteVisits: 0 };
+        source.siteVisits++;
+        sources.set(location, source);
+    });
+    const sourceRows = [...sources.values()].sort((a, b) => (b.count + b.siteVisits) - (a.count + a.siteVisits));
+    const purchases = await db.collection('purchasers').where('templateId', '==', 'lifeUp').get();
+    const productSales = summarizeProductSales(purchases.docs.map(doc => doc.data()), currentMonth.key);
     const titles = new Map(await Promise.all([...new Set(sourceRows.map(source => source.location).filter(location => YOUTUBE_VIDEO_ID.test(location)))].map(async videoId => [videoId, await youtubeContentTitle(videoId)] as const)));
     const videoSources = sourceRows.filter(source => YOUTUBE_VIDEO_ID.test(source.location));
     const viewDocs = videoSources.length ? await db.getAll(...videoSources.map(source => db.collection('youtubeMonthlyViews').doc(currentMonth.key).collection('videos').doc(source.location))) : [];
     const monthlyViews = new Map(viewDocs.map(doc => [doc.id, doc.data()?.status === 'ok' && typeof doc.data()?.views === 'number' ? doc.data()!.views : null]));
-    return res.json({ month: currentMonth.key, totalViews: snapshot.size, productViews, productSales, sources: sourceRows.map(source => ({ ...source, title: titles.get(source.location) || null, sourceViews: monthlyViews.get(source.location) ?? null })) });
+    return { month: currentMonth.key, totalViews: snapshot.size, productViews, productSales, sources: sourceRows.map(source => ({ ...source, title: titles.get(source.location) || null, sourceViews: monthlyViews.get(source.location) ?? null })) };
+}
+
+export const getMarketingReport = onRequest({ timeoutSeconds: 180 }, withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+    try {
+        // Validate before reading data or making a paid API request.
+        marketingReport({ month: '', totalViews: 0, productSales: {}, sources: [] }, req.body?.goals);
+        const report = marketingReport(await storeVisitSummary(), req.body.goals);
+        if (req.body.ai !== true) return res.json({ report });
+        const model = 'gpt-5.4';
+        const response = await clientAI.responses.create({
+            model, reasoning: { effort: 'high' }, max_output_tokens: 7000, store: false,
+            instructions: '당신은 30년 이상 IT 서비스 마케팅·홍보 경험을 가진 전문가의 관점으로 분석하는 자문 AI다. 한국어 일반 텍스트로 답하라. 제공된 집계 수치와 경고만 근거로 사용하며 조회하지 않은 영상·상세페이지의 문제를 사실처럼 단정하지 마라. 4개 지표(소스 조회수=콘텐츠 노출, 유입 전환율=콘텐츠 설득·유인, 상품 유입수=콘텐츠 종합·기타 노출·광고·프로모션, 구매 전환율=상품 구매력·상세페이지 설득)의 연결을 분석하라. 월중 누적과 월 목표, 부분 측정, 중복 방문, 구매·유입 집계 모수 불일치, 작은 표본을 반드시 반영하라. 퍼센트 차이는 %p로 표현하라. 다음 순서로 1500자 내외 보고서를 작성하라: 1. 종합 진단 2. 가장 먼저 개선할 한 가지와 수치 근거(측정 신뢰성이 부족하면 측정 정비 우선) 3. 네 지표별 문제·가설·개선안 4. 7일 실행 계획 세 가지와 각각의 확인 지표 5. 추가로 필요한 정보. 단순히 가장 큰 부족률을 우선순위로 삼지 말고 영향·실행 가능성·증거 신뢰도로 판단하라. 확정적 매출 상승 예측을 금지한다.',
+            input: JSON.stringify(report)
+        }, { timeout: 150000, maxRetries: 0 });
+        if (response.status !== 'completed' || !response.output_text) throw new Error('INCOMPLETE_REPORT');
+        return res.json({ report, ai: response.output_text, model });
+    } catch (error) {
+        if (error instanceof Error && error.message === 'INVALID_GOALS') return res.status(400).json({ error: '목표는 0보다 큰 숫자로 입력하고 전환율은 100% 이하로 설정해주세요.' });
+        logger.error('Marketing report failed', { message: error instanceof Error ? error.message : 'unknown' });
+        return res.status(502).json({ error: '리포트 생성에 실패했습니다. 잠시 후 다시 시도해주세요. AI 분석은 OpenAI 계정의 모델 접근 권한과 잔액도 확인해주세요.' });
+    }
 }));
 
 export const latpeedPaymentWebhook = onRequest(
@@ -3535,6 +3652,98 @@ export const sendVerificationEmail = onRequest(
         return res.status(200).json({ success: true });
     })
 );
+
+// Public YouTube giveaway.  This is intentionally separate from purchase
+// verification: a claim can grant more than one template with one email-code
+// challenge, while purchase verification remains strictly one product at a time.
+type LifeupFreeTemplate = 'lifeUp' | 'lifeUpScrapbook';
+const LIFEUP_FREE_TEMPLATES: ReadonlyArray<LifeupFreeTemplate> = ['lifeUpScrapbook'];
+const LIFEUP_FREE_TEMPLATE_NAMES: Record<LifeupFreeTemplate, string> = {
+    lifeUp: '라이프업 1.5',
+    lifeUpScrapbook: '라이프업 1.5 스크랩북'
+};
+function lifeupFreeEmailKey(email: string): string {
+    return crypto.createHash('sha256').update(email).digest('hex');
+}
+function lifeupFreeSelections(value: unknown): LifeupFreeTemplate[] {
+    if (!Array.isArray(value)) return [];
+    const selected = [...new Set(value.filter((item): item is LifeupFreeTemplate =>
+        typeof item === 'string' && (LIFEUP_FREE_TEMPLATES as readonly string[]).includes(item)))];
+    return selected;
+}
+
+export const requestLifeupFreeCode = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const email = customerEmail(req.body?.email);
+    const templates = lifeupFreeSelections(req.body?.templates);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: '이메일 주소를 확인해 주세요.' });
+    if (!templates.length) return res.status(400).json({ error: '무료 템플릿을 1개 이상 선택해 주세요.' });
+    if (templates.length > 2) return res.status(400).json({ error: '무료 템플릿은 최대 2개까지 선택할 수 있습니다.' });
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const key = lifeupFreeEmailKey(email);
+    await db.collection('lifeupFreeVerifications').doc(key).set({
+        email, templates, marketingConsent: req.body?.marketingConsent === true,
+        code: hashContent(code), attempts: 0,
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 10 * 60 * 1000),
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    const delivery = await mailQueue.send({
+        from: 'Notionable <noreply@notionable.net>', to: email,
+        subject: '[노셔너블] 라이프업 무료 템플릿 이메일 인증번호',
+        text: `인증번호: ${code}\n유효시간: 10분\n\n인증을 완료하면 선택하신 라이프업 무료 템플릿을 바로 받아보실 수 있습니다.`
+    }, 'high', `lifeup-free-verification:${key}:${hashContent(code)}`, true);
+    if (delivery.error) return res.status(503).json({ error: '인증 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.' });
+    return res.json({ success: true });
+}));
+
+export const redeemLifeupFreeTemplates = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const email = customerEmail(req.body?.email);
+    const code = String(req.body?.code || '').trim();
+    if (!email || !/^\d{6}$/.test(code)) return res.status(400).json({ error: '이메일과 6자리 인증번호를 확인해 주세요.' });
+    const key = lifeupFreeEmailKey(email);
+    const verificationRef = db.collection('lifeupFreeVerifications').doc(key);
+    let templates: LifeupFreeTemplate[] = [];
+    await db.runTransaction(async transaction => {
+        const verification = await transaction.get(verificationRef);
+        const data = verification.data();
+        if (!data || data.expiresAt?.toMillis?.() < Date.now()) throw new Error('인증번호가 만료되었습니다. 다시 요청해 주세요.');
+        if ((data.attempts || 0) >= 5) throw new Error('인증 시도 횟수를 초과했습니다. 인증번호를 다시 요청해 주세요.');
+        if (data.code !== hashContent(code)) {
+            transaction.update(verificationRef, { attempts: (data.attempts || 0) + 1 });
+            throw new Error('인증번호가 올바르지 않습니다.');
+        }
+        templates = lifeupFreeSelections(data.templates);
+        if (!templates.length) throw new Error('선택한 템플릿 정보를 찾을 수 없습니다. 다시 신청해 주세요.');
+        const refs = templates.map(templateId => ({ templateId,
+            workspaceRef: db.collection('users').doc(`lifeupfree_${key.slice(0, 24)}_${templateId}`),
+            purchaserRef: db.collection('purchasers').doc(`lifeupfree_${key.slice(0, 24)}_${templateId}`) }));
+        const existing = await Promise.all(refs.map(async item => ({ ...item,
+            workspace: await transaction.get(item.workspaceRef), purchaser: await transaction.get(item.purchaserRef) })));
+        for (const { templateId, workspaceRef, purchaserRef, workspace, purchaser } of existing) {
+            if (!workspace.exists) transaction.create(workspaceRef, {
+                email, templateId, ...(templateId === 'lifeUp' ? { memberType: 'standard' } : {}),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(), source: 'lifeup-free'
+            });
+            transaction.set(workspaceRef.collection('purchases').doc(templateId), {
+                verified: true, verifiedAt: admin.firestore.FieldValue.serverTimestamp(), source: 'lifeup-free'
+            }, { merge: true });
+            if (!purchaser.exists) transaction.create(purchaserRef, {
+                email, name: '', phone: '', templateId,
+                ...(templateId === 'lifeUp' ? { memberType: 'standard' } : {}),
+                purchaseOption: `${LIFEUP_FREE_TEMPLATE_NAMES[templateId]} 무료 증정`, amount: '0원', paymentAmount: 0,
+                paymentMethod: '무료 이벤트', purchasedAt: formatLatpeedDate(new Date().toISOString()),
+                status: '무료 증정 완료', source: 'lifeup-free', registrationStatus: 'lifeup-free',
+                marketingConsent: data.marketingConsent === true, marketingConsentSource: 'lifeup-free',
+                marketingConsentAt: admin.firestore.FieldValue.serverTimestamp(), createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        transaction.delete(verificationRef);
+    });
+    return res.json({ success: true, templates: templates.map(id => ({ id, name: LIFEUP_FREE_TEMPLATE_NAMES[id],
+        downloadPath: id === 'lifeUpScrapbook' ? '/download/lifeup-scrapbook' : '/download/lifeup' })) });
+}));
 
 // Resolve workspace ownership only from a verified Firebase identity.
 export const getPurchaseHistory = onRequest(withCors(async (req, res) => {

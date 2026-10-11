@@ -1,0 +1,48 @@
+<main class="gift-page">
+  <article class="gift-card">
+    <header class="brand-header"><a href="https://notionable.net"><img src="/assets/images/logo_notionable.png" alt="Notionable"></a></header>
+    @if (step === 'complete') {
+      <section class="complete">
+        <span class="eyebrow">LIFEUP FREE GIFT</span>
+        <h1>무료 템플릿 신청이 완료되었어요 🎉</h1>
+        <p><strong>{{ email }}</strong>로 선택한 템플릿의 웰컴 메일을 보냈습니다. 아래에서 바로 다운로드할 수도 있어요.</p>
+        <div class="download-list">
+          @for (template of claimed; track template.id) { <a class="primary-button" [routerLink]="template.downloadPath">{{ template.name }} 다운로드 <span>→</span></a> }
+        </div>
+      </section>
+    } @else {
+      <span class="eyebrow">LIFEUP FREE GIFT</span>
+      <h1>영상 속 라이프업 템플릿<br>2종을 무료로 받아보세요</h1>
+      <p class="lead">원하는 템플릿을 최대 2개 선택하고, 이메일 인증을 완료해 주세요.</p>
+      <section class="template-section">
+        <div class="section-heading"><h2>무료 템플릿 선택</h2><span>{{ selected.length }} / {{ maxSelections }}</span></div>
+        <div class="template-list">
+          @for (template of templates; track $index) {
+            <button type="button" class="template-option" [class.selected]="template.selected" [disabled]="!template.enabled" (click)="toggle(template)">
+              <span class="checkbox" aria-hidden="true">{{ template.selected ? '✓' : '' }}</span>
+              <span class="template-copy"><strong>{{ template.name }}</strong><small>{{ template.description }}</small></span>
+            </button>
+          }
+        </div>
+      </section>
+      @if (step === 'form') {
+        <section class="form-section">
+          <label for="email">신청 이메일</label>
+          <input id="email" type="email" autocomplete="email" [(ngModel)]="email" [disabled]="busy" placeholder="example@email.com" (keyup.enter)="requestCode()">
+          <label class="consent"><input type="checkbox" [(ngModel)]="marketingConsent" [disabled]="busy"><span><strong>(선택)</strong> 라이프업 소식과 혜택 등 마케팅 정보 수신에 동의합니다.</span></label>
+          <p class="notice">입력한 이메일로 인증번호와 선택한 템플릿의 초대·웰컴 메일을 보내드립니다. 템플릿은 해당 이메일로만 이용할 수 있습니다.</p>
+          <button type="button" class="primary-button" [disabled]="busy || !canRequest" (click)="requestCode()">{{ busy ? '인증번호 발송 중…' : '이메일 인증하기' }} <span>→</span></button>
+        </section>
+      } @else {
+        <section class="form-section">
+          <h2>이메일 인증</h2><p><strong>{{ email }}</strong>로 보낸 6자리 인증번호를 입력해 주세요.</p>
+          <label for="code">인증번호</label>
+          <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" [(ngModel)]="code" [disabled]="busy" placeholder="인증번호 6자리" (keyup.enter)="confirmCode()">
+          <button type="button" class="primary-button" [disabled]="busy" (click)="confirmCode()">{{ busy ? '인증 중…' : '신청 완료하기' }} <span>→</span></button>
+          <button type="button" class="text-button" [disabled]="busy" (click)="step = 'form'; error = ''">이메일 변경 · 인증번호 다시 받기</button>
+        </section>
+      }
+    }
+    @if (error) { <p class="error" role="alert">{{ error }}</p> }
+  </article>
+</main>

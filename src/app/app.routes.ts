@@ -43,13 +43,6 @@ import { WorkspaceLayoutComponent } from './workspace-layout.component';
 import { WidgetLayoutComponent } from './widget-layout.component';
 import { EventLogComponent } from './components/pages/workspace/pages/event-log/event-log.component';
 import { LifeupTemplateSettingsComponent } from './components/pages/workspace/pages/studio/pages/lifeup-template-settings/lifeup-template-settings.component';
-import { LifeupCareComponent } from './components/pages/workspace/pages/care/lifeup-care/lifeup-care.component';
-import { PurchaserAdminComponent } from './components/pages/workspace/pages/purchaser-admin/purchaser-admin.component';
-import { CustomerAdminComponent } from './components/pages/workspace/pages/customer-admin/customer-admin.component';
-import { MailAdminComponent } from './components/pages/workspace/pages/mail-admin/mail-admin.component';
-import { MemberAdminComponent } from './components/pages/workspace/pages/member-admin/member-admin.component';
-import { MarketingBlockAdminComponent } from './components/pages/workspace/pages/marketing-block-admin/marketing-block-admin.component';
-import { SalesAdminComponent } from './components/pages/workspace/pages/sales-admin/sales-admin.component';
 import { UnsubscribeComponent } from './components/pages/unsubscribe/unsubscribe.component';
 import { WorkspaceComponent } from './components/pages/workspace/workspace.component';
 import { LifeupScrapbookUpgradeComponent } from './components/pages/upgrade/lifeup-scrapbook-upgrade.component';
@@ -69,7 +62,10 @@ export const routes: Routes = [
   { path: 'store/lifeup-reward-sale', component: StoreRedirectComponent },
   { path: 'store/lifeup-imweb', component: StoreRedirectComponent },
   { path: 'store/lifeup-scrapbook', component: StoreRedirectComponent },
+  { path: 'store/bizup-custom', component: StoreRedirectComponent },
   { path: 'upgrade/lifeup-scrapbook', component: LifeupScrapbookUpgradeComponent },
+  { path: 'gift/lifeupfree', loadComponent: () => import('./components/pages/lifeup-free/lifeup-free.component').then(m => m.LifeupFreeComponent) },
+  { path: 'invitation/lifeupfree', redirectTo: 'gift/lifeupfree', pathMatch: 'full' },
   { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },
   { path: 'block', component: UnsubscribeComponent },
   { path: 'unsubscribe', redirectTo: 'block', pathMatch: 'full' },
@@ -108,32 +104,32 @@ export const routes: Routes = [
       },
       {
         path: 'admin/lifeup-care',
-        component: LifeupCareComponent,
+        loadComponent: () => import('./components/pages/workspace/pages/care/lifeup-care/lifeup-care.component').then(m => m.LifeupCareComponent),
         data: { adminView: true }
       },
       {
         path: 'admin/purchasers',
-        component: PurchaserAdminComponent
+        loadComponent: () => import('./components/pages/workspace/pages/purchaser-admin/purchaser-admin.component').then(m => m.PurchaserAdminComponent)
       },
       {
         path: 'admin/customers',
-        component: CustomerAdminComponent
+        loadComponent: () => import('./components/pages/workspace/pages/customer-admin/customer-admin.component').then(m => m.CustomerAdminComponent)
       },
       {
         path: 'admin/mail',
-        component: MailAdminComponent
+        loadComponent: () => import('./components/pages/workspace/pages/mail-admin/mail-admin.component').then(m => m.MailAdminComponent)
       },
       {
         path: 'admin/marketing-blocks',
-        component: MarketingBlockAdminComponent
+        loadComponent: () => import('./components/pages/workspace/pages/marketing-block-admin/marketing-block-admin.component').then(m => m.MarketingBlockAdminComponent)
       },
       {
         path: 'admin/members',
-        component: MemberAdminComponent
+        loadComponent: () => import('./components/pages/workspace/pages/member-admin/member-admin.component').then(m => m.MemberAdminComponent)
       },
       {
         path: 'admin/sales',
-        component: SalesAdminComponent
+        loadComponent: () => import('./components/pages/workspace/pages/sales-admin/sales-admin.component').then(m => m.SalesAdminComponent)
       },
       {
         path: 'connect',
@@ -144,7 +140,7 @@ export const routes: Routes = [
         children: [
           {
             path: '',
-            component: LifeupCareComponent,
+            loadComponent: () => import('./components/pages/workspace/pages/care/lifeup-care/lifeup-care.component').then(m => m.LifeupCareComponent),
             pathMatch: 'full'
           },
           {
