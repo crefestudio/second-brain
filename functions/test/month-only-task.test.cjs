@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-const { hasMonthWithoutDay } = require('../lib/services/date-service');
+const { hasMonthWithoutDay, parseExplicitDateRange } = require('../lib/services/date-service');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../src/index.ts'), 'utf8');
 
 test('month-only plans remain undated; specific dates and ranges are unchanged', () => {
@@ -12,7 +12,7 @@ test('month-only plans remain undated; specific dates and ranges are unchanged',
 });
 
 test('month-only input skips date AI even after a previous date question', async () => {
-    const context = vm.createContext({ exports:{}, hasMonthWithoutDay, requestDateExpressionFromAI: () => { throw Error('must not call date AI'); } });
+    const context = vm.createContext({ exports:{}, hasMonthWithoutDay, parseExplicitDateRange, requestDateExpressionFromAI: () => { throw Error('must not call date AI'); } });
     const code = source.slice(source.indexOf('export async function processDateExpression('), source.indexOf('function getPreviousDateData('));
     vm.runInContext(ts.transpile(code, { target: ts.ScriptTarget.ES2020, module:ts.ModuleKind.CommonJS }), context);
     const result = await context.exports.processDateExpression('10월에 군산가기', {result:{action:'dateAsk'}});

@@ -2,6 +2,26 @@
      [class.widget-mode]="isWidgetMode"
      [class.app-mode]="!isWidgetMode">
   <div class="center-box">
+    <div class="cache-notice" *ngIf="notionConnectionStatus !== 'connected' && (state === 'graph' || state === 'graph-nodata')">
+      노션 연결이 해제되었거나 연결 준비 중입니다. 기존 그래프는 보관되며, 자동 반영은 연결 완료 후 재개됩니다.
+    </div>
+    <div class="cache-notice" *ngIf="state === 'graph' || state === 'graph-nodata'">
+      ! 새 그래프에서는 '노트'만 대상으로 합니다. 적용하시려면 초기화 후 다시 그래프 작업을 진행해주세요.
+      <button type="button" (click)="showCacheResetConfirm = true; cacheResetError = ''">그래프 캐시 초기화</button>
+    </div>
+    <div class="cache-reset-backdrop" *ngIf="showCacheResetConfirm">
+      <section class="cache-reset-dialog" role="dialog" aria-modal="true" aria-labelledby="cache-reset-title">
+        <h2 id="cache-reset-title">그래프 캐시 초기화</h2>
+        <p>실제 노트는 삭제되지 않습니다. 그래프를 그리기 위해 임시 보관한 키워드 정보를 삭제합니다.</p>
+        <p>초기화 후 다시 그래프 작업을 진행해주세요.</p>
+        <p class="cache-reset-warning">! 새 그래프에서는 '노트'만 대상으로 합니다. 적용하시려면 초기화 후 다시 그래프 작업을 진행해주세요.</p>
+        <p role="alert" *ngIf="cacheResetError">{{ cacheResetError }}</p>
+        <div class="confirm-actions">
+          <button class="confirm-btn" [disabled]="cacheResetting" (click)="showCacheResetConfirm = false">취소</button>
+          <button class="confirm-btn yes" [disabled]="cacheResetting" (click)="confirmCacheReset()">{{ cacheResetting ? '초기화 중…' : '초기화' }}</button>
+        </div>
+      </section>
+    </div>
     @if (showUnsupportedNotice) {
       <app-scrapbook-upgrade-card />
     }
@@ -333,13 +353,14 @@
       <div class="success-wrapper">
         <div class="success-card">
           <h1 class="title"> 🎉 그래프를 표시할 준비가 되었습니다.</h1>
+          <p *ngIf="cacheResetComplete">그래프 캐시를 초기화했습니다. 실제 노트는 그대로 보관되어 있습니다. 아래 버튼으로 다시 그래프 작업을 진행해주세요.</p>
 
           <small class="info-text"
               style="display:block; padding: 0 16px; line-height: 1.5em; font-size: 13px; color: #959595; margin-bottom: 18px; text-align: left;">
             • 아직 표시할 데이터가 없습니다. 
             • 노트를 작성하면 AI가 자동으로 키워드를 추출해 그래프를 생성합니다.<br><br>
             • 이미 작성된 노트가 있다면 아래 버튼을 눌러 <span style="color: #fd5712;">키워드 전환</span>을 진행하세요.<br>
-              (한 번에 5개씩 처리되며 약 5분 소요됩니다. 요청 후 페이지를 나가도 됩니다.)<br>
+              (노트 수와 내용에 따라 처리 시간이 달라집니다.)<br>
           </small>
 
            <!-- <small class="info-text"
@@ -389,6 +410,7 @@
 
       <!-- 메뉴 -->
       <div class="graph-menu" *ngIf="isMenuOpen" (click)="$event.stopPropagation()">
+        <button class="menu-item danger" (click)="isMenuOpen = false; showCacheResetConfirm = true; cacheResetError = ''">그래프 캐시 초기화</button>
         <!-- 창 열기 -->
         <!-- <button class="menu-item" (click)="onClickSettings()">
           <span class="menu-icon">
@@ -436,7 +458,7 @@
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path fill-rule="evenodd" clip-rule="evenodd" d="M14 2C14 2.74028 13.5978 3.38663 13 3.73244V4H20C21.6569 4 23 5.34315 23 7V19C23 20.6569 21.6569 22 20 22H4C2.34315 22 1 20.6569 1 19V7C1 5.34315 2.34315 4 4 4H11V3.73244C10.4022 3.38663 10 2.74028 10 2C10 0.895431 10.8954 0 12 0C13.1046 0 14 0.895431 14 2ZM4 6H11H13H20C20.5523 6 21 6.44772 21 7V19C21 19.5523 20.5523 20 20 20H4C3.44772 20 3 19.5523 3 19V7C3 6.44772 3.44772 6 4 6ZM15 11.5C15 10.6716 15.6716 10 16.5 10C17.3284 10 18 10.6716 18 11.5C18 12.3284 17.3284 13 16.5 13C15.6716 13 15 12.3284 15 11.5ZM16.5 8C14.567 8 13 9.567 13 11.5C13 13.433 14.567 15 16.5 15C18.433 15 20 13.433 20 11.5C20 9.567 18.433 8 16.5 8ZM7.5 10C6.67157 10 6 10.6716 6 11.5C6 12.3284 6.67157 13 7.5 13C8.32843 13 9 12.3284 9 11.5C9 10.6716 8.32843 10 7.5 10ZM4 11.5C4 9.567 5.567 8 7.5 8C9.433 8 11 9.567 11 11.5C11 13.433 9.433 15 7.5 15C5.567 15 4 13.433 4 11.5ZM10.8944 16.5528C10.6474 16.0588 10.0468 15.8586 9.55279 16.1056C9.05881 16.3526 8.85858 16.9532 9.10557 17.4472C9.68052 18.5971 10.9822 19 12 19C13.0178 19 14.3195 18.5971 14.8944 17.4472C15.1414 16.9532 14.9412 16.3526 14.4472 16.1056C13.9532 15.8586 13.3526 16.0588 13.1056 16.5528C13.0139 16.7362 12.6488 17 12 17C11.3512 17 10.9861 16.7362 10.8944 16.5528Z" fill="#cfd0d3"></path> </g></svg>
         
           </span>
-          <span class="menu-text">AI 키워드 추출(+5개)</span>
+          <span class="menu-text">AI 노트 키워드 추출</span>
         </button>
 
         <!-- 다시 그리기 -->

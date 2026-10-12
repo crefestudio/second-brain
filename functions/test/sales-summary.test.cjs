@@ -1,6 +1,16 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { summarizeProductSales } = require('../lib/sales-summary');
+const { storeVisitDayWindows } = require('../lib/sales-summary');
+
+test('daily inflow windows use KST midnight and retain yesterday across month boundaries', () => {
+    const windows = storeVisitDayWindows(Date.parse('2026-11-01T01:00:00Z'));
+    assert.equal(new Date(windows[0].start).toISOString(), '2026-10-31T15:00:00.000Z');
+    assert.equal(new Date(windows[1].start).toISOString(), '2026-10-30T15:00:00.000Z');
+    assert.equal(new Date(windows[2].start).toISOString(), '2026-10-29T15:00:00.000Z');
+    assert.equal(windows[1].end, windows[0].start);
+    assert.equal(windows[2].end, windows[1].start);
+});
 test('counts production two-digit purchase dates from CSV, webhook and manual records', () => {
     const rows = ['26.10.03 19:51', '26.10.04 10:14', '26.10.01 14:01', '26.10.08 03:22', '26.10.01 15:00'].map(purchasedAt => ({
         purchasedAt, amount: '79,000원', purchaseOption: '라이프업  1.5  올인원 -  얼리버드  특별 할인 판매'

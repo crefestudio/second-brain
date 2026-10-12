@@ -128,6 +128,7 @@ export class SalesAdminComponent implements OnInit {
         finally { this.reportLoading = false; }
     }
     allowed = false; errorMessage = ''; youtubeMessage = ''; copiedPath = ''; loadingSummary = false; syncingYoutube = false; summaryMonth = ''; totalViews = 0; productViews: Record<string, number> = {}; productSales: Record<string, { count: number; revenue: number }> = {}; sources: StoreVisitSource[] = [];
+    dailyInflows: { today: number; yesterday: number; dayBeforeYesterday: number } | null = null;
     goals = { revenue: 5000000, averagePrice: 70000, trafficConversion: 3, purchaseConversion: 3 };
     readonly products: Product[] = [
         { name: '라이프업 (래피드)', price: 79000, storePath: 'lifeup-r', trackingKey: 'lifeup' }, { name: '라이프업 보상 (래피드)', price: 69000, storePath: 'lifeup-reward' },
@@ -173,7 +174,7 @@ export class SalesAdminComponent implements OnInit {
     belowSourceGoal(source: StoreVisitSource): boolean { const conversion = this.sourceConversion(source); return conversion !== null && conversion < this.goals.trafficConversion; }
     isYoutubeVideoId(value: string): boolean { return /^[A-Za-z0-9_-]{11}$/.test(value); }
     youtubeUrl(videoId: string): string { return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`; }
-    async loadSummary(): Promise<void> { this.loadingSummary = true; try { const summary = await this.sales.summary(); this.summaryMonth = summary.month; this.totalViews = summary.totalViews; this.productViews = summary.productViews; this.productSales = summary.productSales || {}; this.sources = summary.sources; } finally { this.loadingSummary = false; } }
+    async loadSummary(): Promise<void> { this.loadingSummary = true; try { const summary = await this.sales.summary(); this.summaryMonth = summary.month; this.totalViews = summary.totalViews; this.dailyInflows = summary.dailyInflows || null; this.productViews = summary.productViews; this.productSales = summary.productSales || {}; this.sources = summary.sources; } finally { this.loadingSummary = false; } }
     async connectYoutube(): Promise<void> {
         if (this.syncingYoutube) return;
         this.syncingYoutube = true; this.youtubeMessage = '';

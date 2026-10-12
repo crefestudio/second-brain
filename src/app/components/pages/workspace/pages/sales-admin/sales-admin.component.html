@@ -3,9 +3,21 @@
 @if (allowed) {
 <header class="page-header"><div><h1>월간 판매 관리</h1><p>{{ summaryMonth || '이번 달' }} 1일부터 현재까지</p></div><button class="report-button" type="button" (click)="generateReport()" [disabled]="reportLoading">{{reportLoading ? '리포트 생성 중…' : '마케팅 리포트'}}</button></header>
 @if(revenueProgress; as progress){
-<section class="achievement-grid" aria-label="매출 목표 달성률">
+<section class="achievement-grid" aria-label="상품 유입수와 매출 목표 달성률">
+  <article class="achievement-card inflow-card">
+    <p>상품 유입수 <span class="pace-label">오늘 · 한국시간</span></p>
+    <strong>{{dailyInflows === null ? '—' : (dailyInflows.today | number)}}<span class="inflow-unit">회</span></strong>
+    <dl class="inflow-details">
+      <div><dt>이달</dt><dd>{{summaryMonth ? (totalViews | number) : '—'}}회</dd></div>
+      <div><dt>어제</dt><dd>{{dailyInflows === null ? '—' : (dailyInflows.yesterday | number)}}회</dd></div>
+      <div><dt>그제</dt><dd>{{dailyInflows === null ? '—' : (dailyInflows.dayBeforeYesterday | number)}}회</dd></div>
+    </dl>
+    <small>상품 페이지 유입 기준 · 방문자 수와 다릅니다.</small>
+  </article>
   <article class="achievement-card"><p>전체 목표 달성률</p><strong [class.negative]="progress.monthly !== null && progress.monthly < 100" [class.positive]="progress.monthly !== null && progress.monthly >= 100">{{progress.monthly === null ? '—' : (progress.monthly | number:'1.1-1') + '%'}}</strong><p>현재 매출 {{won(actualRevenue)}} / 월 목표 {{won(goals.revenue)}}</p><small>현재 매출 ÷ 월 목표 매출</small></article>
   <article class="achievement-card"><p>오늘 기준 목표 달성률 <span class="pace-label">{{progress.day}}일 / {{progress.days}}일 · 한국시간</span></p><strong [class.negative]="progress.paced !== null && progress.paced < 100" [class.positive]="progress.paced !== null && progress.paced >= 100">{{progress.paced === null ? '—' : (progress.paced | number:'1.1-1') + '%'}}</strong><p>현재 매출 {{won(actualRevenue)}} / 오늘까지 목표 {{won(progress.dailyTarget)}}</p><small>월 목표 × {{progress.day}} ÷ {{progress.days}} · 오늘 포함 일할 목표 대비</small></article>
+</section>
+<section class="achievement-grid forecast-grid" aria-label="예상 판매와 매출">
   <article class="achievement-card forecast-card"><p>현재까지 예상 판매 개수</p>@if(currentForecast; as forecast){<strong>{{actualPurchases | number:'1.0-0'}} <span>/ {{forecast.purchases | number:'1.0-0'}}건</span></strong><p>실제 판매 개수 / 현재까지 예상 판매 개수</p><small>현재 소스 조회수 × 목표 유입 전환율 {{goals.trafficConversion}}% × 목표 구매 전환율 {{goals.purchaseConversion}}%@if(partialSourceViews){ · 연결된 소스 기준}</small>}@else{<strong>—</strong><p>소스 조회수 연동이 완료되면 예상치를 표시합니다.</p><small>목표 전환율을 기준으로 계산합니다.</small>}</article>
   <article class="achievement-card forecast-card"><p>현재까지 예상 매출</p>@if(currentForecast; as forecast){<strong>{{won(actualRevenue)}} <span>/ {{won(forecast.revenue)}}</span></strong><p>실제 매출 / 현재까지 예상 매출</p><small>예상 판매 {{forecast.purchases | number:'1.0-0'}}건 × 목표 평균 판매 단가 {{won(goals.averagePrice)}}@if(partialSourceViews){ · 연결된 소스 기준}</small>}@else{<strong>—</strong><p>소스 조회수 연동이 완료되면 예상치를 표시합니다.</p><small>목표 전환율과 평균 판매 단가를 기준으로 계산합니다.</small>}</article>
 </section>

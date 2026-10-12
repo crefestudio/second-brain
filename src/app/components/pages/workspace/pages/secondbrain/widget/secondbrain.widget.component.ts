@@ -120,6 +120,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     private upgradeTimer?: ReturnType<typeof setInterval>;
 
     errorMessage: string = '';
+    notionConnectionStatus = 'connected';
     warnMessage: string = '';
     isVerifying: boolean = false;
 
@@ -171,6 +172,66 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     async init() {
         this.initStateData();
         await this.stateProc();
+        clearInterval(this.graphRefreshTimer);
+        this.graphRefreshTimer = setInterval(() => {
+            if (!document.hidden && ['graph', 'graph-nodata'].includes(this.state)) void this.refreshGraph();
+        }, 30000);
+    }
+
+    private graphRefreshTimer?: ReturnType<typeof setInterval>;
+    private graphRefreshing = false;
+    showCacheResetConfirm = false;
+    cacheResetting = false;
+    cacheResetError = '';
+    cacheResetComplete = false;
+    private cacheViewGeneration = 0;
+    async confirmCacheReset() {
+        if (!this.userId || this.cacheResetting) return;
+        this.cacheResetting = true;
+        this.cacheViewGeneration++;
+        this.cacheResetError = '';
+        this.state = 'cache-resetting';
+        try {
+            await this.userService.resetSecondBrainGraphCache(this.userId,
+                this.isWidgetMode ? UserService.getLocalSession(this.userId)?.accessKey : undefined);
+            this.network?.destroy(); this.network = undefined;
+            this.graphData.edges.clear(); this.graphData.nodes.clear();
+            this.cacheResetComplete = true;
+            this.showCacheResetConfirm = false;
+            this.isMenuOpen = false;
+            this.state = 'graph-nodata';
+        } catch {
+            this.cacheResetError = '초기화를 완료하지 못했습니다. 잠시 후 다시 시도해주세요.';
+            this.state = 'graph-nodata';
+        } finally { this.cacheResetting = false; }
+    }
+    private async refreshGraph() {
+        if (this.graphRefreshing || !this.userId) return;
+        this.graphRefreshing = true;
+        const graphType = this.currGraphType;
+        const generation = this.cacheViewGeneration;
+        try {
+            const accessKey = this.isWidgetMode ? UserService.getLocalSession(this.userId)?.accessKey : undefined;
+            const result: any = await this.userService.getKeywordGraphData(this.userId, graphType, accessKey);
+            if (!result || generation !== this.cacheViewGeneration || graphType !== this.currGraphType || !['graph', 'graph-nodata'].includes(this.state)) return;
+            this.notionConnectionStatus = result.connectionStatus || 'connected';
+            const nodes = result.nodes || [];
+            const edges = result.edges || [];
+            if (!nodes.length) {
+                this.graphData.edges.clear(); this.graphData.nodes.clear(); this.state = 'graph-nodata';
+                return;
+            }
+            if (this.state === 'graph-nodata' || !this.network) {
+                this.state = 'graph';
+                await this.loadGraph(graphType);
+                return;
+            }
+            const ids = new Set(nodes.map((node: Node) => node.id));
+            this.graphData.edges.clear();
+            this.graphData.nodes.remove(this.graphData.nodes.getIds().filter(id => !ids.has(id)));
+            this.graphData.nodes.update(nodes);
+            this.graphData.edges.add(edges);
+        } finally { this.graphRefreshing = false; }
     }
 
     async updateSession() {
@@ -192,6 +253,8 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
 
     ngOnDestroy() {
+        clearInterval(this.graphRefreshTimer);
+        this.network?.destroy();
         clearInterval(this.upgradeTimer);
         // 🔥 컴포넌트 제거 시 리스너 해제
         this.unsubscribe?.();
@@ -201,6 +264,9 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     initEvent(userId: string) {
         if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
+        // Embedded widgets do not have Firebase Auth. Firestore listeners are
+        // intentionally owner-only, so embeds fetch through the server API instead.
+        if (this.isWidgetMode) return;
         // event
         this.unsubscribe = this.eventListenerService.listenUserEventsRealtime(userId, event => {
             this.onEvent(event);
@@ -223,7 +289,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.showEventToast(event);
 
         if (event.eventType === 'generate-note-keyword' && event.status === 'completed') {
-            this.updateGraphData();
+            void this.refreshGraph();
             setTimeout(() => {
                 this.showToast('키워드 추출작업이 완료되어 그래프를 다시 그립니다.');
             }, 1000);
@@ -332,21 +398,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             this.state = 'connect-button';
             this.errorMessage = '인증 정보가 만료되었거나 확인되지 않습니다.<br>보안을 위해 다시 인증해 주세요.<br>(연결 유효기간: 1개월)';
             UserService.clearLocalSession(this.userId);
-            return false;
-        }
-
-        this.initEvent(this.userId);
-
-        const data = await UserService.getSecondBrainIntegration(this.userId);
-        const hasIntegrationToken = !!data?.accessToken?.length;
-
-        _log('stateProcWidget notion check =>', {
-            userId: this.userId,
-            hasIntegrationToken
-        });
-
-        if (!hasIntegrationToken) {
-            this.state = 'connect-notion';
             return false;
         }
 
@@ -676,6 +727,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     private network?: Network;
     async loadGraph(graphType: string = "note-keyword") {
+        const generation = this.cacheViewGeneration;
         if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
         try {
             let graphTypeName = "";
@@ -695,15 +747,18 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
                 return;
             }
 
-            const session = UserService.getLocalSession(this.userId);
-            if (!session?.userId) {
+            const session = this.isWidgetMode ? UserService.getLocalSession(this.userId) : null;
+            if (this.isWidgetMode && !session?.accessKey) {
                 return;
             }
 
-            const userId = session.userId;
-            const response: any = await this.userService.getKeywordGraphData(userId, graphType);
+            const userId = this.userId;
+            const response: any = await this.userService.getKeywordGraphData(userId, graphType, session?.accessKey);
+            if (generation !== this.cacheViewGeneration) return;
+            this.notionConnectionStatus = response?.connectionStatus || 'connected';
 
             if (!response) {
+                this.state = "graph-nodata";
                 return;
             }
 
@@ -1196,13 +1251,14 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     }
 
     async onClickGenerateNotionNoteKMDataBatch() {
+        if (this.cacheResetting) return;
         this.isMenuOpen = false;
         this.state = 'graph';
 
         this.showToast('AI 키워드 추출 작업을 시작했습니다.', 3000);
 
         setTimeout(() => {
-            this.showToast('키워드 추출이 진행 중입니다. 한 번에 최대 5개의 노트를 처리하며 약 5분 정도 소요됩니다.', 3000);
+            this.showToast('노트의 키워드를 추출하고 있습니다. 노트 수와 내용에 따라 시간이 걸릴 수 있습니다.', 3000);
 
             setTimeout(() => {
                 this.showToast('키워드 추출이 완료되면 그래프가 자동으로 업데이트됩니다.', 3000);

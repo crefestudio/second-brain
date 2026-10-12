@@ -2,7 +2,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { purchaseEmailError } from './purchase-email-policy';
-import { summarizeProductSales } from './sales-summary';
+import { summarizeProductSales, storeVisitDayWindows } from './sales-summary';
 import { marketingReport } from './marketing-report';
 import { saveStoreVisit, saveTrackingVisit } from './store-visit';
 import { archiveWorkspace, WorkspaceDeletionError } from './workspace-deletion';
@@ -26,7 +26,7 @@ import { AssistantEntity, TextEntity, WebPageEntity, ImageEntity, ContactEntity,
 import { WebPageAnalyzer } from './services/web-page-analyzer';
 
 import * as functions from "firebase-functions";
-import { formatKoreanDate, formatKoreanDateTime, resolveDateData, toNotionDate, DateProcessData, hasMonthWithoutDay } from './services/date-service';
+import { formatKoreanDate, formatKoreanDateTime, resolveDateData, toNotionDate, DateProcessData, hasMonthWithoutDay, parseExplicitDateRange } from './services/date-service';
 
 // notion
 import { Client } from "@notionhq/client";
@@ -162,6 +162,65 @@ async function mergeActiveWorkspace(ref: admin.firestore.DocumentReference, data
     });
 }
 
+// Connection metadata is disposable; analysis and migration subcollections are not.
+async function replaceNotionConnection(userId: string, pending?: { accessToken: string; workspaceId?: string; botId?: string; duplicatedTemplateId?: string }) {
+    const ref = db.collection('users').doc(userId);
+    const connectionId = randomUUID();
+    await db.runTransaction(async tx => {
+        const user = (await tx.get(ref)).data();
+        if (!user || user.deletionStatus === 'archived') throw new Error('WORKSPACE_DELETED');
+        const sbRef = ref.collection('integrations').doc('secondbrain');
+        const sb = await tx.get(sbRef);
+        const mappings = await tx.get(db.collection('notionDatabaseMap').where('userId', '==', userId));
+        const kakaoRef = user.kakaoUserId ? db.collection('kakaoConnections').doc(user.kakaoUserId) : null;
+        const kakao = kakaoRef ? await tx.get(kakaoRef) : null;
+        const remove = admin.firestore.FieldValue.delete();
+        tx.update(ref, {
+            notionAccessToken: pending?.accessToken || remove,
+            notionConnectionId: connectionId,
+            notionConnection: pending ? {
+                workspaceId: pending.workspaceId || null, botId: pending.botId || null,
+                duplicatedTemplateId: pending.duplicatedTemplateId || null, status: 'pending', databases: {}
+            } : { status: 'disconnected', databases: {} },
+            lifeupTemplateInfo: remove, updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        if (sb.exists) tx.update(sbRef, {
+            accessToken: remove, noteDatabaseId: remove, workspaceId: remove, botId: remove,
+            duplicatedTemplateId: remove, connectionId, connectionStatus: pending ? 'pending' : 'disconnected',
+            cacheGeneration: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        mappings.docs.forEach(doc => tx.delete(doc.ref));
+        if (kakaoRef && kakao?.exists && (kakao.data()?.uid ?? kakao.data()?.userId) === userId)
+            tx.update(kakaoRef, { pageUrls: remove });
+    });
+    return connectionId;
+}
+
+function isUsableNotionConnection(user: any, token?: string): boolean {
+    return !!user?.notionAccessToken && (!token || user.notionAccessToken === token) &&
+        !['pending', 'disconnected'].includes(user.notionConnection?.status) && user.deletionStatus !== 'archived';
+}
+
+async function assertNotionConnection(userId: string, token: string, connectionId?: string) {
+    const user = (await db.collection('users').doc(userId).get()).data();
+    if (!isUsableNotionConnection(user, token) || (connectionId !== undefined && user?.notionConnectionId !== connectionId))
+        throw new Error('NOTION_CONNECTION_CHANGED');
+    return user!;
+}
+
+export const disconnectNotionTemplate = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    try {
+        const userId = req.body?.userId;
+        if (!userId) return res.status(400).json({ error: 'MISSING_USER_ID' });
+        await requireTransferOwner(req, userId);
+        await replaceNotionConnection(userId);
+        return res.json({ success: true });
+    } catch (error: any) {
+        return res.status(400).json({ error: error.message });
+    }
+}));
+
 const LIFEUP_TEMPLATE_DATABASES = ["lifeup info", "apps", "note", "task", "memo", "reference", "contact"];
 const LIFEUP_SCRAPBOOK_TEMPLATE_DATABASES = ["lifeup info", "apps", "reference", "reference tag", "reference sub tag", "reference type"];
 
@@ -179,59 +238,67 @@ async function completeNotionTemplateConnection(
     botId?: string,
     duplicatedTemplateId?: string
 ): Promise<void> {
+    const before = (await db.collection('users').doc(userId).get()).data();
+    if (before?.notionAccessToken !== accessToken || before?.notionConnection?.status !== 'pending') throw new Error('NOTION_CONNECTION_CHANGED');
+    const connectionId = before.notionConnectionId || randomUUID();
     const dbNames = await templateDatabaseNames(userId);
-    const dbMap = await NotionService.updateTemplateDbs(accessToken, dbNames);
+    const dbMap: Record<string, string> = await NotionService.updateTemplateDbs(accessToken, dbNames);
+    await Promise.all(Object.values(dbMap).map(id => NotionService.resolveDataSourceId(accessToken, id)));
     const missing = dbNames.filter(name => !dbMap?.[name]);
     if (missing.length) throw new Error(`Template databases not found: ${missing.join(', ')}`);
 
     const userRef = db.collection("users").doc(userId);
-    const user = (await userRef.get()).data();
-    const kakaoUserId = user?.kakaoUserId;
-    await mergeActiveWorkspace(userRef, {
+    await db.runTransaction(async tx => {
+        const current = (await tx.get(userRef)).data();
+        if (current?.notionAccessToken !== accessToken || current?.notionConnectionId !== before.notionConnectionId || current?.notionConnection?.status !== 'pending') throw new Error('NOTION_CONNECTION_CHANGED');
+        const sbRef = userRef.collection('integrations').doc('secondbrain');
+        const sb = await tx.get(sbRef);
+        tx.update(userRef, {
         notionAccessToken: accessToken,
         notionConnection: {
-            workspaceId,
-            botId,
-            duplicatedTemplateId,
+            workspaceId: workspaceId || null,
+            botId: botId || null,
+            duplicatedTemplateId: duplicatedTemplateId || null,
             databases: dbMap,
             status: 'connected',
             connectedAt: admin.firestore.FieldValue.serverTimestamp()
         },
-        notionConnectionId: randomUUID(),
+        notionConnectionId: connectionId,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        tx.set(sbRef, { accessToken, workspaceId: workspaceId || null, botId: botId || null,
+            duplicatedTemplateId: duplicatedTemplateId || null, noteDatabaseId: dbMap.note || null,
+            connectionId, connectionStatus: 'connected', enabled: sb.data()?.enabled ?? false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        for (const [name, databaseId] of Object.entries(dbMap)) tx.set(db.collection('notionDatabaseMap').doc(databaseId),
+            { userId, dbName: name, connectionId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        if (!current.kakaoUserId) tx.set(userRef.collection('integrations').doc('kakao-capture'),
+            { enabled: false }, { merge: true });
     });
 
     try {
         const templateInfo = await NotionService.fetchLifeupTemplateInfoFromNotion(userId);
         if (templateInfo) {
-            await userRef.set({ lifeupTemplateInfo: templateInfo }, { merge: true });
-            if (kakaoUserId) {
-                await db.collection("kakaoConnections").doc(kakaoUserId).set({
-                    pageUrls: (templateInfo as LifeupTemplateInfo).pageUrls,
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            }
+            await cacheTemplateInfo(userId, accessToken, connectionId, templateInfo);
         }
     } catch (error) {
         console.warn('[Notion Connection] lifeupTemplateInfo fetch failed', { userId, error });
     }
 
-    await userRef.collection("integrations").doc("secondbrain").set({
-        accessToken, workspaceId, botId, duplicatedTemplateId,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        noteDatabaseId: dbMap.note,
-        enabled: false
-    }, { merge: true });
-    if (!kakaoUserId) {
-        await userRef.collection("integrations").doc("kakao-capture").set({ enabled: false }, { merge: true });
-    }
-    await Promise.all(Object.entries(dbMap).map(([name, dbId]) =>
-        db.collection("notionDatabaseMap").doc(String(dbId)).set({
-            userId, dbName: name, accessToken,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        })
-    ));
-    if (dbMap.note) await NotionService.resetKeywordOptions(accessToken, dbMap.note);
+    // Reconnecting must not clear Notion keyword options or derived graph data.
+}
+
+async function cacheTemplateInfo(userId: string, token: string, connectionId: string | undefined, templateInfo: LifeupTemplateInfo) {
+    const ref = db.collection('users').doc(userId);
+    await db.runTransaction(async tx => {
+        const user = (await tx.get(ref)).data();
+        if (!user || !isUsableNotionConnection(user, token) || user.notionConnectionId !== connectionId) throw new Error('NOTION_CONNECTION_CHANGED');
+        const kakaoRef = user.kakaoUserId ? db.collection('kakaoConnections').doc(user.kakaoUserId) : null;
+        const kakao = kakaoRef ? await tx.get(kakaoRef) : null;
+        tx.update(ref, { lifeupTemplateInfo: templateInfo });
+        if (kakaoRef && kakao?.exists && (kakao.data()?.uid ?? kakao.data()?.userId) === userId)
+            tx.update(kakaoRef, { pageUrls: templateInfo.pageUrls });
+    });
 }
 
 export enum AgentId {
@@ -544,18 +611,10 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutS
 
         // Do not wait for Notion's eventually consistent search index inside
         // the OAuth callback. The success page performs short polling requests.
-        const pendingUserRef = db.collection("users").doc(userId);
-        await pendingUserRef.set({
-            notionAccessToken: notionToken.access_token,
-            notionConnection: {
-                workspaceId: notionToken.workspace_id,
-                botId: notionToken.bot_id,
-                duplicatedTemplateId: notionToken.duplicated_template_id,
-                status: 'pending'
-            },
-            notionConnectionId: admin.firestore.FieldValue.delete(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        await replaceNotionConnection(userId, {
+            accessToken: notionToken.access_token, workspaceId: notionToken.workspace_id,
+            botId: notionToken.bot_id, duplicatedTemplateId: notionToken.duplicated_template_id
+        });
         return res.redirect(
             `https://app.notionable.net/notion-auth/success?userId=${encodeURIComponent(userId)}`
         );
@@ -3379,6 +3438,15 @@ async function monthlyStoreVisits() {
 
 async function storeVisitSummary() {
     const { currentMonth, snapshot, start } = await monthlyStoreVisits();
+    const reset = (await db.collection('storeVisitSettings').doc('reset').get()).data()?.resetAt;
+    const resetMs = reset instanceof Timestamp ? reset.toMillis() : 0;
+    const dailyCounts = await Promise.all(storeVisitDayWindows().map(async window => {
+        const from = Math.max(window.start, resetMs);
+        if (from >= window.end) return 0;
+        const result = await db.collection('storeVisits').where('createdAt', '>=', Timestamp.fromMillis(from))
+            .where('createdAt', '<', Timestamp.fromMillis(window.end)).count().get();
+        return result.data().count;
+    }));
     const productViews: Record<string, number> = {};
     const sources = new Map<string, { location: string; count: number; siteVisits: number }>();
     snapshot.forEach(doc => {
@@ -3404,7 +3472,9 @@ async function storeVisitSummary() {
     const videoSources = sourceRows.filter(source => YOUTUBE_VIDEO_ID.test(source.location));
     const viewDocs = videoSources.length ? await db.getAll(...videoSources.map(source => db.collection('youtubeMonthlyViews').doc(currentMonth.key).collection('videos').doc(source.location))) : [];
     const monthlyViews = new Map(viewDocs.map(doc => [doc.id, doc.data()?.status === 'ok' && typeof doc.data()?.views === 'number' ? doc.data()!.views : null]));
-    return { month: currentMonth.key, totalViews: snapshot.size, productViews, productSales, sources: sourceRows.map(source => ({ ...source, title: titles.get(source.location) || null, sourceViews: monthlyViews.get(source.location) ?? null })) };
+    return { month: currentMonth.key, totalViews: snapshot.size,
+        dailyInflows: { today: dailyCounts[0], yesterday: dailyCounts[1], dayBeforeYesterday: dailyCounts[2] },
+        productViews, productSales, sources: sourceRows.map(source => ({ ...source, title: titles.get(source.location) || null, sourceViews: monthlyViews.get(source.location) ?? null })) };
 }
 
 export const getMarketingReport = onRequest({ timeoutSeconds: 180 }, withCors(async (req, res) => {
@@ -5085,27 +5155,41 @@ class NotionService {
 
 
     static async resolveDatabaseId(accessToken: string, userId: string, dbName: string) {
-        const userRef = db.collection("users").doc(userId)
-        const snap = await userRef.get()
-
-        const dbMap = snap.data()?.notionConnection?.databases || {}
-
-        // 1️⃣ cache hit
-        if (dbMap[dbName]) return dbMap[dbName]
-
-        // 2️⃣ fallback search
-        const dbId = await this.getDatabaseIdByDatabaseName(accessToken, dbName)
-
-        // 3️⃣ auto-heal update
-        await userRef.set({
-            notionConnection: {
-                databases: {
-                    [dbName]: dbId
-                }
+        const userRef = db.collection('users').doc(userId);
+        const user = await assertNotionConnection(userId, accessToken);
+        const connectionId = user.notionConnectionId;
+        const cacheRevision = user.notionDbCacheRevision || 0;
+        const cached = user.notionConnection?.databases?.[dbName];
+        if (cached) {
+            try {
+                await this.resolveDataSourceId(accessToken, cached);
+                await assertNotionConnection(userId, accessToken, connectionId);
+                return cached;
+            } catch (error: any) {
+                if (error?.code !== 'object_not_found' || error?.status !== 404) throw error;
             }
-        }, { merge: true })
-
-        return dbId
+        }
+        // Only a definite missing DB invalidates the cache, not auth/network errors.
+        if (cached) await db.runTransaction(async tx => {
+            const current = (await tx.get(userRef)).data();
+            if (!isUsableNotionConnection(current, accessToken) || current?.notionConnectionId !== connectionId ||
+                (current?.notionDbCacheRevision || 0) !== cacheRevision) throw new Error('NOTION_CONNECTION_CHANGED');
+            if (current?.notionConnection?.databases?.[dbName] === cached)
+                tx.update(userRef, { [`notionConnection.databases.${dbName}`]: admin.firestore.FieldValue.delete() });
+        });
+        const dbId = await this.getDatabaseIdByDatabaseName(accessToken, dbName);
+        await this.resolveDataSourceId(accessToken, dbId);
+        await db.runTransaction(async tx => {
+            const current = (await tx.get(userRef)).data();
+            if (!isUsableNotionConnection(current, accessToken) || current?.notionConnectionId !== connectionId ||
+                (current?.notionDbCacheRevision || 0) !== cacheRevision) throw new Error('NOTION_CONNECTION_CHANGED');
+            tx.update(userRef, { [`notionConnection.databases.${dbName}`]: dbId });
+            if (dbName === 'note') tx.set(userRef.collection('integrations').doc('secondbrain'),
+                { noteDatabaseId: dbId, accessToken, connectionId: connectionId || null }, { merge: true });
+            tx.set(db.collection('notionDatabaseMap').doc(dbId),
+                { userId, dbName, connectionId: connectionId || null }, { merge: true });
+        });
+        return dbId;
     }
 
     static async resolveDataSourceId(accessToken: string, databaseId: string): Promise<string> {
@@ -5281,6 +5365,9 @@ class NotionService {
             `[Notion] search START ${databaseType}${version ? `, ${version}` : ''}`
         );
 
+        const data: { results: any[] } = { results: [] };
+        let cursor: string | undefined;
+        do {
         const response = await fetch(
             'https://api.notion.com/v1/search',
             {
@@ -5297,6 +5384,7 @@ class NotionService {
                         value: 'database',
                     },
                     page_size: 100,
+                    ...(cursor ? { start_cursor: cursor } : {}),
                 }),
             }
         );
@@ -5313,7 +5401,10 @@ class NotionService {
             );
         }
 
-        const data = JSON.parse(rawText);
+        const page = JSON.parse(rawText);
+        data.results.push(...page.results);
+        cursor = page.has_more ? page.next_cursor : undefined;
+        } while (cursor);
 
         const normalize = (text: string) => text.trim().toLowerCase();
 
@@ -5509,11 +5600,13 @@ class NotionService {
     // 삭제하고 다시 넣는 방식
     static async applyKeywordsToNotionPages(
         accessToken: string,
-        aiResultKeyword: Record<string, string[]>
+        aiResultKeyword: Record<string, string[]>,
+        guard: () => Promise<void> = async () => {}
     ) {
         const notion = new Client({ auth: accessToken });
 
         for (const [pageId, keywords] of Object.entries(aiResultKeyword)) {
+            await guard();
             // 키워드 정리 (없으면 빈 배열)
             const cleanedKeywords = (keywords ?? [])
                 .flatMap(k => k.split(",").map(s => s.trim()))
@@ -5640,7 +5733,7 @@ class NotionService {
     }
 
     // #kakao notion
-    static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any): Promise<string | undefined> {
+    static async createDbItemFromAiResult(userId: string, aiResult: any, entity: any, guard: () => Promise<void> = async () => {}): Promise<string | undefined> {
         console.log("[createDbItemFromAiResult] called");
         console.log("[createDbItemFromAiResult] aiResult =", JSON.stringify(aiResult, null, 2));
 
@@ -5659,13 +5752,16 @@ class NotionService {
         const userDoc = await db.collection("users").doc(userId).get();
         const accessToken = userDoc.data()?.notionAccessToken;
         console.log(`[NotionCreate] accessToken = ${!!accessToken} `);
-        if (!accessToken) {
+        if (!isUsableNotionConnection(userDoc.data())) {
             throw new Error("NOTION_NOT_CONNECTED");
         }
         if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' && aiResult.db !== 'reference') {
             throw new Error('SCRAPBOOK_REFERENCE_ONLY');
         }
-        const notion = new Client({ auth: accessToken });
+        const notion = guardedNotionClient(accessToken, async () => {
+            await guard();
+            await assertNotionConnection(userId, accessToken, userDoc.data()?.notionConnectionId);
+        });
         const databaseId = await this.resolveDatabaseId(accessToken, userId, aiResult.db);
         console.log(`[NotionCreate] database resolved db = ${aiResult.db} databaseId = ${databaseId} `);
         let dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
@@ -8049,11 +8145,7 @@ class NotionService {
             return null;
         }
 
-        await userRef.set({
-            lifeupTemplateInfo: templateInfo
-        }, {
-            merge: true
-        });
+        await cacheTemplateInfo(userId, userData?.notionAccessToken, userData?.notionConnectionId, templateInfo);
 
         console.log(`[LifeupInfo] cached template info`);
 
@@ -8325,21 +8417,30 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                 return res.status(404).send("secondbrain 문서를 찾을 수 없습니다.");
             }
             const data = sbDoc.data();
-            const noteDatabaseId = data?.noteDatabaseId;
+            if (data?.cacheResetInProgress) return res.status(409).json({ error: 'CACHE_RESET_IN_PROGRESS' });
+            const cacheGeneration = data?.cacheGeneration || 0;
             const accessToken = data?.accessToken;
-            if (!noteDatabaseId || !accessToken) {
+            if (!accessToken) {
                 return res.status(404).send("noteDatabaseId 또는 accessToken이 Firestore에 존재하지 않습니다.");
             }
+            await assertNotionConnection(userId, accessToken, data?.connectionId);
+            const noteDatabaseId = await NotionService.resolveDatabaseId(accessToken, userId, 'note');
 
             // Notion DB에서 모든 page 가져오기
             const response = await NotionService.queryDatabase(accessToken, noteDatabaseId);
+            while (response.has_more && response.next_cursor) {
+                const next = await NotionService.queryDatabase(accessToken, noteDatabaseId, response.next_cursor);
+                response.results.push(...next.results);
+                response.has_more = next.has_more;
+                response.next_cursor = next.next_cursor;
+            }
             let successCount = 0, failCount = 0;
             const batchPages: { pageId: string; title: string; content: string; }[] = [];
 
             // page.content가져오느라 시간이 많이 걸리는 부분
-            let testIndex = 0;
             for (const page of response.results) {
                 try {
+                    if (!await reconcileSecondBrainPage(userId, accessToken, page)) continue;
                     // keyword가 db에 없으면 노션에서 가져옴
                     const pageData: { pageId: string; title: string; content: string; } | null
                         = await getAndUpdatePageData(userId, page, accessToken, { skipIfKeywordsExist: true });
@@ -8360,8 +8461,6 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                     console.error("노트 속성 저장 실패:", err);
                     failCount++;
                 }
-                testIndex++;
-                if (testIndex >= 5) break; // 테스트용으로 5개만 처리
             }
             console.error("[DEBUG] batchPages =>", batchPages);
 
@@ -8386,7 +8485,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                     // 키워드 추출       
 
                     // 기존 키워드 리스트 가져오기
-                    let existingKeywords: string[] = await loadKeywordsFromCache(userId);
+                    let existingKeywords: string[] = await loadKeywordsFromPages(userId);
 
                     // ai 키워드 추출
                     let aiResultKeywords = await requestPageKeywordsFromAI(pageData, existingKeywords);
@@ -8405,31 +8504,29 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                     aiResultKeywords = normalized;
 
                     // notion에 keyword반영
-                    await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeywords);
+                    for (const pageId of Object.keys(aiResultKeywords)) {
+                        if (!await reconcileSecondBrainPage(userId, accessToken, { id: pageId })) delete aiResultKeywords[pageId];
+                    }
+                    await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeywords, async () => {
+                        await assertNotionConnection(userId, accessToken, data?.connectionId);
+                    });
 
                     //////////////////////////////////
                     // 3️⃣ AI 결과 Firestore 저장
                     for (const pageId of Object.keys(aiResultKeywords)) {
-                        await db
-                            .collection("users")
-                            .doc(userId)
-                            .collection("integrations")
-                            .doc("secondbrain")
-                            .collection("pages")
-                            .doc(pageId)
-                            .set(
+                        await saveSecondBrainKeywords(userId, pageId, cacheGeneration,
                                 {
                                     keywords: aiResultKeywords[pageId] || [], // 안전하게 배열 초기화
                                     title: pageData[pageId]?.title || "",   // 안전하게 title 처리
-                                },
-                                { merge: true }
+                                }
                             );
+                        await reconcileSecondBrainPage(userId, accessToken, { id: pageId });
                     }
 
                     // 키워드 캐시 업데이트 // 키워드 모두 읽어서 한곳에 저장
                     let newExistingKeywords: string[] = await loadKeywordsFromPages(userId);
                     console.log('newExistingKeywords =>', newExistingKeywords);
-                    upsertKeywords(userId, newExistingKeywords);
+                    // Keywords are derived from active page records, not stale caches.
 
                     console.log(`[DEBUG] Keywords 배치 ${i / BATCH_SIZE + 1}:`, aiResultKeywords);
                     successCount += batch.length;
@@ -8473,7 +8570,41 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
     }
     ));
 
-const DEBOUNCE_DELAY = 60 * 1000; // 3초: 마지막 이벤트 후 대기 시간
+function sameNotionId(left: unknown, right: unknown): boolean {
+    return typeof left === 'string' && typeof right === 'string' && !!left &&
+        left.replace(/-/g, '').toLowerCase() === right.replace(/-/g, '').toLowerCase();
+}
+
+// Only a successful page retrieval can change visibility. A 403/404 or timeout
+// is never treated as deletion. Keep keywords so restoring a page is reversible.
+async function reconcileSecondBrainPage(userId: string, accessToken: string, page: any): Promise<boolean> {
+    const observedAt = Date.now();
+    await assertNotionConnection(userId, accessToken);
+    page = await new Client({ auth: accessToken }).pages.retrieve({ page_id: page.id });
+    const integration = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
+    const config = (await integration.get()).data();
+    if (config?.accessToken !== accessToken || config?.connectionStatus === 'disconnected' || config?.connectionStatus === 'pending') throw new Error('NOTION_CONNECTION_CHANGED');
+    if (config?.cacheResetInProgress) return false;
+    if (!page?.id || !page?.properties) throw new Error('PAGE_SCOPE_UNAVAILABLE');
+    // Template moves retain page IDs. Determine eligibility from the page schema,
+    // not its parent or a potentially stale cached note database ID.
+    const isNote = page.properties['키워드']?.type === 'multi_select';
+    const active = isNote && page.archived !== true && page.in_trash !== true;
+    const ref = integration.collection('pages').doc(page.id);
+    return await db.runTransaction(async tx => {
+        const currentUser = (await tx.get(db.collection('users').doc(userId))).data();
+        if (!isUsableNotionConnection(currentUser, accessToken) ||
+            (config.connectionId && currentUser?.notionConnectionId !== config.connectionId)) throw new Error('NOTION_CONNECTION_CHANGED');
+        const previous = await tx.get(ref);
+        if ((previous.data()?.visibilityObservedAt || 0) > observedAt) return false;
+        // Never create analysis records for unrelated pages.
+        if (!active && !previous.exists) return false;
+        tx.set(ref, { active, inactiveReason: active ? null : page.archived === true || page.in_trash === true ? 'deleted' : 'missing-keyword-property',
+            visibilityObservedAt: observedAt,
+            visibilityCheckedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        return active;
+    });
+}
 
 // #webhook
 export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, memory: "512MiB" }, withCors(async (req, res) => {
@@ -8487,19 +8618,18 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
     }
 
     // 1️⃣ "페이지 콘텐츠 업데이트됨" 이벤트만 처리
-    if (event.type !== "page.content_updated") {
+    if (!['page.content_updated', 'page.properties_updated', 'page.created', 'page.deleted', 'page.undeleted', 'page.moved'].includes(event.type)) {
         return res.status(200).json({ message: `이벤트 타입 ${event.type}은 처리하지 않음.` });
     }
 
     const pageId = event.entity?.id;
     const databaseId =
-        event.data?.parent?.database_id ??
+        event.data?.parent?.database_id ?? event.data?.parent?.data_source_id ??
         event.data?.parent?.id;
 
-    if (!pageId || !databaseId) {
+    if (typeof pageId !== 'string' || pageId.includes('/') || (databaseId && (typeof databaseId !== 'string' || databaseId.includes('/')))) {
         return res.status(200).json({ message: "missing ids" });
     }
-    res.status(200).send("ok");
 
     try {
         // ----------------------------
@@ -8510,13 +8640,16 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         let accessToken: string | null = null;
 
         // 1️⃣ 빠른 lookup
-        const mapRef = db.collection("notionDatabaseMap").doc(databaseId);
+        const mapRef = db.collection("notionDatabaseMap").doc(databaseId || pageId);
         const mapDoc = await mapRef.get();
 
         if (mapDoc.exists) {
             const data = mapDoc.data();
-            userId = data?.userId;
-            accessToken = data?.accessToken;
+            const mappedUser = data?.userId ? (await db.collection('users').doc(data.userId).get()).data() : null;
+            if (isUsableNotionConnection(mappedUser) && (!data?.connectionId || mappedUser?.notionConnectionId === data.connectionId)) {
+                userId = data?.userId;
+                accessToken = mappedUser!.notionAccessToken;
+            }
         }
 
         // 2️⃣ fallback (기존 구조)
@@ -8526,6 +8659,7 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
             const usersSnapshot = await db.collection("users").get();
 
             for (const userDoc of usersSnapshot.docs) {
+                if (!isUsableNotionConnection(userDoc.data())) continue;
                 const sbDoc = await userDoc.ref
                     .collection("integrations")
                     .doc("secondbrain")
@@ -8534,16 +8668,27 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
                 if (!sbDoc.exists) continue;
 
                 const sbData = sbDoc.data();
-
-                if (sbData?.noteDatabaseId === databaseId) {
+                if (sbData?.accessToken !== userDoc.data().notionAccessToken ||
+                    (sbData?.connectionId && sbData.connectionId !== userDoc.data().notionConnectionId)) continue;
+                let matchesDataSource = false;
+                if (event.data?.parent?.type === 'data_source' || event.data?.parent?.data_source_id) {
+                    if (sbData?.accessToken && sbData?.noteDatabaseId) {
+                        try {
+                            const database: any = await new Client({ auth: sbData.accessToken }).databases.retrieve({ database_id: sbData.noteDatabaseId });
+                            matchesDataSource = (database.data_sources || []).some((source: any) => sameNotionId(source.id, databaseId));
+                        } catch { /* One stale connection must not abort routing for other users. */ }
+                    }
+                }
+                if (sameNotionId(sbData?.noteDatabaseId, databaseId) || matchesDataSource ||
+                    (await sbDoc.ref.collection('pages').doc(pageId).get()).exists) {
                     userId = userDoc.id;
                     accessToken = sbData?.accessToken;
 
                     // 찾았으면 mapping 생성 (자동 마이그레이션)
-                    await mapRef.set(
+                    if (sameNotionId(sbData?.noteDatabaseId, databaseId)) await mapRef.set(
                         {
                             userId,
-                            accessToken,
+                            connectionId: userDoc.data().notionConnectionId || null,
                             createdAt: admin.firestore.FieldValue.serverTimestamp(),
                         },
                         { merge: true }
@@ -8557,7 +8702,7 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
 
         if (!userId || !accessToken) {
             console.error("해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음");
-            return;
+            return res.status(200).json({ message: 'No matching workspace' });
         }
 
         // ----------------------------
@@ -8581,9 +8726,9 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         );
 
         // ----------------------------
-        // 4️⃣ 마지막 이벤트만 처리: DEBOUNCE_DELAY 이후
+        // Process before acknowledging so Cloud Run does not suspend pending work.
         // ----------------------------
-        setTimeout(async () => {
+        await (async () => {
             try {
                 const latestDoc = await queueRef.get();
                 if (!latestDoc.exists) return;
@@ -8596,20 +8741,26 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
                     return;
                 }
 
-                console.log(`[${pageId}] 60초 동안 추가 이벤트 없음 → 처리 시작`);
+                console.log(`[${pageId}] 최신 이벤트 처리 시작`);
                 await processWebhookEvent(userId!, accessToken!, pageId);
 
                 // 큐 정리
-                await queueRef.delete();
+                await db.runTransaction(async tx => {
+                    const queued = await tx.get(queueRef);
+                    if (queued.data()?.lastEventTimestamp === now) tx.delete(queueRef);
+                });
             } catch (err) {
                 console.error(`[${pageId}] debounce worker error`, err);
+                throw err;
             }
-        }, DEBOUNCE_DELAY);
+        })();
+        return res.status(200).send('ok');
         // return res.status(200).json({
         //     message: "이벤트 수신 (debounce 대기중)",
         // });
     } catch (error: any) {
         console.error("노션 웹훅 처리 실패:", error);
+        return res.status(503).json({ error: 'RETRY_LATER' });
     }
 })
 );
@@ -8620,7 +8771,12 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
 // #page
 
 async function processWebhookEvent(userId: string, accessToken: string, pageId: string) {
+    const integration = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
+    const config = (await integration.get()).data();
+    if (config?.cacheResetInProgress) throw new Error('CACHE_RESET_IN_PROGRESS');
+    const cacheGeneration = config?.cacheGeneration || 0;
     // notion API에서 페이지의 propery(title), block 가져오기
+    if (!await reconcileSecondBrainPage(userId, accessToken, { id: pageId })) return;
     const page = await NotionService.getNotionPage(accessToken, pageId);
     console.log(`[${pageId}] page fetched`);
 
@@ -8639,7 +8795,7 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
 
     // ----------------------------
     // AI 키워드 추출
-    const existingKeywords = await loadKeywordsFromCache(userId);
+    const existingKeywords = await loadKeywordsFromPages(userId);
     const aiResultRaw = await requestPageKeywordsFromAI({ [pageId]: pageData }, existingKeywords);
     const aiResult = filterUndefinedId({ [pageId]: pageData }, aiResultRaw);
 
@@ -8651,26 +8807,21 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
     }
 
     // Notion 반영
-    await NotionService.applyKeywordsToNotionPages(accessToken, normalized);
+    if (!await reconcileSecondBrainPage(userId, accessToken, { id: pageId })) return;
+    await NotionService.applyKeywordsToNotionPages(accessToken, normalized, async () => {
+        await assertNotionConnection(userId, accessToken, config?.connectionId);
+    });
 
     // Firestore 저장
-    const pageRef = db
-        .collection("users")
-        .doc(userId)
-        .collection("integrations")
-        .doc("secondbrain")
-        .collection("pages")
-        .doc(pageId);
-    await pageRef.set(
+    await saveSecondBrainKeywords(userId, pageId, cacheGeneration,
         {
             keywords: normalized[pageId] || []
-        },
-        { merge: true }
+        }
     );
 
+    await reconcileSecondBrainPage(userId, accessToken, { id: pageId });
+
     // 키워드 캐시 업데이트
-    const newExistingKeywords = await loadKeywordsFromCache(userId);
-    upsertKeywords(userId, newExistingKeywords);
 
     // 완료 이벤트
     await writeUserEvent(userId, {
@@ -8870,6 +9021,7 @@ async function loadKeywordsFromPages(userId: string): Promise<string[]> {
 
     snapshot.forEach(doc => {
         const data = doc.data();
+        if (data.active === false) return;
         const keywords: string[] = data.keywords ?? []; // 없으면 빈 배열로
         keywords.forEach(c => keywordsSet.add(c));
     });
@@ -8877,39 +9029,6 @@ async function loadKeywordsFromPages(userId: string): Promise<string[]> {
     return Array.from(keywordsSet);
 }
 
-async function loadKeywordsFromCache(userId: string): Promise<string[]> {
-    const snapshot = await db
-        .collection("users")
-        .doc(userId)
-        .collection("integrations")
-        .doc("secondbrain")
-        .collection("keywords")
-        .get();
-    return snapshot.docs.map(d => d.id);
-}
-
-async function upsertKeywords(userId: string, keywords?: string[]) {
-    if (!keywords || keywords.length === 0) return; // 아무것도 없으면 종료
-    const baseRef = db
-        .collection("users")
-        .doc(userId)
-        .collection("integrations")
-        .doc("secondbrain")
-        .collection("keywords");
-
-    for (const keyword of keywords) {
-        if (!keyword) continue;
-        const ref = baseRef.doc(keyword);
-        await ref.set(
-            {
-                name: keyword,
-                updatedAt: new Date(),
-                refCount: admin.firestore.FieldValue.increment(1),
-            },
-            { merge: true }
-        );
-    }
-}
 
 
 //////////////////////////////////////////////////////////
@@ -9177,7 +9296,7 @@ async function getAndUpdatePageData(
     // ---------------------------
     // 1️⃣ HASH CHECK
     // ---------------------------
-    if (title === oldTitle && contentHash === oldContentHash) {
+    if (oldKeywords.length > 0 && title === oldTitle && contentHash === oldContentHash) {
         console.log(`[${pageId}] hash 동일 → 처리 패스`);
         return null;
     }
@@ -9189,7 +9308,7 @@ async function getAndUpdatePageData(
         Math.abs(contentLength - oldContentLength) /
         Math.max(oldContentLength, 1);
 
-    if (lengthChangeRatio < 0.05) {
+    if (oldKeywords.length > 0 && lengthChangeRatio < 0.05) {
         console.log(`[${pageId}] length 변화 ${(lengthChangeRatio * 100).toFixed(2)}% → 업데이트`);
         return null;
     }
@@ -11118,10 +11237,78 @@ interface Edge {
     color?: any;
 }
 
+async function saveSecondBrainKeywords(userId: string, pageId: string, generation: number, value: any) {
+    const ref = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
+    await db.runTransaction(async tx => {
+        const config = (await tx.get(ref)).data();
+        if (config?.cacheResetInProgress || (config?.cacheGeneration || 0) !== generation) return;
+        tx.set(ref.collection('pages').doc(pageId), value, { merge: true });
+    });
+}
+
+export const resetSecondBrainGraphCache = onRequest({ timeoutSeconds: 120 }, withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const userId = req.body?.userId;
+    if (typeof userId !== 'string' || !userId || userId.includes('/')) return res.status(400).json({ error: 'INVALID_USER_ID' });
+    const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!bearer) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+    const workspace = (await db.collection('users').doc(userId).get()).data();
+    if (!workspace || workspace.deletionStatus === 'archived') return res.status(403).json({ error: 'FORBIDDEN' });
+    let authorized = workspace.accessKey === bearer;
+    if (!authorized) {
+        try {
+            const identity = await getCareIdentity(req);
+            authorized = workspace.firebaseUid === identity.uid;
+        } catch { return res.status(403).json({ error: 'FORBIDDEN' }); }
+    }
+    if (!authorized) return res.status(403).json({ error: 'FORBIDDEN' });
+    const ref = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
+    const acquired = await db.runTransaction(async tx => {
+        const config = (await tx.get(ref)).data();
+        if (config?.cacheResetInProgress && Date.now() - (config.cacheResetStartedAt || 0) < 180000) return false;
+        tx.set(ref, { cacheResetInProgress: true, cacheResetStartedAt: Date.now(),
+            cacheGeneration: (config?.cacheGeneration || 0) + 1 }, { merge: true });
+        return true;
+    });
+    if (!acquired) return res.status(409).json({ error: 'CACHE_RESET_IN_PROGRESS' });
+    try {
+        // Only derived graph records. Never call Notion or delete the integration.
+        for (const name of ['pages', 'keywords']) {
+            while (true) {
+                const snapshot = await ref.collection(name).limit(400).get();
+                if (snapshot.empty) break;
+                const batch = db.batch();
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
+        }
+        return res.json({ success: true });
+    } finally { await ref.set({ cacheResetInProgress: false }, { merge: true }); }
+}));
+
 export const getKeywordGraphData = onRequest(
     withCors(async (req, res) => {
         try {
             const { userId, graphType } = req.body;
+            if (req.method !== 'POST') {
+                return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+            }
+            if (typeof userId !== 'string' || !userId || userId.includes('/')) {
+                return res.status(400).json({ error: 'INVALID_USER_ID' });
+            }
+
+            const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+            if (!bearer) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+            const workspaceRef = db.collection('users').doc(userId);
+            let authorized = false;
+            try {
+                const identity = await admin.auth().verifyIdToken(bearer, true);
+                authorized = (await workspaceRef.get()).data()?.firebaseUid === identity.uid;
+            } catch {
+                const workspace = await workspaceRef.get();
+                authorized = workspace.exists && workspace.data()?.accessKey === bearer;
+            }
+            if (!authorized) return res.status(403).json({ error: 'FORBIDDEN' });
             if (!userId) {
                 return res.status(400).send("userId를 전달해야 합니다.");
             }
@@ -11132,12 +11319,15 @@ export const getKeywordGraphData = onRequest(
                 );
             }
 
+            const currentWorkspace = (await workspaceRef.get()).data();
+            const connectionStatus = isUsableNotionConnection(currentWorkspace) ? 'connected' :
+                currentWorkspace?.notionConnection?.status === 'pending' ? 'pending' : 'disconnected';
             const storeService = new StoreService();
             const pagesKeywords = await storeService.getNoteKeywords(userId);
             if (!pagesKeywords) {
                 return res.status(200).json({
                     errorCode: 200,
-                    message: "저장된 키워드가 없습니다."
+                    message: "저장된 키워드가 없습니다.", connectionStatus
                 });
             }
 
@@ -11148,7 +11338,7 @@ export const getKeywordGraphData = onRequest(
                 // 기본: note + keyword
                 graphData = generateKeywordGraphDataNoteKeywordType(pagesKeywords);
             }
-            return res.status(200).json(graphData);
+            return res.status(200).json({ ...graphData, connectionStatus });
 
         } catch (error: any) {
             console.error(error);
@@ -11160,6 +11350,23 @@ export const getKeywordGraphData = onRequest(
 class StoreService {
     // pages 컬렉션에서 모든 노트의 키워드 가져오기 (페이지 이름 포함, 50자 제한)
     async getNoteKeywords(userId: string): Promise<Record<string, { title: string; keywords: string[] }> | null> {
+        const integration = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
+        const config = (await integration.get()).data();
+        // Gradually reconcile old records too, without interpreting missing rows as
+        // deletions. Bound each request to five Notion reads; retry failures later.
+        const saved = await integration.collection('pages').get();
+        const checkedAt = (doc: any) => Math.max(doc.data().visibilityObservedAt || 0, doc.data().visibilityAttemptedAt || 0);
+        const candidates = saved.docs.filter(doc => Date.now() - checkedAt(doc) > 60000)
+            .sort((a, b) => checkedAt(a) - checkedAt(b)).slice(0, 5);
+        if (config?.accessToken) {
+            for (const candidate of candidates) {
+                try { await reconcileSecondBrainPage(userId, config.accessToken, { id: candidate.id }); }
+                catch {
+                    // Advance the scan even when one inaccessible page keeps failing.
+                    await candidate.ref.set({ visibilityAttemptedAt: Date.now() }, { merge: true });
+                }
+            }
+        }
         // 1️⃣ pages 컬렉션에서 note 문서들 가져오기
         const pagesSnap = await db
             .collection("users")
@@ -11173,6 +11380,7 @@ class StoreService {
 
         pagesSnap.forEach(doc => {
             const page = doc.data();
+            if (page.active === false) return;
             const keywords: string[] = Array.isArray(page?.keywords) ? page.keywords : [];
 
             if (keywords.length > 0) {
@@ -11687,6 +11895,8 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
                 utterance,
                 user,
                 kakaoUserId,
+                kakaoConnectionId: connection.connectionId || null,
+                notionConnectionId: connection.notionConnectionId || null,
                 callbackUrl,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 status: "pending"
@@ -11745,12 +11955,15 @@ export const handleKakaoWebhookQueue = onDocumentCreated({
     console.log("[KAKAO QUEUE] start", { userId, jobId });
 
     try {
+        const guard = () => assertKakaoJobConnection(userId, data);
+        await guard();
         await processKakaoAgent(
             userId,
             data.utterance,
             data.callbackUrl,
             jobId,
-            data.pageUrls
+            data.pageUrls,
+            guard
         );
 
         await snapshot.ref.delete();
@@ -11795,17 +12008,39 @@ function logKakaoRequest(
     });
 }
 
+async function assertKakaoJobConnection(userId: string, job: any) {
+    // Legacy queued requests without a captured connection cannot safely cross a switch.
+    if (!Object.prototype.hasOwnProperty.call(job, 'kakaoConnectionId') ||
+        !Object.prototype.hasOwnProperty.call(job, 'notionConnectionId')) throw new Error('LEGACY_JOB_REQUIRES_RESUBMIT');
+    const connection = await findEnabledConnectedUser(job.kakaoUserId);
+    if (!connection || !connection.enabled || connection.uid !== userId ||
+        (connection.connectionId || null) !== job.kakaoConnectionId ||
+        (connection.notionConnectionId || null) !== job.notionConnectionId) throw new Error('KAKAO_CONNECTION_CHANGED');
+}
+
+function guardedNotionClient(token: string, guard: () => Promise<void>): Client {
+    const client = new Client({ auth: token });
+    for (const method of ['create', 'update', 'move'] as const) {
+        const original = (client.pages as any)[method].bind(client.pages);
+        (client.pages as any)[method] = async (...args: any[]) => { await guard(); return original(...args); };
+    }
+    const append = client.blocks.children.append.bind(client.blocks.children);
+    client.blocks.children.append = async args => { await guard(); return append(args); };
+    return client;
+}
+
 // #kakao
 async function processKakaoAgent(
     userId: string,
     userMessage: string,
     callbackUrl: string,
     jobId: string,
-    pageUrls?: LifeupPageUrls
+    pageUrls?: LifeupPageUrls,
+    guard: () => Promise<void> = async () => {}
 ) {
+    await guard();
     const userDoc = await db.collection("users").doc(userId).get();
-    const accessToken = userDoc.data()?.notionAccessToken;
-    if (!accessToken) {
+    if (!isUsableNotionConnection(userDoc.data())) {
         console.error("[KAKAO NOTION ERROR] Notion accessToken 없음", {
             userId,
             jobId
@@ -11981,6 +12216,7 @@ async function processKakaoAgent(
         }
 
         const payload: any = {
+            connectionContext: connectionContextKey(userDoc.data()),
             userMessage,
             aiEntityMessage,
             entity,
@@ -12015,6 +12251,7 @@ async function processKakaoAgent(
         let t = Date.now();
 
         console.log("[TIME] sendKakaoCallback START");
+        await guard();
 
         await resposeKakaoMessageByCallbackUrl(
             enrichedResult.action === "dateAsk"
@@ -12035,7 +12272,8 @@ async function processKakaoAgent(
         await processAfterResponse(
             userId,
             entity,
-            enrichedResult
+            enrichedResult,
+            guard
         );
 
         logTime("processAfterResponse", t);
@@ -12049,6 +12287,7 @@ async function processKakaoAgent(
                 callbackUrl
             );
         } catch { }
+        throw e;
     }
 }
 
@@ -12071,6 +12310,7 @@ interface DateProcessResult {
 
 ///////////////////////////////////////////////////////////
 const DATE_CANDIDATE_PATTERNS = [
+    /\b\d{1,2}\s*\/\s*\d{1,2}\b/,
     /오늘|내일|모레|글피|어제|그제/,
     /이번|다음|다다음|지난/,
     /년|월|주|달|요일/,
@@ -12086,6 +12326,12 @@ export async function processDateExpression(
     userMessage: string,
     previousContext?: AssistantContext | null
 ): Promise<DateProcessResult> {
+    const explicitRange = parseExplicitDateRange(userMessage);
+    if (explicitRange?.question) return { status: 'dateAsk', question: explicitRange.question };
+    if (explicitRange?.data) return {
+        status: previousContext && /변경|바꿔|수정|미뤄|당겨|연기/.test(userMessage) ? 'correct' : 'resolved',
+        data: explicitRange.data
+    };
     if (hasMonthWithoutDay(userMessage)) {
         return { status: "none", precision: "month" };
     }
@@ -12328,6 +12574,10 @@ async function requestDateExpressionFromAI(
 기간은 시작 표현과 종료 표현을 ".."로 연결한다. 시작일만 반환하지 않는다.
 "에서", "부터 ...까지", "~"는 날짜 사이에 있으면 구간이다.
 끝 날짜에 생략된 월/연도는 시작 날짜에서 이어받는다.
+10/21~30 또는 10/21~30일 => date:10-21..date:10-30
+10/30~11/3 => date:10-30..date:11-03
+10/30~3처럼 종료 월이 생략되고 종료 일이 더 작으면 다음 달로 추측하지 말고 dateAsk로 종료 월을 확인한다.
+10월 20일부터 3일간은 시작일을 포함한 20~22일이다.
 시간이 없으면 양쪽 모두 날짜만 반환하며 dateAsk 하지 않는다.
 
 10월 16일에서 18일 제주 => resolved / date:10-16..date:10-18
@@ -12734,7 +12984,8 @@ async function resposeKakaoMessage(text: string, res: any) {
 async function processAfterResponse(
     userId: string,
     entity: AssistantEntity,
-    aiResult: any
+    aiResult: any,
+    guard: () => Promise<void> = async () => {}
 ) {
     const start = Date.now();
 
@@ -12750,7 +13001,8 @@ async function processAfterResponse(
         let t = Date.now();
 
         try {
-            pageId = await NotionService.createDbItemFromAiResult(userId, aiResult, entity);
+            await guard();
+            pageId = await NotionService.createDbItemFromAiResult(userId, aiResult, entity, guard);
             console.log("[processAfterResponse] pageId =", pageId);
 
             if (pageId) {
@@ -12787,6 +13039,7 @@ async function processAfterResponse(
         console.log(`[TIME] processAfterResponse TOTAL: ${Date.now() - start}ms`);
     } catch (error) {
         console.error('[KAKAO BACKGROUND ERROR]', error);
+        throw error;
     }
 }
 
@@ -15313,6 +15566,10 @@ interface AssistantContext {
     createdAt?: FirebaseFirestore.Timestamp;
 }
 
+function connectionContextKey(user: any): string {
+    return `${user?.notionConnectionId || 'legacy'}:${user?.notionDbCacheRevision || 0}`;
+}
+
 async function getLastAssistantContext(userId: string): Promise<AssistantContext | null> {
     const snapshot = await db
         .collection("users")
@@ -15328,6 +15585,8 @@ async function getLastAssistantContext(userId: string): Promise<AssistantContext
     }
 
     const doc = snapshot.docs[0];
+    const user = (await db.collection('users').doc(userId).get()).data();
+    if (doc.data().connectionContext !== connectionContextKey(user)) return null;
     const data = doc.data() as Omit<AssistantContext, "contextId">;
     const createdAt = data.createdAt?.toDate?.();
 
@@ -15396,18 +15655,17 @@ function removeUndefined<T>(obj: T): T {
 
 export async function saveAssistantContext(userId: string, payload: any): Promise<string> {
     const collectionRef = db.collection("users").doc(userId).collection("assistantContext");
-    const previous = await collectionRef.orderBy("createdAt", "desc").limit(1).get();
     const docRef = collectionRef.doc();
-
-    const data = removeUndefined({
-        ...payload,
-        previousContextId: previous.empty ? undefined : previous.docs[0].id,
-        contextId: docRef.id
+    await db.runTransaction(async tx => {
+        const user = (await tx.get(db.collection('users').doc(userId))).data();
+        const previous = await tx.get(collectionRef.orderBy('createdAt', 'desc').limit(1));
+        const scope = connectionContextKey(user);
+        if (payload.connectionContext && payload.connectionContext !== scope) throw new Error('CONNECTION_CHANGED');
+        const data = removeUndefined({ ...payload, connectionContext: scope,
+            previousContextId: !previous.empty && previous.docs[0].data().connectionContext === scope ? previous.docs[0].id : undefined,
+            contextId: docRef.id, createdAt: admin.firestore.Timestamp.now() });
+        tx.set(docRef, data);
     });
-
-    data.createdAt = admin.firestore.Timestamp.now();
-
-    await docRef.set(data);
 
     return docRef.id;
 }
@@ -15426,7 +15684,8 @@ async function resolveTargetPageId(userId: string, contextId: string): Promise<s
         }
 
         const data = doc.data();
-
+        const user = (await db.collection('users').doc(userId).get()).data();
+        if (data?.connectionContext !== connectionContextKey(user)) return undefined;
         if (data?.pageId) {
             return data.pageId;
         }
@@ -15621,20 +15880,28 @@ export async function connectKakaoUser(uid: string, kakaoUserId: string): Promis
                 return 'already-connected-to-another-workspace' as const;
             }
             if (connectedUid === uid) {
-                return 'already-connected' as const;
+                if (userDoc.data()?.kakaoUserId === kakaoUserId) return 'already-connected' as const;
             }
+
+            const oldKakaoId = userDoc.data()?.kakaoUserId;
+            const oldRef = oldKakaoId && oldKakaoId !== kakaoUserId ? db.collection('kakaoConnections').doc(oldKakaoId) : null;
+            const oldConnection = oldRef ? await transaction.get(oldRef) : null;
 
             const pageUrls = userDoc.data()?.lifeupTemplateInfo?.pageUrls;
             const connectionData: any = {
                 uid,
                 userId: uid,
                 enabled: true,
+                connectionId: randomUUID(),
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             };
 
             if (pageUrls) connectionData.pageUrls = pageUrls;
 
-            transaction.update(userRef, { kakaoUserId });
+            if (oldRef && oldConnection?.exists && (oldConnection.data()?.uid ?? oldConnection.data()?.userId) === uid)
+                transaction.delete(oldRef);
+            transaction.update(userRef, { kakaoUserId, 'notionConnection.databases': {},
+                notionDbCacheRevision: admin.firestore.FieldValue.increment(1) });
             transaction.set(connRef, connectionData);
             transaction.set(integrationRef, {
                 enabled: true,
@@ -15652,26 +15919,20 @@ export async function connectKakaoUser(uid: string, kakaoUserId: string): Promis
 
 export async function disconnectKakaoUser(uid: string, kakaoUserId: string) {
     try {
-        const batch = db.batch();
-
-        // users/OOO/kakoUserId 필드 삭제
-        batch.update(db.collection('users').doc(uid), {
-            kakaoUserId: admin.firestore.FieldValue.delete()
+        await db.runTransaction(async tx => {
+            const userRef = db.collection('users').doc(uid);
+            const connRef = db.collection('kakaoConnections').doc(kakaoUserId);
+            const user = (await tx.get(userRef)).data();
+            const connection = await tx.get(connRef);
+            if (user?.kakaoUserId !== kakaoUserId) throw new Error('KAKAO_CONNECTION_CHANGED');
+            if (connection.exists && (connection.data()?.uid ?? connection.data()?.userId) !== uid)
+                throw new Error('KAKAO_CONNECTION_CHANGED');
+            tx.update(userRef, { kakaoUserId: admin.firestore.FieldValue.delete(),
+                'notionConnection.databases': {}, notionDbCacheRevision: admin.firestore.FieldValue.increment(1) });
+            tx.delete(connRef);
+            tx.set(userRef.collection('integrations').doc('kakao-capture'),
+                { enabled: false, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
         });
-
-        // kakaoConnections 삭제
-        batch.delete(db.collection('kakaoConnections').doc(kakaoUserId));
-
-        batch.set(
-            db.collection('users').doc(uid).collection('integrations').doc('kakao-capture'),
-            {
-                enabled: false,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            },
-            { merge: true }
-        );
-
-        await batch.commit();
     } catch (error) {
         console.error("[disconnectKakaoUser FAILED]", error);
         throw error;
@@ -15685,6 +15946,8 @@ export const disconnectKakao = onRequest({ timeoutSeconds: 60, memory: "256MiB" 
         if (!userId) {
             return res.status(400).json({ success: false, message: "userId required" });
         }
+        if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+        await requireTransferOwner(req, userId);
         const userSnap = await db.collection('users').doc(userId).get();
 
         if (!userSnap.exists) {
@@ -15713,6 +15976,8 @@ export async function findEnabledConnectedUser(
 ): Promise<{
     uid: string;
     enabled: boolean;
+    connectionId?: string;
+    notionConnectionId?: string;
     pageUrls?: LifeupPageUrls;
 } | null> {
     const doc = await db
@@ -15725,10 +15990,15 @@ export async function findEnabledConnectedUser(
     }
 
     const data = doc.data();
+    const userId = data!.uid ?? data!.userId;
+    const user = (await db.collection('users').doc(userId).get()).data();
+    if (!user || user.kakaoUserId !== kakaoUserId || user.deletionStatus === 'archived') return null;
 
     return {
-        uid: data!.uid,
+        uid: userId,
         enabled: data!.enabled === true,
+        connectionId: data!.connectionId || null,
+        notionConnectionId: user.notionConnectionId || null,
         pageUrls: data!.pageUrls
     };
 }

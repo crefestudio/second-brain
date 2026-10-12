@@ -1,3 +1,9 @@
+export function storeVisitDayWindows(now = Date.now()): Array<{ start: number; end: number }> {
+    const day = 86400000, offset = 9 * 3600000;
+    const today = Math.floor((now + offset) / day) * day - offset;
+    return [0, 1, 2].map(age => ({ start: today - age * day, end: age === 0 ? now + 1 : today - (age - 1) * day }));
+}
+
 export function summarizeProductSales(purchases: Array<Record<string, unknown>>, monthKey: string): Record<string, { count: number; revenue: number }> {
     const result: Record<string, { count: number; revenue: number }> = {};
     for (const purchase of purchases) {

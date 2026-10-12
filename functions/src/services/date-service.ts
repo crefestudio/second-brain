@@ -72,6 +72,36 @@ export interface DateProcessData {
     endTime?: string;
 }
 
+// Explicit day ranges are resolved before AI so place names cannot change date detection.
+export function parseExplicitDateRange(message: string, year = getKoreaNow().getFullYear()):
+    { data?: DateProcessData; question?: string } | null {
+    const start = '(?:(\\d{4})\\s*(?:년\\s*|/))?(\\d{1,2})\\s*(?:월\\s*|/)\\s*(\\d{1,2})\\s*일?';
+    const range = new RegExp('(?:^|[\\s(])' + start + '\\s*(?:[~～〜]|부터|에서)\\s*(?:(\\d{4})\\s*(?:년\\s*|/))?(?:(\\d{1,2})\\s*(?:월\\s*|/)\\s*)?(\\d{1,2})\\s*일?(?:\\s*까지)?(?=$|[\\s),.!?])');
+    const duration = new RegExp('(?:^|[\\s(])' + start + '\\s*(?:부터|에서)\\s*(\\d+)\\s*일\\s*간(?=$|[\\s),.!?])');
+    const span = message.match(duration);
+    const match = span || message.match(range);
+    if (!match) return null;
+    const invalid = { question: '날짜 범위를 확인해주세요. 종료일의 월까지 적어주세요. 예: 10/30~11/3' };
+    const y = Number(match[1] || year), m = Number(match[2]), day = Number(match[3]);
+    const date = new Date(Date.UTC(y, m - 1, day));
+    if (y < 1000 || date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== day) return invalid;
+    let end: Date;
+    if (span) {
+        const days = Number(span[4]);
+        if (!Number.isSafeInteger(days) || days < 1 || days > 3660) return invalid;
+        end = new Date(date);
+        end.setUTCDate(end.getUTCDate() + days - 1); // inclusive: 20일부터 3일간 = 20~22일
+    } else {
+        const ey = Number(match[4] || y), em = Number(match[5] || m), ed = Number(match[6]);
+        end = new Date(Date.UTC(ey, em - 1, ed));
+        if (end.getUTCFullYear() !== ey || end.getUTCMonth() !== em - 1 || end.getUTCDate() !== ed || end < date) return invalid;
+    }
+    // Leave time interpretation and multiple date expressions to the existing AI path.
+    const rest = message.replace(match[0], ' ');
+    if (/\d\s*시|\d{1,2}:\d{2}|오전|오후|새벽|아침|저녁|밤|\d{1,2}\s*(?:월|\/)\s*\d/.test(rest)) return null;
+    return { data: { date: date.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) } };
+}
+
 function getKoreaNow(): Date {
     return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
 }

@@ -373,20 +373,9 @@ export class UserService {
     async disconnectNotionTemplate(userId: string): Promise<boolean> {
         try {
             if (!userId) return false;
-
-            const docRef = doc(
-                firestore,
-                'users',
-                userId
-            );
-
-            await updateDoc(docRef, {
-                notionAccessToken: deleteField(),
-                notionConnection: deleteField(),
-                updatedAt: serverTimestamp()
-            });
-
-            await this.deleteLifeupTemplateInfo(userId); // 템플릿 캐시 정보 삭제
+            if (!auth.currentUser) return false;
+            await firstValueFrom(this.http.post(`${this.functionsBaseUrl}/disconnectNotionTemplate`, { userId },
+                { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } }));
             return true;
         } catch (error) {
             console.error('disconnectNotionTemplate error:', error);
@@ -565,16 +554,19 @@ export class UserService {
 
     async getKeywordGraphData(
         userId: string,
-        graphType: string
+        graphType: string,
+        accessKey?: string
     ): Promise<{ nodes: Node[]; edges: Edge[] } | null> {
         if (!userId) return null;
 
         try {
+            const token = accessKey || await auth.currentUser?.getIdToken();
             // HTTP POST 호출 및 결과 받기
             const result = await firstValueFrom(
                 this.http.post<{ nodes: Node[]; edges: Edge[] }>(
                     `${this.functionsBaseUrl}/getKeywordGraphData`,
-                    { userId, graphType }
+                    { userId, graphType },
+                    { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
                 )
             );
 
@@ -585,6 +577,13 @@ export class UserService {
             console.error("getKeywordGraphData failed", error);
             return null; // 실패 시 null 반환
         }
+    }
+
+    async resetSecondBrainGraphCache(userId: string, accessKey?: string): Promise<void> {
+        const token = accessKey || await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('로그인 또는 위젯 인증이 필요합니다.');
+        await firstValueFrom(this.http.post(`${this.functionsBaseUrl}/resetSecondBrainGraphCache`, { userId },
+            { headers: { Authorization: `Bearer ${token}` } }));
     }
 
     async verifyPurchaser(templateId: string, email?: string, phone?: string): Promise<any | null> {
@@ -950,7 +949,8 @@ export class UserService {
             await firstValueFrom(
                 this.http.post(
                     `${this.functionsBaseUrl}/disconnectKakao`,
-                    { userId }
+                    { userId },
+                    { headers: { Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ''}` } }
                 )
             );
 
