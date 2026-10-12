@@ -1,5 +1,4 @@
 import { Component, AfterViewInit, ViewChild, ElementRef, HostListener, ViewChildren, QueryList } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -99,7 +98,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     // toast
     isShowToast = false;
-    toastMessage!: SafeHtml;
+    toastMessage = '';
 
     //clientId: string | null = null;
     //clientKey: string | null = null;
@@ -141,7 +140,6 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         private route: ActivatedRoute,
         private userService: UserService,
         private eventListenerService: EventListenerService,
-        private sanitizer: DomSanitizer,
         private authService: AuthService,
         private upgradeEvent: ScrapbookUpgradeEventService
     ) { }
@@ -322,7 +320,22 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
 
     showToast(message: string, duration = 3500) {
         if (!this.isWidgetMode && !this.workspaceFeatureAllowed) return;
-        this.toastMessage = this.sanitizer.bypassSecurityTrustHtml(message);;
+        // Toast messages can originate from server-side activity events. Keep
+        // them as text so markup never appears literally or executes. Older
+        // activity events may contain tags encoded once or twice as entities.
+        let plainMessage = message;
+        for (let index = 0; index < 2; index++) {
+            plainMessage = plainMessage
+                .replace(/&lt;/gi, '<')
+                .replace(/&gt;/gi, '>')
+                .replace(/&quot;/gi, '"')
+                .replace(/&#39;|&apos;/gi, "'")
+                .replace(/&amp;/gi, '&');
+        }
+        this.toastMessage = plainMessage
+            .replace(/<br\s*\/?\s*>/gi, '\n')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;|&#x20;/gi, ' ');
         this.isShowToast = true;
 
         // hide
@@ -1250,23 +1263,24 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.isLogoutConfirmOpen = false;
     }
 
+    isConvertingNotes = false;
     async onClickGenerateNotionNoteKMDataBatch() {
-        if (this.cacheResetting) return;
+        if (this.cacheResetting || this.isConvertingNotes || !this.userId) return;
         this.isMenuOpen = false;
         this.state = 'graph';
-
-        this.showToast('AI 키워드 추출 작업을 시작했습니다.', 3000);
-
-        setTimeout(() => {
-            this.showToast('노트의 키워드를 추출하고 있습니다. 노트 수와 내용에 따라 시간이 걸릴 수 있습니다.', 3000);
-
-            setTimeout(() => {
-                this.showToast('키워드 추출이 완료되면 그래프가 자동으로 업데이트됩니다.', 3000);
-            }, 4000);
-        }, 4000);
-
-        if (!this.userId) return;
-        await this.userService.generateNotionNoteKMDataBatch(this.userId);
+        this.isConvertingNotes = true;
+        this.showToast('AI 노트 데이터 전환을 시작합니다. 노트 수와 내용에 따라 시간이 걸릴 수 있습니다.', 5000);
+        try {
+            const result = await this.userService.generateNotionNoteKMDataBatch(this.userId,
+                this.isWidgetMode ? UserService.getLocalSession(this.userId)?.accessKey : undefined);
+            this.showToast(`AI 노트 데이터 전환이 완료되었습니다. ${result.successCount}개 처리, ${result.failCount}개 실패`, 5000);
+            void this.refreshGraph();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : '알 수 없는 오류';
+            this.showToast(`AI 노트 데이터 전환에 실패했습니다. ${message}`, 5000);
+        } finally {
+            this.isConvertingNotes = false;
+        }
     }
 
     onClickSelectGraphType(graphType: string) {

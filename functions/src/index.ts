@@ -8401,9 +8401,22 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
     withCors(async (req, res) => {
         const { userId } = req.body;
         try {
-            if (!userId) {
+            if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+            if (typeof userId !== 'string' || !userId || userId.includes('/')) {
                 return res.status(400).send("userId를 전달해야 합니다.");
             }
+            const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+            if (!bearer) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+            const workspace = (await db.collection('users').doc(userId).get()).data();
+            if (!workspace || workspace.deletionStatus === 'archived') return res.status(403).json({ error: 'FORBIDDEN' });
+            let authorized = workspace.accessKey === bearer;
+            if (!authorized) {
+                try {
+                    const identity = await getCareIdentity(req);
+                    authorized = workspace.firebaseUid === identity.uid;
+                } catch { return res.status(403).json({ error: 'FORBIDDEN' }); }
+            }
+            if (!authorized) return res.status(403).json({ error: 'FORBIDDEN' });
 
             // Firestore에서 Notion accessToken, noteDatabaseId 가져오기
             const sbDoc = await db
@@ -8450,7 +8463,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                         await writeUserEvent(userId, {
                             agentId: AgentId.SECOND_BRAIN,
                             status: "running",
-                            eventTitle: `< span style = "color:#7fb7ff" > ${pageData.title} </span> 노트의 키워드 추출 작업을 진행중입니다.`
+                            eventTitle: `${pageData.title} 노트의 키워드 추출 작업을 진행 중입니다.`
                         });
                     }
 
@@ -8558,7 +8571,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
 
         } catch (error: any) {
             console.error(error);
-            res.status(500).send(error.message);
+            res.status(error?.statusCode || 500).json({ error: error?.message || 'AI 노트 데이터 전환에 실패했습니다.' });
 
             // ❌ 페이지 변환 실패 이벤트 (1회)
             await writeUserEvent(userId, {
@@ -8607,19 +8620,83 @@ async function reconcileSecondBrainPage(userId: string, accessToken: string, pag
 }
 
 // #webhook
-export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, memory: "512MiB" }, withCors(async (req, res) => {
+export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 30, memory: "256MiB" }, withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).send('Method not allowed');
     const event = req.body;
+    if (!event || typeof event !== 'object') return res.status(400).send('Invalid event');
+    // Preserve verification support without logging verification credentials.
+    if (typeof event.verification_token === 'string') return res.status(200).send(event.verification_token);
+    if (event.type === 'webhook_verification') return res.status(200).send(event.token);
+    if (!['page.content_updated', 'page.properties_updated', 'page.created', 'page.deleted', 'page.undeleted', 'page.moved'].includes(event.type)) {
+        return res.status(200).send('Ignored event');
+    }
+    if (typeof event.id !== 'string' || !event.id || typeof event.entity?.id !== 'string' || event.entity.id.includes('/')) {
+        return res.status(400).send('Missing event or page ID');
+    }
+    // The same Notion event is delivered more than once. Never reset existing work.
+    const id = crypto.createHash('sha256').update(event.id).digest('hex');
+    try {
+        await db.collection('notionWebhookInbox').doc(id).create({
+            event, status: 'pending', attempts: 0, receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (error: any) {
+        if (error?.code !== 6 && error?.code !== 'already-exists') {
+            console.error('[Notion webhook] inbox write failed', { code: error?.code || 'unknown' });
+            return res.status(503).send('Retry later');
+        }
+    }
+    return res.status(200).send('Accepted');
+}));
+
+export const processNotionWebhookInbox = onDocumentCreated({
+    document: 'notionWebhookInbox/{eventId}', timeoutSeconds: 540, memory: '512MiB', retry: true,
+}, async trigger => {
+    if (!trigger.data) return;
+    const ref = trigger.data.ref;
+    const claim = randomUUID();
+    const item = await db.runTransaction(async tx => {
+        const data = (await tx.get(ref)).data();
+        if (!data || ['completed', 'needs_attention'].includes(data.status)) return null;
+        if (data.leaseUntil > Date.now()) throw new Error('WEBHOOK_ALREADY_PROCESSING');
+        tx.update(ref, { status: 'processing', claim, leaseUntil: Date.now() + 600000,
+            attempts: (data.attempts || 0) + 1 });
+        return data;
+    });
+    if (!item) return;
+    try {
+        await processNotionWebhookDelivery(item.event);
+        await db.runTransaction(async tx => {
+            if ((await tx.get(ref)).data()?.claim === claim) tx.update(ref, {
+                status: 'completed', leaseUntil: 0, completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        });
+    } catch (error: any) {
+        const exhausted = (item.attempts || 0) + 1 >= 10;
+        // Store only a bounded error code, never SDK request headers or tokens.
+        const candidate = String(error?.code || error?.message || 'PROCESSING_FAILED');
+        const code = /^[A-Z0-9_]{1,80}$/i.test(candidate) ? candidate : 'PROCESSING_FAILED';
+        await db.runTransaction(async tx => {
+            if ((await tx.get(ref)).data()?.claim === claim) tx.update(ref, {
+                status: exhausted ? 'needs_attention' : 'retry', leaseUntil: 0, lastErrorCode: code,
+                failedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        });
+        console.error('[Notion webhook] processing failed', { eventId: trigger.params.eventId, code, exhausted });
+        if (!exhausted) throw new Error('NOTION_WEBHOOK_RETRY');
+    }
+});
+
+async function processNotionWebhookDelivery(event: any) {
     //console.log("[Notion Webhook Payload]", event);
 
     // 🔑 노션에서 이 함수가 제대로 응답하는지 확인 하기 위함 용도 : 웹훅 구독 인증 토큰 확인
     if (event.type === "webhook_verification") {
-        console.log("[Webhook Verification] token:", event.token);
-        return res.status(200).send(event.token);
+        return;
     }
 
     // 1️⃣ "페이지 콘텐츠 업데이트됨" 이벤트만 처리
     if (!['page.content_updated', 'page.properties_updated', 'page.created', 'page.deleted', 'page.undeleted', 'page.moved'].includes(event.type)) {
-        return res.status(200).json({ message: `이벤트 타입 ${event.type}은 처리하지 않음.` });
+        return;
     }
 
     const pageId = event.entity?.id;
@@ -8628,7 +8705,7 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         event.data?.parent?.id;
 
     if (typeof pageId !== 'string' || pageId.includes('/') || (databaseId && (typeof databaseId !== 'string' || databaseId.includes('/')))) {
-        return res.status(200).json({ message: "missing ids" });
+        throw new Error('INVALID_WEBHOOK_IDS');
     }
 
     try {
@@ -8657,6 +8734,7 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
             console.log(`[Webhook] mapping 없음 → fallback search`);
 
             const usersSnapshot = await db.collection("users").get();
+            const matches: Array<{ userId: string; accessToken: string; connectionId: string | null; parentMatch: boolean }> = [];
 
             for (const userDoc of usersSnapshot.docs) {
                 if (!isUsableNotionConnection(userDoc.data())) continue;
@@ -8674,35 +8752,42 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
                 if (event.data?.parent?.type === 'data_source' || event.data?.parent?.data_source_id) {
                     if (sbData?.accessToken && sbData?.noteDatabaseId) {
                         try {
-                            const database: any = await new Client({ auth: sbData.accessToken }).databases.retrieve({ database_id: sbData.noteDatabaseId });
+                            const database: any = await new Client({ auth: sbData.accessToken, logger: () => {} }).databases.retrieve({ database_id: sbData.noteDatabaseId });
                             matchesDataSource = (database.data_sources || []).some((source: any) => sameNotionId(source.id, databaseId));
                         } catch { /* One stale connection must not abort routing for other users. */ }
                     }
                 }
                 if (sameNotionId(sbData?.noteDatabaseId, databaseId) || matchesDataSource ||
                     (await sbDoc.ref.collection('pages').doc(pageId).get()).exists) {
-                    userId = userDoc.id;
-                    accessToken = sbData?.accessToken;
+                    matches.push({ userId: userDoc.id, accessToken: sbData!.accessToken,
+                        connectionId: userDoc.data().notionConnectionId || null,
+                        parentMatch: sameNotionId(sbData?.noteDatabaseId, databaseId) || matchesDataSource });
+                }
+            }
+            // Never route a shared Notion database to the first account encountered.
+            if (matches.length > 1) throw new Error('AMBIGUOUS_WEBHOOK_WORKSPACE');
+            if (matches.length === 1) {
+                    const match = matches[0];
+                    userId = match.userId;
+                    accessToken = match.accessToken;
 
                     // 찾았으면 mapping 생성 (자동 마이그레이션)
-                    if (sameNotionId(sbData?.noteDatabaseId, databaseId)) await mapRef.set(
+                    if (match.parentMatch) await mapRef.set(
                         {
                             userId,
-                            connectionId: userDoc.data().notionConnectionId || null,
+                            connectionId: match.connectionId,
                             createdAt: admin.firestore.FieldValue.serverTimestamp(),
                         },
                         { merge: true }
                     );
 
                     console.log(`[Webhook] mapping 자동 생성: ${databaseId}`);
-                    break;
-                }
             }
         }
 
         if (!userId || !accessToken) {
             console.error("해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음");
-            return res.status(200).json({ message: 'No matching workspace' });
+            throw new Error('NO_MATCHING_WORKSPACE');
         }
 
         // ----------------------------
@@ -8726,7 +8811,7 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
         );
 
         // ----------------------------
-        // Process before acknowledging so Cloud Run does not suspend pending work.
+        // This runs in the durable inbox worker, never in the HTTP receiver.
         // ----------------------------
         await (async () => {
             try {
@@ -8750,20 +8835,18 @@ export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 540, me
                     if (queued.data()?.lastEventTimestamp === now) tx.delete(queueRef);
                 });
             } catch (err) {
-                console.error(`[${pageId}] debounce worker error`, err);
+                console.error(`[${pageId}] webhook page processing failed`);
                 throw err;
             }
         })();
-        return res.status(200).send('ok');
+        return;
         // return res.status(200).json({
         //     message: "이벤트 수신 (debounce 대기중)",
         // });
     } catch (error: any) {
-        console.error("노션 웹훅 처리 실패:", error);
-        return res.status(503).json({ error: 'RETRY_LATER' });
+        throw error;
     }
-})
-);
+}
 
 // ----------------------------
 // 페이지 처리 함수
@@ -8790,7 +8873,7 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
     await writeUserEvent(userId, {
         agentId: AgentId.SECOND_BRAIN,
         status: "running",
-        eventTitle: `<span style="color:#7fb7ff">${pageData.title}</span> 노트 키워드 추출 진행`,
+        eventTitle: `${pageData.title} 노트 키워드 추출 진행`,
     });
 
     // ----------------------------

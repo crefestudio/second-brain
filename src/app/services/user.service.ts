@@ -524,18 +524,14 @@ export class UserService {
         }
     }
 
-    async generateNotionNoteKMDataBatch(userId: string): Promise<boolean> {
-        if (!userId) return false;
-
-        try {
-            await firstValueFrom(
-                this.http.post(`${this.functionsBaseUrl}/generateNotionNoteKMDataBatch`, { userId })
-            );
-            return true;
-        } catch (error) {
-            console.error('generateNotionNoteKMDataBatch failed', error);
-            return false;
-        }
+    async generateNotionNoteKMDataBatch(userId: string, accessKey?: string): Promise<{ successCount: number; failCount: number }> {
+        if (!userId) throw new Error('사용자 정보를 찾을 수 없습니다.');
+        const token = accessKey || await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('로그인 또는 위젯 인증이 필요합니다.');
+        return firstValueFrom(this.http.post<{ successCount: number; failCount: number }>(
+            `${this.functionsBaseUrl}/generateNotionNoteKMDataBatch`, { userId },
+            { headers: { Authorization: `Bearer ${token}` } }
+        ));
     }
 
     // async generateNoteConcepts(userId: string): Promise<boolean> {

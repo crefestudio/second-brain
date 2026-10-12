@@ -6,7 +6,7 @@
 <section class="achievement-grid" aria-label="상품 유입수와 매출 목표 달성률">
   <article class="achievement-card inflow-card">
     <p>상품 유입수 <span class="pace-label">오늘 · 한국시간</span></p>
-    <strong>{{dailyInflows === null ? '—' : (dailyInflows.today | number)}}<span class="inflow-unit">회</span></strong>
+    <strong>{{dailyInflows === null ? '—' : (dailyInflows.today | number)}}<span class="inflow-unit">회</span><span class="inflow-target">/ {{dailyInflowTarget | number}}건</span></strong>
     <dl class="inflow-details">
       <div><dt>이달</dt><dd>{{summaryMonth ? (totalViews | number) : '—'}}회</dd></div>
       <div><dt>어제</dt><dd>{{dailyInflows === null ? '—' : (dailyInflows.yesterday | number)}}회</dd></div>

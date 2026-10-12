@@ -129,7 +129,15 @@ export class SalesAdminComponent implements OnInit {
     }
     allowed = false; errorMessage = ''; youtubeMessage = ''; copiedPath = ''; loadingSummary = false; syncingYoutube = false; summaryMonth = ''; totalViews = 0; productViews: Record<string, number> = {}; productSales: Record<string, { count: number; revenue: number }> = {}; sources: StoreVisitSource[] = [];
     dailyInflows: { today: number; yesterday: number; dayBeforeYesterday: number } | null = null;
-    goals = { revenue: 5000000, averagePrice: 70000, trafficConversion: 3, purchaseConversion: 3 };
+    
+    goals = { 
+        revenue: 3000000, 
+        averagePrice: 70000, 
+        trafficConversion: 3, 
+        purchaseConversion: 3 
+    };
+
+
     readonly products: Product[] = [
         { name: '라이프업 (래피드)', price: 79000, storePath: 'lifeup-r', trackingKey: 'lifeup' }, { name: '라이프업 보상 (래피드)', price: 69000, storePath: 'lifeup-reward' },
         { name: '라이프업 보상 타임세일 (래피드)', price: 64000, storePath: 'lifeup-reward-sale' }, { name: '라이프업 (아임웹)', price: 79000, storePath: 'lifeup', trackingKey: 'lifeup-imweb' },
@@ -140,6 +148,9 @@ export class SalesAdminComponent implements OnInit {
     async ngOnInit(): Promise<void> { try { this.allowed = (await this.care.access()).isAdmin; if (!this.allowed) this.errorMessage = '관리자 계정으로 로그인해주세요.'; else { await this.loadSummary(); await this.generateReport(); } } catch (error) { this.errorMessage = error instanceof Error ? error.message : '관리자 권한을 확인하지 못했습니다.'; } }
     get goalPurchases(): number { return Math.ceil(this.goals.revenue / this.goals.averagePrice); }
     get goalProductInflows(): number { return Math.ceil(this.goalPurchases / (this.goals.purchaseConversion / 100)); }
+    // Spread the monthly target across this month, rounding up so the target
+    // remains sufficient to meet the monthly total.
+    get dailyInflowTarget(): number { return Math.ceil(this.goalProductInflows / this.revenueProgress.days); }
     get goalSourceViews(): number { return Math.ceil(this.goalProductInflows / (this.goals.trafficConversion / 100)); }
     get actualPurchases(): number { return Object.values(this.productSales).reduce((sum, product) => sum + product.count, 0); }
     get actualRevenue(): number { return Object.values(this.productSales).reduce((sum, product) => sum + product.revenue, 0); }
