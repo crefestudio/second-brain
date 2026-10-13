@@ -15,7 +15,9 @@ import { ActivatedRoute } from '@angular/router';
 })
 export class NotionOauthSuccessComponent implements OnInit, OnDestroy {
     isPending = true;
-    connectionState: 'checking' | 'waiting' | 'delayed' = 'checking';
+    databaseChecks: Array<{ name: string; status: string; message?: string }> = [];
+    connectionError = '';
+    connectionState: 'checking' | 'waiting' | 'delayed' | 'failed' = 'checking';
     checkCount = 0;
     nextCheckAt?: number;
     now = Date.now();
@@ -55,12 +57,24 @@ export class NotionOauthSuccessComponent implements OnInit, OnDestroy {
         this.nextCheckAt = undefined;
         this.checkCount++;
         try {
-            if (await this.userService.getNotionConnectionStatus(userId)) {
+            const result = await this.userService.getNotionConnectionDetails(userId);
+            this.databaseChecks = result.databaseChecks || [];
+            this.connectionError = result.error || (result.status === 'disconnected' ? '노션 인증 정보가 없습니다. 연결을 다시 시작해주세요.' : '');
+            if (result.connected) {
                 this.isPending = false;
                 if (this.statusTimer) clearInterval(this.statusTimer);
                 return;
             }
-        } catch (error) {
+        } catch (error: any) {
+            this.databaseChecks = error?.error?.databaseChecks || this.databaseChecks;
+            this.connectionError = error?.error?.error || '서버 응답을 받지 못했습니다. 잠시 후 다시 확인합니다.';
+            if (error?.error?.retryable === false) {
+                this.connectionState = 'failed';
+                if (this.pollTimer) clearTimeout(this.pollTimer);
+                if (this.statusTimer) clearInterval(this.statusTimer);
+                this.statusTimer = undefined;
+                return;
+            }
             console.warn('[Notion OAuth] connection check failed', error);
         }
         if (Date.now() - this.pollingStartedAt < this.pollingDeadlineMs) {
@@ -74,8 +88,8 @@ export class NotionOauthSuccessComponent implements OnInit, OnDestroy {
     }
 
     get progressPercent(): number {
-        if (!this.pollingStartedAt) return 0;
-        return Math.min(100, Math.round(((this.now - this.pollingStartedAt) / this.pollingDeadlineMs) * 100));
+        if (!this.databaseChecks.length) return 0;
+        return Math.round(this.databaseChecks.filter(item => item.status === 'found').length / this.databaseChecks.length * 100);
     }
 
     get secondsUntilRetry(): number {

@@ -212,3 +212,6 @@
 @keyframes connection-spin {
   to { transform: rotate(360deg); }
 }
+:host .database-checks { list-style: none; padding: 0; text-align: left; }
+:host .database-checks li { padding: 12px 0; border-bottom: 1px solid #64748b55; overflow-wrap: anywhere; }
+:host .database-checks p { margin: 6px 0 0; font-size: 13px; line-height: 1.6; }

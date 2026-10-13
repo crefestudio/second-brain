@@ -50,7 +50,6 @@ export class NotionConnectComponent implements OnInit {
         this.userId = userId;
         const user: any = await UserService.getUser(userId);
 
-        _log('connectProc user =>', user);
         if (!user) {
             this.state = 'notjoin';
             return;
@@ -58,7 +57,7 @@ export class NotionConnectComponent implements OnInit {
 
         this.templateId = user.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
 
-        if (user.notionAccessToken) {
+        if (user.notionAccessToken && !['pending', 'failed', 'disconnected'].includes(user.notionConnection?.status)) {
             this.state = 'connected';
         } else {
             this.state = 'notconnected';

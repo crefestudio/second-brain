@@ -14,7 +14,7 @@ import { ScrapbookUpgradeCardComponent } from '../../common/scrapbook-upgrade-ca
           <span class="loading-spinner"></span>
         </div>
       } @else {
-        <app-scrapbook-upgrade-card source="download_lifeup-scrapbook" />
+        <app-scrapbook-upgrade-card source="upgrade_lifeup-scrapbook" />
       }
     </main>
   `,

@@ -198,7 +198,7 @@ async function replaceNotionConnection(userId: string, pending?: { accessToken: 
 
 function isUsableNotionConnection(user: any, token?: string): boolean {
     return !!user?.notionAccessToken && (!token || user.notionAccessToken === token) &&
-        !['pending', 'disconnected'].includes(user.notionConnection?.status) && user.deletionStatus !== 'archived';
+        !['pending', 'failed', 'disconnected'].includes(user.notionConnection?.status) && user.deletionStatus !== 'archived';
 }
 
 async function assertNotionConnection(userId: string, token: string, connectionId?: string) {
@@ -236,14 +236,28 @@ async function completeNotionTemplateConnection(
     accessToken: string,
     workspaceId?: string,
     botId?: string,
-    duplicatedTemplateId?: string
+    duplicatedTemplateId?: string,
+    databaseChecks?: Array<{ name: string; status: string; message?: string }>
 ): Promise<void> {
     const before = (await db.collection('users').doc(userId).get()).data();
     if (before?.notionAccessToken !== accessToken || before?.notionConnection?.status !== 'pending') throw new Error('NOTION_CONNECTION_CHANGED');
     const connectionId = before.notionConnectionId || randomUUID();
     const dbNames = await templateDatabaseNames(userId);
-    const dbMap: Record<string, string> = await NotionService.updateTemplateDbs(accessToken, dbNames);
-    await Promise.all(Object.values(dbMap).map(id => NotionService.resolveDataSourceId(accessToken, id)));
+    const dbMap: Record<string, string> = {};
+    let duplicateError: any;
+    await Promise.all(dbNames.map(async name => {
+        try {
+            const id = await NotionService.getDatabaseIdByDatabaseName(accessToken, name, undefined,
+                before?.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : undefined);
+            await NotionService.resolveDataSourceId(accessToken, id);
+            dbMap[name] = id;
+            databaseChecks?.push({ name, status: 'found' });
+        } catch (error) {
+            if ((error as any)?.code === 'DUPLICATE_DATABASE') duplicateError = error;
+            databaseChecks?.push({ name, status: 'failed', message: error instanceof Error ? error.message : 'DB 확인 실패' });
+        }
+    }));
+    if (duplicateError) throw duplicateError;
     const missing = dbNames.filter(name => !dbMap?.[name]);
     if (missing.length) throw new Error(`Template databases not found: ${missing.join(', ')}`);
 
@@ -756,6 +770,7 @@ export const notionOAuthCallback = onRequest({ secrets: [NOTION_TOKEN], timeoutS
 
 
 export const getNotionConnectionStatus = onRequest(withCors(async (req, res) => {
+    const databaseChecks: Array<{ name: string; status: string; message?: string }> = [];
     try {
         if (req.method !== 'POST') {
             res.status(405).json({ success: false, error: 'METHOD_NOT_ALLOWED' });
@@ -776,25 +791,40 @@ export const getNotionConnectionStatus = onRequest(withCors(async (req, res) => 
             res.json({ success: true, connected: true, status: 'connected' });
             return;
         }
+        if (connection.status === 'failed') {
+            res.status(409).json({ success: false, connected: false, retryable: false, code: connection.errorCode,
+                error: connection.errorMessage, databaseChecks: connection.databaseChecks || [] });
+            return;
+        }
         try {
             await completeNotionTemplateConnection(
                 userId,
                 user.notionAccessToken,
                 connection.workspaceId,
                 connection.botId,
-                connection.duplicatedTemplateId
+                connection.duplicatedTemplateId,
+                databaseChecks
             );
-            res.json({ success: true, connected: true, status: 'connected' });
+            res.json({ success: true, connected: true, status: 'connected', databaseChecks });
         } catch (error) {
+            if ((error as any)?.code === 'DUPLICATE_DATABASE') {
+                await db.runTransaction(async tx => {
+                    const ref = db.collection('users').doc(userId);
+                    const current = (await tx.get(ref)).data();
+                    if (current?.notionConnectionId !== user.notionConnectionId || current?.notionConnection?.status !== 'pending') return;
+                    tx.update(ref, { 'notionConnection.status': 'failed', 'notionConnection.errorCode': 'DUPLICATE_DATABASE',
+                        'notionConnection.errorMessage': (error as Error).message, 'notionConnection.databaseChecks': databaseChecks });
+                });
+            }
             if (isNotionDatabaseNotIndexedError(error)) {
-                res.json({ success: true, connected: false, status: 'pending' });
+                res.json({ success: true, connected: false, status: 'pending', databaseChecks });
                 return;
             }
             throw error;
         }
     } catch (error: any) {
         console.error('[Notion Connection Status] Failed', error);
-        res.status(500).json({ success: false, error: error?.message || 'Failed to get Notion connection status' });
+        res.status(error?.code === 'DUPLICATE_DATABASE' ? 409 : 500).json({ success: false, code: error?.code, retryable: error?.code !== 'DUPLICATE_DATABASE', error: error?.message || 'Failed to get Notion connection status', databaseChecks });
     }
 }));
 
@@ -4619,7 +4649,7 @@ export const getAppSession = onRequest(withCors(async (req, res) => {
             const workspace = current?.data();
             return { status: 200, userId, workspaces,
                 templateId: workspace ? workspaceTemplate(workspace) : '',
-                kakaoUserId: workspace?.kakaoUserId || '', notionConnected: !!workspace?.notionAccessToken };
+                kakaoUserId: workspace?.kakaoUserId || '', notionConnected: isUsableNotionConnection(workspace) };
         });
         const { status, ...payload } = result;
         return res.status(status).json(payload);
@@ -4740,7 +4770,7 @@ export const listAppMembers = onRequest(withCors(async (req, res) => {
                 ])];
                 const notionConnected = workspaces.some(doc => {
                     const workspace = doc.data();
-                    return workspace.notionConnection?.status === 'connected' || Boolean(workspace.notionAccessToken);
+                    return isUsableNotionConnection(workspace);
                 });
                 const kakaoConnected = workspaces.some(doc => Boolean(doc.data().kakaoUserId));
                 members.push({ id: user.uid, profileName: user.displayName || preference.profileName || '', email: user.email || '', phoneNumber: user.phoneNumber || '', workspaceIds, createdAt: user.metadata.creationTime || '', notionConnected, kakaoConnected });
@@ -5413,7 +5443,8 @@ class NotionService {
     static async getDatabaseIdByDatabaseName(
         accessToken: string,
         databaseType: string,
-        version?: string
+        version?: string,
+        templateId?: 'lifeUpScrapbook'
     ): Promise<string> {
         const startedAt = Date.now();
 
@@ -5470,9 +5501,20 @@ class NotionService {
             );
 
         const target = normalize(databaseType);
+        console.log('[Notion] Search candidates', { databaseType, titles: data.results.map(getTitle) });
 
-        const matched = data.results.filter((db: any) => {
+        const activeResults = data.results.filter((db: any) => db.archived !== true && db.in_trash !== true);
+        const matched = activeResults.filter((db: any) => {
             const title = getTitle(db);
+            const parts = title.split('/').map((part: string) => part.trim());
+            if (templateId === 'lifeUpScrapbook') {
+                const templateParts = title.split(/[/#]/).map((part: string) => part.replace(/\s/g, '').toLowerCase());
+                return templateParts.length === 3 && templateParts[0] === target.replace(/\s/g, '') &&
+                    templateParts[2] === 'scrapbook';
+            }
+            if (parts.length >= 3 && parts[0] === target && /^\d+$/.test(parts[1]) && parts[2]) {
+                return !version || parts[1] === version.replace('.', '');
+            }
 
             if (version === '1.3') {
                 return (
@@ -5511,14 +5553,13 @@ class NotionService {
 
         if (matched.length === 0) {
             throw new Error(
-                `"${databaseType}" Database를 찾을 수 없습니다.${version ? ` (LifeUp ${version})` : ''}`
+                `"${databaseType}" Database를 찾을 수 없습니다.${version ? ` (LifeUp ${version})` : ''} ` +
+                (activeResults.length ? `검색 결과는 있지만 이름 규칙과 일치하지 않습니다. 반환된 제목: ${activeResults.map(getTitle).join(', ')}` : data.results.length ? '검색된 DB가 모두 휴지통 또는 보관 상태입니다.' : 'Notion 검색 결과가 없습니다. 페이지 공유 권한과 DB 이름을 확인해주세요.')
             );
         }
 
         if (matched.length > 1) {
-            throw new Error(
-                `"${databaseType}" Database가 여러 개 존재합니다.${version ? ` (LifeUp ${version})` : ''}`
-            );
+            throw Object.assign(new Error(`${databaseType} DB의 결과가 ${matched.length}개 나와서 연결이 거절되었습니다.`), { code: 'DUPLICATE_DATABASE' });
         }
         return matched[0].id;
     }
@@ -15782,6 +15823,10 @@ function removeUndefined<T>(obj: T): T {
     }
 
     if (obj && typeof obj === "object") {
+        // Preserve Firestore Timestamp/FieldValue and other SDK instances.
+        // Traversing them turns timestamps into maps that cannot be read with toDate().
+        const prototype = Object.getPrototypeOf(obj);
+        if (prototype !== Object.prototype && prototype !== null) return obj;
         return Object.fromEntries(
             Object.entries(obj)
                 .filter(([, value]) => value !== undefined)

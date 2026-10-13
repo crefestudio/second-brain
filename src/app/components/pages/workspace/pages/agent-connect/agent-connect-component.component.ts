@@ -124,6 +124,11 @@ export class AgentConnectComponentComponent implements OnInit {
             this.userService.notionConnected$.subscribe(() => {
                 this.onComplateNotionTemplateConnect();
             });
+            this.userService.notionConnectionFailed$.subscribe(message => {
+                this.isOpenNotionConnectWindow = false;
+                ToastService.error(message);
+                void this.updateSession();
+            });
         } finally {
             this.isLoading = false;
         }

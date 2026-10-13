@@ -51,6 +51,7 @@ function fixture(extra = {}) {
     const context = { db, randomUUID: () => 'fresh-connection', console: { log() {}, error() {}, warn() {} },
         templateDatabaseNames: async () => ['note', 'task'],
         NotionService: { updateTemplateDbs: async () => ({ note: 'new-note', task: 'new-task' }),
+            getDatabaseIdByDatabaseName: async (_token, name) => `new-${name}`,
             resolveDataSourceId: async () => 'source', fetchLifeupTemplateInfoFromNotion: async () => null,
             resetKeywordOptions: async () => { assert.fail('must not reset keyword options'); } },
         admin: { firestore: { FieldValue: { delete: () => ({ deleteField: true }), increment: n => ({ increment: n }), serverTimestamp: () => 1 } } } };
@@ -103,12 +104,34 @@ test('successful reconnect replaces the full DB map and preserves graph and enab
     assert.deepEqual(records.get('users/u/integrations/secondbrain/pages/p').keywords, ['keep']);
     assert.equal(records.get('notionDatabaseMap/new-note').connectionId, user().notionConnectionId);
 });
+test('discovery reports every DB and leaves connection pending when one lookup fails', async () => {
+    const { context, user } = fixture();
+    await context.replaceNotionConnection('u', { accessToken: 'new-token' });
+    context.NotionService.getDatabaseIdByDatabaseName = async (_token, name) => {
+        if (name === 'task') throw vm.runInContext("new Error('Database title mismatch')", context);
+        return 'new-note';
+    };
+    const checks = [];
+    await assert.rejects(context.completeNotionTemplateConnection('u', 'new-token', undefined, undefined, undefined, checks), /task/);
+    assert.equal(checks.find(item => item.name === 'note').status, 'found');
+    assert.equal(checks.find(item => item.name === 'task').message, 'Database title mismatch');
+    assert.equal(user().notionConnection.status, 'pending');
+});
+test('failed OAuth validation is not usable and fresh OAuth clears previous failure', async () => {
+    const { context, user } = fixture({ 'users/u': { notionAccessToken: 'token', notionConnectionId: 'failed-id',
+        notionConnection: { status: 'failed', errorCode: 'DUPLICATE_DATABASE', errorMessage: 'duplicate' } } });
+    assert.equal(context.isUsableNotionConnection(user()), false);
+    await context.replaceNotionConnection('u', { accessToken: 'new-token' });
+    assert.equal(user().notionConnection.status, 'pending');
+    assert.equal(user().notionConnection.errorCode, undefined);
+    assert.equal(context.isUsableNotionConnection(user()), false);
+});
 test('discovery finishing after disconnect cannot restore any connection metadata', async () => {
     const { context, records, user } = fixture();
     await context.replaceNotionConnection('u', { accessToken: 'new-token' });
-    context.NotionService.updateTemplateDbs = async () => {
+    context.NotionService.getDatabaseIdByDatabaseName = async (_token, name) => {
         await context.replaceNotionConnection('u');
-        return { note: 'new-note', task: 'new-task' };
+        return `new-${name}`;
     };
     await assert.rejects(context.completeNotionTemplateConnection('u', 'new-token'), /NOTION_CONNECTION_CHANGED/);
     assert.equal(user().notionConnection.status, 'disconnected');

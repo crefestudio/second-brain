@@ -189,6 +189,7 @@ export class UserService {
     private kakaoVerificationUnsubscribe?: () => void;
 
     public notionConnected$ = new Subject<void>();
+    public notionConnectionFailed$ = new Subject<string>();
     private notionConnectUnsubscribe?: () => void;
 
     public notionMigrationConnected$ = new Subject<void>();
@@ -979,6 +980,11 @@ export class UserService {
 
                 const data = snapshot.data();
                 const updatedConnectionId = data['notionConnectionId'] || '';
+                if (data['notionConnection']?.status === 'failed' && updatedConnectionId !== connectionId) {
+                    this.notionConnectionFailed$.next(data['notionConnection'].errorMessage || '노션 연결 검증에 실패했습니다.');
+                    this.stopNotionConnectWatcher();
+                    return;
+                }
                 if (data['notionConnection']?.status === 'connected' &&
                     updatedConnectionId && updatedConnectionId !== connectionId) {
                     this.notionConnected$.next();
@@ -1040,6 +1046,9 @@ export class UserService {
             connected: boolean;
         }>(`${this.functionsBaseUrl}/getNotionConnectionStatus`, { userId }));
         return response.connected ?? false;
+    }
+    async getNotionConnectionDetails(userId: string): Promise<any> {
+        return firstValueFrom(this.http.post<any>(`${this.functionsBaseUrl}/getNotionConnectionStatus`, { userId }));
     }
     ////////////////////////
 
