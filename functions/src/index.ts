@@ -5865,9 +5865,21 @@ class NotionService {
 
         // entity있으면 entity만, 컨텐츠까지 넣으면 중복됨
         const entityBlocks = this.buildContentBlocks(entity);
-        const contentBlocks = aiResult.scrapbookConfirmed ? this.buildAiContentBlocks(aiResult.content) : entityBlocks.length > 0
+        // Confirmation converts the destination, but must retain the original photo.
+        // The converted text already includes OCR/contact details; keep image blocks
+        // alongside it without duplicating the entity's text blocks.
+        const contentBlocks = aiResult.scrapbookConfirmed
+            ? [...entityBlocks.filter(block => block.type === 'image'), ...this.buildAiContentBlocks(aiResult.content)]
+            : entityBlocks.length > 0
             ? entityBlocks
             : this.buildAiContentBlocks(aiResult.content);
+        console.log('[NotionCreate] selected content', {
+            contextId: aiResult.contextId,
+            db: aiResult.db,
+            scrapbookConfirmed: !!aiResult.scrapbookConfirmed,
+            imageBlockCount: contentBlocks.filter(block => block.type === 'image').length,
+            blockCount: contentBlocks.length
+        });
 
         ////////////////////////////////////////////////////
         if (aiResult.action === "correct") {
@@ -12272,6 +12284,7 @@ async function processKakaoAgent(
             try {
                 const pageId = await NotionService.createDbItemFromAiResult(userId, converted, contact);
                 if (!pageId) throw new Error('SCRAPBOOK_SAVE_FAILED');
+                converted.response = buildAssistantResponse(converted, undefined, pageUrls);
                 await db.collection('users').doc(userId).collection('assistantContext').doc(pending.contextId).update({
                     pageId, result: removeUndefined(converted)
                 });
@@ -12390,9 +12403,11 @@ async function processKakaoAgent(
 
         if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' &&
             ['create', 'correct'].includes(enrichedResult.action) && enrichedResult.db !== 'reference') {
+            const sourceLabel: Record<string, string> = { task: '할 일', memo: '메모', project: '프로젝트', contact: '연락처', book: '도서' };
+            const classifiedAs = sourceLabel[enrichedResult.db] || '자료 외 항목';
             enrichedResult.scrapbookPending = true;
             enrichedResult.action = 'scrapbookPending';
-            enrichedResult.response = `할 일로 분류되어 저장하지 않았습니다.\n스크랩북에 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/lifeup-scrapbook`;
+            enrichedResult.response = `분류 결과: ${classifiedAs}\n스크랩북은 자료 저장만 지원하므로 아직 저장하지 않았습니다.\n스크랩북 자료로 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/lifeup-scrapbook`;
         }
 
         const payload: any = {
@@ -12975,6 +12990,9 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
     else if (result.db === "memo") { pageUrl = pageUrls?.memo_mobile ?? ""; }
     else if (result.db === "reference") { pageUrl = pageUrls?.reference_mobile ?? ""; }
     else if (result.db === "contact") { pageUrl = pageUrls?.contact_mobile ?? ""; }
+    // Some templates (including Scrapbook) have no mobile app pages.
+    // Their root page is still a valid destination after saving.
+    if (!pageUrl) { pageUrl = pageUrls?.root ?? ""; }
 
     // 날짜
     if (result.dateData?.date) {
