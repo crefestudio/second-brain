@@ -212,7 +212,7 @@ export class RoutineFindComponent {
     }
     showUpgradeNotice = false;
     private upgradeLoading = false;
-    get upgradeUrl(): string { return this.upgradeEvent.upgradeUrl; }
+    get upgradeUrl(): string { return this.upgradeEvent.upgradeUrl('routine_add'); }
 
     get filteredHabits() {
         if (!this.selectedCategory || this.selectedCategory === '전체') {

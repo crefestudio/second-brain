@@ -3,8 +3,8 @@ import { APP_CONFIG } from '../config/app-config.token';
 import { auth } from '../firebase';
 
 export type StoreVisitSource = { location: string; count: number; siteVisits: number; title?: string | null; sourceViews: number | null };
-export type StoreVisitLog = { id: string; productPath: string; path?: string; targetName?: string; createdAt: string };
-export type ProductVisitLog = { id: string; location: string; title?: string | null; createdAt: string };
+export type StoreVisitLog = { id: string; collection: 'storeVisits' | 'siteVisits'; productPath: string; path?: string; targetName?: string; createdAt: string };
+export type ProductVisitLog = { id: string; collection: 'storeVisits'; location: string; title?: string | null; createdAt: string };
 export type MarketingReportResult = { report: { month: string; generatedAt: string; warnings: string[]; metrics: Array<{ name: string; actual: number | null; target: number; unit: string; lever: string; action: string; gap: number | null; status: string }> }; ai?: string; model?: string };
 export type StoreVisitSummary = { month: string; totalViews: number; dailyInflows?: { today: number; yesterday: number; dayBeforeYesterday: number }; productViews: Record<string, number>; productSales: Record<string, { count: number; revenue: number }>; sources: StoreVisitSource[] };
 
@@ -25,6 +25,16 @@ export class SalesAdminService {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || !Array.isArray(payload.logs)) throw new Error(payload.error || '유입 로그를 불러오지 못했습니다.');
         return payload;
+    }
+    async deleteVisitLog(log: Pick<StoreVisitLog, 'id' | 'collection'>): Promise<void> {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('로그인이 필요합니다.');
+        const response = await fetch(`${this.baseUrl}/deleteStoreVisitLog`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ id: log.id, collection: log.collection })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || '유입 기록을 삭제하지 못했습니다.');
     }
     async marketingReport(goals: { revenue: number; averagePrice: number; trafficConversion: number; purchaseConversion: number }, ai: boolean): Promise<MarketingReportResult> {
         const token = await auth.currentUser?.getIdToken();

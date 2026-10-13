@@ -16,6 +16,7 @@ export class SalesAdminComponent implements OnInit {
     productLogsLoading = false;
     productLogsError = '';
     productLogsMonth = '';
+    deletingProductLogId = '';
     async showProductVisitLogs(product: Product): Promise<void> {
         this.detailProduct = product;
         this.productVisitLogs = [];
@@ -30,6 +31,20 @@ export class SalesAdminComponent implements OnInit {
         } catch (error) { this.productLogsError = error instanceof Error ? error.message : '상품 유입 로그 조회 실패'; }
         finally { this.productLogsLoading = false; }
     }
+    async deleteProductVisitLog(log: ProductVisitLog): Promise<void> {
+        if (this.deletingProductLogId || !window.confirm('이 유입 기록을 삭제할까요? 삭제 후에는 복구할 수 없습니다.')) return;
+        this.deletingProductLogId = log.id;
+        this.productLogsError = '';
+        try {
+            await this.sales.deleteVisitLog(log);
+            this.productVisitLogs = this.productVisitLogs.filter(item => item.id !== log.id);
+            await this.loadSummary();
+        } catch (error) {
+            this.productLogsError = error instanceof Error ? error.message : '유입 기록을 삭제하지 못했습니다.';
+        } finally {
+            this.deletingProductLogId = '';
+        }
+    }
     detailSource: StoreVisitSource | null = null;
     visitLogs: StoreVisitLog[] = [];
     logsLoading = false;
@@ -37,6 +52,7 @@ export class SalesAdminComponent implements OnInit {
     logsMonth = '';
     logsCapped = false;
     logsVisible = 50;
+    deletingLogId = '';
     private logsRequest = 0;
     async showVisitLogs(source: StoreVisitSource): Promise<void> {
         const request = ++this.logsRequest;
@@ -56,6 +72,20 @@ export class SalesAdminComponent implements OnInit {
         } catch (error) {
             if (request === this.logsRequest) this.logsError = error instanceof Error ? error.message : '유입 로그 조회 실패';
         } finally { if (request === this.logsRequest) this.logsLoading = false; }
+    }
+    async deleteVisitLog(log: StoreVisitLog): Promise<void> {
+        if (this.deletingLogId || !window.confirm('이 유입 기록을 삭제할까요? 삭제 후에는 복구할 수 없습니다.')) return;
+        this.deletingLogId = `${log.collection}:${log.id}`;
+        this.logsError = '';
+        try {
+            await this.sales.deleteVisitLog(log);
+            this.visitLogs = this.visitLogs.filter(item => !(item.collection === log.collection && item.id === log.id));
+            await this.loadSummary();
+        } catch (error) {
+            this.logsError = error instanceof Error ? error.message : '유입 기록을 삭제하지 못했습니다.';
+        } finally {
+            this.deletingLogId = '';
+        }
     }
     visitProductName(path: string, sitePath?: string, targetName?: string): string {
         if (path === 'site') return targetName || `노셔너블 홈페이지 (${sitePath || '/'})`;

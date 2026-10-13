@@ -65,7 +65,7 @@ export const routes: Routes = [
   { path: 'store/bizup-custom', component: StoreRedirectComponent },
   { path: 'upgrade/lifeup-scrapbook', component: LifeupScrapbookUpgradeComponent },
   { path: 'gift/lifeupfree', loadComponent: () => import('./components/pages/lifeup-free/lifeup-free.component').then(m => m.LifeupFreeComponent) },
-  { path: 'invitation/lifeupfree', redirectTo: 'gift/lifeupfree', pathMatch: 'full' },
+  { path: 'gift/lifeupfree/lifeup-scrapbook', loadComponent: () => import('./components/pages/lifeup-free/lifeup-free.component').then(m => m.LifeupFreeComponent) },
   { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },
   { path: 'block', component: UnsubscribeComponent },
   { path: 'unsubscribe', redirectTo: 'block', pathMatch: 'full' },

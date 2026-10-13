@@ -3403,26 +3403,36 @@ export const getStoreVisitSummary = onRequest(withCors(async (req, res) => {
         const logs = snapshot.docs
             .filter(doc => String(doc.data().productPath || '') === req.body.detailProduct)
             .slice(0, 10)
-            .map(doc => ({ id: doc.id, location: String(doc.data().location || ''), createdAt: doc.data().createdAt.toDate().toISOString() }));
+            .map(doc => ({ id: doc.id, collection: 'storeVisits', location: String(doc.data().location || ''), createdAt: doc.data().createdAt.toDate().toISOString() }));
         const titles = new Map(await Promise.all([...new Set(logs.map(log => log.location).filter(location => YOUTUBE_VIDEO_ID.test(location)))].map(async videoId => [videoId, await youtubeContentTitle(videoId)] as const)));
         return res.json({ month: currentMonth.key, logs: logs.map(log => ({ ...log, title: titles.get(log.location) || null })), capped: snapshot.size === 10000 });
     }
     if (typeof req.body?.detailSource === 'string') {
         const { currentMonth, snapshot, start } = await monthlyStoreVisits();
         const logs = snapshot.docs.filter(doc => String(doc.data().location || '직접 유입') === req.body.detailSource).map(doc => ({
-            id: doc.id, productPath: String(doc.data().productPath || ''),
+            id: doc.id, collection: 'storeVisits', productPath: String(doc.data().productPath || ''),
             createdAt: doc.data().createdAt.toDate().toISOString()
-        })) as Array<{ id: string; productPath: string; path?: string; targetName?: string; createdAt: string }>;
+        })) as Array<{ id: string; collection: 'storeVisits' | 'siteVisits'; productPath: string; path?: string; targetName?: string; createdAt: string }>;
         const siteSnapshot = await db.collection('siteVisits').where('createdAt', '>=', start).orderBy('createdAt', 'desc').limit(10000).get();
         siteSnapshot.forEach(doc => {
             const visit = doc.data();
             if (String(visit.location || '') !== req.body.detailSource) return;
-            logs.push({ id: `site-${doc.id}`, productPath: 'site', path: String(visit.path || '/'), targetName: String(visit.targetName || ''), createdAt: visit.createdAt.toDate().toISOString() });
+            logs.push({ id: doc.id, collection: 'siteVisits', productPath: 'site', path: String(visit.path || '/'), targetName: String(visit.targetName || ''), createdAt: visit.createdAt.toDate().toISOString() });
         });
         logs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         return res.json({ month: currentMonth.key, logs, capped: snapshot.size === 10000 || siteSnapshot.size === 10000 });
     }
     return res.json(await storeVisitSummary());
+}));
+
+export const deleteStoreVisitLog = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+    const id = typeof req.body?.id === 'string' ? req.body.id : '';
+    const collection = req.body?.collection === 'storeVisits' || req.body?.collection === 'siteVisits' ? req.body.collection : '';
+    if (!id || !collection || id.includes('/')) return res.status(400).json({ error: 'INVALID_VISIT_LOG' });
+    await db.collection(collection).doc(id).delete();
+    return res.json({ deleted: true });
 }));
 
 async function monthlyStoreVisits() {
@@ -3813,6 +3823,52 @@ export const redeemLifeupFreeTemplates = onRequest(withCors(async (req, res) => 
     });
     return res.json({ success: true, templates: templates.map(id => ({ id, name: LIFEUP_FREE_TEMPLATE_NAMES[id],
         downloadPath: id === 'lifeUpScrapbook' ? '/download/lifeup-scrapbook' : '/download/lifeup' })) });
+}));
+
+// This gift deliberately uses an email confirmation rather than an email-code
+// challenge. The opaque pass lets the recipient open the download page directly.
+export const claimLifeupFreeScrapbook = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const email = customerEmail(req.body?.email);
+    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: '이메일 주소를 확인해 주세요.' });
+    const marketingConsent = req.body?.marketingConsent === true;
+
+    const key = lifeupFreeEmailKey(email);
+    const purchaserId = `lifeupfree_${key.slice(0, 24)}_lifeUpScrapbook`;
+    const workspaceRef = db.collection('users').doc(purchaserId);
+    const purchaserRef = db.collection('purchasers').doc(purchaserId);
+    const pass = randomBytes(32).toString('hex');
+    const passRef = db.collection('lifeupFreeDownloadPasses').doc(hashContent(pass));
+    await db.runTransaction(async transaction => {
+        const purchaser = await transaction.get(purchaserRef);
+        if (!purchaser.exists) transaction.create(purchaserRef, {
+            email, name: '', phone: '', templateId: 'lifeUpScrapbook',
+            purchaseOption: '라이프업 스크랩북 무료 증정', amount: '0원', paymentAmount: 0,
+            paymentMethod: '무료 이벤트', purchasedAt: formatLatpeedDate(new Date().toISOString()),
+            status: '무료 증정 완료', source: 'lifeup-free', registrationStatus: 'lifeup-free',
+            marketingConsent, marketingConsentSource: 'lifeup-free',
+            marketingConsentAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        transaction.set(workspaceRef, { email, templateId: 'lifeUpScrapbook', source: 'lifeup-free',
+            createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        transaction.set(workspaceRef.collection('purchases').doc('lifeUpScrapbook'), {
+            verified: true, verifiedAt: admin.firestore.FieldValue.serverTimestamp(), source: 'lifeup-free'
+        }, { merge: true });
+        transaction.create(passRef, { templateId: 'lifeUpScrapbook', purchaserId,
+            expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    });
+    return res.json({ downloadPath: `${APP_PUBLIC_URL}/download/lifeup-scrapbook?giftAccess=${pass}` });
+}));
+
+export const validateLifeupFreeScrapbookAccess = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const pass = String(req.body?.pass || '').trim();
+    if (!/^[a-f0-9]{64}$/.test(pass)) return res.status(400).json({ error: 'INVALID_GIFT_ACCESS' });
+    const data = (await db.collection('lifeupFreeDownloadPasses').doc(hashContent(pass)).get()).data();
+    if (!data || data.templateId !== 'lifeUpScrapbook' || data.expiresAt?.toMillis?.() < Date.now()) return res.status(403).json({ error: 'GIFT_ACCESS_EXPIRED' });
+    return res.json({ success: true });
 }));
 
 // Resolve workspace ownership only from a verified Firebase identity.

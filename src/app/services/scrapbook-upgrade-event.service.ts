@@ -9,8 +9,6 @@ export class ScrapbookUpgradeEventService {
   private firstSeenAt = 0;
   isLoading = false;
   private clockOffset = 0;
-  readonly saleUrl = 'https://www.latpeed.com/products/Waljo';
-  readonly normalUrl = 'https://www.latpeed.com/products/ozVuQ';
   constructor(private http: HttpClient) {}
   async initialize(workspaceId: string): Promise<void> {
     this.isLoading = true;
@@ -27,5 +25,10 @@ export class ScrapbookUpgradeEventService {
   }
   get isActive(): boolean { return Boolean(this.firstSeenAt) && this.remainingSeconds > 0; }
   get remainingSeconds(): number { return Math.max(0, Math.ceil((this.firstSeenAt + this.duration - Date.now() - this.clockOffset) / 1000)); }
-  get upgradeUrl(): string { return this.isActive ? this.saleUrl : this.normalUrl; }
+  upgradeUrl(source: string): string { return this.storeUrl(this.isActive ? 'lifeup-reward-sale' : 'lifeup-reward', source); }
+  normalUrl(source: string): string { return this.storeUrl('lifeup-reward', source); }
+
+  private storeUrl(product: 'lifeup-reward' | 'lifeup-reward-sale', source: string): string {
+    return `https://app.notionable.net/store/${product}?from=${encodeURIComponent(source)}`;
+  }
 }

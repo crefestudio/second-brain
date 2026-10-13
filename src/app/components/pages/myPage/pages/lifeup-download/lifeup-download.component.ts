@@ -6,6 +6,7 @@ import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
 import { SocialAuthService } from '../../../../../services/social-auth.service';
 import { APP_CONFIG } from '../../../../../config/app-config.token';
+import { ScrapbookUpgradeEventService } from '../../../../../services/scrapbook-upgrade-event.service';
 
 @Component({
     selector: 'app-lifeup-download',
@@ -24,8 +25,11 @@ export class LifeupDownloadComponent implements OnInit {
     isVerifying = false;
     verificationError = '';
     private verificationUid: string | null = null;
+    private readonly functionsBaseUrl: string;
+    private readonly giftAccess: string | null;
     readonly templateId: 'lifeUp' | 'lifeUpScrapbook';
     readonly productName: string;
+    readonly isScrapbook: boolean;
 
     readonly downloadUrl: string;
     readonly reviewUrl = 'https://notionable.net/lifeup-review';
@@ -37,11 +41,15 @@ export class LifeupDownloadComponent implements OnInit {
         private readonly userService: UserService,
         private readonly router: Router,
         private readonly socialAuth: SocialAuthService,
+        public readonly upgradeEvent: ScrapbookUpgradeEventService,
         route: ActivatedRoute
     ) {
         const config = inject(APP_CONFIG);
+        this.functionsBaseUrl = config.functionsBaseUrl;
+        this.giftAccess = route.snapshot.queryParamMap?.get('giftAccess') ?? null;
         this.templateId = route.snapshot.data['product'] === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
         const scrapbook = this.templateId === 'lifeUpScrapbook';
+        this.isScrapbook = scrapbook;
         this.productName = scrapbook ? '라이프업 1.5 스크랩북' : '라이프업 1.5';
         this.downloadUrl = (scrapbook ? config.lifeUpScrapbookReleaseUrls : config.lifeUpReleaseUrls)['1.5'];
         this.passportUrl = (scrapbook ? config.lifeUpScrapbookPassportUrls : config.lifeUpPassportUrls)['1.5'];
@@ -50,7 +58,14 @@ export class LifeupDownloadComponent implements OnInit {
 
     async ngOnInit(): Promise<void> {
         try {
-            await this.loadPurchaseInfo();
+            if (this.templateId === 'lifeUpScrapbook' && this.giftAccess) {
+                const response = await fetch(`${this.functionsBaseUrl}/validateLifeupFreeScrapbookAccess`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pass: this.giftAccess })
+                });
+                if (response.ok) this.isPurchaser = true;
+            }
+            if (!this.isPurchaser) await this.loadPurchaseInfo();
+            await this.initializeUpgradeEvent();
         } catch {
             this.verificationError = '구매 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.';
         } finally {
@@ -69,6 +84,15 @@ export class LifeupDownloadComponent implements OnInit {
 
         const result = await UserService.updatePurchaseInfo(userId, this.templateId);
         this.isPurchaser = result.isPurchaser && result.purchaseInfo?.verified === true;
+    }
+
+    private async initializeUpgradeEvent(): Promise<void> {
+        if (!this.isScrapbook || !this.isPurchaser) return;
+        try {
+            await this.upgradeEvent.initialize(this.authService.getUserId());
+        } catch {
+            // When event status cannot be loaded, show the regular upgrade offer.
+        }
     }
 
     goToPurchaseInfo(): void {
@@ -150,6 +174,7 @@ export class LifeupDownloadComponent implements OnInit {
                 this.verificationError = '인증한 계정의 구매 정보를 확인할 수 없습니다. 새로고침 후 다시 확인해주세요.';
                 return;
             }
+            await this.initializeUpgradeEvent();
             this.verificationCode = '';
             this.verificationStep = 'intro';
         } catch {

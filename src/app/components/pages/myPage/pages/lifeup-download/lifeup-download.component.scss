@@ -240,6 +240,48 @@ section {
     margin-top: 0;
 }
 
+.scrapbook-upgrade-promo {
+    margin-bottom: 4px;
+}
+
+.upgrade-event {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 6px;
+    padding: 22px;
+    border-radius: 10px;
+    background: rgb(17 24 39 / 42%);
+}
+
+.upgrade-event p {
+    margin: 0;
+}
+
+.upgrade-copy {
+    color: #d6e5f7;
+}
+
+.price {
+    color: #cbd5e1;
+    font-size: 18px;
+}
+
+.price del {
+    color: #94a3b8;
+}
+
+.price strong {
+    color: #93c5fd;
+}
+
+.scrapbook-lifebot-promo {
+    margin-top: 0;
+}
+
 .lifeupbot-details {
     width: 100%;
     box-sizing: border-box;
@@ -320,6 +362,10 @@ section {
     }
 
     .review-event {
+        padding: 18px 16px;
+    }
+
+    .upgrade-event {
         padding: 18px 16px;
     }
 

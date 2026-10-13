@@ -27,12 +27,14 @@ export class RoutineComponent {
   showUpgradePopup = false;
   showUnsupportedNotice = false;
   remainingTime = '48:00:00';
-  upgradeUrl = 'https://www.latpeed.com/products/ozVuQ';
+  upgradeUrl = '';
   private timer?: ReturnType<typeof setInterval>;
   private navigation?: Subscription;
   private routeVersion = 0;
 
-  constructor(private authService: AuthService, private router: Router, private upgradeEvent: ScrapbookUpgradeEventService) {}
+  constructor(private authService: AuthService, private router: Router, private upgradeEvent: ScrapbookUpgradeEventService) {
+    this.upgradeUrl = this.upgradeEvent.normalUrl('routine');
+  }
 
   async ngOnInit(): Promise<void> {
     try {
@@ -63,16 +65,16 @@ export class RoutineComponent {
     this.showUnsupportedNotice = !this.canUseRoutine && eligible;
     if (this.canUseRoutine || !eligible) { this.showUpgradePopup = false; return; }
     try { await this.upgradeEvent.initialize(this.authService.getUserId()); }
-    catch { this.showUpgradePopup = false; this.upgradeUrl = this.upgradeEvent.normalUrl; return; }
+    catch { this.showUpgradePopup = false; this.upgradeUrl = this.upgradeEvent.normalUrl('routine'); return; }
     if (version !== this.routeVersion) return;
-    this.upgradeUrl = this.upgradeEvent.upgradeUrl;
+    this.upgradeUrl = this.upgradeEvent.upgradeUrl('routine');
     this.showUpgradePopup = this.upgradeEvent.isActive;
     clearInterval(this.timer);
     this.timer = setInterval(() => {
       const seconds = this.upgradeEvent.remainingSeconds;
       this.remainingTime = `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
       if (!this.upgradeEvent.isActive) this.showUpgradePopup = false;
-      this.upgradeUrl = this.upgradeEvent.upgradeUrl;
+      this.upgradeUrl = this.upgradeEvent.upgradeUrl('routine');
     }, 1000);
   }
 }

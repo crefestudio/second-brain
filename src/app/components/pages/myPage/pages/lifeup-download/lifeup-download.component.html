@@ -43,6 +43,25 @@
             <p class="email-guide">💡 메일 인증 없이 바로 설치하려면, 구매 시 입력한 이메일의 안내 메일을 확인해 주세요.</p>
         </section>
         } @else {
+        @if (isScrapbook) {
+        <section class="lifeupbot-promo scrapbook-upgrade-promo">
+            <h2>🎁 스크랩북 사용자를 위한 라이프업 업그레이드 혜택</h2>
+            <p>목표부터 프로젝트, 할 일, 메모, 자료까지 한곳에서 관리하고 싶으신가요?<br><strong>라이프업 통합 템플릿</strong>으로 더 많은 기능을 만나보세요.</p>
+            <div class="upgrade-event">
+                @if (upgradeEvent.isActive) {
+                <p class="upgrade-copy">스크랩북 사용자만을 위한 <strong>48시간 한정 보상 업그레이드 특별가</strong>를 준비했습니다.</p>
+                <p class="price"><del>79,000원</del> → <strong>64,000원</strong></p>
+                <p class="reward">지금 업그레이드하면 <strong>추가 15,000원 할인!</strong></p>
+                } @else {
+                <p class="upgrade-copy">스크랩북 사용자만을 위한 <strong>보상 업그레이드 특별가</strong>를 준비했습니다.</p>
+                <p class="price"><del>79,000원</del> → <strong>69,000원</strong></p>
+                <p class="reward">지금 업그레이드하면 <strong>추가 10,000원 할인!</strong></p>
+                }
+                <a class="primary-btn large" [href]="upgradeEvent.upgradeUrl('download_lifeup-scrapbook')" target="_blank" rel="noopener noreferrer">라이프업 업그레이드 알아보기 <span>→</span></a>
+            </div>
+        </section>
+        <br>
+        }
         <section>
             <h2>📥 {{ productName }} 다운로드</h2>
             <p>아래 버튼을 클릭하면 최신 버전 <strong>{{ productName }}</strong>를 다운로드하고 설치할 수 있습니다.</p>
@@ -57,6 +76,12 @@
             <a class="secondary-btn large" [href]="passportUrl" target="_blank" rel="noopener">
                 보관용 PDF 열기 <span>→</span>
             </a>
+        </section>
+       
+        <section class="scrapbook-lifebot-promo">
+            <h2>🤖 라이프봇 소개</h2>
+            <p>라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.<br>루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.<br>앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.</p>
+            <a class="primary-btn large" href="https://app.notionable.net/workspace/home" target="_blank" rel="noopener noreferrer">라이프봇 둘러보기 <span>→</span></a>
         </section>
         <section class="kakao-lifebot-section">
             <h2>💬 카카오톡 라이프봇</h2>

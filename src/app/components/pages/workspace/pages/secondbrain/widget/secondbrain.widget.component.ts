@@ -115,7 +115,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
     showUpgradePopup = false;
     showUnsupportedNotice = false;
     private workspaceFeatureAllowed = false;
-    upgradeUrl = 'https://www.latpeed.com/products/ozVuQ';
+    upgradeUrl = '';
     private upgradeTimer?: ReturnType<typeof setInterval>;
 
     errorMessage: string = '';
@@ -142,7 +142,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         private eventListenerService: EventListenerService,
         private authService: AuthService,
         private upgradeEvent: ScrapbookUpgradeEventService
-    ) { }
+    ) { this.upgradeUrl = this.upgradeEvent.normalUrl('secondbrain'); }
 
     get isWidgetMode(): boolean {
         return window.location.pathname.includes("/widget")
@@ -436,10 +436,10 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             try { await this.upgradeEvent.initialize(this.userId); }
             catch { return false; }
             this.showUpgradePopup = this.upgradeEvent.isActive;
-            this.upgradeUrl = this.upgradeEvent.upgradeUrl;
+            this.upgradeUrl = this.upgradeEvent.upgradeUrl('secondbrain');
             clearInterval(this.upgradeTimer);
             this.upgradeTimer = setInterval(() => {
-                this.upgradeUrl = this.upgradeEvent.upgradeUrl;
+                this.upgradeUrl = this.upgradeEvent.upgradeUrl('secondbrain');
                 if (!this.upgradeEvent.isActive) this.showUpgradePopup = false;
             }, 1000);
             return false;
