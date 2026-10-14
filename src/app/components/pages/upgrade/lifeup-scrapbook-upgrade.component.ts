@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { ScrapbookUpgradeEventService } from '../../../services/scrapbook-upgrade-event.service';
 import { ScrapbookUpgradeCardComponent } from '../../common/scrapbook-upgrade-card.component';
@@ -14,7 +15,7 @@ import { ScrapbookUpgradeCardComponent } from '../../common/scrapbook-upgrade-ca
           <span class="loading-spinner"></span>
         </div>
       } @else {
-        <app-scrapbook-upgrade-card source="upgrade_lifeup-scrapbook" />
+        <app-scrapbook-upgrade-card [source]="source" />
       }
     </main>
   `,
@@ -22,8 +23,15 @@ import { ScrapbookUpgradeCardComponent } from '../../common/scrapbook-upgrade-ca
 })
 export class LifeupScrapbookUpgradeComponent {
   isLoading = true;
+  readonly source: string;
 
-  constructor(private authService: AuthService, private upgradeEvent: ScrapbookUpgradeEventService) {}
+  constructor(
+    private authService: AuthService,
+    private upgradeEvent: ScrapbookUpgradeEventService,
+    route: ActivatedRoute
+  ) {
+    this.source = route.snapshot.queryParamMap.get('from') ?? 'upgrade_lifeup-scrapbook';
+  }
 
   async ngOnInit(): Promise<void> {
     try {

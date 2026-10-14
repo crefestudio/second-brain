@@ -22,7 +22,7 @@
         <span class="spinner" *ngIf="connectionState !== 'failed'" aria-hidden="true"></span>
         <strong *ngIf="connectionState === 'failed'">중복 DB가 발견되어 연결 확인을 중단했습니다.</strong>
         <strong *ngIf="connectionState === 'checking'">연결을 확인하는 중입니다.</strong>
-        <strong *ngIf="connectionState === 'waiting'">아직 확인되지 않았습니다.</strong>
+        <strong *ngIf="connectionState === 'waiting'">템플릿 연결을 확인하고 있어요.</strong>
         <strong *ngIf="connectionState === 'delayed'">연결 확인 시간이 지연되고 있습니다.</strong>
       </div>
 
@@ -43,12 +43,14 @@
       </p>
 
       <ul class="database-checks">
-        <li *ngFor="let db of databaseChecks">
-          <strong>{{ db.status === 'found' ? '✓ 확인 완료' : '✕ 확인 실패' }} · {{ db.name }}</strong>
-          <p *ngIf="db.message">{{ db.message }}</p>
+        <li *ngFor="let db of databaseChecks" [class.check-found]="db.status === 'found'"
+          [class.check-error]="db.status !== 'found' && connectionState === 'failed'">
+          <span class="check-name">{{ db.name }}</span>
+          <span class="check-state">{{ db.status === 'found' ? '✓ 확인 완료' : connectionState === 'failed' ? '확인 필요' : connectionState === 'delayed' ? '확인 지연' : '확인 중…' }}</span>
+          <p *ngIf="db.message && (connectionState === 'failed' || connectionState === 'delayed')">{{ db.message }}</p>
         </li>
       </ul>
-      <p *ngIf="connectionError" role="alert">{{ connectionError }}</p>
+      <p class="connection-error" *ngIf="connectionError && (connectionState === 'failed' || connectionState === 'delayed')" role="alert">{{ connectionError }}</p>
       <div class="delayed-actions" *ngIf="connectionState === 'delayed'">
         <button type="button" class="retry-btn" (click)="retryConnection()">연결 재시도</button>
         <a href="http://pf.kakao.com/_tGkqX/chat" target="_blank" rel="noopener noreferrer" class="inquiry-btn">문의하기</a>

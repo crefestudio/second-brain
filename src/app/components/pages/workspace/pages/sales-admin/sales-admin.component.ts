@@ -117,6 +117,10 @@ export class SalesAdminComponent implements OnInit {
         return (this.report?.ai || '').split(/(부족|미달|양호|목표 달성)/g).map(text => ({ text, tone: /^(부족|미달)$/.test(text) ? 'negative' : /^(양호|목표 달성)$/.test(text) ? 'positive' : '' }));
     }
     report: MarketingReportResult | null = null;
+    get reportMetrics() {
+        const order: Record<string, number> = { '소스 조회수': 0, '상품 유입수': 1, '유입 전환율': 2, '구매 전환율': 3 };
+        return [...(this.report?.report.metrics ?? [])].sort((a, b) => (order[a.name] ?? Number.MAX_SAFE_INTEGER) - (order[b.name] ?? Number.MAX_SAFE_INTEGER));
+    }
     reportOpen = true;
     promptCopyMessage = '';
     promptFallback = '';
