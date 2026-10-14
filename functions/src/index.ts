@@ -39,6 +39,7 @@ import { bindWorkspacePurchase, workspaceTemplate, WorkspaceConflict } from './w
 import { createPurchaseInvitations, InvitationError } from './purchase-invitations';
 import { deleteAccountData } from './account-deletion';
 import { createMailQueue } from './mail-queue';
+import { createKakaoQueue } from './kakao-queue';
 import { CustomerListPage, customerListOptions } from './customer-list-page';
 import { addCustomerGrade, CustomerGrade, normalizedCustomerPhone } from './customer-grades';
 import { resolveTaskKinds } from './task-classification';
@@ -3155,10 +3156,39 @@ function imwebYesterdayStartKst(now = new Date()): number {
     return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) - 1, 0, 0, 0) - 9 * 60 * 60 * 1000;
 }
 
-async function syncImwebPurchasers(sinceMs: number): Promise<{ scanned: number; imported: number; updated: number; skipped: number; productCounts: Record<string, number> }> {
+function imwebDailyReportWindow(now = new Date()): { startMs: number; endMs: number; date: string } {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
+        .formatToParts(now).reduce<Record<string, string>>((result, part) => { result[part.type] = part.value; return result; }, {});
+    const endMs = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), 18, 0, 0) - 9 * 60 * 60 * 1000;
+    return { startMs: endMs - 24 * 60 * 60 * 1000, endMs, date: `${parts.year}-${parts.month}-${parts.day}` };
+}
+
+function purchaserPurchasedAtKstMs(purchaser: any): number {
+    const matched = typeof purchaser?.purchasedAt === 'string'
+        ? purchaser.purchasedAt.match(/(\d{2,4})\.(\d{1,2})\.(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?/) : null;
+    if (!matched) return purchaser?.createdAt?.toMillis?.() || 0;
+    const year = Number(matched[1]) < 100 ? 2000 + Number(matched[1]) : Number(matched[1]);
+    return Date.UTC(year, Number(matched[2]) - 1, Number(matched[3]), Number(matched[4] || 0), Number(matched[5] || 0)) - 9 * 60 * 60 * 1000;
+}
+
+async function dailyPurchaserSales(startMs: number, endMs: number): Promise<Record<'lifeUp' | 'lifeUpScrapbook', number>> {
+    const snapshots = await Promise.all(['lifeUp', 'lifeUpScrapbook'].map(templateId =>
+        db.collection('purchasers').where('templateId', '==', templateId).get()));
+    const counts: Record<'lifeUp' | 'lifeUpScrapbook', number> = { lifeUp: 0, lifeUpScrapbook: 0 };
+    for (const snapshot of snapshots) for (const doc of snapshot.docs) {
+        const purchaser = doc.data();
+        const templateId = purchaser.templateId as 'lifeUp' | 'lifeUpScrapbook';
+        const amount = latpeedAmount(purchaser.paymentAmount ?? purchaser.amount);
+        const purchasedAt = purchaserPurchasedAtKstMs(purchaser);
+        if (amount >= 1000 && purchasedAt >= startMs && purchasedAt < endMs) counts[templateId]++;
+    }
+    return counts;
+}
+
+async function syncImwebPurchasers(sinceMs: number, untilMs = Date.now()): Promise<{ scanned: number; imported: number; updated: number; skipped: number; productCounts: Record<string, number> }> {
     const token = await imwebAccessToken(); const skuMap = imwebProductMap();
     let scanned = 0; let imported = 0; let updated = 0; let skipped = 0; const productCounts: Record<string, number> = {};
-    const seenOrderIds = new Set<string>(); const to = Math.floor(Date.now() / 1000);
+    const seenOrderIds = new Set<string>(); const to = Math.floor(untilMs / 1000);
     // Free orders can move directly to purchase confirmation, while ordinary
     // paid orders first appear as payment complete. Imweb permits one status
     // filter per request, so merge both result sets by order number.
@@ -3179,6 +3209,8 @@ async function syncImwebPurchasers(sinceMs: number): Promise<{ scanned: number; 
             // overlap scan only needs to reflect a possible payment-status
             // change; it does not need another product-detail API request.
             if (existing.exists) {
+                const templateId = String(existing.data()?.templateId || '');
+                if (templateId) productCounts[templateId] = (productCounts[templateId] || 0) + 1;
                 if (existing.data()?.status !== statusLabel) {
                     await purchaserRef.update({ status: statusLabel, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
                     updated++;
@@ -3240,17 +3272,16 @@ async function syncImwebPurchasersIncrementally(): Promise<{ sinceMs: number; sc
     return { sinceMs, ...result };
 }
 
-function imwebProductLabel(templateId: string): string {
-    return templateId === 'lifeUp' ? '라이프업' : templateId === 'lifeUpScrapbook' ? '라이프업 1.5 스크랩북' : templateId;
-}
-
-export const syncImwebPurchasersDaily = onSchedule({ schedule: '0 18 * * *', timeZone: 'Asia/Seoul', timeoutSeconds: 540, secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] }, async () => {
-    const result = await syncImwebPurchasers(imwebYesterdayStartKst());
-    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
-    const lines = Object.entries(result.productCounts).map(([templateId, count]) => `- ${imwebProductLabel(templateId)}: ${count}건`);
-    const text = `[아임웹 판매 관리 리포트]\n기준: 어제 00:00부터 (${date} 18:00)\n\n${lines.length ? lines.join('\n') : '- 결제 완료 주문 없음'}\n\n조회 ${result.scanned}건 / 신규 저장 ${result.imported}건 / 상태 갱신 ${result.updated}건 / SKU 또는 이메일 제외 ${result.skipped}건`;
+export const syncImwebPurchasersDaily = onSchedule({ schedule: '5 18 * * *', timeZone: 'Asia/Seoul', timeoutSeconds: 540, secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] }, async () => {
+    const window = imwebDailyReportWindow();
+    const result = await syncImwebPurchasers(window.startMs, window.endMs);
+    const sales = await dailyPurchaserSales(window.startMs, window.endMs);
+    const productInflows = (await db.collection('storeVisits')
+        .where('createdAt', '>=', Timestamp.fromMillis(window.startMs))
+        .where('createdAt', '<', Timestamp.fromMillis(window.endMs)).count().get()).data().count;
+    const text = `[아임웹 판매 관리 리포트]\n기준: 어제 18:00 ~ 오늘 18:00\n\n상품 유입수: ${productInflows}건\n라이프업 판매 수: ${sales.lifeUp}건\n라이프업 스크랩북 판매 수: ${sales.lifeUpScrapbook}건`;
     const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: LATPEED_ADMIN_EMAIL,
-        subject: `[판매 관리] 아임웹 일일 결제 리포트 · ${date}`, text, html: `<p>${text.replace(/\n/g, '<br>')}</p>` }, 'high', `imweb-daily-sales:${date}`);
+        subject: `[판매 관리] 아임웹 일일 결제 리포트 · ${window.date}`, text, html: `<p>${text.replace(/\n/g, '<br>')}</p>` }, 'high', `imweb-daily-sales:${window.date}`);
     if (sent.error) throw new Error('IMWEB_DAILY_REPORT_QUEUE_FAILED');
     logger.info('[Imweb] daily purchaser sync completed', result);
 });
@@ -12072,16 +12103,6 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
                 });
             }
 
-            // 1. 카카오에 즉시 응답
-            res.json({
-                version: "2.0",
-                useCallback: true,
-                data: {
-                    text: "처리중입니다..."
-                }
-            });
-
-            const userDoc = db.collection("users").doc(connection.uid);
             const queueData: any = {
                 type: "capture",
                 utterance,
@@ -12089,7 +12110,8 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
                 kakaoUserId,
                 kakaoConnectionId: connection.connectionId || null,
                 notionConnectionId: connection.notionConnectionId || null,
-                callbackUrl,
+                callbackUrl: callbackUrl || null,
+                receivedAt: Date.now(),
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 status: "pending"
             };
@@ -12098,11 +12120,12 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
                 queueData.pageUrls = connection.pageUrls;
             }
 
-            await userDoc
-                .collection("integrations")
-                .doc("kakao-capture")
-                .collection("webhook_queue")
-                .add(queueData);
+            const queued = await kakaoQueue.enqueue(connection.uid, queueData);
+            res.json({
+                version: "2.0",
+                useCallback: true,
+                data: { text: queued.waiting ? "요청 순서대로 처리중입니다." : "처리중입니다..." }
+            });
 
             console.log(
                 "[KAKAO] queue created",
@@ -12133,10 +12156,21 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
 );
 
 // #kakao
+const kakaoQueue = createKakaoQueue(db, async (userId, data, jobId) => {
+    const guard = () => assertKakaoJobConnection(userId, data);
+    await processKakaoAgent(userId, data.utterance, data.callbackUrl || '', jobId, data.pageUrls, guard, data.receivedAt);
+});
+
+export const recoverKakaoWebhookQueue = onSchedule({
+    schedule: 'every 1 minutes', timeZone: 'Asia/Seoul', timeoutSeconds: 540, memory: '512MiB'
+}, async () => { await kakaoQueue.recover(); });
+
 export const handleKakaoWebhookQueue = onDocumentCreated({
     document: "users/{userId}/integrations/kakao-capture/webhook_queue/{jobId}",
     minInstances: 1,
-    memory: "512MiB"
+    memory: "512MiB",
+    timeoutSeconds: 540,
+    retry: true
 }, async (event) => {
     const snapshot = event.data;
     if (!snapshot) return;
@@ -12144,42 +12178,15 @@ export const handleKakaoWebhookQueue = onDocumentCreated({
     const data = snapshot.data();
     const { userId, jobId } = event.params;
 
-    console.log("[KAKAO QUEUE] start", { userId, jobId });
-
-    try {
-        const guard = () => assertKakaoJobConnection(userId, data);
-        await guard();
-        await processKakaoAgent(
-            userId,
-            data.utterance,
-            data.callbackUrl,
-            jobId,
-            data.pageUrls,
-            guard
-        );
-
-        await snapshot.ref.delete();
-
-        console.log("[KAKAO QUEUE] success", {
-            userId,
-            jobId
-        });
-
-    } catch (error) {
-        console.error("[KAKAO QUEUE] ERROR", {
-            userId,
-            jobId,
-            error
-        });
-
-        await snapshot.ref.update({
-            status: "error",
-            error: String(error),
-            updatedAt: Date.now()
-        });
+    if (data.queueVersion === 2) {
+        await kakaoQueue.drain(userId);
+        return;
     }
-}
-);
+
+    // Older jobs have no safe ordering or known write outcome.
+    await snapshot.ref.update({ status: 'error', error: 'LEGACY_JOB_REQUIRES_RESUBMIT' });
+    console.warn('[KAKAO FIFO] legacy job skipped', { userId, jobId });
+});
 
 function logKakaoRequest(
     payload: any,
@@ -12228,8 +12235,22 @@ async function processKakaoAgent(
     callbackUrl: string,
     jobId: string,
     pageUrls?: LifeupPageUrls,
-    guard: () => Promise<void> = async () => {}
+    guard: () => Promise<void> = async () => {},
+    receivedAt: number = Date.now()
 ) {
+    // Let Kakao decide expiry; elapsed queue time must not suppress the reply.
+    let callbackAttempted = false;
+    const reply = async (text: string, url: string) => {
+        if (!url || callbackAttempted) return;
+        callbackAttempted = true;
+        const elapsedMs = Date.now() - receivedAt;
+        try {
+            await resposeKakaoMessageByCallbackUrl(text, url);
+            console.log('[KAKAO FIFO] callback accepted', { userId, jobId, elapsedMs });
+        } catch {
+            console.warn('[KAKAO FIFO] callback unavailable', { userId, jobId, elapsedMs });
+        }
+    };
     await guard();
     const userDoc = await db.collection("users").doc(userId).get();
     if (!isUsableNotionConnection(userDoc.data())) {
@@ -12238,11 +12259,11 @@ async function processKakaoAgent(
             jobId
         });
 
-        await resposeKakaoMessageByCallbackUrl(
+        await reply(
             "라이프업 템플릿이 연결되어 있지 않습니다.\n라이프봇을 이용하시려면 먼저 라이프업 템플릿을 연결해주세요.\n👇 템플릿 연결하기\nhttps://notionable.net",
             callbackUrl
         );
-        return;
+        throw new Error('NOTION_CONNECTION_REQUIRED');
     }
 
     const totalStart = Date.now();
@@ -12252,23 +12273,13 @@ async function processKakaoAgent(
     let enrichedResult: any;
     let dateData: DateProcessData | undefined;
 
-    const locked = await acquireKakaoProcessingLock(userId, jobId);
-    if (!locked) {
-        await resposeKakaoMessageByCallbackUrl(
-            "⏳ 이전 요청을 처리하고 있습니다.\n잠시 후 다시 말씀해주세요. 🙂",
-            callbackUrl
-        );
-        return;
-    }
-
-
-    try {
+    {
         let t = Date.now();
 
         if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' && userMessage.trim() === '저장') {
             const pending = await getLastAssistantContext(userId);
             if (!pending?.result?.scrapbookPending) {
-                await resposeKakaoMessageByCallbackUrl('저장할 대기 내용이 없습니다. 저장할 내용을 다시 보내 주세요.', callbackUrl);
+                await reply('저장할 대기 내용이 없습니다. 저장할 내용을 다시 보내 주세요.', callbackUrl);
                 return;
             }
             const original = pending.result;
@@ -12288,10 +12299,11 @@ async function processKakaoAgent(
                 await db.collection('users').doc(userId).collection('assistantContext').doc(pending.contextId).update({
                     pageId, result: removeUndefined(converted)
                 });
-                await resposeKakaoMessageByCallbackUrl(converted.response, callbackUrl);
+                await reply(converted.response, callbackUrl);
             } catch (error) {
                 logger.error('[Scrapbook] confirmed save failed', { userId, error });
-                await resposeKakaoMessageByCallbackUrl('스크랩북에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.', callbackUrl);
+                await reply('스크랩북에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.', callbackUrl);
+                throw error;
             }
             return;
         }
@@ -12407,7 +12419,7 @@ async function processKakaoAgent(
             const classifiedAs = sourceLabel[enrichedResult.db] || '자료 외 항목';
             enrichedResult.scrapbookPending = true;
             enrichedResult.action = 'scrapbookPending';
-            enrichedResult.response = `분류 결과: ${classifiedAs}\n스크랩북은 자료 저장만 지원하므로 아직 저장하지 않았습니다.\n스크랩북 자료로 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/lifeup-scrapbook`;
+            enrichedResult.response = `분류 결과: ${classifiedAs}\n스크랩북은 자료 저장만 지원하므로 아직 저장하지 않았습니다.\n스크랩북 자료로 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/lifeup-scrapbook?from=lifeup_scrapbook_kakao`;
         }
 
         const payload: any = {
@@ -12438,8 +12450,6 @@ async function processKakaoAgent(
         });
 
         logTime("saveAssistantContext", t);
-    } finally {
-        await releaseKakaoProcessingLock(userId, jobId);
     }
 
     try {
@@ -12448,7 +12458,7 @@ async function processKakaoAgent(
         console.log("[TIME] sendKakaoCallback START");
         await guard();
 
-        await resposeKakaoMessageByCallbackUrl(
+        await reply(
             enrichedResult.action === "dateAsk"
                 ? enrichedResult.message
                 : enrichedResult.response,
@@ -12477,7 +12487,7 @@ async function processKakaoAgent(
         console.error("[KAKAO ERROR - processKakaoAgent]", e);
 
         try {
-            await resposeKakaoMessageByCallbackUrl(
+            await reply(
                 "처리 중 오류가 발생했습니다.",
                 callbackUrl
             );
@@ -13143,7 +13153,8 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
 }
 
 async function resposeKakaoMessageByCallbackUrl(text: string, callbackUrl: string) {
-    await fetch(callbackUrl, {
+    const response = await fetch(callbackUrl, {
+        signal: AbortSignal.timeout(3000),
         method: "POST",
         headers: {
             "Content-Type": "application/json"
@@ -13161,6 +13172,14 @@ async function resposeKakaoMessageByCallbackUrl(text: string, callbackUrl: strin
             }
         })
     });
+    const result = await response.json().catch(() => null) as { status?: string } | null;
+    if (!response.ok || result?.status !== 'SUCCESS') {
+        console.warn('[KAKAO CALLBACK] rejected', {
+            httpStatus: response.status,
+            status: ['SUCCESS', 'FAIL', 'ERROR'].includes(result?.status || '') ? result?.status : 'UNKNOWN'
+        });
+        throw new Error('KAKAO_CALLBACK_NOT_ACCEPTED');
+    }
 }
 
 async function resposeKakaoMessage(text: string, res: any) {
@@ -16530,50 +16549,6 @@ export async function deleteTempImage(fileName: string) {
             console.log("[DELETE] already deleted");
         }
     }
-}
-
-async function acquireKakaoProcessingLock(userId: string, jobId: string): Promise<boolean> {
-    const userRef = db.collection("users").doc(userId);
-
-    return await db.runTransaction(async (tx) => {
-        const snap = await tx.get(userRef);
-        const data = snap.data();
-
-        const processing = data?.kakaoProcessing;
-        const processingAt = data?.kakaoProcessingAt?.toMillis?.() ?? 0;
-
-        // 기존 lock이 있고 5분 이내면 처리중으로 판단
-        if (processing && Date.now() - processingAt < 5 * 60 * 1000) {
-            return false;
-        }
-
-        tx.update(userRef, {
-            kakaoProcessing: true,
-            kakaoProcessingJobId: jobId,
-            kakaoProcessingAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        return true;
-    });
-}
-
-async function releaseKakaoProcessingLock(userId: string, jobId: string) {
-    const userRef = db.collection("users").doc(userId);
-
-    await db.runTransaction(async (tx) => {
-        const snap = await tx.get(userRef);
-        const data = snap.data();
-
-        if (data?.kakaoProcessingJobId !== jobId) {
-            return;
-        }
-
-        tx.update(userRef, {
-            kakaoProcessing: false,
-            kakaoProcessingJobId: admin.firestore.FieldValue.delete(),
-            kakaoProcessingAt: admin.firestore.FieldValue.delete()
-        });
-    });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////

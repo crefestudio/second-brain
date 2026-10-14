@@ -1,0 +1,634 @@
+﻿[2026-10-14T06:07:29.078Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[2026-10-14T06:07:29.079Z] > authorizing via signed-in user (crefestudio@gmail.com)
+[2026-10-14T06:07:29.079Z] [iam] checking project notionable-secondbrain for permissions ["firebase.projects.get","logging.logEntries.list","logging.logs.list"]
+[2026-10-14T06:07:29.081Z] Checked if tokens are valid: true, expires at: 1791960808811
+[2026-10-14T06:07:29.081Z] Checked if tokens are valid: true, expires at: 1791960808811
+[2026-10-14T06:07:29.082Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/notionable-secondbrain:testIamPermissions [none]
+[2026-10-14T06:07:29.082Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/notionable-secondbrain:testIamPermissions x-goog-quota-user=projects/notionable-secondbrain
+[2026-10-14T06:07:29.082Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/notionable-secondbrain:testIamPermissions {"permissions":["firebase.projects.get","logging.logEntries.list","logging.logs.list"]}
+[2026-10-14T06:07:29.346Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/notionable-secondbrain:testIamPermissions 200
+[2026-10-14T06:07:29.347Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/notionable-secondbrain:testIamPermissions {"permissions":["firebase.projects.get","logging.logEntries.list","logging.logs.list"]}
+[2026-10-14T06:07:29.347Z] Checked if tokens are valid: true, expires at: 1791960808811
+[2026-10-14T06:07:29.347Z] Checked if tokens are valid: true, expires at: 1791960808811
+[2026-10-14T06:07:29.348Z] >>> [apiv2][query] POST https://logging.googleapis.com/v2/entries:list [none]
+[2026-10-14T06:07:29.348Z] >>> [apiv2][body] POST https://logging.googleapis.com/v2/entries:list {"resourceNames":["projects/notionable-secondbrain"],"filter":"resource.type=\"cloud_function\" OR (resource.type=\"cloud_run_revision\" AND labels.\"goog-managed-by\"=\"cloudfunctions\")\n(resource.labels.function_name=\"kakaoWebhook\" OR resource.labels.service_name=\"kakaoWebhook\")","orderBy":"timestamp desc","pageSize":"35"}
+[2026-10-14T06:07:30.489Z] <<< [apiv2][status] POST https://logging.googleapis.com/v2/entries:list 200
+[2026-10-14T06:07:30.489Z] <<< [apiv2][body] POST https://logging.googleapis.com/v2/entries:list {"entries":[{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"OK\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"응답이 없어짐\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\"\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:0a8d9f32df624371bbd4fe632a76875d\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"TEXT_INPUT\"\n    }\n  }\n}\n","insertId":"6acf1c1c00085d79928e6dde","resource":{"type":"cloud_run_revision","labels":{"configuration_name":"kakaowebhook","project_id":"notionable-secondbrain","location":"us-central1","revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:07:24.548217Z","labels":{"firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-managed-by":"cloudfunctions","execution_id":"7pjwcjljjfte","goog-drz-cloudfunctions-location":"us-central1","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-id":"kakaowebhook","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:07:24.555688064Z","spanId":"17889025723799549731","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2358","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1bdb00016d4e41f002b2","resource":{"type":"cloud_run_revision","labels":{"project_id":"notionable-secondbrain","configuration_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","location":"us-central1","service_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:06:19.093518Z","labels":{"goog-drz-cloudfunctions-location":"us-central1","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-id":"kakaowebhook","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","execution_id":"7pihp0pekn1d","goog-managed-by":"cloudfunctions"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:06:19.241245151Z","spanId":"14798151774364436662","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"946","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1bda000db8ec570a43a5","resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","configuration_name":"kakaowebhook","location":"us-central1","project_id":"notionable-secondbrain","service_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:06:18.899308Z","labels":{"execution_id":"7pihp0pekn1d","goog-drz-cloudfunctions-id":"kakaowebhook","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-location":"us-central1","goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:06:19.241245151Z","spanId":"14798151774364436662","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"1096","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"OK\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"처리중테스트\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\"\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:eba97951bd0e479cb9b537771a9010c4\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"TEXT_INPUT\"\n    }\n  }\n}\n","insertId":"6acf1bda000db81202fbe1ad","resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","project_id":"notionable-secondbrain","location":"us-central1","service_name":"kakaowebhook","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:06:18.899090Z","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-location":"us-central1","execution_id":"7pihp0pekn1d"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:06:18.905943363Z","spanId":"14798151774364436662","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2357","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1bdb00016e87382402af","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"1568","status":200,"responseSize":"217","userAgent":"AHC/2.1","remoteIp":"219.249.231.41","serverIp":"216.239.36.54","latency":"0.198215617s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","project_id":"notionable-secondbrain","configuration_name":"kakaowebhook","location":"us-central1"}},"timestamp":"2026-10-14T06:06:18.893285Z","severity":"INFO","labels":{"goog-managed-by":"cloudfunctions","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-location":"us-central1","goog-drz-cloudfunctions-id":"kakaowebhook","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/99e45be1ef7d319a5084dc28f9468a4d","receiveTimestamp":"2026-10-14T06:06:19.101592229Z","spanId":"cd5d98a2834f08b6","traceSampled":true,"internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"956","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1bbf000e1daec17007f8","resource":{"type":"cloud_run_revision","labels":{"project_id":"notionable-secondbrain","configuration_name":"kakaowebhook","service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","location":"us-central1"}},"timestamp":"2026-10-14T06:05:51.925102Z","labels":{"run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","execution_id":"7phwqmog0dil","goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-location":"us-central1","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:05:52.083410371Z","spanId":"7948666243287021148","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"946","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1bbf000b552d1307c64d","resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","service_name":"kakaowebhook","configuration_name":"kakaowebhook","project_id":"notionable-secondbrain","revision_name":"kakaowebhook-00127-rig"}},"timestamp":"2026-10-14T06:05:51.742701Z","labels":{"goog-drz-cloudfunctions-id":"kakaowebhook","execution_id":"7phwqmog0dil","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-location":"us-central1","goog-managed-by":"cloudfunctions"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:05:52.083410371Z","spanId":"7948666243287021148","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"1095","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"OK\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"처리중 테스트\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\"\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:cdd5075f148844459cb7feb7612a95cf\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"TEXT_INPUT\"\n    }\n  }\n}\n","insertId":"6acf1bbf000b541466dca8bf","resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","configuration_name":"kakaowebhook","project_id":"notionable-secondbrain","service_name":"kakaowebhook","location":"us-central1"}},"timestamp":"2026-10-14T06:05:51.742420Z","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","execution_id":"7phwqmog0dil","goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:05:51.751668194Z","spanId":"7948666243287021148","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2357","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1bbf000e1e703807c09c","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"1569","status":200,"responseSize":"217","userAgent":"AHC/2.1","remoteIp":"219.249.231.40","serverIp":"216.239.36.54","latency":"0.187452305s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"configuration_name":"kakaowebhook","project_id":"notionable-secondbrain","location":"us-central1","service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig"}},"timestamp":"2026-10-14T06:05:51.728164Z","severity":"INFO","labels":{"goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-location":"us-central1"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/a267b3586e4a8979177b14936e6ceb1d","receiveTimestamp":"2026-10-14T06:05:51.932802103Z","spanId":"6e4f55d59d42f65c","traceSampled":true,"internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"957","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1b620009cb4e94863a88","resource":{"type":"cloud_run_revision","labels":{"configuration_name":"kakaowebhook","location":"us-central1","service_name":"kakaowebhook","project_id":"notionable-secondbrain","revision_name":"kakaowebhook-00127-rig"}},"timestamp":"2026-10-14T06:04:18.641870Z","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","execution_id":"7pfwnbgwhtez","goog-drz-cloudfunctions-location":"us-central1","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:04:18.651421857Z","spanId":"7745317184472769381","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"uid":"218369848945_d"}],"billingSize":"947","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1b620004bff02a74ce27","resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","project_id":"notionable-secondbrain","location":"us-central1","service_name":"kakaowebhook","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:04:18.311280Z","labels":{"goog-managed-by":"cloudfunctions","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","execution_id":"7pfwnbgwhtez","goog-drz-cloudfunctions-location":"us-central1","goog-drz-cloudfunctions-id":"kakaowebhook","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:04:18.323145717Z","spanId":"7745317184472769381","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"1096","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"OK\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"이상하게 응답이 없어짐\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\"\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:98a52373da8b48b2ae55464c079dea91\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"TEXT_INPUT\"\n    }\n  }\n}\n","insertId":"6acf1b620004bf61186bb2ec","resource":{"type":"cloud_run_revision","labels":{"project_id":"notionable-secondbrain","service_name":"kakaowebhook","configuration_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","location":"us-central1"}},"timestamp":"2026-10-14T06:04:18.311137Z","labels":{"firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-managed-by":"cloudfunctions","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-id":"kakaowebhook","goog-drz-cloudfunctions-location":"us-central1","execution_id":"7pfwnbgwhtez"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:04:18.323145717Z","spanId":"7745317184472769381","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2370","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1b620009cad20a4ee848","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"1583","status":200,"responseSize":"217","userAgent":"AHC/2.1","remoteIp":"219.249.231.40","serverIp":"216.239.36.54","latency":"0.333622280s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","project_id":"notionable-secondbrain","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:04:18.297251Z","severity":"INFO","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-id":"kakaowebhook","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-location":"us-central1","goog-managed-by":"cloudfunctions"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/7c744bee03cdfa0c8706edccc88f35bc","receiveTimestamp":"2026-10-14T06:04:18.648142154Z","spanId":"6b7ce4f15d3a6365","traceSampled":true,"internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"958","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1b1900057c1c0025cb45","resource":{"type":"cloud_run_revision","labels":{"project_id":"notionable-secondbrain","service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","configuration_name":"kakaowebhook","location":"us-central1"}},"timestamp":"2026-10-14T06:03:05.359452Z","labels":{"firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","goog-drz-cloudfunctions-location":"us-central1","execution_id":"7pec6qwkdbv5","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-managed-by":"cloudfunctions"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:03:05.383401992Z","spanId":"601378325585149158","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"946","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1b19000219ddec7c4ede","resource":{"type":"cloud_run_revision","labels":{"project_id":"notionable-secondbrain","location":"us-central1","configuration_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:03:05.137693Z","labels":{"firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-managed-by":"cloudfunctions","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","execution_id":"7pec6qwkdbv5","goog-drz-cloudfunctions-location":"us-central1","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-id":"kakaowebhook"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:03:05.383401992Z","spanId":"601378325585149158","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"1094","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"OK\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"ㄹㄹ\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\"\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:b2aba9429e2245af98adfed3f2aa4d3f\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"TEXT_INPUT\"\n    }\n  }\n}\n","insertId":"6acf1b190002197839232997","resource":{"type":"cloud_run_revision","labels":{"service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","location":"us-central1","project_id":"notionable-secondbrain","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:03:05.137592Z","labels":{"execution_id":"7pec6qwkdbv5","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-location":"us-central1","goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:03:05.383401992Z","spanId":"601378325585149158","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2342","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1b1900057c2364390855","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"1557","status":200,"responseSize":"227","userAgent":"AHC/2.1","remoteIp":"219.249.231.40","serverIp":"216.239.36.54","latency":"0.224887912s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"project_id":"notionable-secondbrain","configuration_name":"kakaowebhook","service_name":"kakaowebhook","location":"us-central1","revision_name":"kakaowebhook-00127-rig"}},"timestamp":"2026-10-14T06:03:05.131396Z","severity":"INFO","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/e9dda9483e0075928cd111b3807b2eaf","receiveTimestamp":"2026-10-14T06:03:05.558848343Z","spanId":"08588666a01f3ce6","traceSampled":true,"internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"956","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1b0d0008b00071b96b96","resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","configuration_name":"kakaowebhook","project_id":"notionable-secondbrain","location":"us-central1"}},"timestamp":"2026-10-14T06:02:53.569344Z","labels":{"goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1","execution_id":"7pe34tei82yz","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:02:53.724853789Z","spanId":"13096542558676826808","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"948","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1b0d0006322a5e4ba7b9","resource":{"type":"cloud_run_revision","labels":{"configuration_name":"kakaowebhook","project_id":"notionable-secondbrain","location":"us-central1","service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig"}},"timestamp":"2026-10-14T06:02:53.406058Z","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-location":"us-central1","goog-drz-cloudfunctions-id":"kakaowebhook","execution_id":"7pe34tei82yz","goog-managed-by":"cloudfunctions"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:02:53.724853789Z","spanId":"13096542558676826808","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"1097","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"fallback\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"https://talk.kakaocdn.net/dna/cksjA0/dJMcbzRWaNi/h8Vt4SbSam8I4gITHDUNZD/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565773&signature=J6A4sxqcspJpnA2S01PRCkCKVII%3D\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\",\n      \"media\": {\n        \"type\": \"image\",\n        \"url\": \"https://talk.kakaocdn.net/dna/cksjA0/dJMcbzRWaNi/h8Vt4SbSam8I4gITHDUNZD/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565773&signature=J6A4sxqcspJpnA2S01PRCkCKVII%3D\"\n      }\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:cfc74ff533f74d9faeb3df1b874a332c\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"IMAGE_UPLOAD\"\n    }\n  }\n}\n","insertId":"6acf1b0d000631c90032f69f","resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","configuration_name":"kakaowebhook","service_name":"kakaowebhook","project_id":"notionable-secondbrain","revision_name":"kakaowebhook-00127-rig"}},"timestamp":"2026-10-14T06:02:53.405961Z","labels":{"goog-drz-cloudfunctions-location":"us-central1","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-managed-by":"cloudfunctions","execution_id":"7pe34tei82yz","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:02:53.724853789Z","spanId":"13096542558676826808","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2806","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1b0d0008b0cc92f45144","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"1982","status":200,"responseSize":"227","userAgent":"AHC/2.1","remoteIp":"219.249.231.42","serverIp":"216.239.36.54","latency":"0.168124372s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","revision_name":"kakaowebhook-00127-rig","configuration_name":"kakaowebhook","service_name":"kakaowebhook","project_id":"notionable-secondbrain"}},"timestamp":"2026-10-14T06:02:53.398863Z","severity":"INFO","labels":{"goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-location":"us-central1","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/cd1af83c0c0ae8ebad52c97b6f28e9fb","receiveTimestamp":"2026-10-14T06:02:53.903559969Z","spanId":"b5c0441193b7bab8","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"uid":"218369848945_d"}],"billingSize":"954","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1b0a000dbb0bb3626a2b","resource":{"type":"cloud_run_revision","labels":{"service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","project_id":"notionable-secondbrain","location":"us-central1","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:02:50.899851Z","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1","execution_id":"7pe12cmrg2uq"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:02:51.065158477Z","spanId":"11061819791838812826","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"947","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1b0a000b0cae76bf060b","resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","revision_name":"kakaowebhook-00127-rig","project_id":"notionable-secondbrain","service_name":"kakaowebhook","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:02:50.724142Z","labels":{"goog-managed-by":"cloudfunctions","execution_id":"7pe12cmrg2uq","goog-drz-cloudfunctions-location":"us-central1","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:02:51.065158477Z","spanId":"11061819791838812826","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"uid":"218369848945_d"}],"billingSize":"1096","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"fallback\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"https://talk.kakaocdn.net/dna/bcDpnn/dJMcbzRWaKX/nUvMFcZ3einLt2Dt598lVA/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565770&signature=c7tGKu6Qtz%2Fs2gCXR0eR27i%2F3KY%3D\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\",\n      \"media\": {\n        \"type\": \"image\",\n        \"url\": \"https://talk.kakaocdn.net/dna/bcDpnn/dJMcbzRWaKX/nUvMFcZ3einLt2Dt598lVA/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565770&signature=c7tGKu6Qtz%2Fs2gCXR0eR27i%2F3KY%3D\"\n      }\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:5f34c25e92ed43088515091290b04ef9\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"IMAGE_UPLOAD\"\n    }\n  }\n}\n","insertId":"6acf1b0a000b0c238685a975","resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","project_id":"notionable-secondbrain","service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:02:50.724003Z","labels":{"execution_id":"7pe12cmrg2uq","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-location":"us-central1","goog-managed-by":"cloudfunctions","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-id":"kakaowebhook"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:02:50.729017918Z","spanId":"11061819791838812826","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2814","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1b0a000dbbeea90d8d25","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"1990","status":200,"responseSize":"217","userAgent":"AHC/2.1","remoteIp":"219.249.231.42","serverIp":"216.239.36.54","latency":"0.179789686s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","project_id":"notionable-secondbrain","revision_name":"kakaowebhook-00127-rig","configuration_name":"kakaowebhook","service_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:02:50.710609Z","severity":"INFO","labels":{"goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-location":"us-central1"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/38a2eb71a9db489ead52c97b6f28e6bc","receiveTimestamp":"2026-10-14T06:02:50.906854427Z","spanId":"99837a7e1df01a9a","traceSampled":true,"internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"957","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1ab600030e2688f8de57","resource":{"type":"cloud_run_revision","labels":{"configuration_name":"kakaowebhook","service_name":"kakaowebhook","project_id":"notionable-secondbrain","revision_name":"kakaowebhook-00127-rig","location":"us-central1"}},"timestamp":"2026-10-14T06:01:26.200230Z","labels":{"firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-id":"kakaowebhook","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","execution_id":"7pc7p1nz5wtk","goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:01:26.318462651Z","spanId":"16750070854168757636","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"947","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1ab600001254d38ca1d1","resource":{"type":"cloud_run_revision","labels":{"configuration_name":"kakaowebhook","location":"us-central1","service_name":"kakaowebhook","project_id":"notionable-secondbrain","revision_name":"kakaowebhook-00127-rig"}},"timestamp":"2026-10-14T06:01:26.004692Z","labels":{"firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1","execution_id":"7pc7p1nz5wtk","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:01:26.318462651Z","spanId":"16750070854168757636","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"uid":"218369848945_d"}],"billingSize":"1096","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"fallback\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"https://talk.kakaocdn.net/dna/bBfT3i/dJMcbvIMtNw/uUD9HbrgVR7LWp03E5Z2cN/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565685&signature=Hm3CCLHGvB6I1vIozzZ5ngMK0%2BE%3D\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\",\n      \"media\": {\n        \"type\": \"image\",\n        \"url\": \"https://talk.kakaocdn.net/dna/bBfT3i/dJMcbvIMtNw/uUD9HbrgVR7LWp03E5Z2cN/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565685&signature=Hm3CCLHGvB6I1vIozzZ5ngMK0%2BE%3D\"\n      }\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:0d839f80c2ce42ce80b4a7bf9307b157\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"IMAGE_UPLOAD\"\n    }\n  }\n}\n","insertId":"6acf1ab6000011e83a49c749","resource":{"type":"cloud_run_revision","labels":{"project_id":"notionable-secondbrain","service_name":"kakaowebhook","configuration_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","location":"us-central1"}},"timestamp":"2026-10-14T06:01:26.004584Z","labels":{"run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-location":"us-central1","goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook","execution_id":"7pc7p1nz5wtk"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:01:26.318462651Z","spanId":"16750070854168757636","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"uid":"218369848945_d"}],"billingSize":"2809","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-northamerica-south1","global16-us-west4"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1ab600030eb180be34a3","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"2012","status":200,"responseSize":"227","userAgent":"AHC/2.1","remoteIp":"219.249.231.40","serverIp":"216.239.36.54","latency":"0.198280034s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","project_id":"notionable-secondbrain","configuration_name":"kakaowebhook","location":"us-central1"}},"timestamp":"2026-10-14T06:01:25.999018Z","severity":"INFO","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-id":"kakaowebhook","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/b9372355f14863e0b433ffbcf0a24c58","receiveTimestamp":"2026-10-14T06:01:26.482608669Z","spanId":"e87434b2395a4584","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"954","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1ab3000237d67e478c1f","resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","configuration_name":"kakaowebhook","location":"us-central1","project_id":"notionable-secondbrain"}},"timestamp":"2026-10-14T06:01:23.145366Z","labels":{"run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-managed-by":"cloudfunctions","execution_id":"7pc5d26gxrra","goog-drz-cloudfunctions-id":"kakaowebhook","goog-drz-cloudfunctions-location":"us-central1","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:01:23.321629821Z","spanId":"7629117155527745770","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"946","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1ab2000efc0fba35f792","resource":{"type":"cloud_run_revision","labels":{"revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","location":"us-central1","configuration_name":"kakaowebhook","project_id":"notionable-secondbrain"}},"timestamp":"2026-10-14T06:01:22.982031Z","labels":{"run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-location":"us-central1","goog-drz-cloudfunctions-id":"kakaowebhook","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","execution_id":"7pc5d26gxrra","goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:01:23.321629821Z","spanId":"7629117155527745770","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"1096","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO RAW] {\n  \"bot\": {\n    \"id\": \"6a33fe727869a1ed0399aa74\",\n    \"name\": \"라이프업 비서\"\n  },\n  \"intent\": {\n    \"id\": \"6a33fe727869a1ed0399aa78\",\n    \"name\": \"폴백 블록\",\n    \"extra\": {\n      \"reason\": {\n        \"code\": 1,\n        \"message\": \"fallback\"\n      }\n    }\n  },\n  \"action\": {\n    \"id\": \"6a3403d37869a1ed0399aae7\",\n    \"name\": \"노셔너블 수집\",\n    \"params\": {},\n    \"detailParams\": {},\n    \"clientExtra\": {}\n  },\n  \"userRequest\": {\n    \"block\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"user\": {\n      \"id\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n      \"type\": \"botUserKey\",\n      \"properties\": {\n        \"botUserKey\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriendUserKey\": \"aym7JjAtDJcY\",\n        \"bot_user_key\": \"a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08\",\n        \"plusfriend_user_key\": \"aym7JjAtDJcY\"\n      }\n    },\n    \"utterance\": \"https://talk.kakaocdn.net/dna/oZ5D7/dJMcbvIMtMc/7brDEuTenXCDUMOyfIhN5j/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565682&signature=YrZDPG8U2FZ8NHuTdMofkVUWAKI%3D\",\n    \"params\": {\n      \"surface\": \"Kakaotalk.plusfriend\",\n      \"media\": {\n        \"type\": \"image\",\n        \"url\": \"https://talk.kakaocdn.net/dna/oZ5D7/dJMcbvIMtMc/7brDEuTenXCDUMOyfIhN5j/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565682&signature=YrZDPG8U2FZ8NHuTdMofkVUWAKI%3D\"\n      }\n    },\n    \"callbackUrl\": \"https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:59594e8a771d48b3897a6fc8c31442fd\",\n    \"lang\": \"ko\",\n    \"timezone\": \"Asia/Seoul\"\n  },\n  \"contexts\": [],\n  \"flow\": {\n    \"lastBlock\": {\n      \"id\": \"6a33fe727869a1ed0399aa78\",\n      \"name\": \"폴백 블록\"\n    },\n    \"trigger\": {\n      \"type\": \"IMAGE_UPLOAD\"\n    }\n  }\n}\n","insertId":"6acf1ab2000efa84bbe16708","resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","project_id":"notionable-secondbrain","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T06:01:22.981636Z","labels":{"goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-id":"kakaowebhook","goog-drz-cloudfunctions-location":"us-central1","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","execution_id":"7pc5d26gxrra","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T06:01:22.990444354Z","spanId":"7629117155527745770","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"2803","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"insertId":"6acf1ab30002399c164021b0","httpRequest":{"requestMethod":"POST","requestUrl":"https://us-central1-notionable-secondbrain.cloudfunctions.net/kakaoWebhook","requestSize":"1981","status":200,"responseSize":"217","userAgent":"AHC/2.1","remoteIp":"219.249.231.42","serverIp":"216.239.36.54","latency":"0.167692376s","protocol":"HTTP/1.1"},"resource":{"type":"cloud_run_revision","labels":{"service_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","project_id":"notionable-secondbrain","configuration_name":"kakaowebhook","location":"us-central1"}},"timestamp":"2026-10-14T06:01:22.965630Z","severity":"INFO","labels":{"instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","goog-drz-cloudfunctions-location":"us-central1","goog-managed-by":"cloudfunctions","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Frequests","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"trace":"projects/notionable-secondbrain/traces/c42058bb5e3c2cad490f9cabe6b5f5bc","receiveTimestamp":"2026-10-14T06:01:23.151764010Z","spanId":"69e011a1d511e0ea","traceSampled":true,"internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"956","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO] queue created { uid: '9LEvqxMo' }\n","insertId":"6acf1a51000b98906850a574","resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","configuration_name":"kakaowebhook","revision_name":"kakaowebhook-00127-rig","service_name":"kakaowebhook","project_id":"notionable-secondbrain"}},"timestamp":"2026-10-14T05:59:45.759952Z","labels":{"goog-managed-by":"cloudfunctions","goog-drz-cloudfunctions-location":"us-central1","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","execution_id":"7pa281cbcbc9","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","goog-drz-cloudfunctions-id":"kakaowebhook"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T05:59:45.916339641Z","spanId":"16260357759562577716","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"948","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}},{"textPayload":"[KAKAO USER] {\n  kakaoUserId: 'aym7JjAtDJcY',\n  type: 'botUserKey',\n  plusfriendUserKey: 'aym7JjAtDJcY',\n  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'\n}\n","insertId":"6acf1a5100092ccc6fdf4f6a","resource":{"type":"cloud_run_revision","labels":{"location":"us-central1","revision_name":"kakaowebhook-00127-rig","project_id":"notionable-secondbrain","service_name":"kakaowebhook","configuration_name":"kakaowebhook"}},"timestamp":"2026-10-14T05:59:45.601292Z","labels":{"goog-drz-cloudfunctions-id":"kakaowebhook","goog-managed-by":"cloudfunctions","instanceId":"0010dd86070426f536e6e357305d22d9473b1d9e4431940655c6e9724cbb6efed3b482e85fe6eace28fa1e1a1a9f3442de096f36e5cb1143697bb956548705d595f31f063ae9efbd72b38142edeba235a2ae3fd2e3618a39","run.googleapis.com/base_image_versions":"us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs20:nodejs20_20260819_20_20_2_RC00","goog-drz-cloudfunctions-location":"us-central1","firebase-functions-hash":"53752e714bf57af43992c114ba11f148bc1adbe7","execution_id":"7pa281cbcbc9"},"logName":"projects/notionable-secondbrain/logs/run.googleapis.com%2Fstdout","writerEmailAddress":"app-engine-appserver@prod.google.com","internalId":{"projectNumber":"218369848945"},"receiveTimestamp":"2026-10-14T05:59:45.916339641Z","spanId":"16260357759562577716","internalMetadata":{"queryAnnotations":{"residentBucketUuid":"218369848945_d","residentBucketEntityId":{"projectNumber":"218369848945"}},"bucketUuid":[{"tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"uid":"218369848945_d"}],"billingSize":"1097","logBucketWithSinkInfo":[{"uid":"218369848945_d","tcubeShardNames":["global16-us-west4","global16-northamerica-south1"],"sinkInfo":[{"status":"OK","unmodifiedDefaultSinkInternalId":{"projectNumber":"218369848945"}}],"bucketOwner":{"projectNumber":"218369848945"}}]}}],"nextPageToken":"esYHCsEHAdjKCLoDw9kWvMfvW5LgbOvmnLJYo5QLM5MBDWswQyr4NWW8XT8y0hKgNMPgUvfGF15tcW8BjNmcDuJ58rthdOtom8UmIVD5tjM_xwh1u62Ygl_IsCrethkUvewgsJ_At91WXhC8t3nOyntmAzvuuSzglwEiMTblJBWezujZjeYluTVbhJR5kTo7Kb5wbpT05fhtwOelW8rqLLEBk9NVUGFolCDzJ7L8962mDQOfQTy3a6iWQnBiLGLF58RfUswXRRcUw22CkLSZ-E8nUG-GgIXF3kkk1TkrNjpzVxQgorlMFhRf9LaWbwkPsjeDd6dv8yvPmFgYOMQOzpFwCm9WTX_qV_bkpwx0Cypd5WDki5tlN1LzVtzeFRxTPElsPO4f51ChdpzDothhBtJqoFOqs5lcRyW51sLADZweJqxxdh-JyO4dxsi7bGPbj0FNTlaaFu8ZCusic9plicK4LWd2zvOSF9mQNpdpTOrShRI4zcwZLhUj2Xn9q8tYZB1YkUISLp7RvBEL38cnc62u3mlARt4indwTVZbphSXaweo7qNAj36gBELr9SVXBUKFzoDuQnIKn8ekE2ma3zbjyeu7_ftOXQXKQjjTjJL_aZnQjwavrXkm5l2dz7Xt-sAM7dLKiiFbxRPp7Ao9iBAEp9NZvBIjeXmFie8L4F0MQexpEutHCa95SghXPaPivDl8M-zTOa1eetqKpFermH4LfWzu00LFCyHpL5FVbA0p0yHNNPkVrrojvlqX0-5sfO94pCejHTBDJ8LlPqmBEqiG1SdgeYkLDyVZZy8nRnxh4YfEcHMfGyTmn782-45g_7Cvun3jJl2tWVa3SCt6aTEJjCD4b8n0wPK01RMcXpcCrXU6wFPkLSYNUNCI-ei7UnAGIzyXrSynJmmUZSBcpe1iq7iV_m8YbX0QiuFCOkD26yC4EE3ZU8SiEbm0rgfTq3Xkb20_b9OShF4fAGSv2m8-zIwuZD3Ml2gcZ_pL8gGbCka281Buj3gVQ1D0pSK8VPRLJp-1_xfl-m8-SiJUqsrsm7ceuC6xhGBsI1ReYWIhj9Lsf3Jp0KPrE2f4asIbyb_hl3Ez4Gd_ailtMjjo7h4kqxutZQHrOSy_4-1ZXS-WdG4BRAl3RgVUfpS8Jiq-M9gR_h5SUvE-os6wcPgXdt5wW_3uib-1VWIwKTA4tU8cZUPGUwFSueGwXp_m-CUTRBk6l1-xn6PzOIuJYTfKlEegkgH_tAn2sjhSqxQGJwY3dISAsp0De6LibXncnZP9QvC5037qOzhAB","firstProgressLatency":"0.110278212s"}
+2026-10-14T05:59:45.601292Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T05:59:45.759952Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:01:22.965630Z I kakaowebhook: 
+2026-10-14T06:01:22.981636Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "fallback"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "https://talk.kakaocdn.net/dna/oZ5D7/dJMcbvIMtMc/7brDEuTenXCDUMOyfIhN5j/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565682&signature=YrZDPG8U2FZ8NHuTdMofkVUWAKI%3D",
+    "params": {
+      "surface": "Kakaotalk.plusfriend",
+      "media": {
+        "type": "image",
+        "url": "https://talk.kakaocdn.net/dna/oZ5D7/dJMcbvIMtMc/7brDEuTenXCDUMOyfIhN5j/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565682&signature=YrZDPG8U2FZ8NHuTdMofkVUWAKI%3D"
+      }
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:59594e8a771d48b3897a6fc8c31442fd",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "IMAGE_UPLOAD"
+    }
+  }
+}
+
+2026-10-14T06:01:22.982031Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:01:23.145366Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:01:25.999018Z I kakaowebhook: 
+2026-10-14T06:01:26.004584Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "fallback"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "https://talk.kakaocdn.net/dna/bBfT3i/dJMcbvIMtNw/uUD9HbrgVR7LWp03E5Z2cN/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565685&signature=Hm3CCLHGvB6I1vIozzZ5ngMK0%2BE%3D",
+    "params": {
+      "surface": "Kakaotalk.plusfriend",
+      "media": {
+        "type": "image",
+        "url": "https://talk.kakaocdn.net/dna/bBfT3i/dJMcbvIMtNw/uUD9HbrgVR7LWp03E5Z2cN/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565685&signature=Hm3CCLHGvB6I1vIozzZ5ngMK0%2BE%3D"
+      }
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:0d839f80c2ce42ce80b4a7bf9307b157",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "IMAGE_UPLOAD"
+    }
+  }
+}
+
+2026-10-14T06:01:26.004692Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:01:26.200230Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:02:50.710609Z I kakaowebhook: 
+2026-10-14T06:02:50.724003Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "fallback"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "https://talk.kakaocdn.net/dna/bcDpnn/dJMcbzRWaKX/nUvMFcZ3einLt2Dt598lVA/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565770&signature=c7tGKu6Qtz%2Fs2gCXR0eR27i%2F3KY%3D",
+    "params": {
+      "surface": "Kakaotalk.plusfriend",
+      "media": {
+        "type": "image",
+        "url": "https://talk.kakaocdn.net/dna/bcDpnn/dJMcbzRWaKX/nUvMFcZ3einLt2Dt598lVA/i_6c776361fb9a.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565770&signature=c7tGKu6Qtz%2Fs2gCXR0eR27i%2F3KY%3D"
+      }
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:5f34c25e92ed43088515091290b04ef9",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "IMAGE_UPLOAD"
+    }
+  }
+}
+
+2026-10-14T06:02:50.724142Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:02:50.899851Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:02:53.398863Z I kakaowebhook: 
+2026-10-14T06:02:53.405961Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "fallback"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "https://talk.kakaocdn.net/dna/cksjA0/dJMcbzRWaNi/h8Vt4SbSam8I4gITHDUNZD/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565773&signature=J6A4sxqcspJpnA2S01PRCkCKVII%3D",
+    "params": {
+      "surface": "Kakaotalk.plusfriend",
+      "media": {
+        "type": "image",
+        "url": "https://talk.kakaocdn.net/dna/cksjA0/dJMcbzRWaNi/h8Vt4SbSam8I4gITHDUNZD/i_e6a67920d679.jpeg?credential=zf3biCPbmWRjbqf40YGePFLewdou7TIK&expires=1886565773&signature=J6A4sxqcspJpnA2S01PRCkCKVII%3D"
+      }
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:cfc74ff533f74d9faeb3df1b874a332c",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "IMAGE_UPLOAD"
+    }
+  }
+}
+
+2026-10-14T06:02:53.406058Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:02:53.569344Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:03:05.131396Z I kakaowebhook: 
+2026-10-14T06:03:05.137592Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "OK"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "ㄹㄹ",
+    "params": {
+      "surface": "Kakaotalk.plusfriend"
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:b2aba9429e2245af98adfed3f2aa4d3f",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "TEXT_INPUT"
+    }
+  }
+}
+
+2026-10-14T06:03:05.137693Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:03:05.359452Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:04:18.297251Z I kakaowebhook: 
+2026-10-14T06:04:18.311137Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "OK"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "이상하게 응답이 없어짐",
+    "params": {
+      "surface": "Kakaotalk.plusfriend"
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:98a52373da8b48b2ae55464c079dea91",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "TEXT_INPUT"
+    }
+  }
+}
+
+2026-10-14T06:04:18.311280Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:04:18.641870Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:05:51.728164Z I kakaowebhook: 
+2026-10-14T06:05:51.742420Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "OK"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "처리중 테스트",
+    "params": {
+      "surface": "Kakaotalk.plusfriend"
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:cdd5075f148844459cb7feb7612a95cf",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "TEXT_INPUT"
+    }
+  }
+}
+
+2026-10-14T06:05:51.742701Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:05:51.925102Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:06:18.893285Z I kakaowebhook: 
+2026-10-14T06:06:18.899090Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "OK"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "처리중테스트",
+    "params": {
+      "surface": "Kakaotalk.plusfriend"
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:eba97951bd0e479cb9b537771a9010c4",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "TEXT_INPUT"
+    }
+  }
+}
+
+2026-10-14T06:06:18.899308Z ? kakaowebhook: [KAKAO USER] {
+  kakaoUserId: 'aym7JjAtDJcY',
+  type: 'botUserKey',
+  plusfriendUserKey: 'aym7JjAtDJcY',
+  botUserKey: 'a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08'
+}
+
+2026-10-14T06:06:19.093518Z ? kakaowebhook: [KAKAO] queue created { uid: '9LEvqxMo' }
+
+2026-10-14T06:07:24.548217Z ? kakaowebhook: [KAKAO RAW] {
+  "bot": {
+    "id": "6a33fe727869a1ed0399aa74",
+    "name": "라이프업 비서"
+  },
+  "intent": {
+    "id": "6a33fe727869a1ed0399aa78",
+    "name": "폴백 블록",
+    "extra": {
+      "reason": {
+        "code": 1,
+        "message": "OK"
+      }
+    }
+  },
+  "action": {
+    "id": "6a3403d37869a1ed0399aae7",
+    "name": "노셔너블 수집",
+    "params": {},
+    "detailParams": {},
+    "clientExtra": {}
+  },
+  "userRequest": {
+    "block": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "user": {
+      "id": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+      "type": "botUserKey",
+      "properties": {
+        "botUserKey": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriendUserKey": "aym7JjAtDJcY",
+        "bot_user_key": "a31e09894808dc0f487263b6f554ea81552bc09fce8fdc823ba160f980e21f3f08",
+        "plusfriend_user_key": "aym7JjAtDJcY"
+      }
+    },
+    "utterance": "응답이 없어짐",
+    "params": {
+      "surface": "Kakaotalk.plusfriend"
+    },
+    "callbackUrl": "https://bot-api.kakao.com/v1/bots/6a33fe727869a1ed0399aa74/callback/cbtoken:0a8d9f32df624371bbd4fe632a76875d",
+    "lang": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "contexts": [],
+  "flow": {
+    "lastBlock": {
+      "id": "6a33fe727869a1ed0399aa78",
+      "name": "폴백 블록"
+    },
+    "trigger": {
+      "type": "TEXT_INPUT"
+    }
+  }
+}
+
