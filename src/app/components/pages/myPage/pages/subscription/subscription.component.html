@@ -34,7 +34,7 @@
           <td><button class="verify-btn" (click)="expandedPurchaseId = expandedPurchaseId === purchase.id ? '' : purchase.id">
             {{ expandedPurchaseId === purchase.id ? '접기' : '상세 정보' }}
           </button></td>
-          <td><button class="verify-btn" [disabled]="!purchase.active" (click)="router.navigate([purchase.templateId === 'lifeUpScrapbook' ? '/download/lifeup-scrapbook' : '/download/lifeup'])">다운로드</button></td>
+          <td><button class="verify-btn" [disabled]="!purchase.active" (click)="router.navigate([downloadPath(purchase.templateId)])">다운로드</button></td>
           <td>
             @if (purchase.active) { <span class="badge success">확인됨</span> }
             @else { <button class="verify-btn" disabled>구매 확인</button> }

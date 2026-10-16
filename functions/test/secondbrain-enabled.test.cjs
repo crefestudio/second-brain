@@ -7,7 +7,7 @@ const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
 function fixture(enabled) {
     let config = { enabled };
     const ref = { collection: () => ref, doc: () => ref, get: async () => ({ data: () => config }) };
-    const context = { db: { collection: () => ref } };
+    const context = { ...require('../lib/template-catalog'), workspaceTemplate: require('../lib/workspace-purchase').workspaceTemplate, db: { collection: () => ref } };
     vm.createContext(context);
     const helper = source.slice(source.indexOf('async function assertSecondBrainEnabled('), source.indexOf('function sameNotionId('));
     const start = source.indexOf('async function processWebhookEvent(');
@@ -38,4 +38,11 @@ test('manual batch after cache reset remains blocked while OFF', async () => {
     await f.context.exports.generateNotionNoteKMDataBatch({ method: 'POST', body: { userId: 'user' }, headers: { authorization: 'Bearer key' } }, res);
     assert.equal(res.code, 409);
     assert.equal(res.body.error, 'SECOND_BRAIN_AUTOMATION_DISABLED');
+});
+
+test('planner and scrapbook cannot extract even when manually enabled', async () => {
+    for (const templateId of ['lifeupPlanner', 'lifeUpScrapbook']) {
+        const f = fixture(true); f.set({ templateId, enabled: true });
+        await assert.rejects(f.context.processWebhookEvent('user', 'token', 'page'), /SECOND_BRAIN_AUTOMATION_DISABLED/);
+    }
 });

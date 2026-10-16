@@ -18,7 +18,7 @@ function setup(signedIn = false, product = 'lifeUp') {
             lifeUpScrapbookReleaseUrls: { '1.5': 'https://example.test/lifeup-scrapbook-1.5' },
             lifeUpScrapbookPassportUrls: { '1.5': '/templateDownload/LifeUp1.5-Scrapbook.pdf' }
         }) }
-        : name.endsWith('/user.service') ? { UserService: {
+        : name.endsWith('/template-catalog') ? require('../lib/template-catalog') : name.endsWith('/user.service') ? { UserService: {
             updatePurchaseInfo: async () => ({ isPurchaser: true, purchaseInfo: { verified } })
         } } : {} };
     vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
@@ -34,7 +34,7 @@ function setup(signedIn = false, product = 'lifeUp') {
     const user = { sendVerificationEmail: async (_email, templateId) => { productCalls.push(templateId); calls.push('request-link'); return true; },
         verifyCode: async (_email, _code, _uid, templateId) => { productCalls.push(templateId); calls.push('link'); verified = true; return { userId: 'workspace' }; } };
     const auth = { updateSession: async templateId => { productCalls.push(templateId); }, getUserId: () => account ? 'workspace' : '' };
-    const page = new context.exports.LifeupDownloadComponent(auth, user, {}, social, { snapshot: { data: { product } } });
+    const page = new context.exports.LifeupDownloadComponent(auth, user, {}, social, { initialize: async () => {} }, { snapshot: { data: { product } } });
     page.verificationValue = 'buyer@example.com'; page.verificationCode = '123456';
     return { page, calls, productCalls, fail: () => { failure = true; }, setVerified: value => { verified = value; },
         switchAccount: () => { account = { uid: 'other' }; } };
@@ -45,7 +45,7 @@ test('scrapbook page consistently uses its product for workspace selection and v
     await h.page.ngOnInit();
     await h.page.verifyPurchase(); h.page.verificationCode = '123456';
     await h.page.confirmVerification();
-    assert.equal(h.page.productName, '라이프업 1.5 스크랩북');
+    assert.equal(h.page.productName, '라이프업 스크랩북');
     assert.equal(h.page.showReviewEvent, false);
     assert.equal(h.page.isPurchaser, true);
     assert.ok(h.productCalls.length >= 4);
@@ -89,4 +89,16 @@ test('stored purchase must be verified, while verified sessions restore access',
     await h.page.ngOnInit(); assert.equal(h.page.isPurchaser, false);
     h.setVerified(true);
     await h.page.ngOnInit(); assert.equal(h.page.isPurchaser, true);
+});
+
+test('planner download binds to its own purchase and PDF, with no scrapbook promotion', async () => {
+    const h = setup(true, 'lifeupPlanner');
+    await h.page.ngOnInit();
+    await h.page.verifyPurchase(); h.page.verificationCode = '123456';
+    await h.page.confirmVerification();
+    assert.equal(h.page.isPurchaser, true);
+    assert.equal(h.page.isScrapbook, false);
+    assert.equal(h.page.showReviewEvent, false);
+    assert.ok(h.productCalls.every(id => id === 'lifeupPlanner'));
+    assert.equal(h.page.passportUrl, '/templateDownload/LifeUp1.5-Planner.pdf');
 });

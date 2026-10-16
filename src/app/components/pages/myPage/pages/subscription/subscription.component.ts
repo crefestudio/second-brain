@@ -1,3 +1,4 @@
+import { templateDownloadPath } from '../../../../../config/template-catalog';
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -15,6 +16,7 @@ import { _log } from '../../../../../lib/cf-common/cf-common';
     styleUrls: ['./subscription.component.scss']
 })
 export class SubscriptionComponent implements OnInit {
+    readonly downloadPath = templateDownloadPath;
     isLoading = true;
     purchases: any[] = [];
     expandedPurchaseId = '';
@@ -82,7 +84,7 @@ export class SubscriptionComponent implements OnInit {
 
     async connectPurchase(purchase: any) {
         if (!purchase.workspaceId) {
-            await this.router.navigate([purchase.templateId === 'lifeUpScrapbook' ? '/download/lifeup-scrapbook' : '/download/lifeup']);
+            await this.router.navigate([this.downloadPath(purchase.templateId)]);
             return;
         }
         try {

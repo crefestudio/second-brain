@@ -58,3 +58,49 @@ test('other destinations retain correct labels and supported saves do not become
     assert.equal(classify('reference').action, 'create');
     assert.equal(classify('memo', 'lifeUp').action, 'create');
 });
+
+test('Planner asks before non-task saves while task saves proceed', () => {
+    for (const db of ['reference', 'memo', 'contact']) {
+        const result = classify(db, 'lifeupPlanner');
+        assert.equal(result.action, 'plannerPending');
+        assert.equal(result.plannerPending, true);
+        assert.match(result.response, /할 일로 저장할까요/);
+    }
+    assert.equal(classify('task', 'lifeupPlanner').action, 'create');
+});
+
+async function confirm(templateId, result) {
+    const start = source.indexOf('        const captureTemplate = workspaceTemplate(');
+    const end = source.indexOf('        console.log("[KAKAO] processAssistantEntity START"', start);
+    const saves = [], replies = [], updates = [];
+    const ref = { collection: () => ref, doc: () => ref, update: async value => updates.push(value) };
+    const context = {
+        workspaceTemplate: () => templateId, userDoc: { data: () => ({}) }, userMessage: '저장', userId: 'u', callbackUrl: 'callback', pageUrls: {},
+        getLastAssistantContext: async () => ({ result, userMessage: 'original text', entity: {}, contextId: 'ctx' }),
+        reply: async text => replies.push(text), guard: async () => {},
+        NotionService: { createDbItemFromAiResult: async (_uid, value) => { saves.push(value); return 'page'; } },
+        buildAssistantResponse: value => value.response, removeUndefined: value => value,
+        db: ref, logger: { error() {} }
+    };
+    await vm.runInNewContext(ts.transpile('(async () => {' + source.slice(start, end) + '})()'), context);
+    return { saves, replies, updates };
+}
+
+test('Planner confirmation writes task and consumes pending status', async () => {
+    const { saves, updates } = await confirm('lifeupPlanner', { db: 'reference', plannerPending: true, title: 'Title', content: 'Details' });
+    assert.equal(saves.length, 1);
+    assert.equal(saves[0].db, 'task');
+    assert.equal(saves[0].action, 'create');
+    assert.equal(saves[0].kinds, '수집함');
+    assert.equal(saves[0].plannerPending, false);
+    assert.match(saves[0].content, /original text/);
+    assert.match(saves[0].content, /Details/);
+    assert.equal(updates[0].pageId, 'page');
+});
+
+test('confirmation preserves scrapbook destination and rejects consumed or mismatched pending state', async () => {
+    assert.equal((await confirm('lifeUpScrapbook', { db: 'memo', scrapbookPending: true })).saves[0].db, 'reference');
+    for (const result of [{ plannerPending: false }, { scrapbookPending: true }]) {
+        assert.equal((await confirm('lifeupPlanner', result)).saves.length, 0);
+    }
+});

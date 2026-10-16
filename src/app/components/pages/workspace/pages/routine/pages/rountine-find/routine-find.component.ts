@@ -1,3 +1,4 @@
+import { canUseAgent } from '../../../../../../../config/template-catalog';
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -170,7 +171,7 @@ export class RoutineFindComponent {
         }
 
         // A workspace must exist before its template can determine permission.
-        if (this.authService.templateId !== 'lifeUp') {
+        if (!canUseAgent(this.authService.templateId, 'routine')) {
             if (this.authService.templateId === 'lifeUpScrapbook') {
                 this.upgradeLoading = true;
                 this.addingHabits.add(habit);

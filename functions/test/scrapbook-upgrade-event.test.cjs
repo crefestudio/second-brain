@@ -37,3 +37,10 @@ test('Scrapbook workspace timestamp remains identical on repeated visits',async(
   assert.equal((await s.call('w')).body.firstSeenAt,1000);
   assert.equal(s.writes(),1);
 });
+
+test('Planner reuses the workspace-scoped event without restarting on repeat visits',async()=>{
+  const s=setup({firebaseUid:'owner',templateId:'lifeupPlanner'});
+  assert.equal((await s.call('w')).body.firstSeenAt,1000);
+  assert.equal((await s.call('w')).body.firstSeenAt,1000);
+  assert.equal(s.writes(),1);
+});

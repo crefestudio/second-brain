@@ -15,12 +15,13 @@ function harness() {
  return {db, docs};
 }
 const visit = () => ({sessionId:'browser',productPath:'lifeup',location:'video',referrer:'',occurredAt:Timestamp.now()});
-test('repeat requests count once; different products, sources and browsers count separately',async()=>{
+test('repeat requests count once; different products and sources count separately',async()=>{
  const h=harness(); const v=visit();
  const results=await Promise.all([saveStoreVisit(h.db,v),saveStoreVisit(h.db,v)]);
  assert.deepEqual(results.map(r=>r.recorded),[true,false]);
- for(const change of [{productPath:'lifeup-imweb'},{location:'other'},{sessionId:'other'}]) assert.equal((await saveStoreVisit(h.db,{...v,...change})).recorded,true);
- assert.equal([...h.docs.keys()].filter(k=>k.startsWith('storeVisits/')).length,4);
+ for(const change of [{productPath:'lifeup-imweb'},{location:'other'}]) assert.equal((await saveStoreVisit(h.db,{...v,...change})).recorded,true);
+ assert.equal((await saveStoreVisit(h.db,{...v,sessionId:'other'})).ignored,'BURST_DUPLICATE');
+ assert.equal([...h.docs.keys()].filter(k=>k.startsWith('storeVisits/')).length,3);
 });
 test('window expires from accepted visit; blocked retries do not extend it',async()=>{
  const h=harness(); const v=visit(); await saveStoreVisit(h.db,v);
@@ -29,7 +30,25 @@ test('window expires from accepted visit; blocked retries do not extend it',asyn
  assert.equal((await saveStoreVisit(h.db,v)).recorded,false);
  assert.equal(h.docs.get(key).createdAt,last);
  h.docs.set(key,{createdAt:Timestamp.fromMillis(Date.now()-VISIT_WINDOW_MS)});
+ const burstKey=[...h.docs.keys()].find(k=>k.startsWith('storeVisitBurstDedup/'));
+ h.docs.set(burstKey,{createdAt:Timestamp.fromMillis(Date.now()-VISIT_WINDOW_MS)});
  assert.equal((await saveStoreVisit(h.db,v)).recorded,true);
+});
+
+test('different IDs share a five-second window without extending it, including boundary',async()=>{
+ const original=Timestamp.now;
+ let now=100000;
+ Timestamp.now=()=>Timestamp.fromMillis(now);
+ try {
+  const h=harness(); const v=visit();
+  const results=await Promise.all(['a','b','c'].map(sessionId=>saveStoreVisit(h.db,{...v,sessionId})));
+  assert.deepEqual(results.map(r=>r.recorded),[true,false,false]);
+  now+=5000;
+  assert.equal((await saveStoreVisit(h.db,{...v,sessionId:'d'})).ignored,'BURST_DUPLICATE');
+  now+=1;
+  assert.equal((await saveStoreVisit(h.db,{...v,sessionId:'d'})).recorded,true);
+  assert.equal((await saveStoreVisit(h.db,{...v,sessionId:'a'})).ignored,'DUPLICATE');
+ } finally { Timestamp.now=original; }
 });
 test('reset rejects old requests and permits new events despite old dedup state',async()=>{
  const h=harness(); const v=visit(); await saveStoreVisit(h.db,v);

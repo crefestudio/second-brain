@@ -1,3 +1,4 @@
+import { TemplateId, TEMPLATE_PRODUCTS, templateIdOrLegacy } from '../../../../../config/template-catalog';
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -11,6 +12,7 @@ import { ScrapbookUpgradeEventService } from '../../../../../services/scrapbook-
 @Component({
     selector: 'app-lifeup-download',
     standalone: true,
+    providers: [ScrapbookUpgradeEventService],
     imports: [CommonModule, FormsModule, RouterLink],
     templateUrl: './lifeup-download.component.html',
     styleUrls: ['./lifeup-download.component.scss']
@@ -27,9 +29,11 @@ export class LifeupDownloadComponent implements OnInit {
     private verificationUid: string | null = null;
     private readonly functionsBaseUrl: string;
     private readonly giftAccess: string | null;
-    readonly templateId: 'lifeUp' | 'lifeUpScrapbook';
+    private readonly fromLifebotEmail: boolean;
+    readonly templateId: TemplateId;
     readonly productName: string;
     readonly isScrapbook: boolean;
+    get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
 
     readonly downloadUrl: string;
     readonly reviewUrl = 'https://notionable.net/lifeup-review';
@@ -47,13 +51,14 @@ export class LifeupDownloadComponent implements OnInit {
         const config = inject(APP_CONFIG);
         this.functionsBaseUrl = config.functionsBaseUrl;
         this.giftAccess = route.snapshot.queryParamMap?.get('giftAccess') ?? null;
-        this.templateId = route.snapshot.data['product'] === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
+        this.fromLifebotEmail = route.snapshot.queryParamMap?.get('from') === 'lifebot-email';
+        this.templateId = templateIdOrLegacy(route.snapshot.data['product']);
         const scrapbook = this.templateId === 'lifeUpScrapbook';
         this.isScrapbook = scrapbook;
-        this.productName = scrapbook ? '라이프업 1.5 스크랩북' : '라이프업 1.5';
-        this.downloadUrl = (scrapbook ? config.lifeUpScrapbookReleaseUrls : config.lifeUpReleaseUrls)['1.5'];
-        this.passportUrl = (scrapbook ? config.lifeUpScrapbookPassportUrls : config.lifeUpPassportUrls)['1.5'];
-        this.showReviewEvent = !scrapbook;
+        this.productName = TEMPLATE_PRODUCTS[this.templateId].nameKoFull;
+        this.downloadUrl = TEMPLATE_PRODUCTS[this.templateId].releaseUrl;
+        this.passportUrl = '/templateDownload/' + TEMPLATE_PRODUCTS[this.templateId].pdfFileName;
+        this.showReviewEvent = this.templateId === 'lifeUp';
     }
 
     async ngOnInit(): Promise<void> {
@@ -65,6 +70,10 @@ export class LifeupDownloadComponent implements OnInit {
                 if (response.ok) this.isPurchaser = true;
             }
             if (!this.isPurchaser) await this.loadPurchaseInfo();
+            if (this.fromLifebotEmail && this.isPurchaser) {
+                await this.router.navigateByUrl('/workspace/home');
+                return;
+            }
             await this.initializeUpgradeEvent();
         } catch {
             this.verificationError = '구매 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.';
@@ -87,9 +96,9 @@ export class LifeupDownloadComponent implements OnInit {
     }
 
     private async initializeUpgradeEvent(): Promise<void> {
-        if (!this.isScrapbook || !this.isPurchaser) return;
+        if ((!this.isScrapbook && !this.isPlanner) || !this.isPurchaser) return;
         try {
-            await this.upgradeEvent.initialize(this.authService.getUserId());
+            await this.upgradeEvent.initialize(this.authService.getUserId(), this.templateId);
         } catch {
             // When event status cannot be loaded, show the regular upgrade offer.
         }

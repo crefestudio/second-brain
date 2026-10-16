@@ -1,3 +1,4 @@
+import { canUseAgent } from '../../../config/template-catalog';
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -68,7 +69,7 @@ export class WorkspaceComponent implements OnInit {
         // 자동화 정보
         const automations = await UserService.getUserIntegrations(this.userId);
         this.automationAgents =
-            this.automationAgents.map(agent => ({
+            this.automationAgents.filter(agent => canUseAgent(this.authService.templateId, agent.id)).map(agent => ({
                 ...agent,
                 enabled: automations[agent.id]?.enabled ?? false,
                 status: automations[agent.id]?.enabled ? 'running' : 'waiting'
@@ -139,7 +140,7 @@ export class WorkspaceComponent implements OnInit {
     }
 
     async updatePurchaseInfo() {
-        const result = await UserService.updatePurchaseInfo(this.userId);
+        const result = await UserService.updatePurchaseInfo(this.userId, this.authService.templateId);
         this.purchaseInfo = result.purchaseInfo;
         this.isLifeupPurchaser = result.isPurchaser;
     }

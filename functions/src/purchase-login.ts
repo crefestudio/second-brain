@@ -1,3 +1,4 @@
+import { TemplateId, templateIdOrLegacy } from './template-catalog';
 import { createHash, randomInt, randomUUID } from 'crypto';
 import { bindWorkspacePurchase, workspaceTemplate, WorkspaceConflict } from './workspace-purchase';
 import type * as admin from 'firebase-admin';
@@ -16,7 +17,7 @@ interface Dependencies {
     db: admin.firestore.Firestore;
     auth: admin.auth.Auth;
     send: (email: string, code: string) => Promise<void>;
-    purchase: (email: string, templateId: 'lifeUp' | 'lifeUpScrapbook') => Promise<Purchase | null>;
+    purchase: (email: string, templateId: TemplateId) => Promise<Purchase | null>;
 }
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -31,7 +32,7 @@ function emailAddress(value: unknown): string {
 export function createPurchaseLogin(deps: Dependencies) {
     const { db, auth } = deps;
     return {
-        async request(value: unknown, ip: string, templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp'): Promise<void> {
+        async request(value: unknown, ip: string, templateId: TemplateId = 'lifeUp'): Promise<void> {
             const email = emailAddress(value);
             const key = digest(email);
             const ref = db.collection('appLoginChallenges').doc(key);
@@ -78,7 +79,7 @@ export function createPurchaseLogin(deps: Dependencies) {
                     return false;
                 }
                 tx.update(ref, { consumed: true, codeHash: '' });
-                return data.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' as const : 'lifeUp' as const;
+                return templateIdOrLegacy(data.templateId);
             });
             if (!accepted) throw new PurchaseLoginError(401, '인증번호가 틀리거나 만료되었습니다. 다시 요청해주세요.');
             const templateId = accepted;

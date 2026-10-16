@@ -120,6 +120,7 @@
               <input type="checkbox" [(ngModel)]="agent.enabled" (change)="onChangeAgentEnabled(agent)" [disabled]="isAgentDisabled(agent)" [attr.aria-label]="agent.name + ' 사용 여부'">
               <span class="slider"></span>
             </label>
+            <small *ngIf="!isAgentSupported(agent)">현재 템플릿에서 제공하지 않는 기능입니다.</small>
           </td>
 
           <!-- 로그 -->

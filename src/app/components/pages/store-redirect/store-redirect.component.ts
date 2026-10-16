@@ -1,17 +1,24 @@
+import { TEMPLATE_PRODUCTS } from '../../../config/template-catalog';
 import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
 
-@Component({ selector: 'app-store-redirect', standalone: true, template: '' })
+@Component({ selector: 'app-store-redirect', standalone: true, template: '<p>{{message}}</p>' })
 export class StoreRedirectComponent implements OnInit {
+    message = '';
     private readonly config = inject<AppConfig>(APP_CONFIG);
     private readonly destinations: Record<string, string> = {
-        'store/lifeup': 'https://notionable.net/shop_view?idx=1',
+        'store/lifeup': TEMPLATE_PRODUCTS.lifeUp.salesUrls.normal,
+        'store/lifeup-planner': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.normal,
+        'store/lifeup-planner-reward': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.reward,
+        'store/lifeup-planner-reward-sale': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.rewardSale,
         'store/lifeup-r': 'https://www.latpeed.com/products/HEPXz',
-        'store/lifeup-reward': 'https://notionable.net/shop_view?idx=9',
-        'store/lifeup-reward-sale': 'https://notionable.net/shop_view?idx=10',
+        'store/lifeup-reward': TEMPLATE_PRODUCTS.lifeUp.salesUrls.reward,
+        'store/lifeup-reward-sale': TEMPLATE_PRODUCTS.lifeUp.salesUrls.rewardSale,
+        'store/lifeup-reward-pack': 'https://notionable.net/shop_view?idx=12',
+        'store/lifeup-reward-pack-sale': 'https://notionable.net/shop_view?idx=11',
         'store/lifeup-imweb': 'https://notionable.net/shop_view?idx=1',
-        'store/lifeup-scrapbook': 'https://notionable.net/shop_view?idx=6',
+        'store/lifeup-scrapbook': TEMPLATE_PRODUCTS.lifeUpScrapbook.salesUrls.normal,
         'store/bizup-custom': 'https://notionable.net/store/?idx=7'
     };
     constructor(private readonly route: ActivatedRoute) {}
@@ -19,10 +26,12 @@ export class StoreRedirectComponent implements OnInit {
     async ngOnInit(): Promise<void> {
         const productPath = (this.route.snapshot.routeConfig?.path || '').replace('store/', '');
         const destination = this.destinations[`store/${productPath}`];
-        if (!destination) return;
+        if (!destination) { this.message = '판매 페이지를 준비 중입니다.'; return; }
         const location = this.route.snapshot.queryParamMap.get('from') || '';
         // Keep historical analytics keys stable when public URLs change.
-        const trackingProduct = productPath === 'lifeup' ? 'lifeup-imweb' : productPath === 'lifeup-r' ? 'lifeup' : productPath;
+        const trackingProduct = productPath === 'lifeup' ? 'lifeup-imweb' : productPath === 'lifeup-r' ? 'lifeup'
+            : productPath === 'lifeup-planner-reward' ? 'lifeup-reward-pack'
+            : productPath === 'lifeup-planner-reward-sale' ? 'lifeup-reward-pack-sale' : productPath;
         try {
             const sessionId = await this.sessionId();
             await Promise.race([

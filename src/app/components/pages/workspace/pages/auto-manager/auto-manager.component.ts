@@ -1,3 +1,4 @@
+import { canUseAgent } from '../../../../../config/template-catalog';
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -90,8 +91,8 @@ export class AutoManagerComponent {
         this.automationAgents =
             this.automationAgents.map(agent => ({
                 ...agent,
-                enabled: automations[agent.id]?.enabled ?? agent.enabled,
-                status: (automations[agent.id]?.enabled ?? agent.enabled) ? 'running' : 'waiting'
+                enabled: canUseAgent(this.authService.templateId, agent.id) && (automations[agent.id]?.enabled ?? agent.enabled),
+                status: canUseAgent(this.authService.templateId, agent.id) && (automations[agent.id]?.enabled ?? agent.enabled) ? 'running' : 'waiting'
             }));
     }
 
@@ -142,7 +143,10 @@ export class AutoManagerComponent {
     }
 
     isAgentDisabled(agent: any): boolean {
-        return agent.id === 'kakao-capture' && !this.kakaoUserId;
+        return !canUseAgent(this.authService.templateId, agent.id) || (agent.id === 'kakao-capture' && !this.kakaoUserId);
+    }
+    isAgentSupported(agent: any): boolean {
+        return canUseAgent(this.authService.templateId, agent.id);
     }
 }
 

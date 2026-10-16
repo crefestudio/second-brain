@@ -48,7 +48,7 @@ function fixture(extra = {}) {
         delete: reference => writes.push(() => records.delete(reference.path)) });
         writes.forEach(fn => fn()); return result;
     } };
-    const context = { db, randomUUID: () => 'fresh-connection', console: { log() {}, error() {}, warn() {} },
+    const context = { ...require('../lib/template-catalog'), db, randomUUID: () => 'fresh-connection', console: { log() {}, error() {}, warn() {} },
         templateDatabaseNames: async () => ['note', 'task'],
         NotionService: { updateTemplateDbs: async () => ({ note: 'new-note', task: 'new-task' }),
             getDatabaseIdByDatabaseName: async (_token, name) => `new-${name}`,
@@ -223,4 +223,17 @@ test('in-flight search cannot repopulate cache after Notion or Kakao switch', as
         await assert.rejects(context.CacheResolver.resolveDatabaseId('token', 'u', 'note'), /NOTION_CONNECTION_CHANGED/);
         assert.deepEqual(user().notionConnection.databases, {});
     }
+});
+
+test('planner cache discovery stays scoped to Panner databases', async () => {
+    const { context, user } = fixture();
+    user().templateId = 'lifeupPlanner';
+    user().notionConnection.databases = {};
+    context.CacheResolver.resolveDataSourceId = async () => 'source';
+    context.CacheResolver.getDatabaseIdByDatabaseName = async (token, name, version, templateId) => {
+        assert.equal(templateId, 'lifeupPlanner');
+        assert.equal(name, 'task');
+        return 'planner-task';
+    };
+    assert.equal(await context.CacheResolver.resolveDatabaseId('token', 'u', 'task'), 'planner-task');
 });

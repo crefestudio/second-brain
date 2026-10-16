@@ -1,3 +1,4 @@
+import { canUseAgent } from '../../../../../../config/template-catalog';
 import { Component, AfterViewInit, ViewChild, ElementRef, HostListener, ViewChildren, QueryList } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -430,10 +431,11 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         this.unsubscribe = undefined;
         await this.updateSession();
 
-        if (this.userId && this.authService.templateId === 'lifeUpScrapbook') {
+        if (this.userId && !canUseAgent(this.authService.templateId, 'secondbrain')) {
             this.showUnsupportedNotice = true;
             this.state = 'unsupported';
-            try { await this.upgradeEvent.initialize(this.userId); }
+            if (this.authService.templateId !== 'lifeUpScrapbook' && this.authService.templateId !== 'lifeupPlanner') return false;
+            try { await this.upgradeEvent.initialize(this.userId, this.authService.templateId); }
             catch { return false; }
             this.showUpgradePopup = this.upgradeEvent.isActive;
             this.upgradeUrl = this.upgradeEvent.upgradeUrl('secondbrain');

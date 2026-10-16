@@ -43,21 +43,21 @@
             <p class="email-guide">💡 메일 인증 없이 바로 설치하려면, 구매 시 입력한 이메일의 안내 메일을 확인해 주세요.</p>
         </section>
         } @else {
-        @if (isScrapbook) {
+        @if (isScrapbook || isPlanner) {
         <section class="lifeupbot-promo scrapbook-upgrade-promo">
-            <h2>🎁 스크랩북 사용자를 위한 라이프업 업그레이드 혜택</h2>
+            <h2>🎁 {{ productName }} 사용자를 위한 라이프업 업그레이드 혜택</h2>
             <p>목표부터 프로젝트, 할 일, 메모, 자료까지 한곳에서 관리하고 싶으신가요?<br><strong>라이프업 통합 템플릿</strong>으로 더 많은 기능을 만나보세요.</p>
             <div class="upgrade-event">
                 @if (upgradeEvent.isActive) {
-                <p class="upgrade-copy">스크랩북 사용자만을 위한 <strong>48시간 한정 보상 업그레이드 특별가</strong>를 준비했습니다.</p>
-                <p class="price"><del>79,000원</del> → <strong>64,000원</strong></p>
-                <p class="reward">지금 업그레이드하면 <strong>추가 15,000원 할인!</strong></p>
+                <p class="upgrade-copy">{{ productName }} 사용자만을 위한 <strong><span class="limited-time">48시간 한정</span> 보상 업그레이드 특별가</strong>를 준비했습니다.</p>
+                <p class="price"><del>79,000원</del> → <strong>{{ isPlanner ? '42,000원' : '64,000원' }}</strong></p>
+                <p class="reward">지금 업그레이드하면 <strong>{{ isPlanner ? '추가 37,000원 할인!' : '추가 15,000원 할인!' }}</strong></p>
                 } @else {
                 <p class="upgrade-copy">스크랩북 사용자만을 위한 <strong>보상 업그레이드 특별가</strong>를 준비했습니다.</p>
-                <p class="price"><del>79,000원</del> → <strong>69,000원</strong></p>
-                <p class="reward">지금 업그레이드하면 <strong>추가 10,000원 할인!</strong></p>
+                <p class="price"><del>79,000원</del> → <strong>{{ isPlanner ? '49,000원' : '69,000원' }}</strong></p>
+                <p class="reward">지금 업그레이드하면 <strong>{{ isPlanner ? '추가 30,000원 할인!' : '추가 10,000원 할인!' }}</strong></p>
                 }
-                <a class="primary-btn large" [href]="upgradeEvent.upgradeUrl('download_lifeup-scrapbook')" target="_blank" rel="noopener noreferrer">라이프업 업그레이드 알아보기 <span>→</span></a>
+                <a class="primary-btn large" [href]="upgradeEvent.upgradeUrl(isPlanner ? 'download_lifeup-planner' : 'download_lifeup-scrapbook')" target="_blank" rel="noopener noreferrer">라이프업 업그레이드 알아보기 <span>→</span></a>
             </div>
         </section>
         <br>
@@ -77,18 +77,17 @@
                 보관용 PDF 열기 <span>→</span>
             </a>
         </section>
-       
         <section class="scrapbook-lifebot-promo">
-            <h2>🤖 라이프봇 소개</h2>
+            <h2>🤖 라이프봇 시작하기</h2>
             <p>라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.<br>루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.<br>앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.</p>
-            <a class="primary-btn large" href="https://app.notionable.net/workspace/home" target="_blank" rel="noopener noreferrer">라이프봇 둘러보기 <span>→</span></a>
+            <a class="primary-btn large" href="https://app.notionable.net/workspace/home" target="_blank" rel="noopener noreferrer">라이프봇 시작하기 <span>→</span></a>
         </section>
         <section class="kakao-lifebot-section">
             <h2>💬 카카오톡 라이프봇</h2>
             <p>이제 늘 쓰는 카카오톡으로 할 일, 일정, 아이디어, 필요한 자료까지 바로 기록해보세요.<br>
                 카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.</p>
             <p>카카오톡 라이프봇을 연결하고, 생각나는 순간마다 더 쉽고 편하게 활용해보세요.</p>
-            <a class="kakao-connect-button" href="https://app.notionable.net/workspace/connect">
+            <a class="kakao-connect-button" href="https://notionable.net/app?menu=connect">
                 <img src="/assets/images/kakaotalk-logo.svg" alt="" aria-hidden="true">
                 카카오톡 라이프봇 연결하기 <span>→</span>
             </a>
@@ -97,7 +96,7 @@
             <h2>🛡️ 라이프업 케어</h2>
             <p>라이프업을 사용하시면서 궁금한 점이 있거나 도움이 필요하신가요?</p>
             <p>사용 문의, 오류 신고, 업데이트 소식 확인부터 라이프업 활용 상담까지<br><strong>라이프업 케어</strong>에서 편하게 확인하고 요청하실 수 있습니다.</p>
-            <a class="secondary-btn large" href="https://app.notionable.net/workspace/care" target="_blank" rel="noopener">라이프업 케어로 이동하기 <span>→</span></a>
+            <a class="secondary-btn large" href="https://notionable.net/app?menu=care" target="_blank" rel="noopener">라이프업 케어로 이동하기 <span>→</span></a>
         </section>
         <section class="lifeup-class-section">
             <h2>🎓 라이프업 클래스</h2>

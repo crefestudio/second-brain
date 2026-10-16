@@ -8,6 +8,10 @@ test('one account has separate product workspaces and repeat claims reuse them',
     const purchase = { purchaser: { email }, memberType: 'standard', purchaserIds: ['p1'] };
     const lifeup = await bindWorkspacePurchase(h.db, 'owner', email, 'lifeUp', purchase);
     const scrapbook = await bindWorkspacePurchase(h.db, 'owner', email, 'lifeUpScrapbook', purchase);
+    const planner = await bindWorkspacePurchase(h.db, 'owner', email, 'lifeupPlanner', purchase);
+    assert.equal(h.data.get('users/' + planner).templateId, 'lifeupPlanner');
+    assert.equal(await bindWorkspacePurchase(h.db, 'owner', email, 'lifeupPlanner', purchase), planner);
+    assert.equal(new Set([lifeup, scrapbook, planner]).size, 3);
     assert.notEqual(lifeup, scrapbook);
     assert.equal(h.data.get('users/' + scrapbook).templateId, 'lifeUpScrapbook');
     assert.equal(h.data.get('users/' + lifeup).templateId, 'lifeUp');

@@ -465,7 +465,7 @@ export class UserService {
         main verify
     */
 
-    async sendVerificationEmail(email: string, templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp'): Promise<boolean> {
+    async sendVerificationEmail(email: string, templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' = 'lifeUp'): Promise<boolean> {
         if (!email) return false;
         this.verificationEmailError = '';
 

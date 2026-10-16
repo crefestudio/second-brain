@@ -11,12 +11,12 @@ async function request({ authorized = true, owner = 'account', verified = true, 
     const linked = { verified, purchaser: { email: 'buyer@example.com' } };
     const workspaceRef = { get: async () => ({ data: () => ({ firebaseUid: owner }) }),
         collection: () => ({ doc: templateId => ({ get: async () => ({ data: () => templateId === 'lifeUp' ? linked : undefined }) }) }) };
-    const context = { exports: {}, onRequest: x => x, withCors: x => x,
+    const context = { ...require('../lib/template-catalog'), exports: {}, onRequest: x => x, withCors: x => x,
         admin: { auth: () => ({ verifyIdToken: async () => { if (!authorized) throw Error(); return { uid: 'account', email: authEmail, email_verified: emailVerified }; } }) },
         db: { collection: name => ({ doc: () => name === 'appAccounts'
             ? { get: async () => ({ data: () => ({ userId: active }) }) } : workspaceRef,
             where: (_field, _op, uid) => ({ get: async () => ({ docs: owner === uid ? [{ id: 'workspace', ref: workspaceRef, data: () => ({ firebaseUid: owner, templateId: 'lifeUp' }) }] : [] }) }) }) },
-        findPurchaserRecords: async (templateId, email) => { lookupEmail = email; return templateId === 'lifeUp' ? rows : [{ id: 'scrapbook', data: { email, date: 3 } }]; },
+        findPurchaserRecords: async (templateId, email) => { lookupEmail = email; return templateId === 'lifeupPlanner' ? [] : templateId === 'lifeUp' ? rows : [{ id: 'scrapbook', data: { email, date: 3 } }]; },
         selectBestPurchaserForTemplate: (_template, records) => records.length ? { ...records.at(-1), memberType: 'premium' } : null,
         workspaceTemplate: data => data.templateId,
         purchaserTimestamp: data => data.date, lifeupMemberType: () => 'standard', isLifeupUpgrade: () => false,

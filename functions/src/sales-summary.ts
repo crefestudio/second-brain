@@ -1,3 +1,4 @@
+import { TEMPLATE_PRODUCTS, isTemplateId } from './template-catalog';
 export function storeVisitDayWindows(now = Date.now()): Array<{ start: number; end: number }> {
     const day = 86400000, offset = 9 * 3600000;
     const today = Math.floor((now + offset) / day) * day - offset;
@@ -17,12 +18,18 @@ export function summarizeProductSales(purchases: Array<Record<string, unknown>>,
         const option = String(purchase.purchaseOption || '').replace(/\s+/g, '');
         const comparableOption = option.replace(/[-_·]/g, '');
         const isImwebLifeup = purchase.source === 'imweb' && purchase.templateId === 'lifeUp';
-        if (!isImwebLifeup && !option.includes('라이프업')) continue;
+        if (!isTemplateId(purchase.templateId) && !isImwebLifeup && !option.includes('라이프업')) continue;
         // The three Imweb LifeUp listings intentionally share the canonical
         // SKU (`lifeup`).  A product title may be absent when Imweb returns a
         // selected option, so both the short option labels and full names are
         // accepted for sales reporting.
-        const product = comparableOption.includes('보상타임세일') ? 'lifeup-reward-sale'
+        const lifeupListing: Record<string, string> = { '1': 'lifeup-imweb', '9': 'lifeup-reward', '10': 'lifeup-reward-sale', '12': 'lifeup-reward-pack', '11': 'lifeup-reward-pack-sale' };
+        const product = purchase.templateId === 'lifeupPlanner' || purchase.templateId === 'lifeUpScrapbook'
+            ? TEMPLATE_PRODUCTS[purchase.templateId].slug
+            : purchase.source === 'imweb' && lifeupListing[String(purchase.productNo)] ? lifeupListing[String(purchase.productNo)]
+            : comparableOption.includes('묶음') && comparableOption.includes('타임세일') ? 'lifeup-reward-pack-sale'
+            : comparableOption.includes('묶음') ? 'lifeup-reward-pack'
+            : comparableOption.includes('보상타임세일') ? 'lifeup-reward-sale'
             : comparableOption.includes('보상') ? 'lifeup-reward'
                 : purchase.source === 'imweb' ? 'lifeup-imweb' : 'lifeup';
         const current = result[product] || { count: 0, revenue: 0 };

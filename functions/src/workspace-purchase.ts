@@ -1,9 +1,10 @@
+import { TemplateId, templateIdOrLegacy } from './template-catalog';
 import type * as admin from 'firebase-admin';
 import { nanoid } from 'nanoid';
 
-export type WorkspaceTemplate = 'lifeUp' | 'lifeUpScrapbook';
+export type WorkspaceTemplate = TemplateId;
 export const workspaceTemplate = (data: { templateId?: string }): WorkspaceTemplate =>
-    data.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
+    templateIdOrLegacy(data.templateId);
 
 export class WorkspaceConflict extends Error {}
 

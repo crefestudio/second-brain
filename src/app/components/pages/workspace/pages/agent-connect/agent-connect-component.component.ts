@@ -6,7 +6,9 @@ import { Component, HostListener, inject, OnInit } from '@angular/core';
 import { UserService } from '../../../../../services/user.service';
 import { ToastService } from '../../../../../services/toast.service';
 import { AuthService } from '../../../../../services/auth.service';
+import { SocialAuthService } from '../../../../../services/social-auth.service';
 import { LifebotGuideModalComponent } from '../../../../common/lifebot-guide-modal/lifebot-guide-modal.component';
+import { TemplateId, TEMPLATE_IDS, TEMPLATE_PRODUCTS, templateDownloadPath } from '../../../../../config/template-catalog';
 
 
 /*
@@ -104,12 +106,49 @@ export class AgentConnectComponentComponent implements OnInit {
     warnMessage = '';
 
     isShowCannotFindPurcherInfo = false;
+    isTemplatePickerOpen = false;
+    readonly templateOptions = TEMPLATE_IDS.map(templateId => ({
+        id: templateId,
+        name: TEMPLATE_PRODUCTS[templateId].nameKoFull
+    }));
+
+    /**
+     * A connected workspace can start the purchase/authentication flow for its
+     * template again from the public download route. Keep this derived from the
+     * active workspace so routes continue to use each product's URL slug.
+     */
+    get newTemplateDownloadPath(): string {
+        return templateDownloadPath(this.authService.templateId);
+    }
+
+    get currentTemplateName(): string {
+        return TEMPLATE_PRODUCTS[this.authService.templateId].nameKoFull;
+    }
+
+    isCurrentTemplate(templateId: TemplateId): boolean {
+        return this.authService.templateId === templateId;
+    }
+
+    isTemplateConnected(templateId: TemplateId): boolean {
+        return this.isCurrentTemplate(templateId) || this.socialAuth.workspaces()
+            .some(workspace => workspace.templateId === templateId);
+    }
+
+    connectNewTemplate(templateId: TemplateId): void {
+        if (!this.isTemplateConnected(templateId)) {
+            window.location.assign(templateDownloadPath(templateId));
+        }
+    }
 
     // 템플릿 연결
     // private config = inject<AppConfig>(APP_CONFIG);
     // public isNotionIntegrated: boolean = false;
 
-    constructor(private userService: UserService, private authService: AuthService) {
+    constructor(
+        private userService: UserService,
+        private authService: AuthService,
+        private socialAuth: SocialAuthService
+    ) {
 
     }
 

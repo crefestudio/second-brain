@@ -1,3 +1,4 @@
+import { TEMPLATE_PRODUCTS } from '../../../../../config/template-catalog';
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -173,10 +174,13 @@ export class SalesAdminComponent implements OnInit {
 
 
     readonly products: Product[] = [
-        { name: '라이프업 (아임웹)', price: 79000, storePath: 'lifeup', trackingKey: 'lifeup-imweb' },
-        { name: '라이프업 보상 (아임웹)', price: 69000, storePath: 'lifeup-reward' },
-        { name: '라이프업 보상 타임세일 (아임웹)', price: 64000, storePath: 'lifeup-reward-sale' },
-        { name: '라이프업 스크랩북 (아임웹)', price: 0, storePath: 'lifeup-scrapbook' },
+        { name: '라이프업', price: 79000, storePath: 'lifeup', trackingKey: 'lifeup-imweb' },
+        { name: TEMPLATE_PRODUCTS.lifeupPlanner.nameKoShort, price: TEMPLATE_PRODUCTS.lifeupPlanner.displayPrice, storePath: 'lifeup-planner' },
+        { name: '라이프업 스크랩북', price: 0, storePath: 'lifeup-scrapbook' },
+        { name: '라이프업 보상', price: 69000, storePath: 'lifeup-reward' },
+        { name: '라이프업 보상 타임세일', price: 64000, storePath: 'lifeup-reward-sale' },
+        { name: '라이프업 묶음 보상', price: 49000, storePath: 'lifeup-reward-pack' },
+        { name: '라이프업 묶음 보상 타임세일', price: 42000, storePath: 'lifeup-reward-pack-sale' },
         { name: '비즈업 맞춤제작', price: 0, storePath: 'bizup-custom' }
     ];
     constructor(private readonly care: CareRequestService, private readonly sales: SalesAdminService) {}

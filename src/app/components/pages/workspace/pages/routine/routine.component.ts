@@ -1,3 +1,4 @@
+import { canUseAgent } from '../../../../../config/template-catalog';
 import { Component } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../../../../services/auth.service';
@@ -40,7 +41,7 @@ export class RoutineComponent {
     try {
       await this.authService.updateSession();
       this.hasWorkspace = !!this.authService.getUserId();
-      this.canUseRoutine = !this.authService.getUserId() || this.authService.templateId === 'lifeUp';
+      this.canUseRoutine = !this.authService.getUserId() || canUseAgent(this.authService.templateId, 'routine');
       await this.updatePopupForRoute(this.router.url);
       this.navigation = this.router.events.subscribe(event => {
         if (event instanceof NavigationEnd) this.updatePopupForRoute(event.urlAfterRedirects);

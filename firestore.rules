@@ -10,6 +10,14 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(userId)).data.firebaseUid == request.auth.uid;
     }
 
+    // Mirrors template-catalog.ts. Legacy workspaces without an ID are LifeUp.
+    function canUseAgent(userId, agentId) {
+      let templateId = get(/databases/$(database)/documents/users/$(userId)).data.get('templateId', 'lifeUp');
+      return (templateId == 'lifeUp' && agentId in ['kakao-capture', 'routine', 'secondbrain'])
+        || (templateId == 'lifeUpScrapbook' && agentId == 'kakao-capture')
+        || (templateId == 'lifeupPlanner' && agentId in ['kakao-capture', 'routine']);
+    }
+
     match /appAccounts/{uid} {
       allow get: if request.auth != null && request.auth.uid == uid;
       allow list, write: if false;
@@ -31,8 +39,13 @@ service cloud.firestore {
       }
 
       match /integrations/{integrationId} {
+        allow create: if ownsWorkspace(userId)
+          && canUseAgent(userId, integrationId)
+          && request.resource.data.keys().hasOnly(['enabled', 'updatedAt'])
+          && request.resource.data.enabled is bool;
         allow update: if ownsWorkspace(userId)
-          && integrationId in ['secondbrain', 'kakao-capture']
+          && integrationId in ['secondbrain', 'kakao-capture', 'routine']
+          && (request.resource.data.enabled == false || canUseAgent(userId, integrationId))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enabled', 'updatedAt'])
           && request.resource.data.enabled is bool;
         allow delete: if ownsWorkspace(userId) && integrationId == 'secondbrain';
@@ -56,8 +69,8 @@ service cloud.firestore {
           && request.resource.data.goalId is string
           && request.resource.data.status in ['시작 전', '진행 중', '완료', '일시 정지'];
         }
-        allow create: if ownsWorkspace(userId) && validHabit();
-        allow update: if ownsWorkspace(userId) && validHabit()
+        allow create: if ownsWorkspace(userId) && canUseAgent(userId, 'routine') && validHabit();
+        allow update: if ownsWorkspace(userId) && canUseAgent(userId, 'routine') && validHabit()
           && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if ownsWorkspace(userId);
       }

@@ -9,7 +9,7 @@ export class AuthService {
 
     userId = '';            // 워크스페이스 id : user - template - notion - kakao
     memberUid = '';         // Firebase Authentication UID
-    templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp';
+    templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' = 'lifeUp';
     kakaoUserId = '';       // 카카오톡 연결 여부
     notionAccessToken = ''; // 노션 연결 여부
 

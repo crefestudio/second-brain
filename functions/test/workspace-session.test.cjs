@@ -14,7 +14,7 @@ async function request(body = {}, options = {}) {
     const docs = [{ id: 'lifeup', data: () => ({ firebaseUid: 'owner' }) },
         { id: 'scrapbook', data: () => ({ firebaseUid: 'owner', templateId: 'lifeUpScrapbook', kakaoUserId: 'kakao2', notionAccessToken: 'secret' }) }];
     let writes = 0;
-    const context = { exports: {}, onRequest: fn => fn, withCors: fn => fn, workspaceTemplate,
+    const context = { ...require('../lib/template-catalog'), exports: {}, onRequest: fn => fn, withCors: fn => fn, workspaceTemplate, isUsableNotionConnection: user => Boolean(user?.notionAccessToken),
         purchaseEmailError: require('../lib/purchase-email-policy').purchaseEmailError,
         admin: { auth: () => ({ verifyIdToken: async () => { if (options.unauthorized) throw Error(); return { uid: 'owner', email: 'buyer@example.com', email_verified: true }; } }),
             firestore: { FieldValue: { delete: () => null, serverTimestamp: () => 1 } } },

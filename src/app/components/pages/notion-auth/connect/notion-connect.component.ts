@@ -1,3 +1,4 @@
+import { templateIdOrLegacy } from '../../../../config/template-catalog';
 import { _log } from '../../../../lib/cf-common/cf-common';
 import { NACommonService } from '../../../../services/common.service';
 import { FormsModule } from '@angular/forms';
@@ -21,7 +22,7 @@ export class NotionConnectComponent implements OnInit {
     activeTab: 'installed' | 'not-installed' = 'installed';
 
     userId: string = '';
-    templateId: 'lifeUp' | 'lifeUpScrapbook' = 'lifeUp';
+    templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' = 'lifeUp';
 
     selectTab(tab: 'installed' | 'not-installed') {
         this.activeTab = tab;
@@ -55,7 +56,7 @@ export class NotionConnectComponent implements OnInit {
             return;
         }
 
-        this.templateId = user.templateId === 'lifeUpScrapbook' ? 'lifeUpScrapbook' : 'lifeUp';
+        this.templateId = templateIdOrLegacy(user.templateId);
 
         if (user.notionAccessToken && !['pending', 'failed', 'disconnected'].includes(user.notionConnection?.status)) {
             this.state = 'connected';
