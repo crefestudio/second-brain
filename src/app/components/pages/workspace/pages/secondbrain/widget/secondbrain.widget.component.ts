@@ -1277,7 +1277,9 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
             void this.refreshGraph();
         } catch (error) {
             const message = error instanceof Error ? error.message : '알 수 없는 오류';
-            this.showToast(`AI 노트 데이터 전환에 실패했습니다. ${message}`, 5000);
+            this.showToast((error as any)?.error?.error === 'SECOND_BRAIN_AUTOMATION_DISABLED'
+                ? '키워드 추출이 OFF 상태입니다. 자동화 설정에서 ON으로 변경한 후 실행해 주세요.'
+                : `AI 노트 데이터 전환에 실패했습니다. ${message}`, 5000);
         } finally {
             this.isConvertingNotes = false;
         }

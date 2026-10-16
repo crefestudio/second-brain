@@ -8,8 +8,8 @@ export class StoreRedirectComponent implements OnInit {
     private readonly destinations: Record<string, string> = {
         'store/lifeup': 'https://notionable.net/shop_view?idx=1',
         'store/lifeup-r': 'https://www.latpeed.com/products/HEPXz',
-        'store/lifeup-reward': 'https://www.latpeed.com/products/ozVuQ',
-        'store/lifeup-reward-sale': 'https://www.latpeed.com/products/Waljo',
+        'store/lifeup-reward': 'https://notionable.net/shop_view?idx=9',
+        'store/lifeup-reward-sale': 'https://notionable.net/shop_view?idx=10',
         'store/lifeup-imweb': 'https://notionable.net/shop_view?idx=1',
         'store/lifeup-scrapbook': 'https://notionable.net/shop_view?idx=6',
         'store/bizup-custom': 'https://notionable.net/store/?idx=7'

@@ -1145,18 +1145,20 @@ export class UserService {
         };
     }
 
-    static async getTodayEventCount(userId: string, agentId?: string): Promise<number> {
+    static async getTodayEventCount(userId: string, agentId?: string, period: 'today' | 'month' = 'today'): Promise<number> {
         if (!userId) {
             return 0;
         }
 
         const start = new Date();
         start.setHours(0, 0, 0, 0);
+        if (period === 'month') start.setDate(1);
 
         const end = new Date();
         end.setHours(23, 59, 59, 999);
 
         const constraints: any[] = [
+            where('status', '==', 'completed'),
             where('updatedAt', '>=', start),
             where('updatedAt', '<=', end)
         ];

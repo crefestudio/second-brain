@@ -173,8 +173,9 @@ export class SalesAdminComponent implements OnInit {
 
 
     readonly products: Product[] = [
-        { name: '라이프업 (래피드)', price: 79000, storePath: 'lifeup-r', trackingKey: 'lifeup' }, { name: '라이프업 보상 (래피드)', price: 69000, storePath: 'lifeup-reward' },
-        { name: '라이프업 보상 타임세일 (래피드)', price: 64000, storePath: 'lifeup-reward-sale' }, { name: '라이프업 (아임웹)', price: 79000, storePath: 'lifeup', trackingKey: 'lifeup-imweb' },
+        { name: '라이프업 (아임웹)', price: 79000, storePath: 'lifeup', trackingKey: 'lifeup-imweb' },
+        { name: '라이프업 보상 (아임웹)', price: 69000, storePath: 'lifeup-reward' },
+        { name: '라이프업 보상 타임세일 (아임웹)', price: 64000, storePath: 'lifeup-reward-sale' },
         { name: '라이프업 스크랩북 (아임웹)', price: 0, storePath: 'lifeup-scrapbook' },
         { name: '비즈업 맞춤제작', price: 0, storePath: 'bizup-custom' }
     ];

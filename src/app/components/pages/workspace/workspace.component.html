@@ -148,10 +148,10 @@
 
             <div class="dashboard-content">
                 <div class="dashboard-item">
-                    <span>TOTAL</span>
+                    <strong>TOTAL</strong>
 
                     <button class="count-btn" routerLink="/workspace/auto/log">
-                        {{totalCount}}
+                        <strong>오늘 {{totalCount}} / 이달 {{monthTotalCount}}</strong>
                     </button>
                 </div>
 
@@ -163,6 +163,10 @@
                     </button>
                 </div>
 
+                <div class="dashboard-item">
+                    <span>루틴 AI</span>
+                    <button class="count-btn" routerLink="/workspace/auto/log/routine">{{routineCount}}</button>
+                </div>
                 <div class="dashboard-item">
                     <span>세컨드브레인 키워드 추출</span>
 

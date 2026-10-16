@@ -27,6 +27,8 @@ export class WorkspaceComponent implements OnInit {
 
     // event count
     totalCount: number = 0;
+    monthTotalCount = 0;
+    routineCount = 0;
     kakaoCount: number = 0;
     secondbrainCount: number = 0;
 
@@ -61,7 +63,7 @@ export class WorkspaceComponent implements OnInit {
         await this.updateSession();
         await this.updatePurchaseInfo();
         await this.loadLifeupTemplateInfo();
-        this.updateEventCount();
+        await this.updateEventCount();
 
         // 자동화 정보
         const automations = await UserService.getUserIntegrations(this.userId);
@@ -109,11 +111,15 @@ export class WorkspaceComponent implements OnInit {
         [
             this.totalCount,
             this.kakaoCount,
-            this.secondbrainCount
+            this.secondbrainCount,
+            this.routineCount,
+            this.monthTotalCount
         ] = await Promise.all([
             UserService.getTodayEventCount(this.userId),
             UserService.getTodayEventCount(this.userId, 'kakao-capture'),
-            UserService.getTodayEventCount(this.userId, 'secondbrain')
+            UserService.getTodayEventCount(this.userId, 'secondbrain'),
+            UserService.getTodayEventCount(this.userId, 'routine'),
+            UserService.getTodayEventCount(this.userId, undefined, 'month')
         ]);
     }
     async updateSession() {
