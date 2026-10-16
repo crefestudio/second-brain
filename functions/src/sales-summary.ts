@@ -15,9 +15,15 @@ export function summarizeProductSales(purchases: Array<Record<string, unknown>>,
         const amount = typeof rawAmount === 'number' ? rawAmount : Number(String(rawAmount ?? '').replace(/[,\s원₩]/g, ''));
         if (!Number.isFinite(amount) || amount < 1000) continue;
         const option = String(purchase.purchaseOption || '').replace(/\s+/g, '');
-        if (!option.includes('라이프업')) continue;
-        const product = option.includes('라이프업보상타임세일') ? 'lifeup-reward-sale'
-            : option.includes('라이프업보상') ? 'lifeup-reward'
+        const comparableOption = option.replace(/[-_·]/g, '');
+        const isImwebLifeup = purchase.source === 'imweb' && purchase.templateId === 'lifeUp';
+        if (!isImwebLifeup && !option.includes('라이프업')) continue;
+        // The three Imweb LifeUp listings intentionally share the canonical
+        // SKU (`lifeup`).  A product title may be absent when Imweb returns a
+        // selected option, so both the short option labels and full names are
+        // accepted for sales reporting.
+        const product = comparableOption.includes('보상타임세일') ? 'lifeup-reward-sale'
+            : comparableOption.includes('보상') ? 'lifeup-reward'
                 : purchase.source === 'imweb' ? 'lifeup-imweb' : 'lifeup';
         const current = result[product] || { count: 0, revenue: 0 };
         current.count++;

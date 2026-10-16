@@ -1,6 +1,7 @@
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { imwebPurchaseOption } from './imweb-options';
 import { purchaseEmailError } from './purchase-email-policy';
 import { summarizeProductSales, storeVisitDayWindows } from './sales-summary';
 import { marketingReport } from './marketing-report';
@@ -3129,18 +3130,6 @@ function imwebSkus(value: unknown): string[] {
         .filter((sku): sku is string => typeof sku === 'string' && sku.trim().length > 0).map(sku => sku.trim()))];
 }
 
-// SKU identifies a purchasable Imweb item; it is not the customer-facing
-// option name. Products without options must therefore leave purchaseOption blank.
-function imwebPurchaseOption(value: unknown, matchedSku: string): string {
-    const item = imwebItems(value).find(candidate => imwebSkus(candidate).includes(matchedSku));
-    if (!item) return '';
-    const option = item.option_name ?? item.optionName ?? item.option_title ?? item.optionTitle ?? item.option_value ?? item.optionValue;
-    if (typeof option === 'string' || typeof option === 'number') return String(option).trim();
-    if (Array.isArray(option)) return option.map(value => typeof value === 'string' ? value : value?.name || value?.label || value?.value || '')
-        .filter(Boolean).join(' ').trim();
-    return String(option?.name || option?.label || option?.value || '').trim();
-}
-
 function formatImwebDate(value: unknown): string {
     const seconds = typeof value === 'number' ? value : Number(value);
     const date = Number.isFinite(seconds) ? new Date(seconds * 1000) : new Date();
@@ -3205,14 +3194,20 @@ async function syncImwebPurchasers(sinceMs: number, untilMs = Date.now()): Promi
             const purchaserRef = db.collection('purchasers').doc(`imweb_${crypto.createHash('sha256').update(orderId).digest('hex')}`);
             const existing = await purchaserRef.get();
             const statusLabel = status === 'PURCHASE_CONFIRMATION' ? '구매 확정' : '결제 완료';
-            // The order ID is immutable. Once it has been imported, a repeat
-            // overlap scan only needs to reflect a possible payment-status
-            // change; it does not need another product-detail API request.
+            // Refresh legacy metadata without recreating a purchaser or welcome mail.
             if (existing.exists) {
-                const templateId = String(existing.data()?.templateId || '');
+                const old = existing.data()!;
+                const templateId = String(old.templateId || '');
                 if (templateId) productCounts[templateId] = (productCounts[templateId] || 0) + 1;
-                if (existing.data()?.status !== statusLabel) {
-                    await purchaserRef.update({ status: statusLabel, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                const patch: Record<string, unknown> = {};
+                if (old.status !== statusLabel) patch.status = statusLabel;
+                if (old.imwebOptionVersion !== 1) {
+                    const details = await imwebGet('orders/' + encodeURIComponent(orderId) + '/prod-orders', token, { order_version: 'v2' });
+                    const option = imwebPurchaseOption(details, String(old.productSku || ''));
+                    if (option) Object.assign(patch, { purchaseOption: option, imwebOptionVersion: 1 });
+                }
+                if (Object.keys(patch).length) {
+                    await purchaserRef.update({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
                     updated++;
                 }
                 continue;
@@ -3231,7 +3226,7 @@ async function syncImwebPurchasers(sinceMs: number, untilMs = Date.now()): Promi
                 amount: `${Number.isFinite(paymentAmount) ? paymentAmount.toLocaleString('ko-KR') : '0'}원`, paymentAmount: Number.isFinite(paymentAmount) ? paymentAmount : 0,
                 purchaseKind: paymentAmount > 0 ? 'paid' : 'free', email, name: String(orderer?.name || '').trim(),
                 phone: String(orderer?.call || '').trim(), notify: '미수집', paymentMethod: String(payment?.pay_type || payment?.payType || ''),
-                purchaseOption: imwebPurchaseOption(itemData, matchedSku), productSku: matchedSku, purchasedAt: formatImwebDate(order?.order_time ?? order?.orderTime),
+                purchaseOption: imwebPurchaseOption(itemData, matchedSku), imwebOptionVersion: 1, productSku: matchedSku, purchasedAt: formatImwebDate(order?.order_time ?? order?.orderTime),
                 status: statusLabel, templateId: product.templateId, orderId, source: 'imweb',
                 memberType: product.templateId === 'lifeUp' ? (product.memberType || 'standard') : null,
                 purchaseEligible: product.templateId === 'lifeUp', upgradeOnly: false,
@@ -8570,6 +8565,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                 return res.status(404).send("secondbrain 문서를 찾을 수 없습니다.");
             }
             const data = sbDoc.data();
+            await assertSecondBrainEnabled(userId);
             if (data?.cacheResetInProgress) return res.status(409).json({ error: 'CACHE_RESET_IN_PROGRESS' });
             const cacheGeneration = data?.cacheGeneration || 0;
             const accessToken = data?.accessToken;
@@ -8593,6 +8589,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
             // page.content가져오느라 시간이 많이 걸리는 부분
             for (const page of response.results) {
                 try {
+                    await assertSecondBrainEnabled(userId);
                     if (!await reconcileSecondBrainPage(userId, accessToken, page)) continue;
                     // keyword가 db에 없으면 노션에서 가져옴
                     const pageData: { pageId: string; title: string; content: string; } | null
@@ -8610,7 +8607,8 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                     if (!pageData) { continue; }
                     batchPages.push(pageData);
                     successCount++;
-                } catch (err) {
+                } catch (err: any) {
+                    if (err?.message === 'SECOND_BRAIN_AUTOMATION_DISABLED') throw err;
                     console.error("노트 속성 저장 실패:", err);
                     failCount++;
                 }
@@ -8641,6 +8639,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                     let existingKeywords: string[] = await loadKeywordsFromPages(userId);
 
                     // ai 키워드 추출
+                    await assertSecondBrainEnabled(userId);
                     let aiResultKeywords = await requestPageKeywordsFromAI(pageData, existingKeywords);
                     aiResultKeywords = filterUndefinedId(pageData, aiResultKeywords);
 
@@ -8661,6 +8660,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                         if (!await reconcileSecondBrainPage(userId, accessToken, { id: pageId })) delete aiResultKeywords[pageId];
                     }
                     await NotionService.applyKeywordsToNotionPages(accessToken, aiResultKeywords, async () => {
+                        await assertSecondBrainEnabled(userId);
                         await assertNotionConnection(userId, accessToken, data?.connectionId);
                     });
 
@@ -8690,7 +8690,8 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                     //     status: "running",
                     //     eventTitle: `10개이내 노트의 키워드 생성을 완료했습니다.`
                     // });                
-                } catch (err) {
+                } catch (err: any) {
+                    if (err?.message === 'SECOND_BRAIN_AUTOMATION_DISABLED') throw err;
                     console.error("AI 처리 실패:", err);
                     failCount += batch.length;
                 }
@@ -8710,6 +8711,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
             });
 
         } catch (error: any) {
+            if (error?.message === 'SECOND_BRAIN_AUTOMATION_DISABLED') return res.status(409).json({ error: error.message });
             console.error(error);
             res.status(error?.statusCode || 500).json({ error: error?.message || 'AI 노트 데이터 전환에 실패했습니다.' });
 
@@ -8722,6 +8724,14 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
         }
     }
     ));
+
+async function assertSecondBrainEnabled(userId: string): Promise<void> {
+    const config = (await db.collection('users').doc(userId)
+        .collection('integrations').doc('secondbrain').get()).data();
+    if (config?.enabled !== true) {
+        throw Object.assign(new Error('SECOND_BRAIN_AUTOMATION_DISABLED'), { statusCode: 409 });
+    }
+}
 
 function sameNotionId(left: unknown, right: unknown): boolean {
     return typeof left === 'string' && typeof right === 'string' && !!left &&
@@ -8967,7 +8977,11 @@ async function processNotionWebhookDelivery(event: any) {
                 }
 
                 console.log(`[${pageId}] 최신 이벤트 처리 시작`);
-                await processWebhookEvent(userId!, accessToken!, pageId);
+                try {
+                    await processWebhookEvent(userId!, accessToken!, pageId);
+                } catch (error: any) {
+                    if (error?.message !== 'SECOND_BRAIN_AUTOMATION_DISABLED') throw error;
+                }
 
                 // 큐 정리
                 await db.runTransaction(async tx => {
@@ -8994,6 +9008,7 @@ async function processNotionWebhookDelivery(event: any) {
 // #page
 
 async function processWebhookEvent(userId: string, accessToken: string, pageId: string) {
+    await assertSecondBrainEnabled(userId);
     const integration = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
     const config = (await integration.get()).data();
     if (config?.cacheResetInProgress) throw new Error('CACHE_RESET_IN_PROGRESS');
@@ -9019,6 +9034,7 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
     // ----------------------------
     // AI 키워드 추출
     const existingKeywords = await loadKeywordsFromPages(userId);
+    await assertSecondBrainEnabled(userId);
     const aiResultRaw = await requestPageKeywordsFromAI({ [pageId]: pageData }, existingKeywords);
     const aiResult = filterUndefinedId({ [pageId]: pageData }, aiResultRaw);
 
@@ -9032,6 +9048,7 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
     // Notion 반영
     if (!await reconcileSecondBrainPage(userId, accessToken, { id: pageId })) return;
     await NotionService.applyKeywordsToNotionPages(accessToken, normalized, async () => {
+        await assertSecondBrainEnabled(userId);
         await assertNotionConnection(userId, accessToken, config?.connectionId);
     });
 
