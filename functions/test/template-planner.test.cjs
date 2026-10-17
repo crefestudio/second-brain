@@ -127,6 +127,13 @@ test('planner purchase reception queues product-specific links with stable keys 
     const scrapbookFn = mailAst.statements.find(node => ts.isFunctionDeclaration(node) && node.name.text === 'lifeupScrapbookWelcomeMail');
     vm.runInNewContext(ts.transpile(scrapbookFn.getText(mailAst)), context);
     const scrapbook = context.lifeupScrapbookWelcomeMail('');
+    for (const [mail, id] of [[preview, 'lifeupPlanner'], [scrapbook, 'lifeUpScrapbook']]) {
+        for (const output of [mail.html, mail.text]) {
+            assert.ok(output.includes('https://notionable.net/app?templateId=' + id));
+            assert.ok(output.includes('https://notionable.net/app?menu=connect&templateId=' + id));
+            assert.ok(!output.includes('from=lifebot-email'));
+        }
+    }
     assert.ok(scrapbook.html.includes('https://www.youtube.com/shorts/QnR_gnGWOQE'));
     assert.ok(scrapbook.html.includes('LifeUp1.5-Scrapbook.pdf'));
     assert.ok(preview.html.includes('&lt;buyer>'));

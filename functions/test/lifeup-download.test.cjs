@@ -4,8 +4,12 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync('src/app/components/pages/myPage/pages/lifeup-download/lifeup-download.component.ts', 'utf8');
+const entryContext = { exports: {}, require: () => ({}) };
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/app/config/app-entry.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS }
+}).outputText, entryContext);
 
-function setup(signedIn = false, product = 'lifeUp') {
+function setup(signedIn = false, product = 'lifeUp', query = {}, verificationOnly = false) {
     let account = signedIn ? { uid: 'existing', email: 'buyer@example.com', emailVerified: true } : null;
     let verified = false;
     let failure = false;
@@ -18,6 +22,7 @@ function setup(signedIn = false, product = 'lifeUp') {
             lifeUpScrapbookReleaseUrls: { '1.5': 'https://example.test/lifeup-scrapbook-1.5' },
             lifeUpScrapbookPassportUrls: { '1.5': '/templateDownload/LifeUp1.5-Scrapbook.pdf' }
         }) }
+        : name.endsWith('/app-entry') ? entryContext.exports
         : name.endsWith('/template-catalog') ? require('../lib/template-catalog') : name.endsWith('/user.service') ? { UserService: {
             updatePurchaseInfo: async () => ({ isPurchaser: true, purchaseInfo: { verified } })
         } } : {} };
@@ -34,11 +39,32 @@ function setup(signedIn = false, product = 'lifeUp') {
     const user = { sendVerificationEmail: async (_email, templateId) => { productCalls.push(templateId); calls.push('request-link'); return true; },
         verifyCode: async (_email, _code, _uid, templateId) => { productCalls.push(templateId); calls.push('link'); verified = true; return { userId: 'workspace' }; } };
     const auth = { updateSession: async templateId => { productCalls.push(templateId); }, getUserId: () => account ? 'workspace' : '' };
-    const page = new context.exports.LifeupDownloadComponent(auth, user, {}, social, { initialize: async () => {} }, { snapshot: { data: { product } } });
+    const navigations = [];
+    const router = { parseUrl: path => ({ path, queryParams: {} }), navigateByUrl: async destination => navigations.push(destination) };
+    const page = new context.exports.LifeupDownloadComponent(auth, user, router, social, { initialize: async () => {} }, {
+        snapshot: { data: { product, verificationOnly }, queryParamMap: { get: key => query[key] ?? null } }
+    });
     page.verificationValue = 'buyer@example.com'; page.verificationCode = '123456';
-    return { page, calls, productCalls, fail: () => { failure = true; }, setVerified: value => { verified = value; },
+    return { page, calls, productCalls, navigations, fail: () => { failure = true; }, setVerified: value => { verified = value; },
         switchAccount: () => { account = { uid: 'other' }; } };
 }
+
+test('app verification returns to the requested screen with the verified template', async () => {
+    const h = setup(false, 'lifeUp', { templateId: 'lifeupPlanner', returnUrl: '/workspace/connect?from=email' }, true);
+    await h.page.ngOnInit();
+    await h.page.verifyPurchase(); h.page.verificationCode = '123456';
+    await h.page.confirmVerification();
+    assert.equal(h.navigations[0].path, '/workspace/connect?from=email');
+    assert.equal(h.navigations[0].queryParams.templateId, 'lifeupPlanner');
+});
+
+test('download stays on downloads even with the old lifebot-email source', async () => {
+    const h = setup(true, 'lifeupPlanner', { from: 'lifebot-email' });
+    h.setVerified(true);
+    await h.page.ngOnInit();
+    assert.equal(h.page.isPurchaser, true);
+    assert.equal(h.navigations.length, 0);
+});
 
 test('scrapbook page consistently uses its product for workspace selection and verification', async () => {
     const h = setup(true, 'lifeUpScrapbook');

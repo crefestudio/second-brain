@@ -31,9 +31,16 @@
     if (page && PATH_SEGMENT.test(page)) return '/' + [page, ...segments].join('/');
     return DEFAULT_PATH;
   }
+  function templateSearch(search) {
+    const templateId = new URLSearchParams(search).get('templateId');
+    return templateId ? '?templateId=' + encodeURIComponent(templateId) : '';
+  }
   function resolveSearch(path) {
     const cleanPath = typeof path === 'string' ? path.split(/[?#]/, 1)[0] : '';
-    if (cleanPath === '/workspace/home') return '';
+    // Keep the requested destination in the parent URL while purchase verification runs.
+    if (cleanPath === '/verify-purchase') return null;
+    const template = templateSearch(typeof path === 'string' ? (path.split('?')[1] || '').split('#')[0] : '');
+    if (cleanPath === '/workspace/home') return template;
     const parts = cleanPath.split('/').filter(Boolean);
     if (!parts.length || parts.length > 4 || !parts.every(part => PATH_SEGMENT.test(part))) return null;
     const [first, ...segments] = parts;
@@ -47,6 +54,7 @@
     }
     if (segments[0]) query.set('sub', segments[0]);
     if (segments[1]) query.set('sub2', segments[1]);
+    if (template) query.set('templateId', new URLSearchParams(template).get('templateId'));
     return '?' + query.toString();
   }
   const frame = document.getElementById('notionable-app');
@@ -89,7 +97,7 @@
     }
   });
   function navigate() {
-    const next = APP_ORIGIN + resolvePath(window.location.search);
+    const next = APP_ORIGIN + resolvePath(window.location.search) + templateSearch(window.location.search);
     if (frame.getAttribute('src') !== next) frame.setAttribute('src', next);
   }
   navigate();

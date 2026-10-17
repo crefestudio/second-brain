@@ -100,3 +100,16 @@ test('member hint is sent only to the configured app iframe and reflects logout'
     h.listeners.message(event);
     assert.equal(h.messages[1].data.memberUid, null);
 });
+
+test('template target survives entry, verification and the return to the requested menu', () => {
+    const h = mount('?menu=connect&templateId=lifeup');
+    assert.equal(h.src(), 'https://app.notionable.net/workspace/connect?templateId=lifeup');
+    const event = path => ({ origin: 'https://app.notionable.net', source: h.frame.contentWindow,
+        data: { type: 'APP_ROUTE_CHANGED', path } });
+    h.listeners.message(event('/verify-purchase?returnUrl=%2Fworkspace%2Fconnect&templateId=lifeUp'));
+    assert.equal(h.window.location.search, '?menu=connect&templateId=lifeup');
+    h.listeners.message(event('/workspace/connect?templateId=lifeUp'));
+    assert.equal(h.window.location.search, '?menu=connect&templateId=lifeUp');
+    h.listeners.message(event('/workspace/home?templateId=lifeupPlanner'));
+    assert.equal(h.window.location.search, '?templateId=lifeupPlanner');
+});

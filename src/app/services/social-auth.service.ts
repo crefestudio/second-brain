@@ -18,6 +18,7 @@ export class SocialAuthService {
         return this.workspaces().find(item => item.userId === this.activeWorkspaceId())?.name || '라이프업';
     }
     private ready?: Promise<void>;
+    private logoutDestination = '/login';
     init(): Promise<void> {
         return this.ready ??= new Promise(resolve => {
             auth.languageCode = 'ko';
@@ -29,7 +30,7 @@ export class SocialAuthService {
                     for (const key of ['member_uid', 'auth_token', 'userId', 'loginedUser', 'forceUserId', 'notionable_verified_purchases']) localStorage.removeItem(key);
                 } catch { /* Embedded browsers may block localStorage. Firebase manages its own persistence. */ }
                 resolve();
-                if (previous && previous.uid !== user?.uid) window.location.replace('/login');
+                if (previous && previous.uid !== user?.uid) window.location.replace(this.logoutDestination);
             }, () => { this.error.set('로그인 상태를 확인하지 못했습니다. 새로고침해주세요.'); resolve(); });
         });
     }
@@ -143,9 +144,10 @@ export class SocialAuthService {
             return false;
         } finally { this.busy.set(false); }
     }
-    async logout(): Promise<void> {
+    async logout(returnUrl = '/login'): Promise<void> {
+        this.logoutDestination = returnUrl.startsWith('/') && !returnUrl.startsWith('//') && !/[\\\r\n]/.test(returnUrl) ? returnUrl : '/login';
         this.busy.set(true);
-        try { await signOut(auth); window.location.replace('/login'); }
+        try { await signOut(auth); window.location.replace(this.logoutDestination); }
         catch { this.error.set('로그아웃하지 못했습니다. 다시 시도해주세요.'); }
         finally { this.busy.set(false); }
     }

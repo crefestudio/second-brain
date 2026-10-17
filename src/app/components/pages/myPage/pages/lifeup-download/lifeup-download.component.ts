@@ -1,8 +1,9 @@
 import { TemplateId, TEMPLATE_PRODUCTS, templateIdOrLegacy } from '../../../../../config/template-catalog';
+import { appEntryUrl, entryTemplate, safeAppReturn } from '../../../../../config/app-entry';
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
 import { SocialAuthService } from '../../../../../services/social-auth.service';
@@ -13,7 +14,7 @@ import { ScrapbookUpgradeEventService } from '../../../../../services/scrapbook-
     selector: 'app-lifeup-download',
     standalone: true,
     providers: [ScrapbookUpgradeEventService],
-    imports: [CommonModule, FormsModule, RouterLink],
+    imports: [CommonModule, FormsModule],
     templateUrl: './lifeup-download.component.html',
     styleUrls: ['./lifeup-download.component.scss']
 })
@@ -29,7 +30,21 @@ export class LifeupDownloadComponent implements OnInit {
     private verificationUid: string | null = null;
     private readonly functionsBaseUrl: string;
     private readonly giftAccess: string | null;
-    private readonly fromLifebotEmail: boolean;
+    readonly verificationOnly: boolean;
+    readonly chooseTemplate: boolean;
+    private readonly returnUrl: string;
+    readonly products = Object.entries(TEMPLATE_PRODUCTS).map(([id, product]) => ({ id, name: product.nameKoFull }));
+    get lifebotUrl(): string { return appEntryUrl(this.templateId); }
+    get connectUrl(): string { return appEntryUrl(this.templateId, 'connect'); }
+    get accountEmail(): string { return this.socialAuth.account()?.email || ''; }
+    async changeAccount(): Promise<void> {
+        await this.socialAuth.logout(this.router.url);
+    }
+    selectTemplate(id: string): void {
+        window.location.assign(this.router.createUrlTree(['/verify-purchase'], {
+            queryParams: { templateId: id, returnUrl: this.returnUrl }
+        }).toString());
+    }
     readonly templateId: TemplateId;
     readonly productName: string;
     readonly isScrapbook: boolean;
@@ -51,8 +66,11 @@ export class LifeupDownloadComponent implements OnInit {
         const config = inject(APP_CONFIG);
         this.functionsBaseUrl = config.functionsBaseUrl;
         this.giftAccess = route.snapshot.queryParamMap?.get('giftAccess') ?? null;
-        this.fromLifebotEmail = route.snapshot.queryParamMap?.get('from') === 'lifebot-email';
-        this.templateId = templateIdOrLegacy(route.snapshot.data['product']);
+        this.verificationOnly = route.snapshot.data['verificationOnly'] === true;
+        const target = entryTemplate(route.snapshot.queryParamMap?.get('templateId') ?? null);
+        this.chooseTemplate = this.verificationOnly && !target;
+        this.returnUrl = safeAppReturn(route.snapshot.queryParamMap?.get('returnUrl') ?? null);
+        this.templateId = this.verificationOnly ? target || 'lifeUp' : templateIdOrLegacy(route.snapshot.data['product']);
         const scrapbook = this.templateId === 'lifeUpScrapbook';
         this.isScrapbook = scrapbook;
         this.productName = TEMPLATE_PRODUCTS[this.templateId].nameKoFull;
@@ -63,15 +81,16 @@ export class LifeupDownloadComponent implements OnInit {
 
     async ngOnInit(): Promise<void> {
         try {
-            if (this.templateId === 'lifeUpScrapbook' && this.giftAccess) {
+            if (this.chooseTemplate) return;
+            if (!this.verificationOnly && this.templateId === 'lifeUpScrapbook' && this.giftAccess) {
                 const response = await fetch(`${this.functionsBaseUrl}/validateLifeupFreeScrapbookAccess`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pass: this.giftAccess })
                 });
                 if (response.ok) this.isPurchaser = true;
             }
             if (!this.isPurchaser) await this.loadPurchaseInfo();
-            if (this.fromLifebotEmail && this.isPurchaser) {
-                await this.router.navigateByUrl('/workspace/home');
+            if (this.verificationOnly && this.isPurchaser) {
+                await this.resumeApp();
                 return;
             }
             await this.initializeUpgradeEvent();
@@ -102,6 +121,12 @@ export class LifeupDownloadComponent implements OnInit {
         } catch {
             // When event status cannot be loaded, show the regular upgrade offer.
         }
+    }
+
+    private async resumeApp(): Promise<void> {
+        const destination = this.router.parseUrl(this.returnUrl);
+        destination.queryParams['templateId'] = this.templateId;
+        await this.router.navigateByUrl(destination, { replaceUrl: true });
     }
 
     goToPurchaseInfo(): void {
@@ -181,6 +206,10 @@ export class LifeupDownloadComponent implements OnInit {
             await this.loadPurchaseInfo();
             if (!this.isPurchaser) {
                 this.verificationError = '인증한 계정의 구매 정보를 확인할 수 없습니다. 새로고침 후 다시 확인해주세요.';
+                return;
+            }
+            if (this.verificationOnly) {
+                await this.resumeApp();
                 return;
             }
             await this.initializeUpgradeEvent();

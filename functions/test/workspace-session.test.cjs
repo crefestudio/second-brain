@@ -54,3 +54,11 @@ test('foreign selection, unauthenticated requests, and deletion-pending accounts
         assert.equal(result.writes, 0);
     }
 });
+
+test('missing target template never falls back to a different workspace or clears the selection', async () => {
+    const result = await request({ templateId: 'lifeupPlanner' });
+    assert.equal(result.res.body.userId, '');
+    assert.equal(result.res.body.templateId, '');
+    assert.equal(result.account.userId, 'lifeup');
+    assert.equal(result.writes, 0);
+});

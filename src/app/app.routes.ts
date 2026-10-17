@@ -56,6 +56,7 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'verify-purchase', component: LifeupDownloadComponent, data: { verificationOnly: true } },
   { path: 'store/lifeup', component: StoreRedirectComponent },
   { path: 'store/lifeup-r', component: StoreRedirectComponent },
   { path: 'store/lifeup-reward', component: StoreRedirectComponent },
@@ -97,6 +98,8 @@ export const routes: Routes = [
   // =========================
   {
     path: 'workspace',
+    runGuardsAndResolvers: 'always',
+    canActivateChild: [memberGuard],
     component: WorkspaceLayoutComponent,
     canActivate: [memberGuard],
     children: [
@@ -248,6 +251,8 @@ export const routes: Routes = [
   // =========================
   {
     path: 'mypage',
+    runGuardsAndResolvers: 'always',
+    canActivateChild: [memberGuard],
     component: WorkspaceLayoutComponent,
     canActivate: [memberGuard],
     children: [

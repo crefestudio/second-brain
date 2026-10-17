@@ -2605,11 +2605,11 @@ const LIFEUP_EMAIL_TEMPLATES: ReadonlyArray<{ id: LifeupEmailTemplateId; name: s
     { id: 'scrapbook-purchaser-welcome', name: '(자동) 라이프업 - 스크랩북 - 일반 - 웰컴 - 구매시' },
 ];
 const LIFEUP_EMAIL_VARIABLES = {
-    lifeupbotUrl: 'https://notionable.net/app',
+    lifeupbotUrl: 'https://notionable.net/app?templateId=lifeUp',
     lifeupCareUrl: 'https://notionable.net/app?menu=care',
     lifeupMigrationUrl: 'https://notionable.net/app?menu=care&sub=migration',
     lifeupStudioUrl: 'https://notionable.net/app?menu=studio&sub=dashboard',
-    kakaoConnectUrl: 'https://notionable.net/app?menu=connect',
+    kakaoConnectUrl: 'https://notionable.net/app?menu=connect&templateId=lifeUp',
 
     keyYoutubeUrl: 'https://www.youtube.com/watch?v=ndXuFRxa8sM',
     installYoutubeUrl: 'https://www.youtube.com/shorts/QnR_gnGWOQE',
@@ -4486,7 +4486,7 @@ function lifeupPlannerWelcomeMail(name: string): { subject: string; text: string
     // Content and destinations from LifeUp1.5-GTD-Planner_event.pdf.
     const installUrl = LIFEUP_EMAIL_VARIABLES.installYoutubeUrl;
     const videoUrl = 'https://www.youtube.com/watch?v=0LgzGdr8luU';
-    const connectUrl = 'https://notionable.net/app?menu=connect';
+    const connectUrl = 'https://notionable.net/app?menu=connect&templateId=lifeupPlanner';
     const careUrl = 'https://notionable.net/app?menu=care';
     const reviewUrl = LIFEUP_EMAIL_VARIABLES.reviewUrl;
     const productName = '라이프업 1.5 GTD 플래너';
@@ -4502,7 +4502,7 @@ function lifeupPlannerWelcomeMail(name: string): { subject: string; text: string
     const html = base.html.slice(0, base.html.indexOf(divider)) +
         section('📥', productName + ' 설치', paragraph('아래 버튼을 눌러 GTD 플래너를 설치해 주세요.') + button(productName + ' 설치하기', product.releaseUrl) + '<p style="margin:16px 0 0"><a href="' + installUrl + '" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>') +
         section('📄', '보관용 PDF', paragraph('설치 링크와 이용 안내를 담은 보관용 PDF 파일도 함께 전달드립니다.') + button('보관용 PDF 열기', pdfUrl)) +
-        section('🤖', '라이프봇 시작하기', paragraph('라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.<br>루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.<br>앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.') + button('라이프봇 시작하기', 'https://app.notionable.net/download/lifeup-planner?from=lifebot-email')) +
+        section('🤖', '라이프봇 시작하기', paragraph('라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.<br>루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.<br>앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.') + button('라이프봇 시작하기', 'https://notionable.net/app?templateId=lifeupPlanner')) +
         section('🎬', '라이프업 GTD 플래너 소개 영상', paragraph('짧은 소개 영상으로 GTD 플래너 사용 방법을 확인해 보세요.') + button('GTD 플래너 소개 영상 보기', videoUrl)) +
         section('💬', '카카오톡 라이프봇', paragraph(botText) + button('카카오톡 라이프봇 연결하기', connectUrl, true)) +
         section('🛡️', '라이프업 케어', paragraph(careText) + button('라이프업 케어로 이동하기', careUrl)) +
@@ -4512,7 +4512,7 @@ function lifeupPlannerWelcomeMail(name: string): { subject: string; text: string
     const text = [name.trim() ? name.trim() + '님,' : '', '라이프업과 함께하는 새로운 시작을 환영합니다. 🎉',
         '목표부터 프로젝트, 일상과 기록까지 나만의 방식으로 삶을 관리해보세요.',
         productName + ' 설치: ' + product.releaseUrl, '설치 안내 영상: ' + installUrl, '보관용 PDF: ' + pdfUrl,
-        '라이프봇 시작하기\n라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.\n루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.\n앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.\nhttps://app.notionable.net/download/lifeup-planner?from=lifebot-email',
+        '라이프봇 시작하기\n라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.\n루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.\n앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.\nhttps://notionable.net/app?templateId=lifeupPlanner',
         '라이프업 GTD 플래너 소개 영상\n짧은 소개 영상으로 GTD 플래너 사용 방법을 확인해 보세요.\n' + videoUrl,
         '카카오톡 라이프봇\n' + botText + '\n카카오톡 라이프봇 연결하기: ' + connectUrl,
         '라이프업 케어\n' + careText + '\n' + careUrl,
@@ -4538,6 +4538,8 @@ async function receiveLifeupPlannerPurchase(purchaserRef: admin.firestore.Docume
 
 function lifeupScrapbookWelcomeMail(name: string): { subject: string; text: string; html: string } {
     const base = lifeupWelcomeMail(name, LIFEUP_EMAIL_VARIABLES.lifeupScrapbookReleaseUrl);
+    base.html = base.html.replace(/templateId=lifeUp(?=["&\s<]|$)/g, 'templateId=lifeUpScrapbook');
+    base.text = base.text.replace(/templateId=lifeUp(?=["&\s<]|$)/g, 'templateId=lifeUpScrapbook');
     const productName = '라이프업 1.5 스크랩북';
     let html = base.html.split(LIFEUP_PASSPORT_URL).join(LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl)
         .split('라이프업 1.5 다운로드').join(`${productName} 다운로드`)
@@ -4549,7 +4551,7 @@ function lifeupScrapbookWelcomeMail(name: string): { subject: string; text: stri
         const sectionEnd = html.indexOf('</div>', reviewLinkIndex);
         if (sectionStart >= 0 && sectionEnd >= 0) html = html.slice(0, sectionStart) + html.slice(sectionEnd + 6);
     }
-    const lifebotUrl = 'https://app.notionable.net/download/lifeup-scrapbook?from=lifebot-email';
+    const lifebotUrl = 'https://notionable.net/app?templateId=lifeUpScrapbook';
     const lifebotText = `라이프봇 시작하기\n라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.\n루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.\n앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.\n${lifebotUrl}`;
     const passportLinkStart = html.indexOf(`href="${LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl}"`);
     const pdfSectionEnd = passportLinkStart >= 0 ? html.indexOf('<div style="height:1px;background:#eceef1;margin:32px 0"></div>', passportLinkStart) : -1;
@@ -4726,12 +4728,12 @@ export const getAppSession = onRequest(withCors(async (req, res) => {
             if (requestedId && !owned.docs.some(doc => doc.id === requestedId))
                 return { status: 403, error: 'Account mismatch' };
             const requestedTemplate = String(req.body?.templateId || '');
-            const current = (requestedTemplate && !requestedId
+            const current = requestedTemplate && !requestedId
                 ? owned.docs.find(doc => workspaceTemplate(doc.data()) === requestedTemplate)
-                : owned.docs.find(doc => doc.id === (requestedId || binding.userId)))
-                || owned.docs.find(doc => doc.id === binding.userId) || owned.docs[0];
+                : (owned.docs.find(doc => doc.id === (requestedId || binding.userId))
+                    || owned.docs.find(doc => doc.id === binding.userId) || owned.docs[0]);
             const userId = current?.id || '';
-            if (!account.exists || binding.userId !== userId) tx.set(accountRef, {
+            if ((!requestedTemplate || current) && (!account.exists || binding.userId !== userId)) tx.set(accountRef, {
                 ...(!account.exists ? { createdAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
                 userId: userId || admin.firestore.FieldValue.delete()
             }, { merge: true });
