@@ -17,7 +17,7 @@ function fixture(ageHours) {
     return new context.exports.ScrapbookUpgradeEventService({ post: async () => ({ firstSeenAt: Date.now() - ageHours * 3600000, serverNow: Date.now() }) });
 }
 test('planner active and expired offers use pack routes; scrapbook retains single-product offers', async () => {
-    for (const [id, prefix] of [['lifeupPlanner', 'lifeup-reward-pack'], ['lifeUpScrapbook', 'lifeup-reward']]) {
+    for (const [id, prefix] of [['lifeupPlanner', 'lifeup-reward-pack'], ['lifeupPlannerLite', 'lifeup-reward'], ['lifeUpScrapbook', 'lifeup-reward']]) {
         const active = fixture(1);
         await active.initialize('workspace', id);
         assert.equal(active.isActive, true);

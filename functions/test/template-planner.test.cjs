@@ -21,6 +21,10 @@ test('three templates retain distinct IDs; unknown IDs cannot inherit LifeUp per
 });
 
 test('agent permissions distinguish planner from scrapbook and never enable unknown agents', () => {
+    assert.equal(catalog.canUseAgent('lifeupPlannerLite', 'routine'), false);
+    assert.equal(catalog.canUseAgent('lifeupPlannerLite', 'secondbrain'), false);
+    assert.equal(catalog.TEMPLATE_PRODUCTS.lifeupPlannerLite.displayPrice, 0);
+    assert.equal(catalog.templateDownloadPath('lifeupPlannerLite'), '/download/lifeup-planner-lite');
     assert.equal(catalog.canUseAgent('lifeupPlanner', 'routine'), true);
     assert.equal(catalog.canUseAgent('lifeupPlanner', 'secondbrain'), false);
     assert.equal(catalog.canUseAgent('lifeUpScrapbook', 'routine'), false);
@@ -95,6 +99,7 @@ test('confirmed Imweb planner SKU maps to canonical template ID with legacy alia
     vm.runInNewContext(ts.transpile(fn, { target: ts.ScriptTarget.ES2020 }), context);
     const map = context.imwebProductMap();
     assert.equal(map.get('lifeUpPlanner').templateId, 'lifeupPlanner');
+    assert.equal(map.get('lifeUpPlannerLite').templateId, 'lifeupPlannerLite');
     assert.equal(map.get('legacy').memberType, 'premium');
 });
 

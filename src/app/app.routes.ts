@@ -56,6 +56,9 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'store/lifeup-planner-lite', component: StoreRedirectComponent },
+  { path: 'download/lifeup-planner-lite', component: LifeupDownloadComponent, data: { product: 'lifeupPlannerLite' } },
+  { path: 'upgrade/lifeup-planner-lite', component: LifeupScrapbookUpgradeComponent, data: { templateId: 'lifeupPlannerLite' } },
   { path: 'verify-purchase', component: LifeupDownloadComponent, data: { verificationOnly: true } },
   { path: 'store/lifeup', component: StoreRedirectComponent },
   { path: 'store/lifeup-r', component: StoreRedirectComponent },

@@ -1,4 +1,5 @@
 import { imwebPurchasedItems } from './imweb-order-items';
+import { templateWelcomeMail } from './template-welcome-mail';
 import { TemplateId, TEMPLATE_IDS, TEMPLATE_PRODUCTS, isTemplateId, templateIdOrLegacy, canUseAgent } from './template-catalog';
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
@@ -233,6 +234,7 @@ async function templateDatabaseNames(userId: string): Promise<string[]> {
     const workspace = (await db.collection('users').doc(userId).get()).data();
     const templateId = workspaceTemplate(workspace || {});
     if (templateId === 'lifeUpScrapbook') return LIFEUP_SCRAPBOOK_TEMPLATE_DATABASES;
+    if (templateId === 'lifeupPlannerLite') return ['lifeup info', 'apps', 'task'];
     if (templateId === 'lifeupPlanner') return LIFEUP_PLANNER_TEMPLATE_DATABASES;
     return LIFEUP_TEMPLATE_DATABASES;
 }
@@ -254,7 +256,7 @@ async function completeNotionTemplateConnection(
     await Promise.all(dbNames.map(async name => {
         try {
             const id = await NotionService.getDatabaseIdByDatabaseName(accessToken, name, undefined,
-                before?.templateId === 'lifeUpScrapbook' || before?.templateId === 'lifeupPlanner' ? before.templateId : undefined);
+                before?.templateId === 'lifeUpScrapbook' || before?.templateId === 'lifeupPlanner' || before?.templateId === 'lifeupPlannerLite' ? before.templateId : undefined);
             await NotionService.resolveDataSourceId(accessToken, id);
             dbMap[name] = id;
             databaseChecks?.push({ name, status: 'found' });
@@ -2595,13 +2597,14 @@ function escapeEmailHtml(value: string): string {
     }[character]!));
 }
 
-type LifeupEmailTemplateId = 'planner-purchaser-welcome' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome';
+type LifeupEmailTemplateId = 'planner-purchaser-welcome' | 'planner-lite-purchaser-welcome' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome';
 const LIFEUP_EMAIL_TEMPLATES: ReadonlyArray<{ id: LifeupEmailTemplateId; name: string }> = [
     { id: 'standard-purchaser-update', name: '라이프업 - 일반 - 업데이트' },
     { id: 'premium-purchaser-update', name: '라이프업 - 프리미엄 - 업데이트' },
     { id: 'standard-purchaser-welcome', name: '(자동) 라이프업 - 일반 - 월컴 - 구매시' },
     { id: 'premium-purchaser-welcome', name: '(자동) 라이프업 - 프리미엄 - 월컴 - 구매시' },
     { id: 'planner-purchaser-welcome', name: '(자동) 라이프업 - 플래너 - 웰컴 - 구매시' },
+    { id: 'planner-lite-purchaser-welcome', name: '(자동) 라이프업 - 플래너 Lite - 웰컴 - 구매시' },
     { id: 'scrapbook-purchaser-welcome', name: '(자동) 라이프업 - 스크랩북 - 일반 - 웰컴 - 구매시' },
 ];
 const LIFEUP_EMAIL_VARIABLES = {
@@ -2621,56 +2624,7 @@ const LIFEUP_EMAIL_VARIABLES = {
 } as const;
 
 function lifeupWelcomeMail(customerName: string, downloadUrl: string): { subject: string; text: string; html: string } {
-    const greetingName = customerName?.trim() ? `${escapeEmailHtml(customerName.trim())}님,` : '';
-    const { reviewUrl, lifeupCareUrl, lifeupbotUrl, kakaoConnectUrl } = LIFEUP_EMAIL_VARIABLES;
-
-    return {
-        subject: '라이프업 1.5 구매 안내 및 보관용 PDF를 보내드립니다',
-        text: `${customerName?.trim() ? `${customerName.trim()}님,\n` : ''}라이프업과 함께하는 새로운 시작을 환영합니다. 🎉\n\n라이프업 1.5 다운로드: ${downloadUrl}\n보관용 PDF: ${LIFEUP_PASSPORT_URL}\n리뷰 작성: ${reviewUrl}\n\n라이프업 클래스\n처음 사용하신다면 라이프업 클래스의 사용 가이드 영상을 참고해보세요.\n\n라이프업 케어\n사용 문의, 오류 신고, 업데이트 소식 확인부터 라이프업 활용 상담까지 편하게 확인하고 요청하실 수 있습니다.\n${lifeupCareUrl}\n\n카카오톡 라이프봇\n이제 늘 쓰는 카카오톡으로 할 일, 일정, 아이디어, 필요한 자료까지 바로 기록해보세요. 카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.\n카카오톡 라이프봇을 연결하고, 생각나는 순간마다 더 쉽고 편하게 활용해보세요.\n카카오톡 연결: ${kakaoConnectUrl}\n\n라이프봇 소개: ${lifeupbotUrl}`,
-        html: `<div style="margin:0;background:#f5f6f8;padding:32px 16px;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f;box-sizing:border-box">
-            <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden">
-                <div style="padding:32px 32px 40px">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 7px 0 0;font-size:16px;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">🧠</a></td><td valign="middle" style="padding:0;font-size:18px;font-weight:700;line-height:22px;"><a href="https://notionable.net" target="_blank" style="color:#ec4899;text-decoration:none;">Notionable</a></td></tr></table>
-                    <h1 style="margin:0 0 16px;font-size:26px;line-height:1.45;color:#171717;">${greetingName}<br>라이프업과 함께하는 새로운 시작을 환영합니다. 🎉</h1>
-                    <p style="margin:0;font-size:16px;line-height:1.8;color:#555;">라이프업과 함께 목표부터 프로젝트, 일상과 기록까지 나만의 방식으로 삶을 관리해보세요.</p>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📥</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프업 1.5 다운로드</td></tr></table>
-                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">아래 버튼을 클릭하면 최신 버전 <strong>라이프업 1.5</strong>를 다운로드하고 설치할 수 있습니다.</p>
-                    <a href="${downloadUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 다운로드 →</a>
-                    <p style="margin:16px 0 0"><a href="https://www.youtube.com/shorts/QnR_gnGWOQE" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">📄</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">보관용 PDF</td></tr></table>
-                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">설치 링크와 이용 안내를 담은 <strong>보관용 PDF 파일</strong>도 함께 전달드립니다.</p>
-                    <a href="${LIFEUP_PASSPORT_URL}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-size:15px;font-weight:700;text-decoration:none;">보관용 PDF 열기 →</a>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">💬</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">카카오톡 라이프봇</td></tr></table>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">이제 늘 쓰는 카카오톡으로 할 일, 일정, 아이디어, 필요한 자료까지 바로 기록해보세요.<br>카카오톡 라이프봇에 메시지를 보내면 내용을 이해해 알맞게 정리하고, 내 라이프업 노션에 저장해드립니다.</p>
-                    <a href="${kakaoConnectUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#fee500;border-radius:8px;color:#191919;font-size:15px;font-weight:700;text-decoration:none;">카카오톡 연결하기 →</a>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">🛡️</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프업 케어</td></tr></table>
-                    <p style="margin:0 0 12px;font-size:15px;line-height:1.8;color:#555;">라이프업을 사용하시면서 궁금한 점이 있거나 도움이 필요하신가요?</p>
-                    <p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">사용 문의, 오류 신고, 업데이트 소식 확인부터 라이프업 활용 상담까지<br><strong>라이프업 케어</strong>에서 편하게 확인하고 요청하실 수 있습니다.</p>
-                    <a href="${lifeupCareUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-size:15px;font-weight:700;text-decoration:none;">라이프업 케어로 이동하기 →</a>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">🎓</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프업 클래스</td></tr></table>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">템플릿을 처음 사용하신다면, 라이프업 클래스의 사용 가이드 영상부터 천천히 따라 해보세요. 노션 기초 사용법 영상도 함께 준비했습니다.</p>
-                    <div style="height:1px;background:#eceef1;margin:32px 0"></div>
-
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">🎁</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기</td></tr></table>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;">라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아, <strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.(~10/31)</p>
-                    <p style="margin:0 0 16px;font-size:15px;line-height:1.8;color:#555;"><strong>라이프봇</strong>은 라이프업 템플릿을 더 편리하게 사용하고 꾸준히 활용할 수 있도록 도와드리는 자동화 서비스입니다.</p>
-                    <a href="${lifeupbotUrl}" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">라이프봇 알아보기 →</a>
-                    <div style="margin-top:24px;padding:24px;background:#f8faff;border-radius:12px">
-                        <p style="margin:0 0 12px;font-size:15px;line-height:1.8;color:#333;"><strong>라이프업 1.5</strong>를 직접 사용해보신 후 상품 페이지에 솔직한 리뷰를 남겨주세요.</p>
-                        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#666;">라이프업을 사용한 화면을 사진으로 함께 남겨주시면, 다른 분들께도 큰 도움이 됩니다. 😊</p>
-                        <a href="${reviewUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프업 1.5 리뷰 작성하기 →</a>
-                        <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#777;">⚠️ 결제처 ‘래피드’가 아닌, 위 버튼으로 이동한 노셔너블 홈페이지 상품에 리뷰를 남겨주세요.</p>
-                    </div>
-
-                </div>
-            </div>
-        </div>`
-    };
+    return templateWelcomeMail('lifeUp', customerName, LIFEUP_EMAIL_VARIABLES, downloadUrl);
 }
 
 function lifeupStandardPurchaserUpdateMailDetailed(customerName: string): { subject: string; text: string; html: string } {
@@ -3161,7 +3115,7 @@ function purchaserPurchasedAtKstMs(purchaser: any): number {
 async function dailyPurchaserSales(startMs: number, endMs: number): Promise<Record<TemplateId, number>> {
     const snapshots = await Promise.all(TEMPLATE_IDS.map(templateId =>
         db.collection('purchasers').where('templateId', '==', templateId).get()));
-    const counts: Record<TemplateId, number> = { lifeUp: 0, lifeUpScrapbook: 0, lifeupPlanner: 0 };
+    const counts: Record<TemplateId, number> = { lifeUp: 0, lifeUpScrapbook: 0, lifeupPlanner: 0, lifeupPlannerLite: 0 };
     for (const snapshot of snapshots) for (const doc of snapshot.docs) {
         const purchaser = doc.data();
         const templateId = purchaser.templateId as TemplateId;
@@ -3288,7 +3242,7 @@ export const syncImwebPurchasersAdmin = onRequest({ secrets: [IMWEB_API_KEY, IMW
     } catch (error) { logger.error('[Imweb] admin sync failed', error); return res.status(500).json({ error: '아임웹 구매자 정보를 갱신하지 못했습니다.' }); }
 }));
 
-const STORE_TRACKED_PRODUCTS = new Set(['lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-reward-pack', 'lifeup-reward-pack-sale', 'lifeup-imweb', 'lifeup-scrapbook', 'lifeup-planner', 'lifeup-planner-reward', 'lifeup-planner-reward-sale', 'bizup-custom']);
+const STORE_TRACKED_PRODUCTS = new Set(['lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-reward-pack', 'lifeup-reward-pack-sale', 'lifeup-imweb', 'lifeup-scrapbook', 'lifeup-planner', 'lifeup-planner-lite', 'lifeup-planner-reward', 'lifeup-planner-reward-sale', 'bizup-custom']);
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 async function youtubeContentTitle(videoId: string): Promise<string | null> {
@@ -3997,7 +3951,7 @@ export const listLifeupPurchasers = onRequest(withCors(async (req, res) => {
     }
 }));
 
-type ManualLifeupProduct = 'standard' | 'premium' | 'upgrade' | 'scrapbook' | 'planner';
+type ManualLifeupProduct = 'standard' | 'premium' | 'upgrade' | 'scrapbook' | 'planner' | 'plannerLite';
 function manualPurchaseText(value: unknown, field: string, maxLength: number): string {
     const text = typeof value === 'string' ? value.trim() : '';
     if (!text || text.length > maxLength || [...text].some(character => character.charCodeAt(0) < 32)) throw new Error(`${field}을(를) 확인해주세요.`);
@@ -4014,9 +3968,9 @@ export const createManualLifeupPurchase = onRequest(withCors(async (req, res) =>
         const phone = manualPurchaseText(req.body?.phone, '휴대폰 번호', 30);
         if (!/^\d{9,15}$/.test(phone.replace(/\D/g, ''))) return res.status(400).json({ error: '휴대폰 번호를 확인해주세요.' });
         const product = req.body?.product as ManualLifeupProduct;
-        if (!['standard', 'premium', 'upgrade', 'scrapbook', 'planner'].includes(product)) return res.status(400).json({ error: '상품을 선택해주세요.' });
+        if (!['standard', 'premium', 'upgrade', 'scrapbook', 'planner', 'plannerLite'].includes(product)) return res.status(400).json({ error: '상품을 선택해주세요.' });
         const amount = Number(req.body?.amount);
-        if (!Number.isSafeInteger(amount) || amount <= 0) return res.status(400).json({ error: '결제 금액은 1원 이상으로 입력해주세요.' });
+        if (!Number.isSafeInteger(amount) || (product === 'plannerLite' ? amount < 0 : amount <= 0)) return res.status(400).json({ error: '결제 금액은 1원 이상으로 입력해주세요.' });
         const purchasedAtValue = manualPurchaseText(req.body?.purchasedAt, '구매 일시', 40);
         const purchasedAtDate = new Date(purchasedAtValue);
         if (Number.isNaN(purchasedAtDate.getTime())) return res.status(400).json({ error: '구매 일시를 확인해주세요.' });
@@ -4025,7 +3979,8 @@ export const createManualLifeupPurchase = onRequest(withCors(async (req, res) =>
             premium: { templateId: 'lifeUp', memberType: 'premium' as LifeupMemberType, purchaseOption: '라이프업 프리미엄', upgradeOnly: false },
             upgrade: { templateId: 'lifeUp', memberType: 'premium' as LifeupMemberType, purchaseOption: '프리미엄 승격', upgradeOnly: true },
             scrapbook: { templateId: 'lifeUpScrapbook', memberType: null, purchaseOption: '라이프업 스크랩북', upgradeOnly: false },
-            planner: { templateId: 'lifeupPlanner', memberType: null, purchaseOption: '라이프업 플래너', upgradeOnly: false }
+            planner: { templateId: 'lifeupPlanner', memberType: null, purchaseOption: '라이프업 플래너', upgradeOnly: false },
+            plannerLite: { templateId: 'lifeupPlannerLite', memberType: null, purchaseOption: '라이프업 플래너 Lite', upgradeOnly: false }
         }[product];
         const purchaserRef = db.collection('purchasers').doc(`manual_${nanoid()}`);
         const purchaser = { ...productInfo, name, email, phone, amount: `${amount.toLocaleString('ko-KR')}원`, paymentAmount: amount, paymentMethod: '수기 등록',
@@ -4289,7 +4244,7 @@ export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency:
             const snapshot = await query.get();
             for (const doc of snapshot.docs) {
                 const purchase = doc.data();
-                addCustomerGrade(grades, purchase.phone, purchase.templateId === 'lifeupPlanner' ? 'planner' : purchase.templateId === 'lifeUpScrapbook' ? 'scrapbook' : lifeupMemberType(purchase));
+                addCustomerGrade(grades, purchase.phone, ['lifeupPlanner', 'lifeupPlannerLite'].includes(purchase.templateId) ? 'planner' : purchase.templateId === 'lifeUpScrapbook' ? 'scrapbook' : lifeupMemberType(purchase));
             }
             if (snapshot.size < 100) break;
             purchaseAfter = snapshot.docs[snapshot.size - 1];
@@ -4303,7 +4258,7 @@ export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency:
             const data = workspace.data();
             const email = customerEmail(data.email);
             if (!email) continue;
-            const membership: CustomerGrade = workspaceTemplate(data) === 'lifeupPlanner' ? 'planner' : workspaceTemplate(data) === 'lifeUpScrapbook' ? 'scrapbook' : data.memberType === 'premium' ? 'premium' : 'standard';
+            const membership: CustomerGrade = ['lifeupPlanner', 'lifeupPlannerLite'].includes(workspaceTemplate(data)) ? 'planner' : workspaceTemplate(data) === 'lifeUpScrapbook' ? 'scrapbook' : data.memberType === 'premium' ? 'premium' : 'standard';
             const current = workspaceMemberships.get(email);
             if (!current || membershipRanks[membership] > membershipRanks[current]) workspaceMemberships.set(email, membership);
         }
@@ -4403,7 +4358,7 @@ export const sendLifeupCustomerMail = onRequest({ timeoutSeconds: 540 }, withCor
         const firstAttemptAt = Date.now() + 5_000;
         for (const [index, [email, recipient]] of deliverable.entries()) {
             try {
-                const mail = withUnsubscribe(template === 'planner-purchaser-welcome' ? lifeupPlannerWelcomeMail(recipient.name) : template === 'standard-purchaser-update'
+                const mail = withUnsubscribe(template === 'planner-purchaser-welcome' ? lifeupPlannerWelcomeMail(recipient.name) : template === 'planner-lite-purchaser-welcome' ? lifeupPlannerLiteWelcomeMail(recipient.name) : template === 'standard-purchaser-update'
                     ? lifeupStandardPurchaserUpdateMailDetailed(recipient.name)
                     : template === 'premium-purchaser-update'
                         ? lifeupPremiumPurchaserUpdateMail(recipient.name)
@@ -4469,7 +4424,7 @@ export const listMarketingBlocks = onRequest(withCors(async (req, res) => {
 export const addLifeupPurchaserToCustomers = onDocumentCreated({ document: 'purchasers/{purchaserId}', retry: true, timeoutSeconds: 120 }, async event => {
     const purchaser = event.data?.data();
     if (!purchaser || !TEMPLATE_IDS.includes(purchaser.templateId)) return;
-    if (purchaser.templateId === 'lifeupPlanner') {
+    if (purchaser.templateId === 'lifeupPlanner' || purchaser.templateId === 'lifeupPlannerLite') {
         await receiveLifeupPlannerPurchase(event.data!.ref, purchaser);
         return;
     }
@@ -4481,44 +4436,7 @@ export const addLifeupPurchaserToCustomers = onDocumentCreated({ document: 'purc
 });
 
 function lifeupPlannerWelcomeMail(name: string): { subject: string; text: string; html: string } {
-    const product = TEMPLATE_PRODUCTS.lifeupPlanner;
-    const pdfUrl = 'https://app.notionable.net/templateDownload/' + product.pdfFileName + '?v=20261016';
-    // Content and destinations from LifeUp1.5-GTD-Planner_event.pdf.
-    const installUrl = LIFEUP_EMAIL_VARIABLES.installYoutubeUrl;
-    const videoUrl = 'https://www.youtube.com/watch?v=0LgzGdr8luU';
-    const connectUrl = 'https://notionable.net/app?menu=connect&templateId=lifeupPlanner';
-    const careUrl = 'https://notionable.net/app?menu=care';
-    const reviewUrl = LIFEUP_EMAIL_VARIABLES.reviewUrl;
-    const productName = '라이프업 1.5 GTD 플래너';
-    const base = lifeupWelcomeMail(name, product.releaseUrl);
-    const divider = '<div style="height:1px;background:#eceef1;margin:32px 0"></div>';
-    const paragraph = (text: string) => '<p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">' + text + '</p>';
-    const button = (label: string, url: string, yellow = false) => '<a href="' + url + '" target="_blank" style="display:inline-block;padding:14px 20px;background:' + (yellow ? '#fee500' : '#1d4ed8') + ';border-radius:8px;color:' + (yellow ? '#191919' : '#ffffff') + ';font-size:15px;font-weight:700;text-decoration:none;">' + label + ' →</a>';
-    const section = (icon: string, title: string, body: string) => divider + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">' + icon + '</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">' + title + '</td></tr></table>' + body;
-    const botText = '카카오톡으로 보낸 할 일과 일정을 AI가 정리해 플래너에 저장합니다. 메모나 자료 등 할 일 외 항목으로 분류되면 저장 여부를 묻고, ‘저장’이라고 답하면 할 일로 저장합니다. 라이프봇을 연결하고, 생각나는 순간마다 간편하게 기록해 보세요.';
-    const careText = '사용 문의, 오류 신고, 업데이트 소식과 활용 상담을 한곳에서 확인하세요.';
-    const eventText = productName + ' 구매 후 솔직한 사용 후기를 남겨주세요. (~12/31)';
-    const benefitText = '정식 오픈 후 라이프봇을 1년 동안 무료로 이용하실 수 있습니다.';
-    const html = base.html.slice(0, base.html.indexOf(divider)) +
-        section('📥', productName + ' 설치', paragraph('아래 버튼을 눌러 GTD 플래너를 설치해 주세요.') + button(productName + ' 설치하기', product.releaseUrl) + '<p style="margin:16px 0 0"><a href="' + installUrl + '" target="_blank" style="font-size:14px;color:#2563eb;text-decoration:none;">노션 라이프업 템플릿 설치 안내 영상 보기 ↗</a></p>') +
-        section('📄', '보관용 PDF', paragraph('설치 링크와 이용 안내를 담은 보관용 PDF 파일도 함께 전달드립니다.') + button('보관용 PDF 열기', pdfUrl)) +
-        section('🤖', '라이프봇 시작하기', paragraph('라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.<br>루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.<br>앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.') + button('라이프봇 시작하기', 'https://notionable.net/app?templateId=lifeupPlanner')) +
-        section('🎬', '라이프업 GTD 플래너 소개 영상', paragraph('짧은 소개 영상으로 GTD 플래너 사용 방법을 확인해 보세요.') + button('GTD 플래너 소개 영상 보기', videoUrl)) +
-        section('💬', '카카오톡 라이프봇', paragraph(botText) + button('카카오톡 라이프봇 연결하기', connectUrl, true)) +
-        section('🛡️', '라이프업 케어', paragraph(careText) + button('라이프업 케어로 이동하기', careUrl)) +
-        divider + '<div style="padding:24px;background:#f8faff;border-radius:12px">' +
-        section('🎁', '리뷰 작성하고 라이프봇 1년 무료 이용권 받기', paragraph(eventText) + paragraph('<strong>' + benefitText + '</strong>') + button('리뷰 남기러 가기', reviewUrl)).slice(divider.length) + '</div>' +
-        '</div></div></div>';
-    const text = [name.trim() ? name.trim() + '님,' : '', '라이프업과 함께하는 새로운 시작을 환영합니다. 🎉',
-        '목표부터 프로젝트, 일상과 기록까지 나만의 방식으로 삶을 관리해보세요.',
-        productName + ' 설치: ' + product.releaseUrl, '설치 안내 영상: ' + installUrl, '보관용 PDF: ' + pdfUrl,
-        '라이프봇 시작하기\n라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.\n루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.\n앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.\nhttps://notionable.net/app?templateId=lifeupPlanner',
-        '라이프업 GTD 플래너 소개 영상\n짧은 소개 영상으로 GTD 플래너 사용 방법을 확인해 보세요.\n' + videoUrl,
-        '카카오톡 라이프봇\n' + botText + '\n카카오톡 라이프봇 연결하기: ' + connectUrl,
-        '라이프업 케어\n' + careText + '\n' + careUrl,
-        '리뷰 작성하고 라이프봇 1년 무료 이용권 받기\n' + eventText + '\n' + benefitText + '\n리뷰 남기러 가기: ' + reviewUrl
-    ].filter(Boolean).join('\n\n');
-    return { subject: productName + ' 구매 안내 및 보관용 PDF를 보내드립니다', text, html };
+    return templateWelcomeMail('lifeupPlanner', name, LIFEUP_EMAIL_VARIABLES);
 }
 
 async function receiveLifeupPlannerPurchase(purchaserRef: admin.firestore.DocumentReference, purchaser: admin.firestore.DocumentData): Promise<void> {
@@ -4527,7 +4445,9 @@ async function receiveLifeupPlannerPurchase(purchaserRef: admin.firestore.Docume
         .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
     const deliveries = await Promise.all(recipients.map(async email => {
         const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: email,
-            ...withUnsubscribe(lifeupPlannerWelcomeMail(String(purchaser.name || ''))) }, 'high', `purchase-planner-welcome:${purchaserRef.id}:${email}`);
+            ...withUnsubscribe(purchaser.templateId === 'lifeupPlannerLite'
+                ? lifeupPlannerLiteWelcomeMail(String(purchaser.name || ''))
+                : lifeupPlannerWelcomeMail(String(purchaser.name || ''))) }, 'high', `purchase-planner-welcome:${purchaserRef.id}:${email}`);
         if (sent.error) throw new Error('PURCHASE_MAIL_QUEUE_FAILED');
         return { email, queueId: sent.data?.id || '', status: 'queued' };
     }));
@@ -4536,49 +4456,12 @@ async function receiveLifeupPlannerPurchase(purchaserRef: admin.firestore.Docume
         'reception.completedAt': admin.firestore.FieldValue.serverTimestamp() });
 }
 
-function lifeupScrapbookWelcomeMail(name: string): { subject: string; text: string; html: string } {
-    const base = lifeupWelcomeMail(name, LIFEUP_EMAIL_VARIABLES.lifeupScrapbookReleaseUrl);
-    base.html = base.html.replace(/templateId=lifeUp(?=["&\s<]|$)/g, 'templateId=lifeUpScrapbook');
-    base.text = base.text.replace(/templateId=lifeUp(?=["&\s<]|$)/g, 'templateId=lifeUpScrapbook');
-    const productName = '라이프업 1.5 스크랩북';
-    let html = base.html.split(LIFEUP_PASSPORT_URL).join(LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl)
-        .split('라이프업 1.5 다운로드').join(`${productName} 다운로드`)
-        .split('라이프업 1.5</strong>').join(`${productName}</strong>`);
-    // The scrapbook welcome follows the standard mail, except it has no review section.
-    const reviewLinkIndex = html.indexOf(`href="${LIFEUP_EMAIL_VARIABLES.reviewUrl}"`);
-    if (reviewLinkIndex >= 0) {
-        const sectionStart = html.lastIndexOf('<table', reviewLinkIndex);
-        const sectionEnd = html.indexOf('</div>', reviewLinkIndex);
-        if (sectionStart >= 0 && sectionEnd >= 0) html = html.slice(0, sectionStart) + html.slice(sectionEnd + 6);
-    }
-    const lifebotUrl = 'https://notionable.net/app?templateId=lifeUpScrapbook';
-    const lifebotText = `라이프봇 시작하기\n라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.\n루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.\n앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.\n${lifebotUrl}`;
-    const passportLinkStart = html.indexOf(`href="${LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl}"`);
-    const pdfSectionEnd = passportLinkStart >= 0 ? html.indexOf('<div style="height:1px;background:#eceef1;margin:32px 0"></div>', passportLinkStart) : -1;
-    if (pdfSectionEnd >= 0) {
-        const divider = '<div style="height:1px;background:#eceef1;margin:32px 0"></div>';
-        const insertAt = pdfSectionEnd + divider.length;
-        html = html.slice(0, insertAt) +
-            `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border-collapse:collapse;"><tr><td valign="middle" style="padding:0 8px 0 0;font-size:18px;line-height:24px;">🤖</td><td valign="middle" style="padding:0;font-size:20px;font-weight:700;line-height:24px;color:#171717;">라이프봇 시작하기</td></tr></table><p style="margin:0 0 18px;font-size:15px;line-height:1.8;color:#555;">라이프업 템플릿, 이제 자동화로 더 편하게 관리해보세요.<br>루틴 관리부터 세컨드브레인, 카카오톡 비서, 템플릿 업데이트까지 라이프봇에서 한곳에 모아 이용하실 수 있습니다.<br>앞으로 템플릿 꾸미기, 위젯 등 편리한 기능도 추가될 예정입니다.</p><a href="${lifebotUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">라이프봇 시작하기 →</a><div style="height:1px;background:#eceef1;margin:32px 0"></div>` +
-            html.slice(insertAt);
-    }
-    return {
-        subject: '라이프업 1.5 스크랩북 구매 안내 및 보관용 PDF를 보내드립니다',
-        text: base.text.split('라이프업 1.5 다운로드').join(`${productName} 다운로드`)
-            .replace(LIFEUP_PASSPORT_URL, LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl)
-            .replace(/\n리뷰 작성:.*\n/, '\n')
-            .replace(`보관용 PDF: ${LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl}`, `보관용 PDF: ${LIFEUP_EMAIL_VARIABLES.lifeupScrapbookPassportUrl}\n\n${lifebotText}`),
-        html
-    };
+function lifeupPlannerLiteWelcomeMail(name: string): { subject: string; text: string; html: string } {
+    return templateWelcomeMail('lifeupPlannerLite', name, LIFEUP_EMAIL_VARIABLES);
+}
 
-    const { lifeupScrapbookReleaseUrl, lifeupScrapbookPassportUrl, lifeupCareUrl } = LIFEUP_EMAIL_VARIABLES;
-    const greeting = name.trim() ? `${name.trim()}님,\n` : '';
-    const greetingHtml = name.trim() ? `${escapeEmailHtml(name.trim())}님,` : '안녕하세요,';
-    return {
-        subject: '라이프업 1.5 스크랩북 구매 안내 및 보관용 PDF를 보내드립니다',
-        text: `${greeting}라이프업 1.5 스크랩북 구매를 환영합니다. 🎉\n\n다운로드: ${lifeupScrapbookReleaseUrl}\n보관용 PDF: ${lifeupScrapbookPassportUrl}\n\n사용 중 도움이 필요하시면 라이프업 케어를 이용해주세요.\n${lifeupCareUrl}`,
-        html: `<div style="margin:0;background:#f5f6f8;padding:32px 16px;font-family:Arial,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#24292f"><div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px"><div style="padding:32px"><p style="margin:0 0 24px;font-size:18px;font-weight:700">🧠 Notionable</p><h1 style="margin:0 0 16px;font-size:26px;line-height:1.45;color:#171717">${greetingHtml}<br>라이프업 1.5 스크랩북 구매를 환영합니다. 🎉</h1><p style="margin:0;font-size:16px;line-height:1.8;color:#555">아래 링크에서 라이프업 1.5 스크랩북을 다운로드하고 시작해보세요.</p><hr style="border:0;border-top:1px solid #eceef1;margin:32px 0"><h2 style="font-size:20px">📥 라이프업 1.5 스크랩북 다운로드</h2><a href="${lifeupScrapbookReleaseUrl}" target="_blank" style="display:inline-block;padding:14px 20px;background:#1d4ed8;border-radius:8px;color:#fff;font-weight:700;text-decoration:none">스크랩북 다운로드 →</a><hr style="border:0;border-top:1px solid #eceef1;margin:32px 0"><h2 style="font-size:20px">📄 보관용 PDF</h2><p style="margin:0 0 18px;line-height:1.8;color:#555">설치 링크와 이용 안내를 보관용 PDF로도 확인하실 수 있습니다.</p><a href="${lifeupScrapbookPassportUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-weight:700;text-decoration:none">보관용 PDF 열기 →</a><hr style="border:0;border-top:1px solid #eceef1;margin:32px 0"><h2 style="font-size:20px">🛡️ 라이프업 케어</h2><a href="${lifeupCareUrl}" target="_blank" style="display:inline-block;padding:13px 19px;border:1px solid #d1d5db;border-radius:8px;color:#374151;font-weight:700;text-decoration:none">라이프업 케어로 이동하기 →</a></div></div></div>`
-    };
+function lifeupScrapbookWelcomeMail(name: string): { subject: string; text: string; html: string } {
+    return templateWelcomeMail('lifeUpScrapbook', name, LIFEUP_EMAIL_VARIABLES);
 }
 
 async function receiveLifeupScrapbookPurchase(purchaserRef: admin.firestore.DocumentReference, purchaser: admin.firestore.DocumentData): Promise<void> {
@@ -5357,7 +5240,7 @@ class NotionService {
                 tx.update(userRef, { [`notionConnection.databases.${dbName}`]: admin.firestore.FieldValue.delete() });
         });
         const dbId = await this.getDatabaseIdByDatabaseName(accessToken, dbName, undefined,
-            user.templateId === 'lifeUpScrapbook' || user.templateId === 'lifeupPlanner' ? user.templateId : undefined);
+            user.templateId === 'lifeUpScrapbook' || user.templateId === 'lifeupPlanner' || user.templateId === 'lifeupPlannerLite' ? user.templateId : undefined);
         await this.resolveDataSourceId(accessToken, dbId);
         await db.runTransaction(async tx => {
             const current = (await tx.get(userRef)).data();
@@ -5538,7 +5421,7 @@ class NotionService {
         accessToken: string,
         databaseType: string,
         version?: string,
-        templateId?: 'lifeUpScrapbook' | 'lifeupPlanner'
+        templateId?: 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite'
     ): Promise<string> {
         const startedAt = Date.now();
 
@@ -5601,8 +5484,9 @@ class NotionService {
         const matched = activeResults.filter((db: any) => {
             const title = getTitle(db);
             const parts = title.split('/').map((part: string) => part.trim());
-            if (templateId === 'lifeUpScrapbook' || templateId === 'lifeupPlanner') {
-                const suffix = templateId === 'lifeupPlanner' ? 'planner' : 'scrapbook';
+            const configuredSuffix = templateId ? TEMPLATE_PRODUCTS[templateId].notionDbSuffix : null;
+            if (configuredSuffix) {
+                const suffix = configuredSuffix.replace(/\s/g, '').toLowerCase();
                 const templateParts = title.split(/[/#]/).map((part: string) => part.replace(/\s/g, '').toLowerCase());
                 return templateParts.length === 3 && templateParts[0] === target.replace(/\s/g, '') &&
                     templateParts[2] === suffix;
@@ -5947,10 +5831,10 @@ class NotionService {
         if (!isUsableNotionConnection(userDoc.data())) {
             throw new Error("NOTION_NOT_CONNECTED");
         }
-        if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' && aiResult.db !== 'reference') {
+        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'reference' && aiResult.db !== 'reference') {
             throw new Error('SCRAPBOOK_REFERENCE_ONLY');
         }
-        if (workspaceTemplate(userDoc.data() || {}) === 'lifeupPlanner' && aiResult.db !== 'task') {
+        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'task' && aiResult.db !== 'task') {
             throw new Error('PLANNER_TASK_ONLY');
         }
         const notion = guardedNotionClient(accessToken, async () => {
@@ -12377,8 +12261,8 @@ async function processKakaoAgent(
         let t = Date.now();
 
         const captureTemplate = workspaceTemplate(userDoc.data() || {});
-        if (['lifeUpScrapbook', 'lifeupPlanner'].includes(captureTemplate) && userMessage.trim() === '저장') {
-            const isPlanner = captureTemplate === 'lifeupPlanner';
+        if (TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope !== 'all' && userMessage.trim() === '저장') {
+            const isPlanner = TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'task';
             const destinationLabel = isPlanner ? '할 일' : '스크랩북';
             const pending = await getLastAssistantContext(userId);
             if (!pending || !(isPlanner ? pending.result?.plannerPending : pending.result?.scrapbookPending)) {
@@ -12533,7 +12417,7 @@ async function processKakaoAgent(
 
         ////////////////////////////////////////////////////////////////////////////////////
 
-        if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' &&
+        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'reference' &&
             ['create', 'correct'].includes(enrichedResult.action) && enrichedResult.db !== 'reference') {
             const sourceLabel: Record<string, string> = { task: '할 일', memo: '메모', project: '프로젝트', contact: '연락처', book: '도서' };
             const classifiedAs = sourceLabel[enrichedResult.db] || '자료 외 항목';
@@ -12542,13 +12426,13 @@ async function processKakaoAgent(
             enrichedResult.response = `분류 결과: ${classifiedAs}\n스크랩북은 자료 저장만 지원하므로 아직 저장하지 않았습니다.\n스크랩북 자료로 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/lifeup-scrapbook?from=lifeup_scrapbook_kakao`;
         }
 
-        if (workspaceTemplate(userDoc.data() || {}) === 'lifeupPlanner' &&
+        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'task' &&
             ['create', 'correct'].includes(enrichedResult.action) && enrichedResult.db !== 'task') {
             const sourceLabel: Record<string, string> = { reference: '참고자료', memo: '메모', project: '프로젝트', contact: '연락처', book: '도서' };
             const classifiedAs = sourceLabel[enrichedResult.db] || '할 일 외 항목';
             enrichedResult.plannerPending = true;
             enrichedResult.action = 'plannerPending';
-            enrichedResult.response = `분류 결과: ${classifiedAs}\n플래너는 할 일 저장만 지원하므로 아직 저장하지 않았습니다.\n할 일로 저장할까요? 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/lifeup-planner?from=lifeup_planner_kakao`;
+            enrichedResult.response = `분류 결과: ${classifiedAs}\n플래너는 할 일 저장만 지원하므로 아직 저장하지 않았습니다.\n할 일로 저장할까요? 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/${TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].slug}?from=${workspaceTemplate(userDoc.data() || {})}_kakao`;
         }
 
         const payload: any = {
@@ -18062,7 +17946,7 @@ export const getScrapbookUpgradeEvent = onRequest(
             const snapshot = await transaction.get(workspaceRef);
             const account = await transaction.get(db.collection('appAccounts').doc(identity.uid));
             if (!snapshot.exists || snapshot.data()?.firebaseUid !== identity.uid ||
-                !['lifeUpScrapbook', 'lifeupPlanner'].includes(snapshot.data()?.templateId) ||
+                !['lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite'].includes(snapshot.data()?.templateId) ||
                 snapshot.data()?.deletionStatus === 'archived' || account.data()?.deletionStatus === 'pending') return null;
             const existing = snapshot.data()?.scrapbookUpgradeEventFirstSeenAt;
             if (existing?.toMillis) return existing.toMillis();

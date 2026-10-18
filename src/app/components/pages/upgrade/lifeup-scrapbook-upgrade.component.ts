@@ -33,7 +33,7 @@ export class LifeupScrapbookUpgradeComponent {
     route: ActivatedRoute
   ) {
     this.source = route.snapshot.queryParamMap.get('from') ?? 'upgrade_lifeup-scrapbook';
-    this.templateId = route.snapshot.data['templateId'] === 'lifeupPlanner' ? 'lifeupPlanner' : 'lifeUpScrapbook';
+    this.templateId = route.snapshot.data['templateId'] === 'lifeupPlannerLite' ? 'lifeupPlannerLite' : route.snapshot.data['templateId'] === 'lifeupPlanner' ? 'lifeupPlanner' : 'lifeUpScrapbook';
   }
 
   async ngOnInit(): Promise<void> {

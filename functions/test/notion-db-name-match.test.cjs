@@ -7,13 +7,19 @@ const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
 const start = source.indexOf('    static async getDatabaseIdByDatabaseName(');
 const method = source.slice(start, source.indexOf('    // queryDatabase', start));
 function resolver(titles) {
-    const context = { console: { log() {} }, fetch: async () => ({ ok: true, text: async () => JSON.stringify({
+    const context = { TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS, console: { log() {} }, fetch: async () => ({ ok: true, text: async () => JSON.stringify({
         results: titles.map((title, i) => typeof title === 'string' ? ({ id: String(i), title: [{ plain_text: title }] }) : ({ id: String(i), ...title })), has_more: false
     }) }) };
     vm.createContext(context);
     vm.runInContext(ts.transpile(`class Resolver { ${method} } globalThis.Resolver = Resolver;`, { target: ts.ScriptTarget.ES2020 }), context);
     return context.Resolver;
 }
+test('PlannerLite catalog suffix selects its database without selecting Planner', async () => {
+    const r = resolver(['project / 15 / Planner', 'project / 15 / PlannerLite']);
+    assert.equal(await r.getDatabaseIdByDatabaseName('token', 'project', undefined, 'lifeupPlannerLite'), '1');
+    await assert.rejects(resolver(['task / 15 / Planner']).getDatabaseIdByDatabaseName('token', 'task', undefined, 'lifeupPlannerLite'));
+});
+
 test('slash names resolve using base keyword and respect version', async () => {
     const r = resolver(['lifeup info / 15 / Scrapbook']);
     assert.equal(await r.getDatabaseIdByDatabaseName('token', 'lifeup info'), '0');

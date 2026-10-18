@@ -172,10 +172,10 @@ export class RoutineFindComponent {
 
         // A workspace must exist before its template can determine permission.
         if (!canUseAgent(this.authService.templateId, 'routine')) {
-            if (this.authService.templateId === 'lifeUpScrapbook') {
+            if (this.authService.templateId === 'lifeUpScrapbook' || this.authService.templateId === 'lifeupPlannerLite') {
                 this.upgradeLoading = true;
                 this.addingHabits.add(habit);
-                try { await this.upgradeEvent.initialize(this.userId); }
+                try { await this.upgradeEvent.initialize(this.userId, this.authService.templateId); }
                 catch { /* Show the regular upgrade link if loading fails. */ }
                 finally {
                     this.upgradeLoading = false;

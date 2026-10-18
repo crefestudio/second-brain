@@ -49,6 +49,7 @@ export class LifeupDownloadComponent implements OnInit {
     readonly productName: string;
     readonly isScrapbook: boolean;
     get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
+    get isPlannerLite(): boolean { return this.templateId === 'lifeupPlannerLite'; }
 
     readonly downloadUrl: string;
     readonly reviewUrl = 'https://notionable.net/lifeup-review';
@@ -115,7 +116,7 @@ export class LifeupDownloadComponent implements OnInit {
     }
 
     private async initializeUpgradeEvent(): Promise<void> {
-        if ((!this.isScrapbook && !this.isPlanner) || !this.isPurchaser) return;
+        if ((!this.isScrapbook && !this.isPlanner && !this.isPlannerLite) || !this.isPurchaser) return;
         try {
             await this.upgradeEvent.initialize(this.authService.getUserId(), this.templateId);
         } catch {

@@ -7,7 +7,7 @@ const ts = require('typescript');
 const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
 const blocksStart = source.indexOf('        const entityBlocks = this.buildContentBlocks(entity);');
 const blocksEnd = source.indexOf('        ////////////////////////////////////////////////////', blocksStart);
-const pendingStart = source.lastIndexOf("        if (workspaceTemplate(userDoc.data() || {}) === 'lifeUpScrapbook' &&");
+const pendingStart = source.lastIndexOf("        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'reference' &&");
 const pendingEnd = source.indexOf('        const payload: any = {', pendingStart);
 const image = { object: 'block', type: 'image', image: { type: 'external', external: { url: 'https://example.test/photo.png' } } };
 const paragraph = text => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: text } }] } });
@@ -38,10 +38,25 @@ test('confirmation preserves text-only notes and ordinary photo saves retain all
 function classify(db, template = 'lifeUpScrapbook') {
     const enrichedResult = { action: 'create', db, response: 'Original response' };
     vm.runInNewContext(ts.transpile(source.slice(pendingStart, pendingEnd)), {
-        enrichedResult, workspaceTemplate: () => template, userDoc: { data: () => ({}) }
+        enrichedResult, workspaceTemplate: () => template, userDoc: { data: () => ({}) },
+        TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS
     });
     return enrichedResult;
 }
+
+test('Notion write boundary rejects every unsupported destination for limited templates', () => {
+    const start = source.indexOf("        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'reference' && aiResult.db");
+    const end = source.indexOf('        const notion = guardedNotionClient', start);
+    const code = ts.transpile(source.slice(start, end));
+    for (const template of ['lifeUp', 'lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite']) {
+        for (const db of ['task', 'reference', 'memo', 'project', 'contact', 'book']) {
+            const run = () => vm.runInNewContext(code, { workspaceTemplate: () => template,
+                userDoc: { data: () => ({}) }, aiResult: { db }, TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS });
+            const allowed = template === 'lifeUp' || db === (template === 'lifeUpScrapbook' ? 'reference' : 'task');
+            if (allowed) assert.doesNotThrow(run); else assert.throws(run, /_ONLY/);
+        }
+    }
+});
 
 test('a photo classified as memo is reported as memo, not as a task', () => {
     const result = classify('memo');
@@ -60,13 +75,22 @@ test('other destinations retain correct labels and supported saves do not become
 });
 
 test('Planner asks before non-task saves while task saves proceed', () => {
+    for (const template of ['lifeupPlanner', 'lifeupPlannerLite']) {
     for (const db of ['reference', 'memo', 'contact']) {
-        const result = classify(db, 'lifeupPlanner');
+        const result = classify(db, template);
         assert.equal(result.action, 'plannerPending');
         assert.equal(result.plannerPending, true);
         assert.match(result.response, /할 일로 저장할까요/);
     }
-    assert.equal(classify('task', 'lifeupPlanner').action, 'create');
+    assert.equal(classify('task', template).action, 'create');
+    }
+});
+
+test('Planner Lite confirms only task saves and uses its own upgrade link', async () => {
+    assert.match(classify('project', 'lifeupPlannerLite').response, /upgrade\/lifeup-planner-lite\?/);
+    const { saves } = await confirm('lifeupPlannerLite', { db: 'project', plannerPending: true, content: 'test' });
+    assert.equal(saves.length, 1);
+    assert.equal(saves[0].db, 'task');
 });
 
 async function confirm(templateId, result) {
@@ -76,6 +100,7 @@ async function confirm(templateId, result) {
     const ref = { collection: () => ref, doc: () => ref, update: async value => updates.push(value) };
     const context = {
         workspaceTemplate: () => templateId, userDoc: { data: () => ({}) }, userMessage: '저장', userId: 'u', callbackUrl: 'callback', pageUrls: {},
+        TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS,
         getLastAssistantContext: async () => ({ result, userMessage: 'original text', entity: {}, contextId: 'ctx' }),
         reply: async text => replies.push(text), guard: async () => {},
         NotionService: { createDbItemFromAiResult: async (_uid, value) => { saves.push(value); return 'page'; } },

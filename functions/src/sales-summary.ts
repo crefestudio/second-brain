@@ -24,7 +24,7 @@ export function summarizeProductSales(purchases: Array<Record<string, unknown>>,
         // selected option, so both the short option labels and full names are
         // accepted for sales reporting.
         const lifeupListing: Record<string, string> = { '1': 'lifeup-imweb', '9': 'lifeup-reward', '10': 'lifeup-reward-sale', '12': 'lifeup-reward-pack', '11': 'lifeup-reward-pack-sale' };
-        const product = purchase.templateId === 'lifeupPlanner' || purchase.templateId === 'lifeUpScrapbook'
+        const product = purchase.templateId === 'lifeupPlanner' || purchase.templateId === 'lifeupPlannerLite' || purchase.templateId === 'lifeUpScrapbook'
             ? TEMPLATE_PRODUCTS[purchase.templateId].slug
             : purchase.source === 'imweb' && lifeupListing[String(purchase.productNo)] ? lifeupListing[String(purchase.productNo)]
             : comparableOption.includes('묶음') && comparableOption.includes('타임세일') ? 'lifeup-reward-pack-sale'

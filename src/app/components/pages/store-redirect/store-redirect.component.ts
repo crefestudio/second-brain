@@ -8,6 +8,7 @@ export class StoreRedirectComponent implements OnInit {
     message = '';
     private readonly config = inject<AppConfig>(APP_CONFIG);
     private readonly destinations: Record<string, string> = {
+        'store/lifeup-planner-lite': TEMPLATE_PRODUCTS.lifeupPlannerLite.salesUrls.normal,
         'store/lifeup': TEMPLATE_PRODUCTS.lifeUp.salesUrls.normal,
         'store/lifeup-planner': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.normal,
         'store/lifeup-planner-reward': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.reward,

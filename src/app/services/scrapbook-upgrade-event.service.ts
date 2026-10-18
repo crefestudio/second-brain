@@ -31,6 +31,7 @@ export class ScrapbookUpgradeEventService {
   }
   get isActive(): boolean { return Boolean(this.firstSeenAt) && this.remainingSeconds > 0; }
   get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
+  get productName(): string { return TEMPLATE_PRODUCTS[this.templateId].nameKoShort; }
   get remainingSeconds(): number { return Math.max(0, Math.ceil((this.firstSeenAt + this.duration - Date.now() - this.clockOffset) / 1000)); }
   upgradeUrl(source: string): string { return this.rewardUrl(this.isActive, source); }
   normalUrl(source: string): string { return this.rewardUrl(false, source); }

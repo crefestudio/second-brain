@@ -4,7 +4,8 @@ export function entryTemplate(value: string | null): TemplateId | undefined {
     if (!value) return undefined;
     const aliases: Record<string, TemplateId> = {
         lifeup: 'lifeUp', lifeupscrapbook: 'lifeUpScrapbook', 'lifeup-scrapbook': 'lifeUpScrapbook',
-        lifeupplanner: 'lifeupPlanner', 'lifeup-planner': 'lifeupPlanner'
+        lifeupplanner: 'lifeupPlanner', 'lifeup-planner': 'lifeupPlanner',
+        lifeupplannerlite: 'lifeupPlannerLite', plannerlite: 'lifeupPlannerLite', 'lifeup-planner-lite': 'lifeupPlannerLite'
     };
     return aliases[value.toLowerCase()];
 }

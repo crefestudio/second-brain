@@ -168,14 +168,15 @@ export class SalesAdminComponent implements OnInit {
     goals = { 
         revenue: 3000000, 
         averagePrice: 70000, 
-        trafficConversion: 3, 
-        purchaseConversion: 3 
+        trafficConversion: 5, 
+        purchaseConversion: 5 
     };
 
 
     readonly products: Product[] = [
         { name: '라이프업', price: 79000, storePath: 'lifeup', trackingKey: 'lifeup-imweb' },
         { name: TEMPLATE_PRODUCTS.lifeupPlanner.nameKoShort, price: TEMPLATE_PRODUCTS.lifeupPlanner.displayPrice, storePath: 'lifeup-planner' },
+        { name: TEMPLATE_PRODUCTS.lifeupPlannerLite.nameKoShort, price: 0, storePath: 'lifeup-planner-lite' },
         { name: '라이프업 스크랩북', price: 0, storePath: 'lifeup-scrapbook' },
         { name: '라이프업 보상', price: 69000, storePath: 'lifeup-reward' },
         { name: '라이프업 보상 타임세일', price: 64000, storePath: 'lifeup-reward-sale' },

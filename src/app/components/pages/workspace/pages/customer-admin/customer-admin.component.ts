@@ -18,7 +18,7 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
     isLoading = true; isImporting = false; isSendingMail = false; isLoadingMore = false; hasMore = false; errorMessage = ''; csvMessage = ''; mailMessage = '';
     private nextCursor: string | null = null;
     customers: LifeupCustomer[] = []; totalCustomerCount = 0; selectedCustomer: LifeupCustomer | null = null; selectedIds = new Set<string>();
-    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: '' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome' | 'planner-purchaser-welcome' = '';
+    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: '' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome' | 'planner-purchaser-welcome' | 'planner-lite-purchaser-welcome' = '';
     constructor(private readonly care: CareRequestService, private readonly customerAdmin: CustomerAdminService) {}
 
     async ngOnInit(): Promise<void> {

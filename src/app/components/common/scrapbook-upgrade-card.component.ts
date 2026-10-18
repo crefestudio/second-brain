@@ -17,9 +17,9 @@ import { ScrapbookUpgradeEventService } from '../../services/scrapbook-upgrade-e
         }
         <div class="symbol" aria-hidden="true">✦</div>
         <h1>더 많은 기능을<br>라이프업에서 만나보세요</h1>
-        <p class="intro">목표, 프로젝트, 할일, 메모, 자료를<br>한곳에서 관리하고 싶으시다면,<br><strong>라이프업 통합 템플릿으로 업그레이드해 보세요.</strong><br>🎁 {{ event.isPlanner ? '플래너 사용자를 위한 묶음 보상 업그레이드 특별가 혜택' : '스크랩북 사용자를 위한 보상 업그레이드 특별가 혜택' }}을 만나보세요.</p>
+        <p class="intro">목표, 프로젝트, 할일, 메모, 자료를<br>한곳에서 관리하고 싶으시다면,<br><strong>라이프업 통합 템플릿으로 업그레이드해 보세요.</strong><br>🎁 {{ event.isPlanner ? '플래너 사용자를 위한 묶음 보상 업그레이드 특별가 혜택' : event.productName + ' 사용자를 위한 보상 업그레이드 특별가 혜택' }}을 만나보세요.</p>
         <section class="offer" aria-label="업그레이드 특별 혜택">
-          <span class="badge">🎁 {{ event.isPlanner ? '플래너 사용자 묶음 보상' : '스크랩북 사용자 전용' }}</span>
+          <span class="badge">🎁 {{ event.isPlanner ? '플래너 사용자 묶음 보상' : event.productName + ' 사용자 전용' }}</span>
           <h2><span class="limited-time">48시간 한정</span> 시크릿 혜택</h2>
           <div class="timer" role="timer" aria-label="혜택 종료까지 남은 시간">
             <span class="digit">{{ hours }}</span><span class="colon">:</span>
@@ -41,7 +41,7 @@ import { ScrapbookUpgradeEventService } from '../../services/scrapbook-upgrade-e
         }
         <div class="symbol" aria-hidden="true">🧠</div>
         <h1>할 일 · 메모 · 프로젝트까지<br>한곳에서 관리하고 싶으시다면,</h1>
-        <p class="intro"><strong>라이프업 통합 템플릿으로 업그레이드해 보세요.</strong><br>🎁 {{ event.isPlanner ? '플래너 사용자를 위한 묶음 보상 업그레이드 특별가 혜택' : '스크랩북 사용자를 위한 보상 업그레이드 특별가 혜택' }}을 만나보세요.</p>
+        <p class="intro"><strong>라이프업 통합 템플릿으로 업그레이드해 보세요.</strong><br>🎁 {{ event.isPlanner ? '플래너 사용자를 위한 묶음 보상 업그레이드 특별가 혜택' : event.productName + ' 사용자를 위한 보상 업그레이드 특별가 혜택' }}을 만나보세요.</p>
         <a class="cta" [href]="event.upgradeUrl(source)" target="_blank" rel="noopener noreferrer">업그레이드 혜택 확인하기 →</a>
       </section>
     }

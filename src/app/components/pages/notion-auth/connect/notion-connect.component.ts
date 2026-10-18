@@ -22,7 +22,7 @@ export class NotionConnectComponent implements OnInit {
     activeTab: 'installed' | 'not-installed' = 'installed';
 
     userId: string = '';
-    templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' = 'lifeUp';
+    templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite' = 'lifeUp';
 
     selectTab(tab: 'installed' | 'not-installed') {
         this.activeTab = tab;
@@ -81,5 +81,4 @@ export class NotionConnectComponent implements OnInit {
         window.location.href = `${this.config.functionsBaseUrl}/notionAuth?userId=${userId}`;
     }
 }
-
 

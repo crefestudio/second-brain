@@ -434,7 +434,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         if (this.userId && !canUseAgent(this.authService.templateId, 'secondbrain')) {
             this.showUnsupportedNotice = true;
             this.state = 'unsupported';
-            if (this.authService.templateId !== 'lifeUpScrapbook' && this.authService.templateId !== 'lifeupPlanner') return false;
+            if (this.authService.templateId !== 'lifeUpScrapbook' && this.authService.templateId !== 'lifeupPlanner' && this.authService.templateId !== 'lifeupPlannerLite') return false;
             try { await this.upgradeEvent.initialize(this.userId, this.authService.templateId); }
             catch { return false; }
             this.showUpgradePopup = this.upgradeEvent.isActive;
