@@ -35,9 +35,33 @@ test('classifies overlapping options, amount boundary and month formats', () => 
     ], '2026-10'), {
         'lifeup-reward-sale': { count: 1, revenue: 64000 },
         'lifeup-reward': { count: 1, revenue: 69000 },
-        lifeup: { count: 2, revenue: 80000 },
+        lifeup: { count: 2, revenue: 80000, freeCount: 1 },
         'lifeup-imweb': { count: 1, revenue: 79000 },
         'lifeup-reward': { count: 3, revenue: 207000 },
         'lifeup-reward-sale': { count: 3, revenue: 192000 }
+    });
+});
+
+test('keeps zero-won purchases separate from paid product sales', () => {
+    const purchases = [
+        { templateId: 'lifeUpScrapbook', paymentAmount: 0, purchaseKind: 'free', purchasedAt: '2026. 10. 18.' },
+        { templateId: 'lifeUpScrapbook', paymentAmount: 19000, purchaseKind: 'paid', purchasedAt: '2026. 10. 20.' }
+    ];
+    assert.deepEqual(summarizeProductSales(purchases, '2026-10'), {
+        'lifeup-scrapbook': { count: 1, revenue: 19000, freeCount: 1 }
+    });
+});
+
+test('excludes administrator and tester purchases from product sales', () => {
+    const purchases = [
+        { templateId: 'lifeupPlanner', paymentAmount: 19000, email: 'customer@example.com', purchasedAt: '2026. 10. 18.' },
+        { templateId: 'lifeupPlanner', paymentAmount: 0, email: 'ryuryuu030@naver.com', purchasedAt: '2026. 10. 18.' },
+        { templateId: 'lifeupPlannerLite', paymentAmount: 0, email: 'mnmlogg@gmail.com', purchasedAt: '2026. 10. 18.' },
+        { templateId: 'lifeUpScrapbook', paymentAmount: 0, email: 'toto791@gmail.com', purchasedAt: '2026. 10. 18.' },
+        { templateId: 'lifeUpScrapbook', paymentAmount: 0, email: 'test@example.com', purchasedAt: '2026. 10. 18.' }
+    ];
+    const excluded = new Set(['ryuryuu030@naver.com', 'mnmlogg@gmail.com', 'toto791@gmail.com', 'test@example.com']);
+    assert.deepEqual(summarizeProductSales(purchases, '2026-10', excluded), {
+        'lifeup-planner': { count: 1, revenue: 19000 }
     });
 });

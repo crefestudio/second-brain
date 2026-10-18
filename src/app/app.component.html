@@ -1,4 +1,17 @@
 <router-outlet></router-outlet>
+
+@if (showUpdatePrompt) {
+  <div class="update-backdrop" role="presentation">
+    <section class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title" aria-describedby="update-dialog-description">
+      <h2 id="update-dialog-title">앱이 업데이트되었습니다.</h2>
+      <p id="update-dialog-description">지금 다시 로드할까요?<br>하시던 작업이 있다면 취소를 눌러주세요.</p>
+      <div class="update-actions">
+        <button type="button" class="update-cancel" (click)="dismissAppUpdate()">취소</button>
+        <button type="button" class="update-confirm" (click)="reloadWithLatestApp()">지금 다시 로드</button>
+      </div>
+    </section>
+  </div>
+}
 <!-- 전체 프로세스 상태 -->
 <div
   class="toast"

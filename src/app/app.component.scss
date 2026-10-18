@@ -60,3 +60,32 @@ toast
   color: #ffffff;
 }
 
+.update-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.44);
+}
+
+.update-dialog {
+  width: min(100%, 380px);
+  box-sizing: border-box;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: #202126;
+  color: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.36);
+}
+
+.update-dialog h2 { margin: 0 0 10px; font-size: 18px; }
+.update-dialog p { margin: 0; color: #c4c6cf; font-size: 14px; line-height: 1.6; }
+
+.update-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.update-actions button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.update-cancel { background: #343640; color: #f3f4f6; }
+.update-confirm { background: #5a78ff; color: #fff; }
+

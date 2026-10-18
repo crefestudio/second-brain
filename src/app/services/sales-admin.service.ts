@@ -6,7 +6,7 @@ export type StoreVisitSource = { location: string; count: number; siteVisits: nu
 export type StoreVisitLog = { id: string; collection: 'storeVisits' | 'siteVisits'; productPath: string; path?: string; targetName?: string; createdAt: string };
 export type ProductVisitLog = { id: string; collection: 'storeVisits'; location: string; title?: string | null; createdAt: string };
 export type MarketingReportResult = { report: { month: string; generatedAt: string; warnings: string[]; metrics: Array<{ name: string; actual: number | null; target: number; unit: string; lever: string; action: string; gap: number | null; status: string }> }; ai?: string; model?: string };
-export type StoreVisitSummary = { month: string; totalViews: number; dailyInflows?: { today: number; yesterday: number; dayBeforeYesterday: number }; productViews: Record<string, number>; productSales: Record<string, { count: number; revenue: number }>; sources: StoreVisitSource[] };
+export type StoreVisitSummary = { month: string; totalViews: number; dailyInflows?: { today: number; yesterday: number; dayBeforeYesterday: number }; productViews: Record<string, number>; productSales: Record<string, { count: number; revenue: number; freeCount?: number }>; sources: StoreVisitSource[] };
 
 @Injectable({ providedIn: 'root' })
 export class SalesAdminService {

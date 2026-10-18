@@ -5,12 +5,13 @@ import { RouterLink } from '@angular/router';
 import { UserService } from '../../../services/user.service';
 import { AuthService } from '../../../services/auth.service';
 import { _log } from '../../../lib/cf-common/cf-common';
+import { UpgradeBannerComponent } from '../../common/upgrade-banner.component';
 
 const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-workspace',
-    imports: [CommonModule, RouterLink],
+    imports: [CommonModule, RouterLink, UpgradeBannerComponent],
     templateUrl: './workspace.component.html',
     styleUrl: './workspace.component.css'
 })
@@ -47,7 +48,7 @@ export class WorkspaceComponent implements OnInit {
     ];
 
 
-    constructor(private userService: UserService, private authService: AuthService) {
+    constructor(private userService: UserService, public authService: AuthService) {
 
     }
 

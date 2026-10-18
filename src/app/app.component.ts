@@ -44,6 +44,9 @@ export class AppComponent implements OnInit {
 
     errorMessage = '';
     warnMessage = '';
+    showUpdatePrompt = false;
+    private availableVersionHash = '';
+    private dismissedVersionHash = '';
 
 
     constructor(
@@ -97,17 +100,27 @@ export class AppComponent implements OnInit {
     private watchForAppUpdate(): void {
         if (!this.swUpdate.isEnabled) return;
 
-        // An iframe can stay open indefinitely. Activate the new cached app shell and reload
-        // this frame as soon as a deployment is available, so the parent does not need to reload.
         this.swUpdate.versionUpdates
             .pipe(filter((event): event is VersionReadyEvent => event.type === 'VERSION_READY'))
-            .subscribe(async () => {
-                await this.swUpdate.activateUpdate();
-                window.location.reload();
+            .subscribe((event) => {
+                const versionHash = event.latestVersion.hash;
+                if (versionHash === this.dismissedVersionHash) return;
+                this.availableVersionHash = versionHash;
+                this.showUpdatePrompt = true;
             });
 
         void this.swUpdate.checkForUpdate();
         window.setInterval(() => void this.swUpdate.checkForUpdate(), 5 * 60 * 1000);
+    }
+
+    async reloadWithLatestApp(): Promise<void> {
+        await this.swUpdate.activateUpdate();
+        window.location.reload();
+    }
+
+    dismissAppUpdate(): void {
+        this.dismissedVersionHash = this.availableVersionHash;
+        this.showUpdatePrompt = false;
     }
 
     private notifyEmbedRouteChange(): void {

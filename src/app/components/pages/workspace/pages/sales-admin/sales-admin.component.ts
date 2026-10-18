@@ -162,7 +162,7 @@ export class SalesAdminComponent implements OnInit {
         catch (error) { this.reportError = error instanceof Error ? error.message : '리포트 생성 실패'; }
         finally { this.reportLoading = false; }
     }
-    allowed = false; errorMessage = ''; youtubeMessage = ''; copiedPath = ''; loadingSummary = false; syncingYoutube = false; summaryMonth = ''; totalViews = 0; productViews: Record<string, number> = {}; productSales: Record<string, { count: number; revenue: number }> = {}; sources: StoreVisitSource[] = [];
+    allowed = false; errorMessage = ''; youtubeMessage = ''; copiedPath = ''; loadingSummary = false; syncingYoutube = false; summaryMonth = ''; totalViews = 0; productViews: Record<string, number> = {}; productSales: Record<string, { count: number; revenue: number; freeCount?: number }> = {}; sources: StoreVisitSource[] = [];
     dailyInflows: { today: number; yesterday: number; dayBeforeYesterday: number } | null = null;
     
     goals = { 
@@ -216,6 +216,7 @@ export class SalesAdminComponent implements OnInit {
     won(value: number): string { return `${value.toLocaleString('ko-KR')}원`; }
     views(product: Product): number { return this.productViews[product.trackingKey || product.storePath] || 0; }
     salesCount(product: Product): number { return this.productSales[product.trackingKey || product.storePath]?.count || 0; }
+    freeSalesCount(product: Product): number { return this.productSales[product.trackingKey || product.storePath]?.freeCount || 0; }
     salesRevenue(product: Product): number { return this.productSales[product.trackingKey || product.storePath]?.revenue || 0; }
     sourceViews(source: StoreVisitSource): string {
         if (!this.isYoutubeVideoId(source.location)) return 'N/A';

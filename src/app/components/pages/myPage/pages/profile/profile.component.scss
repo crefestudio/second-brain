@@ -114,3 +114,10 @@
 #deletion-confirmation { display: block; padding: 10px; max-width: 100%; box-sizing: border-box; }
 .delete-button { background: #a52d2d; color: white; padding: 12px 16px; border: 0; border-radius: 6px; cursor: pointer; }
 .delete-button:disabled { opacity: .45; cursor: not-allowed; }
+.marketing-description, .sync-note { color: #9ca3af; font-size: 13px; line-height: 1.65; margin: 0 0 18px; }
+.sync-note { padding: 12px 14px; border-radius: 8px; background: #232630; }
+.marketing-channel { min-width: 0; margin: 16px 0 0; padding: 12px 16px 16px; border: 1px solid #363636; border-radius: 10px; }
+.marketing-channel legend { padding: 0 6px; font-size: 14px; font-weight: 600; color: #e5e7eb; }
+.marketing-channel .consent-options { margin: 0; flex-wrap: wrap; gap: 10px 24px; }
+.marketing-channel label { min-height: 36px; font-size: 14px; }
+.marketing-channel input { width: 18px; height: 18px; margin: 0; accent-color: #7aa2f7; }

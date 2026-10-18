@@ -20,7 +20,8 @@ export async function deleteAccountData(
             ...owned.docs.map(doc => doc.id)
         ])];
         tx.set(accountRef, { deletionStatus: 'pending', deletionWorkspaceIds: ids,
-            marketingConsent: false, marketingConsentSource: 'user' }, { merge: true });
+            marketingConsent: false, marketingEmailConsent: false, marketingSmsConsent: false,
+            consentSchemaVersion: 2, marketingConsentSource: 'user' }, { merge: true });
         return ids;
     });
     if (user.email) await removeCustomerEmail(user.email.trim().toLowerCase());

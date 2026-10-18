@@ -4,6 +4,7 @@ import { auth } from '../firebase';
 
 export type LifeupCustomer = {
     id: string; name?: string; phone?: string; phoneDisplay?: string; emails?: string[];
+    smsNotificationConsent?: '예' | '아니오' | '미응답' | '차단';
     purchasedAt?: string; notificationConsent?: '예' | '아니오' | '미응답' | '차단'; membership?: 'premium' | 'standard' | 'scrapbook' | 'planner' | 'none';
     memberType?: 'standard' | 'premium' | 'scrapbook' | 'planner' | null; [key: string]: unknown;
 };

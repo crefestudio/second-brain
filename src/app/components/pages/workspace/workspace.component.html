@@ -3,6 +3,7 @@
         <h1>
             ⚡ 라이프봇 대시보드
         </h1>
+        <app-upgrade-banner [workspaceId]="userId" [templateId]="authService.templateId" source="workspace_home"></app-upgrade-banner>
         <div class="hero-box">
             <button class="template-link-btn" routerLink="/workspace/auto/manage">
                 자동화 비서 관리 →

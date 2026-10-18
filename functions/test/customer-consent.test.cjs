@@ -13,7 +13,7 @@ function fixture(preference) {
     const refs = records.map(data => ({ data }));
     const snapshot = ref => ({ ref, data: () => ref.data });
     const db = {
-        collection: name => name === 'appAccounts' ? { doc: () => ({ data: preference }) } : {
+        collection: name => name === 'imwebMarketingConsents' ? { doc: () => ({ data: {} }) } : name === 'appAccounts' ? { doc: () => ({ data: preference }) } : {
             where: () => ({ get: async () => ({ docs: refs.map(snapshot) }) })
         },
         runTransaction: async callback => callback({
@@ -21,7 +21,8 @@ function fixture(preference) {
             set: (ref, data) => Object.assign(ref.data, data)
         })
     };
-    const context = vm.createContext({ db, admin: {
+    const context = vm.createContext({ db, consentEmailId: require('../lib/imweb-marketing-consent').consentEmailId,
+        resolveChannelConsent: require('../lib/marketing-consent').resolveChannelConsent, admin: {
         auth: () => ({ getUsers: async () => ({ users: preference ? [{ uid: 'member' }] : [] }) }),
         firestore: { FieldValue: { serverTimestamp: () => 123 } }
     } });

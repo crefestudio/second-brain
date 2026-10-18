@@ -1,4 +1,6 @@
 import { imwebPurchasedItems } from './imweb-order-items';
+import { channelConsent, resolveChannelConsent, MarketingChannel } from './marketing-consent';
+import { consentEmailId, migrateMarketingConsents, syncImwebMarketingConsents } from './imweb-marketing-consent';
 import { templateWelcomeMail } from './template-welcome-mail';
 import { TemplateId, TEMPLATE_IDS, TEMPLATE_PRODUCTS, isTemplateId, templateIdOrLegacy, canUseAgent } from './template-catalog';
 /* eslint-disable */
@@ -2199,6 +2201,7 @@ type PurchaserRecord = { id: string; data: any; memberType?: LifeupMemberType };
 const LIFEUP_TEST_PURCHASER_EMAILS = new Set([
     'mnmlogg@gmail.com',
     'ryuryuu030@naver.com',
+    'test@example.com',
     'toto791@gmail.com'
 ]);
 
@@ -3055,6 +3058,12 @@ function selectBestPurchaserForTemplate(templateId: string, records: PurchaserRe
         !best || purchaserTimestamp(candidate.data) > purchaserTimestamp(best.data) ? candidate : best, null);
 }
 
+export const syncImwebMarketingConsentsDaily = onSchedule({ schedule: '0 4 * * *', timeZone: 'Asia/Seoul', timeoutSeconds: 1800, memory: '512MiB', maxInstances: 1, secrets: [IMWEB_API_KEY, IMWEB_API_SECRET] }, async () => {
+    const migrated = await migrateMarketingConsents(db);
+    const result = await syncImwebMarketingConsents(db, await imwebAccessToken());
+    logger.info('Imweb marketing consent sync completed', { migrated, ...result });
+});
+
 async function imwebAccessToken(): Promise<string> {
     const response = await fetch('https://api.imweb.me/v2/auth', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3479,7 +3488,8 @@ async function storeVisitSummary() {
     });
     const sourceRows = [...sources.values()].sort((a, b) => b.count - a.count || b.siteVisits - a.siteVisits);
     const purchases = await db.collection('purchasers').where('templateId', 'in', TEMPLATE_IDS).get();
-    const productSales = summarizeProductSales(purchases.docs.map(doc => doc.data()), currentMonth.key);
+    const excludedSalesEmails = new Set([...ADMIN_EMAILS, ...LIFEUP_TEST_PURCHASER_EMAILS]);
+    const productSales = summarizeProductSales(purchases.docs.map(doc => doc.data()), currentMonth.key, excludedSalesEmails);
     const titles = new Map(await Promise.all([...new Set(sourceRows.map(source => source.location).filter(location => YOUTUBE_VIDEO_ID.test(location)))].map(async videoId => [videoId, await youtubeContentTitle(videoId)] as const)));
     const videoSources = sourceRows.filter(source => YOUTUBE_VIDEO_ID.test(source.location));
     const viewDocs = videoSources.length ? await db.getAll(...videoSources.map(source => db.collection('youtubeMonthlyViews').doc(currentMonth.key).collection('videos').doc(source.location))) : [];
@@ -4084,6 +4094,7 @@ async function saveMarketingBlock(email?: string, phone?: string): Promise<void>
 async function memberPreferenceRefs(emails: string[]): Promise<admin.firestore.DocumentReference[]> {
     const unique = [...new Set(emails.map(customerEmail).filter(Boolean))];
     const refs: admin.firestore.DocumentReference[] = [];
+    refs.push(...unique.map(email => db.collection('imwebMarketingConsents').doc(consentEmailId(email))));
     for (let offset = 0; offset < unique.length; offset += 100) {
         const result = await admin.auth().getUsers(unique.slice(offset, offset + 100).map(email => ({ email })));
         refs.push(...result.users.map(user => db.collection('appAccounts').doc(user.uid)));
@@ -4091,10 +4102,10 @@ async function memberPreferenceRefs(emails: string[]): Promise<admin.firestore.D
     return refs;
 }
 
-function explicitMemberConsent(preferences: admin.firestore.DocumentData[]): boolean | undefined {
-    const explicit = preferences.filter(data => data.marketingConsentSource === 'user' && typeof data.marketingConsent === 'boolean');
-    explicit.sort((a, b) => (b.marketingConsentUpdatedAt?.toMillis?.() || 0) - (a.marketingConsentUpdatedAt?.toMillis?.() || 0));
-    return explicit[0]?.marketingConsent;
+function consentLabel(value: boolean | undefined): string { return value === undefined ? '미응답' : value ? '예' : '아니오'; }
+
+function explicitMemberConsent(preferences: admin.firestore.DocumentData[], channel: MarketingChannel = 'Email'): boolean | undefined {
+    return resolveChannelConsent(preferences, channel);
 }
 
 async function findCustomerRefsByEmail(email: string): Promise<admin.firestore.DocumentReference[]> {
@@ -4137,7 +4148,7 @@ async function removeCustomerEmailForDeletedAccount(email: string): Promise<void
     });
 }
 
-async function setCurrentCustomerConsent(email: string, consent: boolean, source: 'purchase' | 'csv' | 'account'): Promise<void> {
+async function setCurrentCustomerConsent(email: string, consent: boolean, source: 'purchase' | 'csv' | 'account', smsConsent?: boolean): Promise<void> {
     const normalized = customerEmail(email);
     if (!normalized) return;
     // Update every matching record. Older imports can contain separate customer
@@ -4151,6 +4162,7 @@ async function setCurrentCustomerConsent(email: string, consent: boolean, source
         const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
         const preferences = await Promise.all(preferenceRefs.map(ref => transaction.get(ref)));
         const explicit = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}));
+        const explicitSms = explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}), 'Sms');
         snapshots.forEach((snapshot, index) => {
             const existing = snapshot.data() || {};
             const emails = Array.isArray(existing.emails) ? existing.emails.map(customerEmail) : [];
@@ -4159,6 +4171,7 @@ async function setCurrentCustomerConsent(email: string, consent: boolean, source
             if (explicit === undefined && source !== 'account' && existing.notificationConsentSource === 'account') return;
             transaction.set(refs[index], {
                 templateId: 'lifeUp', emails: [...new Set([...emails, normalized])],
+                ...(source === 'account' ? { marketingEmailConsent: explicit ?? consent, marketingSmsConsent: explicitSms ?? smsConsent ?? consent, consentSchemaVersion: 2 } : {}),
                 notificationConsent: (explicit ?? consent) ? '예' : '아니오', notificationConsentSource: explicit === undefined ? source : 'account',
                 notificationConsentUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -4284,7 +4297,8 @@ export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency:
                     const blocked = [...(Array.isArray(data.emails) ? data.emails : []), data.email].map(customerEmail).some(email => blockedEmails.has(email)) || blockedPhones.has(customerPhone(data.phone));
                     return {
                         id: doc.id, ...data, memberType, membership,
-                        notificationConsent: blocked ? '차단' : explicit === undefined ? (data.notificationConsent === '차단' ? '미응답' : data.notificationConsent || '미응답') : explicit ? '예' : '아니오'
+                        notificationConsent: blocked ? '차단' : consentLabel(explicit ?? channelConsent(data, 'Email')),
+                        smsNotificationConsent: blocked ? '차단' : consentLabel(explicitMemberConsent(preferences.map(snapshot => snapshot.data() || {}), 'Sms') ?? channelConsent(data, 'Sms'))
                     };
                 }));
                 customers.forEach(customer => page.add(customer));
@@ -4331,11 +4345,11 @@ export const sendLifeupCustomerMail = onRequest({ timeoutSeconds: 540 }, withCor
             if (!snapshot.exists || snapshot.data()?.templateId !== 'lifeUp') continue;
             const customer = snapshot.data() || {};
             const emails = [...new Set([...(Array.isArray(customer.emails) ? customer.emails : []), customer.email].map(customerEmail).filter(Boolean))];
-            const preferences = await Promise.all((await memberPreferenceRefs(emails)).map(ref => ref.get()));
-            const explicit = explicitMemberConsent(preferences.map(preference => preference.data() || {}));
-            const consent = explicit === undefined ? String(customer.notificationConsent || '미응답') : explicit ? '예' : '아니오';
             const blocked = emails.some(email => blockedEmails.has(email)) || blockedPhones.has(customerPhone(customer.phone));
             for (const email of emails) {
+                const preferences = await Promise.all((await memberPreferenceRefs([email])).map(ref => ref.get()));
+                const explicit = explicitMemberConsent(preferences.map(preference => preference.data() || {}));
+                const consent = consentLabel(explicit ?? channelConsent(customer, 'Email'));
                 const current = recipients.get(email) || { name: String(customer.name || ''), customerIds: [], nonConsenting: false, blocked: false };
                 current.name ||= String(customer.name || '');
                 current.customerIds.push(snapshot.id);
@@ -4661,14 +4675,22 @@ export const getMyProfileSettings = onRequest(withCors(async (req, res) => {
         const hasExplicitConsent = typeof appAccount.marketingConsent === 'boolean' && appAccount.marketingConsentSource === 'user';
         const customerRef = await findCustomerRefByEmail(identity.email);
         const customer = customerRef ? (await customerRef.get()).data() : null;
+        const imweb = (await db.collection('imwebMarketingConsents').doc(consentEmailId(identity.email)).get()).data() || {};
+        const records = [appAccount, imweb];
+        const emailConsent = explicitMemberConsent(records) ?? channelConsent(customer || {}, 'Email');
+        const smsConsent = explicitMemberConsent(records, 'Sms') ?? channelConsent(customer || {}, 'Sms');
         const hasCustomerConsent = customer?.notificationConsent === '예' || customer?.notificationConsent === '아니오';
         const marketingConsent = hasExplicitConsent ? appAccount.marketingConsent : hasCustomerConsent
             ? customer?.notificationConsent === '예' : await initialMarketingConsent(identity.email);
         return res.json({
             displayName: account.displayName || '', email: account.email || '', phoneNumber: account.phoneNumber || '',
             createdAt: account.metadata.creationTime || '', providers: account.providerData.map(provider => provider.providerId),
-            marketingConsent, marketingConsentSource: hasExplicitConsent ? 'user' : hasCustomerConsent ? customer?.notificationConsentSource || 'import' : 'none',
-            marketingConsentRequired: !hasExplicitConsent && (!hasCustomerConsent || appAccount.invitationMarketingConsentRequired === true)
+            marketingConsent: emailConsent ?? marketingConsent,
+            marketingEmailConsent: emailConsent ?? false, marketingSmsConsent: smsConsent ?? false,
+            marketingEmailConsentRequired: emailConsent === undefined, marketingSmsConsentRequired: smsConsent === undefined,
+            imwebConsentLinked: imweb.marketingConsentSource === 'imweb',
+            marketingConsentSource: hasExplicitConsent ? 'user' : hasCustomerConsent ? customer?.notificationConsentSource || 'import' : 'none',
+            marketingConsentRequired: emailConsent === undefined || smsConsent === undefined
         });
     } catch (error) {
         logger.error('Profile settings lookup failed', error);
@@ -4681,15 +4703,20 @@ export const updateMyProfileSettings = onRequest(withCors(async (req, res) => {
     try {
         const identity = await getCareIdentity(req);
         const displayName = String(req.body?.displayName || '').trim();
-        const marketingConsent = req.body?.marketingConsent;
-        if (!displayName || displayName.length > 80 || typeof marketingConsent !== 'boolean') return res.status(400).json({ error: 'INVALID_PROFILE_SETTINGS' });
+        const marketingConsent = req.body?.marketingEmailConsent ?? req.body?.marketingConsent;
+        const marketingSmsConsent = req.body?.marketingSmsConsent ?? req.body?.marketingConsent;
+        if (!displayName || displayName.length > 80 || typeof marketingConsent !== 'boolean' || typeof marketingSmsConsent !== 'boolean') return res.status(400).json({ error: 'INVALID_PROFILE_SETTINGS' });
         await admin.auth().updateUser(identity.uid, { displayName });
         await db.collection('appAccounts').doc(identity.uid).set({
             profileName: displayName, profileUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            marketingConsent, marketingConsentSource: 'user', marketingConsentUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+            marketingConsent, marketingConsentSource: 'user', marketingConsentUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            marketingEmailConsent: marketingConsent, marketingSmsConsent, consentSchemaVersion: 2
         }, { merge: true });
-        await setCurrentCustomerConsent(identity.email, marketingConsent, 'account');
-        return res.json({ displayName, marketingConsent });
+        await setCurrentCustomerConsent(identity.email, marketingConsent, 'account', marketingSmsConsent);
+        const imweb = (await db.collection('imwebMarketingConsents').doc(consentEmailId(identity.email)).get()).data() || {};
+        return res.json({ displayName, marketingConsent,
+            marketingEmailConsent: marketingConsent && channelConsent(imweb, 'Email') !== false,
+            marketingSmsConsent: marketingSmsConsent && channelConsent(imweb, 'Sms') !== false });
     } catch (error) {
         logger.error('Profile settings update failed', error);
         return res.status(500).json({ error: 'PROFILE_SETTINGS_UPDATE_FAILED' });
@@ -17949,17 +17976,21 @@ export const getScrapbookUpgradeEvent = onRequest(
                 !['lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite'].includes(snapshot.data()?.templateId) ||
                 snapshot.data()?.deletionStatus === 'archived' || account.data()?.deletionStatus === 'pending') return null;
             const existing = snapshot.data()?.scrapbookUpgradeEventFirstSeenAt;
-            if (existing?.toMillis) return existing.toMillis();
+            const bannerDismissed = req.body?.dismissBanner === true || snapshot.data()?.upgradeBannerDismissed === true;
+            if (req.body?.dismissBanner === true) {
+                transaction.set(workspaceRef, { upgradeBannerDismissed: true }, { merge: true });
+            }
+            if (existing?.toMillis) return { firstSeenAt: existing.toMillis(), bannerDismissed };
 
             const now = admin.firestore.Timestamp.now();
             transaction.set(workspaceRef, {
                 scrapbookUpgradeEventFirstSeenAt: now
             }, { merge: true });
-            return now.toMillis();
+            return { firstSeenAt: now.toMillis(), bannerDismissed };
         });
 
         if (result === null) { res.status(403).json({ error: 'SCRAPBOOK_WORKSPACE_REQUIRED' }); return; }
-        res.json({ firstSeenAt: result, serverNow: Date.now() });
+        res.json({ ...result, serverNow: Date.now() });
     })
 );
 

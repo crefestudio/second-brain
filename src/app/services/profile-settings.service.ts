@@ -2,14 +2,14 @@ import { Injectable, inject } from '@angular/core';
 import { APP_CONFIG } from '../config/app-config.token';
 import { auth } from '../firebase';
 
-export type ProfileSettings = { displayName: string; email: string; phoneNumber: string; createdAt: string; providers: string[]; marketingConsent: boolean; marketingConsentRequired?: boolean; };
+export type ProfileSettings = { displayName: string; email: string; phoneNumber: string; createdAt: string; providers: string[]; marketingEmailConsent: boolean; marketingSmsConsent: boolean; marketingConsentRequired?: boolean; marketingEmailConsentRequired?: boolean; marketingSmsConsentRequired?: boolean; };
 
 @Injectable({ providedIn: 'root' })
 export class ProfileSettingsService {
     private readonly baseUrl = inject(APP_CONFIG).functionsBaseUrl;
     async get(): Promise<ProfileSettings> { return this.request('getMyProfileSettings'); }
     async deleteAccount(): Promise<void> { await this.request('deleteMyAccount', { confirmDeletion: true, confirmation: '탈퇴' }); }
-    async save(displayName: string, marketingConsent: boolean): Promise<Pick<ProfileSettings, 'displayName' | 'marketingConsent'>> { return this.request('updateMyProfileSettings', { displayName, marketingConsent }); }
+    async save(displayName: string, marketingEmailConsent: boolean, marketingSmsConsent: boolean): Promise<Pick<ProfileSettings, 'displayName' | 'marketingEmailConsent' | 'marketingSmsConsent'>> { return this.request('updateMyProfileSettings', { displayName, marketingEmailConsent, marketingSmsConsent }); }
     private async request(endpoint: string, body: Record<string, unknown> = {}): Promise<any> {
         const token = await auth.currentUser?.getIdToken();
         if (!token) throw new Error('로그인이 필요합니다.');

@@ -49,7 +49,7 @@
         <option value="planner">라이프업 플래너 회원</option>
         <option value="none">비회원</option>
       </select></label>
-    <label>알림 동의 여부<select [(ngModel)]="notifyFilter" (ngModelChange)="criteriaChanged()">
+    <label>이메일 동의 여부<select [(ngModel)]="notifyFilter" (ngModelChange)="criteriaChanged()">
         <option value="all">전체</option>
         <option value="yes">동의</option>
         <option value="no">미동의/미응답</option>
@@ -91,7 +91,7 @@
           <th>이메일</th>
           <th>서비스 유형</th>
           <th>회원 유형</th>
-          <th>알림 동의 여부</th>
+          <th>이메일 동의</th><th>문자 동의</th>
           <th>상세 보기</th>
         </tr>
       </thead>
@@ -109,11 +109,12 @@
               serviceLabel(customer) }}</span></td>
           <td>{{ membershipLabel(customer) }}</td>
           <td>{{ customer.notificationConsent || '미응답' }}</td>
+          <td>{{ customer.smsNotificationConsent || '미응답' }}</td>
           <td><button class="detail-btn" (click)="toggleDetail(customer)">{{ selectedCustomer?.id === customer.id ? '닫기'
               : '상세 보기' }}</button></td>
         </tr>
         @if (selectedCustomer?.id === customer.id) { <tr class="detail-row">
-          <td colspan="9">
+          <td colspan="10">
             <div class="detail-card">
               <h2>고객 상세 정보</h2>
               <dl>@for (entry of detailEntries(customer); track entry.key) { <div>
@@ -124,7 +125,7 @@
           </td>
         </tr> }
         } @empty { <tr>
-          <td colspan="9" class="empty-cell">{{ isRefreshing ? '불러오는 중…' : listError ? '목록을 불러오지 못했습니다.' : '조건에 맞는 고객이
+          <td colspan="10" class="empty-cell">{{ isRefreshing ? '불러오는 중…' : listError ? '목록을 불러오지 못했습니다.' : '조건에 맞는 고객이
             없습니다.' }}</td>
         </tr> }
       </tbody>

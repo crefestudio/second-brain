@@ -9,6 +9,7 @@ import { AuthService } from '../../../../../services/auth.service';
 import { SocialAuthService } from '../../../../../services/social-auth.service';
 import { LifebotGuideModalComponent } from '../../../../common/lifebot-guide-modal/lifebot-guide-modal.component';
 import { TemplateId, TEMPLATE_IDS, TEMPLATE_PRODUCTS, templateDownloadPath } from '../../../../../config/template-catalog';
+import { UpgradeBannerComponent } from '../../../../common/upgrade-banner.component';
 
 
 /*
@@ -28,7 +29,7 @@ const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-agent-connect-component',
-    imports: [CommonModule, FormsModule, RouterLink, LifebotGuideModalComponent],
+    imports: [CommonModule, FormsModule, RouterLink, LifebotGuideModalComponent, UpgradeBannerComponent],
     templateUrl: './agent-connect-component.component.html',
     styleUrl: './agent-connect-component.component.css'
 })
@@ -146,7 +147,7 @@ export class AgentConnectComponentComponent implements OnInit {
 
     constructor(
         private userService: UserService,
-        private authService: AuthService,
+        public authService: AuthService,
         private socialAuth: SocialAuthService
     ) {
 

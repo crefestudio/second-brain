@@ -40,6 +40,8 @@
 
   </div>
 
+  <app-upgrade-banner [workspaceId]="userId" [templateId]="authService.templateId" source="workspace_connect"></app-upgrade-banner>
+
   @if (isLifeupPurchaser && purchaseEmailVerified) {
   <section class="template-change-notice" aria-live="polite">
     <div class="template-change-icon" aria-hidden="true">✓</div>

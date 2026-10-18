@@ -5,17 +5,26 @@
     @if (marketingConsentRequired) { 
       <section class="onboarding-notice" role="status">
         <strong>🔔 마케팅 수신 여부 설정이 필요합니다.</strong>
-        <p>회원가입을 마무리하기 위해 마케팅 수신 여부를 설정해 주세요.<br><strong>수신 동의</strong> 또는 <strong>수신 안 함</strong>을 선택한 뒤 저장하면, 원래 이용하려던 페이지로 자동 이동합니다.</p>
+        <p>회원가입을 마무리하기 위해 이메일과 문자 마케팅 수신 여부를 각각 설정해 주세요.<br><strong>수신 동의</strong> 또는 <strong>수신 안 함</strong>을 선택한 뒤 저장하면, 설정이 완료됩니다.</p>
       </section> }
     @if (marketingBlockNotice) { 
       <section class="marketing-block-notice" role="status">
         <strong>수신 차단 요청을 확인했습니다.</strong>
-        <p>아래 <strong>마케팅 알림 수신 동의</strong>에서 <strong>수신 안 함</strong>을 선택한 뒤 저장해주세요.<br>
+        <p>아래 <strong>이메일·문자 마케팅 수신 동의</strong>에서 <strong>수신 안 함</strong>을 선택한 뒤 저장해주세요.<br>
           서비스 이용에 필요한 기본 안내까지 받지 않으시려면 회원 탈퇴를 진행해 주세요.
         </p>
 
       </section> }
-    <section class="info-card notification-card"><h2>서비스 알림 설정</h2><div class="notification-item required"><div><strong>서비스 이용 안내 (필수)</strong><p>업데이트, 계정·연결 상태, 요청 답변 등 서비스 이용에 필요한 내용을 안내해 드립니다.</p></div><span>필수</span></div><div class="notification-item consent"><div><strong>마케팅 알림 수신 동의 (선택)</strong><p>신규 상품, 이벤트, 할인 및 특별 혜택 소식을 받습니다.</p><div class="consent-options"><label><input type="radio" name="marketingConsent" [checked]="consentSelected && marketingConsent" (change)="selectMarketingConsent(true)"> 수신 동의</label><label><input type="radio" name="marketingConsent" [checked]="consentSelected && !marketingConsent" (change)="selectMarketingConsent(false)"> 수신 안 함</label></div></div></div></section>
+    <section class="info-card notification-card">
+      <h2>서비스 알림 설정</h2>
+      <div class="notification-item required"><div><strong>서비스 이용 안내 (필수)</strong><p>계정·연결 상태, 요청 답변 등 서비스 이용에 필요한 내용을 안내해 드립니다.</p></div><span>필수</span></div>
+    </section>
+    <section class="info-card marketing-card" aria-labelledby="marketing-title">
+      <h2 id="marketing-title">마케팅 수신 동의(선택)</h2>
+      <p class="marketing-description">신규 상품, 이벤트, 할인 및 특별 혜택 소식을 받을 채널을 선택해 주세요.</p>
+      <fieldset class="marketing-channel"><legend>이메일</legend><div class="consent-options"><label><input type="radio" name="marketingEmailConsent" [checked]="emailSelected && marketingEmailConsent" (change)="selectMarketingConsent('email', true)"> 수신 동의</label><label><input type="radio" name="marketingEmailConsent" [checked]="emailSelected && !marketingEmailConsent" (change)="selectMarketingConsent('email', false)"> 수신 안 함</label></div></fieldset>
+      <fieldset class="marketing-channel"><legend>문자(SMS)</legend><div class="consent-options"><label><input type="radio" name="marketingSmsConsent" [checked]="smsSelected && marketingSmsConsent" (change)="selectMarketingConsent('sms', true)"> 수신 동의</label><label><input type="radio" name="marketingSmsConsent" [checked]="smsSelected && !marketingSmsConsent" (change)="selectMarketingConsent('sms', false)"> 수신 안 함</label></div></fieldset>
+    </section>
     @if (errorMessage) { <p class="message error">{{ errorMessage }}</p> } @if (successMessage) { <p class="message success">{{ successMessage }}</p> }<button class="save-btn" (click)="save()" [disabled]="isSaving || isDeleting">{{ isSaving ? '저장 중…' : '저장' }}</button>
     <footer class="account-deletion">
       <button type="button" class="withdraw-link" (click)="showDeletion = !showDeletion" [disabled]="isDeleting" [attr.aria-expanded]="showDeletion" aria-controls="deletion-panel">회원 탈퇴</button>

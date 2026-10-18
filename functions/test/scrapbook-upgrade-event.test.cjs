@@ -15,9 +15,9 @@ function setup(workspace, authenticated = true) {
     admin:{auth:()=>({verifyIdToken:async()=>{if(!authenticated) throw Error(); return {uid:'owner'};}}),
       firestore:{Timestamp:{now:()=>({toMillis:()=>1000})}}}};
   vm.runInNewContext(ts.transpileModule(section,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText, context);
-  return {writes:()=>writes, call:async id=>{
+  return {writes:()=>writes, call:async (id, dismissBanner = false)=>{
     const res={code:200,status(c){this.code=c;return this;},json(body){this.body=body;},end(){}};
-    await context.exports.getScrapbookUpgradeEvent({method:'POST',headers:{authorization:'Bearer token'},body:{workspaceId:id}},res);
+    await context.exports.getScrapbookUpgradeEvent({method:'POST',headers:{authorization:'Bearer token'},body:{workspaceId:id, dismissBanner}},res);
     return res;
   }};
 }
@@ -43,4 +43,21 @@ test('Planner reuses the workspace-scoped event without restarting on repeat vis
   assert.equal((await s.call('w')).body.firstSeenAt,1000);
   assert.equal((await s.call('w')).body.firstSeenAt,1000);
   assert.equal(s.writes(),1);
+});
+
+test('dismissal persists on the workspace without restarting its sale', async () => {
+  const workspace = {firebaseUid:'owner', templateId:'lifeupPlannerLite'};
+  const s = setup(workspace);
+  assert.equal((await s.call('w')).body.bannerDismissed, false);
+  const dismissed = await s.call('w', true);
+  assert.equal(dismissed.body.bannerDismissed, true);
+  assert.equal(dismissed.body.firstSeenAt, 1000);
+  assert.equal((await s.call('w')).body.bannerDismissed, true);
+  assert.equal((await setup({firebaseUid:'owner', templateId:'lifeUpScrapbook'}).call('other')).body.bannerDismissed, false);
+});
+
+test('cannot dismiss another owner’s workspace banner', async () => {
+  const s = setup({firebaseUid:'other', templateId:'lifeUpScrapbook'});
+  assert.equal((await s.call('w', true)).code, 403);
+  assert.equal(s.writes(), 0);
 });

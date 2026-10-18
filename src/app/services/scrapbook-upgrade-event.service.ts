@@ -9,6 +9,7 @@ export class ScrapbookUpgradeEventService {
   private readonly duration = 48 * 60 * 60 * 1000;
   private firstSeenAt = 0;
   isLoading = false;
+  bannerDismissed = false;
   private clockOffset = 0;
   private templateId: TemplateId = 'lifeUpScrapbook';
   private requestSequence = 0;
@@ -19,17 +20,28 @@ export class ScrapbookUpgradeEventService {
     this.isLoading = true;
     try {
     this.firstSeenAt = 0;
+    this.bannerDismissed = false;
     if (!workspaceId || !auth.currentUser) return;
-    const result = await firstValueFrom(this.http.post<{ firstSeenAt: number; serverNow: number }>(
+    const result = await firstValueFrom(this.http.post<{ firstSeenAt: number; serverNow: number; bannerDismissed?: boolean }>(
       'https://us-central1-notionable-secondbrain.cloudfunctions.net/getScrapbookUpgradeEvent', { workspaceId },
       { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } }
     ));
     if (requestSequence !== this.requestSequence) return;
     this.firstSeenAt = result.firstSeenAt;
+    this.bannerDismissed = result.bannerDismissed === true;
     this.clockOffset = result.serverNow - Date.now();
     } finally { if (requestSequence === this.requestSequence) this.isLoading = false; }
   }
   get isActive(): boolean { return Boolean(this.firstSeenAt) && this.remainingSeconds > 0; }
+  async dismissBanner(workspaceId: string): Promise<void> {
+    if (!auth.currentUser || !workspaceId) throw new Error('LOGIN_REQUIRED');
+    await firstValueFrom(this.http.post(
+      'https://us-central1-notionable-secondbrain.cloudfunctions.net/getScrapbookUpgradeEvent',
+      { workspaceId, dismissBanner: true },
+      { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } }
+    ));
+    this.bannerDismissed = true;
+  }
   get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
   get productName(): string { return TEMPLATE_PRODUCTS[this.templateId].nameKoShort; }
   get remainingSeconds(): number { return Math.max(0, Math.ceil((this.firstSeenAt + this.duration - Date.now() - this.clockOffset) / 1000)); }

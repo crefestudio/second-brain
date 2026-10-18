@@ -65,7 +65,7 @@ export class RoutineComponent {
     this.isRecommendedHabits = /\/workspace\/routine\/find(?:[?#]|$)/.test(url);
     this.showUnsupportedNotice = !this.canUseRoutine && eligible;
     if (this.canUseRoutine || !eligible) { this.showUpgradePopup = false; return; }
-    try { await this.upgradeEvent.initialize(this.authService.getUserId()); }
+    try { await this.upgradeEvent.initialize(this.authService.getUserId(), this.authService.templateId); }
     catch { this.showUpgradePopup = false; this.upgradeUrl = this.upgradeEvent.normalUrl('routine'); return; }
     if (version !== this.routeVersion) return;
     this.upgradeUrl = this.upgradeEvent.upgradeUrl('routine');
