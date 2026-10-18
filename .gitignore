@@ -49,6 +49,9 @@ src/app/services/notion.service.ts
 .firebase/hosting.ZGlzdFxzZWNvbmQtYnJhaW4tYXBwXGJyb3dzZXI.cache
 firebase-debug.log
 
+# Local command/deployment output may contain tokens returned by CLIs.
+*.log
+
 # Deployment/build logs can include credentials returned by service CLIs.
 build-*.log
 deploy-*.log
