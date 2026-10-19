@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeProductSales } = require('../lib/sales-summary');
+const { summarizeProductSales, isPaidStoreProductPath } = require('../lib/sales-summary');
 const { storeVisitDayWindows } = require('../lib/sales-summary');
 
 test('daily inflow windows use KST midnight and retain yesterday across month boundaries', () => {
@@ -40,6 +40,15 @@ test('classifies overlapping options, amount boundary and month formats', () => 
         'lifeup-reward': { count: 3, revenue: 207000 },
         'lifeup-reward-sale': { count: 3, revenue: 192000 }
     });
+});
+
+test('paid inflow KPI excludes free templates and consultation redirects', () => {
+    for (const path of ['lifeup-imweb', 'lifeup-planner', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-reward-pack', 'lifeup-reward-pack-sale']) {
+        assert.equal(isPaidStoreProductPath(path), true);
+    }
+    for (const path of ['lifeup-planner-lite', 'lifeup-scrapbook', 'bizup-custom', '', 'unknown']) {
+        assert.equal(isPaidStoreProductPath(path), false);
+    }
 });
 
 test('keeps zero-won purchases separate from paid product sales', () => {

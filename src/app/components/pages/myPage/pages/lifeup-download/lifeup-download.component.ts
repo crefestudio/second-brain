@@ -8,12 +8,12 @@ import { AuthService } from '../../../../../services/auth.service';
 import { UserService } from '../../../../../services/user.service';
 import { SocialAuthService } from '../../../../../services/social-auth.service';
 import { APP_CONFIG } from '../../../../../config/app-config.token';
-import { ScrapbookUpgradeEventService } from '../../../../../services/scrapbook-upgrade-event.service';
+import { TemplateUpgradeEventService } from '../../../../../services/template-upgrade-event.service';
 
 @Component({
     selector: 'app-lifeup-download',
     standalone: true,
-    providers: [ScrapbookUpgradeEventService],
+    providers: [TemplateUpgradeEventService],
     imports: [CommonModule, FormsModule],
     templateUrl: './lifeup-download.component.html',
     styleUrls: ['./lifeup-download.component.scss']
@@ -50,6 +50,10 @@ export class LifeupDownloadComponent implements OnInit {
     readonly isScrapbook: boolean;
     get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
     get isPlannerLite(): boolean { return this.templateId === 'lifeupPlannerLite'; }
+    get isSecondBrainOS(): boolean { return this.templateId === 'lifeUpSecondBrainOS'; }
+    get hasPackUpgrade(): boolean { return this.isPlanner || this.isSecondBrainOS; }
+    get upgradeSource(): string { return `download_${TEMPLATE_PRODUCTS[this.templateId].slug}`; }
+    get introductionVideoUrl(): string | null { return TEMPLATE_PRODUCTS[this.templateId].welcome.introductionVideoUrl; }
 
     readonly downloadUrl: string;
     readonly reviewUrl = 'https://notionable.net/lifeup-review';
@@ -61,7 +65,7 @@ export class LifeupDownloadComponent implements OnInit {
         private readonly userService: UserService,
         private readonly router: Router,
         private readonly socialAuth: SocialAuthService,
-        public readonly upgradeEvent: ScrapbookUpgradeEventService,
+        public readonly upgradeEvent: TemplateUpgradeEventService,
         route: ActivatedRoute
     ) {
         const config = inject(APP_CONFIG);
@@ -116,7 +120,7 @@ export class LifeupDownloadComponent implements OnInit {
     }
 
     private async initializeUpgradeEvent(): Promise<void> {
-        if ((!this.isScrapbook && !this.isPlanner && !this.isPlannerLite) || !this.isPurchaser) return;
+        if ((!this.isScrapbook && !this.isPlanner && !this.isPlannerLite && !this.isSecondBrainOS) || !this.isPurchaser) return;
         try {
             await this.upgradeEvent.initialize(this.authService.getUserId(), this.templateId);
         } catch {

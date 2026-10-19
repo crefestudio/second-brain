@@ -12,7 +12,7 @@ import { DataSet, Network, Node, Edge } from 'vis-network/standalone';
 
 import { UserService, SecondBrainLocalSession } from '../../../../../../services/user.service';
 import { _log } from '../../../../../../lib/cf-common/cf-common';
-import { ScrapbookUpgradeEventService } from '../../../../../../services/scrapbook-upgrade-event.service';
+import { TemplateUpgradeEventService } from '../../../../../../services/template-upgrade-event.service';
 import { ScrapbookUpgradeCardComponent } from '../../../../../common/scrapbook-upgrade-card.component';
 
 
@@ -142,7 +142,7 @@ export class SecondBrainWidgetComponent implements AfterViewInit {
         private userService: UserService,
         private eventListenerService: EventListenerService,
         private authService: AuthService,
-        private upgradeEvent: ScrapbookUpgradeEventService
+        private upgradeEvent: TemplateUpgradeEventService
     ) { this.upgradeUrl = this.upgradeEvent.normalUrl('secondbrain'); }
 
     get isWidgetMode(): boolean {

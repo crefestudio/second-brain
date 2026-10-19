@@ -2,13 +2,14 @@ import { imwebPurchasedItems } from './imweb-order-items';
 import { channelConsent, resolveChannelConsent, MarketingChannel } from './marketing-consent';
 import { consentEmailId, migrateMarketingConsents, syncImwebMarketingConsents } from './imweb-marketing-consent';
 import { templateWelcomeMail } from './template-welcome-mail';
+import { fallbackCaptureTitle, toNoteCapture } from './template-capture';
 import { TemplateId, TEMPLATE_IDS, TEMPLATE_PRODUCTS, isTemplateId, templateIdOrLegacy, canUseAgent } from './template-catalog';
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { imwebPurchaseOption } from './imweb-options';
 import { purchaseEmailError } from './purchase-email-policy';
-import { summarizeProductSales, storeVisitDayWindows } from './sales-summary';
+import { isPaidStoreProductPath, summarizeProductSales, storeVisitDayWindows } from './sales-summary';
 import { marketingReport } from './marketing-report';
 import { saveStoreVisit, saveTrackingVisit } from './store-visit';
 import { archiveWorkspace, WorkspaceDeletionError } from './workspace-deletion';
@@ -238,6 +239,7 @@ async function templateDatabaseNames(userId: string): Promise<string[]> {
     if (templateId === 'lifeUpScrapbook') return LIFEUP_SCRAPBOOK_TEMPLATE_DATABASES;
     if (templateId === 'lifeupPlannerLite') return ['lifeup info', 'apps', 'task'];
     if (templateId === 'lifeupPlanner') return LIFEUP_PLANNER_TEMPLATE_DATABASES;
+    if (templateId === 'lifeUpSecondBrainOS') return ['lifeup info', 'apps', 'note'];
     return LIFEUP_TEMPLATE_DATABASES;
 }
 
@@ -258,7 +260,7 @@ async function completeNotionTemplateConnection(
     await Promise.all(dbNames.map(async name => {
         try {
             const id = await NotionService.getDatabaseIdByDatabaseName(accessToken, name, undefined,
-                before?.templateId === 'lifeUpScrapbook' || before?.templateId === 'lifeupPlanner' || before?.templateId === 'lifeupPlannerLite' ? before.templateId : undefined);
+                isTemplateId(before?.templateId) ? before.templateId : undefined);
             await NotionService.resolveDataSourceId(accessToken, id);
             dbMap[name] = id;
             databaseChecks?.push({ name, status: 'found' });
@@ -3124,7 +3126,7 @@ function purchaserPurchasedAtKstMs(purchaser: any): number {
 async function dailyPurchaserSales(startMs: number, endMs: number): Promise<Record<TemplateId, number>> {
     const snapshots = await Promise.all(TEMPLATE_IDS.map(templateId =>
         db.collection('purchasers').where('templateId', '==', templateId).get()));
-    const counts: Record<TemplateId, number> = { lifeUp: 0, lifeUpScrapbook: 0, lifeupPlanner: 0, lifeupPlannerLite: 0 };
+    const counts: Record<TemplateId, number> = { lifeUp: 0, lifeUpScrapbook: 0, lifeupPlanner: 0, lifeupPlannerLite: 0, lifeUpSecondBrainOS: 0 };
     for (const snapshot of snapshots) for (const doc of snapshot.docs) {
         const purchaser = doc.data();
         const templateId = purchaser.templateId as TemplateId;
@@ -3251,7 +3253,7 @@ export const syncImwebPurchasersAdmin = onRequest({ secrets: [IMWEB_API_KEY, IMW
     } catch (error) { logger.error('[Imweb] admin sync failed', error); return res.status(500).json({ error: '아임웹 구매자 정보를 갱신하지 못했습니다.' }); }
 }));
 
-const STORE_TRACKED_PRODUCTS = new Set(['lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-reward-pack', 'lifeup-reward-pack-sale', 'lifeup-imweb', 'lifeup-scrapbook', 'lifeup-planner', 'lifeup-planner-lite', 'lifeup-planner-reward', 'lifeup-planner-reward-sale', 'bizup-custom']);
+const STORE_TRACKED_PRODUCTS = new Set(['lifeup-secondbrain', 'lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-reward-pack', 'lifeup-reward-pack-sale', 'lifeup-imweb', 'lifeup-scrapbook', 'lifeup-planner', 'lifeup-planner-lite', 'lifeup-planner-reward', 'lifeup-planner-reward-sale', 'bizup-custom']);
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 async function youtubeContentTitle(videoId: string): Promise<string | null> {
@@ -3436,6 +3438,29 @@ export const getStoreVisitSummary = onRequest(withCors(async (req, res) => {
     return res.json(await storeVisitSummary());
 }));
 
+export const getPaidProductInflowDashboard = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
+    const windows = storeVisitDayWindows().slice(0, 2);
+    const activity = await Promise.all(windows.map(async window => {
+        const visits = await db.collection('storeVisits').where('createdAt', '>=', Timestamp.fromMillis(window.start))
+            .where('createdAt', '<', Timestamp.fromMillis(window.end)).get();
+        return visits.docs.reduce((counts, doc) => {
+            if (isPaidStoreProductPath(doc.data().productPath)) counts.paidInflows++;
+            else counts.freeInflows++;
+            return counts;
+        }, { paidInflows: 0, freeInflows: 0 });
+    }));
+    const purchases = await db.collection('purchasers').where('templateId', 'in', TEMPLATE_IDS).get();
+    const excludedSalesEmails = new Set([...ADMIN_EMAILS, ...LIFEUP_TEST_PURCHASER_EMAILS]);
+    const sales = windows.map(window => {
+        const date = new Date(window.start + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const products = summarizeProductSales(purchases.docs.map(doc => doc.data()).filter(purchase => purchaseKstDate(purchase) === date), date.slice(0, 7), excludedSalesEmails);
+        return Object.values(products).reduce((counts, product) => ({ paidSales: counts.paidSales + product.count, freeSales: counts.freeSales + (product.freeCount || 0) }), { paidSales: 0, freeSales: 0 });
+    });
+    return res.json({ dailyActivity: { today: { ...activity[0], ...sales[0] }, yesterday: { ...activity[1], ...sales[1] } } });
+}));
+
 export const deleteStoreVisitLog = onRequest(withCors(async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     if (!(await getCareIdentity(req)).isAdmin) return res.status(403).json({ error: 'ADMIN_REQUIRED' });
@@ -3465,15 +3490,17 @@ async function storeVisitSummary() {
         const from = Math.max(window.start, resetMs);
         if (from >= window.end) return 0;
         const result = await db.collection('storeVisits').where('createdAt', '>=', Timestamp.fromMillis(from))
-            .where('createdAt', '<', Timestamp.fromMillis(window.end)).count().get();
-        return result.data().count;
+            .where('createdAt', '<', Timestamp.fromMillis(window.end)).get();
+        return result.docs.filter(doc => isPaidStoreProductPath(doc.data().productPath)).length;
     }));
     const productViews: Record<string, number> = {};
+    let paidProductViews = 0;
     const sources = new Map<string, { location: string; count: number; siteVisits: number }>();
     snapshot.forEach(doc => {
         const visit = doc.data();
         const productPath = String(visit.productPath || '');
         productViews[productPath] = (productViews[productPath] || 0) + 1;
+        if (isPaidStoreProductPath(productPath)) paidProductViews++;
         const location = String(visit.location || '직접 유입');
         const source = sources.get(location) || { location, count: 0, siteVisits: 0 };
         source.count++;
@@ -3494,9 +3521,16 @@ async function storeVisitSummary() {
     const videoSources = sourceRows.filter(source => YOUTUBE_VIDEO_ID.test(source.location));
     const viewDocs = videoSources.length ? await db.getAll(...videoSources.map(source => db.collection('youtubeMonthlyViews').doc(currentMonth.key).collection('videos').doc(source.location))) : [];
     const monthlyViews = new Map(viewDocs.map(doc => [doc.id, doc.data()?.status === 'ok' && typeof doc.data()?.views === 'number' ? doc.data()!.views : null]));
-    return { month: currentMonth.key, totalViews: snapshot.size,
+    return { month: currentMonth.key, totalViews: snapshot.size, paidProductViews,
         dailyInflows: { today: dailyCounts[0], yesterday: dailyCounts[1], dayBeforeYesterday: dailyCounts[2] },
         productViews, productSales, sources: sourceRows.map(source => ({ ...source, title: titles.get(source.location) || null, sourceViews: monthlyViews.get(source.location) ?? null })) };
+}
+
+function purchaseKstDate(purchase: Record<string, unknown>): string | null {
+    const date = String(purchase.purchasedAt || '').match(/^(\d{4}|\d{2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})/);
+    if (!date) return null;
+    const year = date[1].length === 2 ? `20${date[1]}` : date[1];
+    return `${year}-${date[2].padStart(2, '0')}-${date[3].padStart(2, '0')}`;
 }
 
 export const getMarketingReport = onRequest({ timeoutSeconds: 180 }, withCors(async (req, res) => {
@@ -4438,7 +4472,7 @@ export const listMarketingBlocks = onRequest(withCors(async (req, res) => {
 export const addLifeupPurchaserToCustomers = onDocumentCreated({ document: 'purchasers/{purchaserId}', retry: true, timeoutSeconds: 120 }, async event => {
     const purchaser = event.data?.data();
     if (!purchaser || !TEMPLATE_IDS.includes(purchaser.templateId)) return;
-    if (purchaser.templateId === 'lifeupPlanner' || purchaser.templateId === 'lifeupPlannerLite') {
+    if (purchaser.templateId === 'lifeupPlanner' || purchaser.templateId === 'lifeupPlannerLite' || purchaser.templateId === 'lifeUpSecondBrainOS') {
         await receiveLifeupPlannerPurchase(event.data!.ref, purchaser);
         return;
     }
@@ -4459,7 +4493,9 @@ async function receiveLifeupPlannerPurchase(purchaserRef: admin.firestore.Docume
         .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
     const deliveries = await Promise.all(recipients.map(async email => {
         const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: email,
-            ...withUnsubscribe(purchaser.templateId === 'lifeupPlannerLite'
+            ...withUnsubscribe(purchaser.templateId === 'lifeUpSecondBrainOS'
+                ? templateWelcomeMail('lifeUpSecondBrainOS', String(purchaser.name || ''), LIFEUP_EMAIL_VARIABLES)
+                : purchaser.templateId === 'lifeupPlannerLite'
                 ? lifeupPlannerLiteWelcomeMail(String(purchaser.name || ''))
                 : lifeupPlannerWelcomeMail(String(purchaser.name || ''))) }, 'high', `purchase-planner-welcome:${purchaserRef.id}:${email}`);
         if (sent.error) throw new Error('PURCHASE_MAIL_QUEUE_FAILED');
@@ -5267,7 +5303,7 @@ class NotionService {
                 tx.update(userRef, { [`notionConnection.databases.${dbName}`]: admin.firestore.FieldValue.delete() });
         });
         const dbId = await this.getDatabaseIdByDatabaseName(accessToken, dbName, undefined,
-            user.templateId === 'lifeUpScrapbook' || user.templateId === 'lifeupPlanner' || user.templateId === 'lifeupPlannerLite' ? user.templateId : undefined);
+            isTemplateId(user.templateId) ? user.templateId : undefined);
         await this.resolveDataSourceId(accessToken, dbId);
         await db.runTransaction(async tx => {
             const current = (await tx.get(userRef)).data();
@@ -5448,7 +5484,7 @@ class NotionService {
         accessToken: string,
         databaseType: string,
         version?: string,
-        templateId?: 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite'
+        templateId?: TemplateId
     ): Promise<string> {
         const startedAt = Date.now();
 
@@ -5864,6 +5900,9 @@ class NotionService {
         if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'task' && aiResult.db !== 'task') {
             throw new Error('PLANNER_TASK_ONLY');
         }
+        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'note' && aiResult.db !== 'note') {
+            throw new Error('SECOND_BRAIN_NOTE_ONLY');
+        }
         const notion = guardedNotionClient(accessToken, async () => {
             await guard();
             await assertNotionConnection(userId, accessToken, userDoc.data()?.notionConnectionId);
@@ -5877,10 +5916,10 @@ class NotionService {
         // Confirmation converts the destination, but must retain the original photo.
         // The converted text already includes OCR/contact details; keep image blocks
         // alongside it without duplicating the entity's text blocks.
-        const confirmedContentBlocks = aiResult.plannerConfirmed
+        const confirmedContentBlocks = aiResult.plannerConfirmed || aiResult.noteCapture
             ? this.buildTextBlocks(aiResult.content)
             : this.buildAiContentBlocks(aiResult.content);
-        const contentBlocks = aiResult.scrapbookConfirmed || aiResult.plannerConfirmed
+        const contentBlocks = aiResult.scrapbookConfirmed || aiResult.plannerConfirmed || aiResult.noteCapture
             ? [...entityBlocks.filter(block => block.type === 'image'), ...confirmedContentBlocks]
             : entityBlocks.length > 0
             ? entityBlocks
@@ -5923,11 +5962,9 @@ class NotionService {
                     });
 
                     await new Promise(resolve => setTimeout(resolve, 3000));
-                    await notion.pages.update({
+                    if (aiResult.db !== 'note') await notion.pages.update({
                         page_id: pageId,
-                        template: {
-                            type: 'default'
-                        }
+                        template: { type: 'default' }
                     });
                     // await new Promise(resolve => setTimeout(resolve, 3000)); // 위에 await로는 노션에서 템플릿 만드는 시간을 기다리지 않음
                     console.log("[NotionMove] database changed", {
@@ -5970,6 +6007,13 @@ class NotionService {
         };
 
         switch (aiResult.db) {
+            case 'note': {
+                const schema: any = await notion.dataSources.retrieve({ data_source_id: dataSourceId! });
+                const titleKey = Object.keys(schema.properties || {}).find(key => schema.properties[key].type === 'title');
+                if (!titleKey) throw new Error('NOTE_TITLE_PROPERTY_MISSING');
+                properties = { [titleKey]: { title: [{ text: { content: aiResult.title || '' } }] } };
+                break;
+            }
             case "task": {
                 const typeMap: Record<string, string> = {
                     "할것": "할 것",
@@ -6176,7 +6220,7 @@ class NotionService {
 
         ////////////////////////////////////////////////////////////////
         // 공통 Property
-        if (aiResult.importance) {
+        if (aiResult.importance && aiResult.db !== 'note') {
             properties.중요도 = {
                 select: { name: normalizePropertyValue(aiResult.importance) }
             };
@@ -6193,9 +6237,9 @@ class NotionService {
             const page: any = await notion.pages.create({
                 parent: { data_source_id: dataSourceId! },
                 properties,
-                template: {
+                ...(aiResult.db === 'note' ? {} : { template: {
                     type: "default"
-                },
+                } }),
                 ...(cover ? { cover } : {})
             });
 
@@ -12288,7 +12332,7 @@ async function processKakaoAgent(
         let t = Date.now();
 
         const captureTemplate = workspaceTemplate(userDoc.data() || {});
-        if (TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope !== 'all' && userMessage.trim() === '저장') {
+        if (['reference', 'task'].includes(TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope) && userMessage.trim() === '저장') {
             const isPlanner = TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'task';
             const destinationLabel = isPlanner ? '할 일' : '스크랩북';
             const pending = await getLastAssistantContext(userId);
@@ -12317,6 +12361,7 @@ async function processKakaoAgent(
                 })
                 .join('\n');
             const converted = { ...original, action: 'create', db: isPlanner ? 'task' : 'reference', type: undefined,
+                title: fallbackCaptureTitle(original.title || '새 항목', original.db),
                 content,
                 ...(isPlanner
                     ? { plannerConfirmed: true, plannerSourceDb: original.db, plannerPending: false, kinds: '수집함' }
@@ -12462,6 +12507,11 @@ async function processKakaoAgent(
             enrichedResult.response = `분류 결과: ${classifiedAs}\n플래너는 할 일 저장만 지원하므로 아직 저장하지 않았습니다.\n할 일로 저장할까요? 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/${TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].slug}?from=${workspaceTemplate(userDoc.data() || {})}_kakao`;
         }
 
+        if (TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'note' &&
+            ['create', 'correct'].includes(enrichedResult.action)) {
+            enrichedResult = toNoteCapture(enrichedResult, entity, userMessage);
+        }
+
         const payload: any = {
             connectionContext: connectionContextKey(userDoc.data()),
             userMessage,
@@ -12496,6 +12546,11 @@ async function processKakaoAgent(
         let t = Date.now();
 
         console.log("[TIME] sendKakaoCallback START");
+        if (enrichedResult.noteCapture) {
+            await processAfterResponse(userId, entity, enrichedResult, guard);
+            await reply('세컨드브레인 OS에서는 기본 노트에 저장됩니다. 라이프업 통합버전을 이용하면 각 글에 맞게 저장됩니다.', callbackUrl);
+            return;
+        }
         await guard();
 
         await reply(
@@ -17973,7 +18028,7 @@ export const getScrapbookUpgradeEvent = onRequest(
             const snapshot = await transaction.get(workspaceRef);
             const account = await transaction.get(db.collection('appAccounts').doc(identity.uid));
             if (!snapshot.exists || snapshot.data()?.firebaseUid !== identity.uid ||
-                !['lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite'].includes(snapshot.data()?.templateId) ||
+                !['lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite', 'lifeUpSecondBrainOS'].includes(snapshot.data()?.templateId) ||
                 snapshot.data()?.deletionStatus === 'archived' || account.data()?.deletionStatus === 'pending') return null;
             const existing = snapshot.data()?.scrapbookUpgradeEventFirstSeenAt;
             const bannerDismissed = req.body?.dismissBanner === true || snapshot.data()?.upgradeBannerDismissed === true;

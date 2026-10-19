@@ -1,0 +1,30 @@
+<main class="dashboard">
+  <header>
+    <div><h1>대시보드</h1><p>상품 유입과 판매 현황 · 한국시간</p></div>
+    <button (click)="refresh()" [disabled]="loading">{{loading ? '불러오는 중…' : '새로고침'}}</button>
+  </header>
+  @if (!allowed) {
+    <p>{{error || '관리자 계정으로 로그인해주세요.'}}</p>
+  } @else {
+    <section class="activity-panel" aria-label="상품 유입 및 판매 현황">
+      <div class="activity-group">
+        <h2>상품 유입</h2>
+        <div class="metric-head"><span>유료</span><span>무료</span></div>
+        <div class="metric-values">
+          <strong>{{activity ? (activity.today.paidInflows | number) : '—'}}<small>/ {{activity ? (activity.yesterday.paidInflows | number) : '—'}}</small></strong>
+          <strong>{{activity ? (activity.today.freeInflows | number) : '—'}}<small>/ {{activity ? (activity.yesterday.freeInflows | number) : '—'}}</small></strong>
+        </div>
+      </div>
+      <div class="activity-group">
+        <h2>판매</h2>
+        <div class="metric-head"><span>유료</span><span>무료</span></div>
+        <div class="metric-values">
+          <strong>{{activity ? (activity.today.paidSales | number) : '—'}}<small>/ {{activity ? (activity.yesterday.paidSales | number) : '—'}}</small></strong>
+          <strong>{{activity ? (activity.today.freeSales | number) : '—'}}<small>/ {{activity ? (activity.yesterday.freeSales | number) : '—'}}</small></strong>
+        </div>
+      </div>
+    </section>
+    <small class="activity-note">오늘 / 어제 · 1분마다 자동 갱신</small>
+    @if (error) { <p>{{error}}</p> }
+  }
+</main>

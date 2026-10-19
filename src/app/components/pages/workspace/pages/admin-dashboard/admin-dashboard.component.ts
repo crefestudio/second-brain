@@ -1,0 +1,6 @@
+import { CommonModule } from '@angular/common';
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { CareRequestService } from '../../../../../services/care-request.service';
+import { DailySalesActivity, SalesAdminService } from '../../../../../services/sales-admin.service';
+@Component({selector:'app-admin-dashboard',standalone:true,imports:[CommonModule],templateUrl:'./admin-dashboard.component.html',styleUrl:'./admin-dashboard.component.scss'})
+export class AdminDashboardComponent implements OnInit, OnDestroy { allowed=false; loading=false; error=''; activity: {today:DailySalesActivity;yesterday:DailySalesActivity}|null=null; private timer?:number; constructor(private care:CareRequestService,private sales:SalesAdminService){} async ngOnInit(){try{this.allowed=(await this.care.access()).isAdmin;if(this.allowed){await this.refresh();this.timer=window.setInterval(()=>void this.refresh(),60000)}}catch{this.error='관리자 권한을 확인하지 못했습니다.'}}ngOnDestroy(){if(this.timer)clearInterval(this.timer)}async refresh(){if(this.loading)return;this.loading=true;try{this.activity=(await this.sales.paidProductInflowDashboard()).dailyActivity;this.error=''}catch(e){this.error=e instanceof Error?e.message:'불러오지 못했습니다.'}finally{this.loading=false}}}

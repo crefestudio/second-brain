@@ -3,12 +3,12 @@
 @if (allowed) {
 <header class="page-header"><div><h1>월간 판매 관리</h1><p>{{ summaryMonth || '이번 달' }} 1일부터 현재까지</p></div><button class="report-button" type="button" (click)="generateReport()" [disabled]="reportLoading">{{reportLoading ? '리포트 생성 중…' : '마케팅 리포트'}}</button></header>
 @if(revenueProgress; as progress){
-<section class="achievement-grid" aria-label="상품 유입수와 매출 목표 달성률">
+<section class="achievement-grid" aria-label="유료 상품 유입수와 매출 목표 달성률">
   <article class="achievement-card inflow-card">
-    <p>상품 유입수 <span class="pace-label">오늘 · 한국시간</span></p>
+    <p>유료 상품 유입수 <span class="pace-label">오늘 · 한국시간</span></p>
     <strong>{{dailyInflows === null ? '—' : (dailyInflows.today | number)}}<span class="inflow-unit">회</span><span class="inflow-target">/ {{dailyInflowTarget | number}}건</span></strong>
     <dl class="inflow-details">
-      <div><dt>이달</dt><dd>{{summaryMonth ? (totalViews | number) : '—'}}회</dd></div>
+      <div><dt>이달</dt><dd>{{summaryMonth ? (paidProductViews | number) : '—'}}회</dd></div>
       <div><dt>어제</dt><dd>{{dailyInflows === null ? '—' : (dailyInflows.yesterday | number)}}회</dd></div>
       <div><dt>그제</dt><dd>{{dailyInflows === null ? '—' : (dailyInflows.dayBeforeYesterday | number)}}회</dd></div>
     </dl>

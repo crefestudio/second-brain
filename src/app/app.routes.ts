@@ -56,6 +56,11 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'store/lifeup-secondbrain-os', component: StoreRedirectComponent },
+  { path: 'store/lifeup-secondbrain', component: StoreRedirectComponent },
+  { path: 'download/lifeup-secondbrain', component: LifeupDownloadComponent, data: { product: 'lifeUpSecondBrainOS' } },
+  { path: 'download/lifeup-secondbrain-os', component: LifeupDownloadComponent, data: { product: 'lifeUpSecondBrainOS' } },
+  { path: 'upgrade/lifeup-secondbrain', component: LifeupScrapbookUpgradeComponent, data: { templateId: 'lifeUpSecondBrainOS' } },
   { path: 'store/lifeup-planner-lite', component: StoreRedirectComponent },
   { path: 'download/lifeup-planner-lite', component: LifeupDownloadComponent, data: { product: 'lifeupPlannerLite' } },
   { path: 'upgrade/lifeup-planner-lite', component: LifeupScrapbookUpgradeComponent, data: { templateId: 'lifeupPlannerLite' } },
@@ -139,6 +144,10 @@ export const routes: Routes = [
       {
         path: 'admin/members',
         loadComponent: () => import('./components/pages/workspace/pages/member-admin/member-admin.component').then(m => m.MemberAdminComponent)
+      },
+      {
+        path: 'admin/dashboard',
+        loadComponent: () => import('./components/pages/workspace/pages/admin-dashboard/admin-dashboard.component').then(m => m.AdminDashboardComponent)
       },
       {
         path: 'admin/sales',

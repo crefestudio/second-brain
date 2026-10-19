@@ -225,7 +225,7 @@ test('in-flight search cannot repopulate cache after Notion or Kakao switch', as
     }
 });
 
-test('planner cache discovery stays scoped to Panner databases', async () => {
+test('planner cache discovery stays scoped to Planner databases', async () => {
     const { context, user } = fixture();
     user().templateId = 'lifeupPlanner';
     user().notionConnection.databases = {};

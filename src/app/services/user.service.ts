@@ -465,7 +465,7 @@ export class UserService {
         main verify
     */
 
-    async sendVerificationEmail(email: string, templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite' = 'lifeUp'): Promise<boolean> {
+    async sendVerificationEmail(email: string, templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite' | 'lifeUpSecondBrainOS' = 'lifeUp'): Promise<boolean> {
         if (!email) return false;
         this.verificationEmailError = '';
 
@@ -2459,5 +2459,4 @@ export class UserService {
 //     const docSnap = querySnap.docs[0];
 //     return docSnap.id; // 문서 ID(userId) 반환
 // }
-
 

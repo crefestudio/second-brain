@@ -1,21 +1,21 @@
 import { Component, Input, OnChanges, OnDestroy } from '@angular/core';
 import { TemplateId } from '../../config/template-catalog';
-import { ScrapbookUpgradeEventService } from '../../services/scrapbook-upgrade-event.service';
+import { TemplateUpgradeEventService } from '../../services/template-upgrade-event.service';
 
 @Component({
   selector: 'app-upgrade-banner',
   standalone: true,
-  providers: [ScrapbookUpgradeEventService],
+  providers: [TemplateUpgradeEventService],
   template: `
     @if (ready && !event.bannerDismissed) {
       <aside class="notice" aria-label="보상 업그레이드 혜택">
         <div class="content">
           @if (event.isActive) {
             <strong>할 일·메모·프로젝트를 한곳에서! 마감 직전 특별 혜택을 놓치지 마세요.</strong>
-            <span>🎁 <span class="remaining">[<span role="timer">{{ remainingTime }}</span> 남음]</span> {{ event.isPlanner ? '플래너' : event.productName }} 사용자 전용 보상 업그레이드 특가!</span>
+            <span>🎁 <span class="remaining">[<span role="timer">{{ remainingTime }}</span> 남음]</span> {{ event.hasPackUpgrade ? '플래너' : event.productName }} 사용자 전용 보상 업그레이드 특가!</span>
           } @else {
             <strong>모든 일상과 프로젝트를 라이프업 통합 템플릿 하나로 연결해 보세요.</strong>
-            <span>🎁 {{ event.isPlanner ? '플래너' : event.productName }} 사용자를 위한 보상 업그레이드 특별가 혜택이 준비되어 있습니다.</span>
+            <span>🎁 {{ event.hasPackUpgrade ? '플래너' : event.productName }} 사용자를 위한 보상 업그레이드 특별가 혜택이 준비되어 있습니다.</span>
           }
           @if (error) { <span role="alert">닫기 상태를 저장하지 못했습니다. 다시 시도해 주세요.</span> }
         </div>
@@ -47,7 +47,7 @@ export class UpgradeBannerComponent implements OnChanges, OnDestroy {
   remainingTime = '';
   private version = 0;
   private timer = setInterval(() => this.updateTime(), 1000);
-  constructor(public event: ScrapbookUpgradeEventService) {}
+  constructor(public event: TemplateUpgradeEventService) {}
   async ngOnChanges(): Promise<void> {
     const version = ++this.version;
     this.ready = false;

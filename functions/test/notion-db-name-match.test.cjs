@@ -60,19 +60,19 @@ test('Scrapbook scope never falls back to legacy DB and still rejects duplicates
     await assert.rejects(r.getDatabaseIdByDatabaseName('token', 'reference', undefined, 'lifeUpScrapbook'), error => error.code === 'DUPLICATE_DATABASE');
 });
 
-test('Planner uses the actual Panner suffix and excludes other templates', async () => {
+test('Planner uses the Planner suffix and excludes typo or other templates', async () => {
     const r = resolver(['lifeup info #15', 'lifeup info / 15 / Scrapbook', 'lifeup info / 15 / Panner', 'lifeup info / 15 / Planner']);
-    assert.equal(await r.getDatabaseIdByDatabaseName('token', 'lifeup info', undefined, 'lifeupPlanner'), '2');
-    assert.equal(await resolver(['task / 15 / Panner', 'task / 15 / Scrapbook']).getDatabaseIdByDatabaseName('token', 'task', undefined, 'lifeupPlanner'), '0');
+    assert.equal(await r.getDatabaseIdByDatabaseName('token', 'lifeup info', undefined, 'lifeupPlanner'), '3');
+    assert.equal(await resolver(['task / 15 / Planner', 'task / 15 / Scrapbook']).getDatabaseIdByDatabaseName('token', 'task', undefined, 'lifeupPlanner'), '0');
 });
 
-test('Planner does not fall back and duplicate Panner databases fail', async () => {
-    await assert.rejects(resolver(['lifeup info #15', 'lifeup info / 15 / Planner']).getDatabaseIdByDatabaseName('token', 'lifeup info', undefined, 'lifeupPlanner'));
-    await assert.rejects(resolver(['lifeup info / 15 / Panner', 'lifeup info / 15 / PANNER']).getDatabaseIdByDatabaseName('token', 'lifeup info', undefined, 'lifeupPlanner'), error => error.code === 'DUPLICATE_DATABASE');
+test('Planner does not fall back and duplicate Planner databases fail', async () => {
+    await assert.rejects(resolver(['lifeup info #15', 'lifeup info / 15 / Panner']).getDatabaseIdByDatabaseName('token', 'lifeup info', undefined, 'lifeupPlanner'));
+    await assert.rejects(resolver(['lifeup info / 15 / Planner', 'lifeup info / 15 / PLANNER']).getDatabaseIdByDatabaseName('token', 'lifeup info', undefined, 'lifeupPlanner'), error => error.code === 'DUPLICATE_DATABASE');
 });
 
 test('Planner discovery preserves version-independent matching', async () => {
-    for (const title of ['lifeup info / 15 / Panner', 'lifeup info / 20 / Panner', 'habit log # next / Panner']) {
+    for (const title of ['lifeup info / 15 / Planner', 'lifeup info / 20 / Planner', 'habit log # next / Planner']) {
         const name = title.startsWith('habit') ? 'habit log' : 'lifeup info';
         assert.equal(await resolver([title]).getDatabaseIdByDatabaseName('token', name, undefined, 'lifeupPlanner'), '0');
     }

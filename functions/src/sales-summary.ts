@@ -1,4 +1,19 @@
 import { TEMPLATE_PRODUCTS, isTemplateId } from './template-catalog';
+
+// Only these redirect targets represent products that currently have a price.
+// Keep free templates and consultation links out of the paid-inflow KPI while
+// retaining them in the per-product and source reports.
+const PAID_STORE_PRODUCT_PATHS = new Set([
+    'lifeup', 'lifeup-imweb', 'lifeup-r', 'lifeup-planner', 'lifeup-secondbrain',
+    'lifeup-reward', 'lifeup-reward-sale',
+    'lifeup-reward-pack', 'lifeup-reward-pack-sale'
+]);
+
+export function isPaidStoreProductPath(productPath: unknown): boolean {
+    return typeof productPath === 'string' && PAID_STORE_PRODUCT_PATHS.has(productPath);
+}
+export function storeVisitMonthKey(now = Date.now()): string { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit' }).format(new Date(now)); }
+
 export function storeVisitDayWindows(now = Date.now()): Array<{ start: number; end: number }> {
     const day = 86400000, offset = 9 * 3600000;
     const today = Math.floor((now + offset) / day) * day - offset;
@@ -26,7 +41,7 @@ export function summarizeProductSales(purchases: Array<Record<string, unknown>>,
         // selected option, so both the short option labels and full names are
         // accepted for sales reporting.
         const lifeupListing: Record<string, string> = { '1': 'lifeup-imweb', '9': 'lifeup-reward', '10': 'lifeup-reward-sale', '12': 'lifeup-reward-pack', '11': 'lifeup-reward-pack-sale' };
-        const product = purchase.templateId === 'lifeupPlanner' || purchase.templateId === 'lifeupPlannerLite' || purchase.templateId === 'lifeUpScrapbook'
+        const product = isTemplateId(purchase.templateId) && purchase.templateId !== 'lifeUp'
             ? TEMPLATE_PRODUCTS[purchase.templateId].slug
             : purchase.source === 'imweb' && lifeupListing[String(purchase.productNo)] ? lifeupListing[String(purchase.productNo)]
             : comparableOption.includes('묶음') && comparableOption.includes('타임세일') ? 'lifeup-reward-pack-sale'

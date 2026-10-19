@@ -162,7 +162,7 @@ export class SalesAdminComponent implements OnInit {
         catch (error) { this.reportError = error instanceof Error ? error.message : '리포트 생성 실패'; }
         finally { this.reportLoading = false; }
     }
-    allowed = false; errorMessage = ''; youtubeMessage = ''; copiedPath = ''; loadingSummary = false; syncingYoutube = false; summaryMonth = ''; totalViews = 0; productViews: Record<string, number> = {}; productSales: Record<string, { count: number; revenue: number; freeCount?: number }> = {}; sources: StoreVisitSource[] = [];
+    allowed = false; errorMessage = ''; youtubeMessage = ''; copiedPath = ''; loadingSummary = false; syncingYoutube = false; summaryMonth = ''; totalViews = 0; paidProductViews = 0; productViews: Record<string, number> = {}; productSales: Record<string, { count: number; revenue: number; freeCount?: number }> = {}; sources: StoreVisitSource[] = [];
     dailyInflows: { today: number; yesterday: number; dayBeforeYesterday: number } | null = null;
     
     goals = { 
@@ -180,6 +180,7 @@ export class SalesAdminComponent implements OnInit {
         { name: '라이프업 스크랩북', price: 0, storePath: 'lifeup-scrapbook' },
         { name: '라이프업 보상', price: 69000, storePath: 'lifeup-reward' },
         { name: '라이프업 보상 타임세일', price: 64000, storePath: 'lifeup-reward-sale' },
+        { name: '라이프업 세컨드브레인 OS', price: 19000, storePath: 'lifeup-secondbrain-os', trackingKey: 'lifeup-secondbrain' },
         { name: '라이프업 묶음 보상', price: 49000, storePath: 'lifeup-reward-pack' },
         { name: '라이프업 묶음 보상 타임세일', price: 42000, storePath: 'lifeup-reward-pack-sale' },
         { name: '비즈업 맞춤제작', price: 0, storePath: 'bizup-custom' }
@@ -226,7 +227,7 @@ export class SalesAdminComponent implements OnInit {
     belowSourceGoal(source: StoreVisitSource): boolean { const conversion = this.sourceConversion(source); return conversion !== null && conversion < this.goals.trafficConversion; }
     isYoutubeVideoId(value: string): boolean { return /^[A-Za-z0-9_-]{11}$/.test(value); }
     youtubeUrl(videoId: string): string { return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`; }
-    async loadSummary(): Promise<void> { this.loadingSummary = true; try { const summary = await this.sales.summary(); this.summaryMonth = summary.month; this.totalViews = summary.totalViews; this.dailyInflows = summary.dailyInflows || null; this.productViews = summary.productViews; this.productSales = summary.productSales || {}; this.sources = summary.sources; } finally { this.loadingSummary = false; } }
+    async loadSummary(): Promise<void> { this.loadingSummary = true; try { const summary = await this.sales.summary(); this.summaryMonth = summary.month; this.totalViews = summary.totalViews; this.paidProductViews = summary.paidProductViews ?? 0; this.dailyInflows = summary.dailyInflows || null; this.productViews = summary.productViews; this.productSales = summary.productSales || {}; this.sources = summary.sources; } finally { this.loadingSummary = false; } }
     async connectYoutube(): Promise<void> {
         if (this.syncingYoutube) return;
         this.syncingYoutube = true; this.youtubeMessage = '';

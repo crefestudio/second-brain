@@ -8,18 +8,20 @@ export class StoreRedirectComponent implements OnInit {
     message = '';
     private readonly config = inject<AppConfig>(APP_CONFIG);
     private readonly destinations: Record<string, string> = {
-        'store/lifeup-planner-lite': TEMPLATE_PRODUCTS.lifeupPlannerLite.salesUrls.normal,
-        'store/lifeup': TEMPLATE_PRODUCTS.lifeUp.salesUrls.normal,
-        'store/lifeup-planner': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.normal,
-        'store/lifeup-planner-reward': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.reward,
-        'store/lifeup-planner-reward-sale': TEMPLATE_PRODUCTS.lifeupPlanner.salesUrls.rewardSale,
+        'store/lifeup-secondbrain-os': TEMPLATE_PRODUCTS.lifeUpSecondBrainOS.checkoutUrls.normal,
+        'store/lifeup-secondbrain': TEMPLATE_PRODUCTS.lifeUpSecondBrainOS.checkoutUrls.normal,
+        'store/lifeup-planner-lite': TEMPLATE_PRODUCTS.lifeupPlannerLite.checkoutUrls.normal,
+        'store/lifeup': TEMPLATE_PRODUCTS.lifeUp.checkoutUrls.normal,
+        'store/lifeup-planner': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.normal,
+        'store/lifeup-planner-reward': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.reward,
+        'store/lifeup-planner-reward-sale': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.rewardSale,
         'store/lifeup-r': 'https://www.latpeed.com/products/HEPXz',
-        'store/lifeup-reward': TEMPLATE_PRODUCTS.lifeUp.salesUrls.reward,
-        'store/lifeup-reward-sale': TEMPLATE_PRODUCTS.lifeUp.salesUrls.rewardSale,
-        'store/lifeup-reward-pack': 'https://notionable.net/shop_view?idx=12',
-        'store/lifeup-reward-pack-sale': 'https://notionable.net/shop_view?idx=11',
-        'store/lifeup-imweb': 'https://notionable.net/shop_view?idx=1',
-        'store/lifeup-scrapbook': TEMPLATE_PRODUCTS.lifeUpScrapbook.salesUrls.normal,
+        'store/lifeup-reward': TEMPLATE_PRODUCTS.lifeUp.checkoutUrls.reward,
+        'store/lifeup-reward-sale': TEMPLATE_PRODUCTS.lifeUp.checkoutUrls.rewardSale,
+        'store/lifeup-reward-pack': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.reward,
+        'store/lifeup-reward-pack-sale': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.rewardSale,
+        'store/lifeup-imweb': 'https://notionable.net/store/?idx=1',
+        'store/lifeup-scrapbook': TEMPLATE_PRODUCTS.lifeUpScrapbook.checkoutUrls.normal,
         'store/bizup-custom': 'https://notionable.net/store/?idx=7'
     };
     constructor(private readonly route: ActivatedRoute) {}
@@ -30,7 +32,7 @@ export class StoreRedirectComponent implements OnInit {
         if (!destination) { this.message = '판매 페이지를 준비 중입니다.'; return; }
         const location = this.route.snapshot.queryParamMap.get('from') || '';
         // Keep historical analytics keys stable when public URLs change.
-        const trackingProduct = productPath === 'lifeup' ? 'lifeup-imweb' : productPath === 'lifeup-r' ? 'lifeup'
+        const trackingProduct = productPath === 'lifeup-secondbrain-os' ? 'lifeup-secondbrain' : productPath === 'lifeup' ? 'lifeup-imweb' : productPath === 'lifeup-r' ? 'lifeup'
             : productPath === 'lifeup-planner-reward' ? 'lifeup-reward-pack'
             : productPath === 'lifeup-planner-reward-sale' ? 'lifeup-reward-pack-sale' : productPath;
         try {

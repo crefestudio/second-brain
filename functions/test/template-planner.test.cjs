@@ -118,7 +118,7 @@ test('planner purchase reception queues product-specific links with stable keys 
     const preview = context.lifeupPlannerWelcomeMail('<buyer>');
     for (const output of [preview.html, preview.text]) {
         for (const expected of ['https://www.youtube.com/watch?v=0LgzGdr8luU', 'https://notionable.net/app?menu=connect', 'https://notionable.net/app?menu=care', 'https://notionable.net/lifeup-review', '~12/31', '정식 오픈 후']) assert.ok(output.includes(expected), expected);
-        assert.ok(!output.includes('~10/31'));
+        assert.ok(!output.includes('~12/31'));
         assert.ok(output.includes('https://www.youtube.com/shorts/QnR_gnGWOQE'));
     }
     assert.ok(preview.html.includes('max-width:640px'));

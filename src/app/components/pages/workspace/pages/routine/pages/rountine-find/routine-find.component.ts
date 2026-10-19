@@ -6,7 +6,7 @@ import { AuthService } from '../../../../../../../services/auth.service';
 import { UserService } from '../../../../../../../services/user.service';
 import { _log } from '../../../../../../../lib/cf-common/cf-common';
 import { ToastService } from '../../../../../../../services/toast.service';
-import { ScrapbookUpgradeEventService } from '../../../../../../../services/scrapbook-upgrade-event.service';
+import { TemplateUpgradeEventService } from '../../../../../../../services/template-upgrade-event.service';
 import { ScrapbookUpgradeCardComponent } from '../../../../../../common/scrapbook-upgrade-card.component';
 
 @Component({
@@ -109,7 +109,7 @@ export class RoutineFindComponent {
         private authService: AuthService,
         private userService: UserService,
         private toastService: ToastService,
-        private upgradeEvent: ScrapbookUpgradeEventService
+        private upgradeEvent: TemplateUpgradeEventService
         // private activateRouter: ActivatedRoute,
         // private router: Router
         //private appStatisticsStore: AppStatisticsStore,
@@ -172,7 +172,7 @@ export class RoutineFindComponent {
 
         // A workspace must exist before its template can determine permission.
         if (!canUseAgent(this.authService.templateId, 'routine')) {
-            if (this.authService.templateId === 'lifeUpScrapbook' || this.authService.templateId === 'lifeupPlannerLite') {
+            if (this.authService.templateId === 'lifeUpScrapbook' || this.authService.templateId === 'lifeupPlannerLite' || this.authService.templateId === 'lifeUpSecondBrainOS') {
                 this.upgradeLoading = true;
                 this.addingHabits.add(habit);
                 try { await this.upgradeEvent.initialize(this.userId, this.authService.templateId); }

@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { firestore } from 'firebase-admin';
+import { isPaidStoreProductPath, storeVisitMonthKey } from './sales-summary';
 const Timestamp = firestore.Timestamp;
 
 export const VISIT_WINDOW_MS = 30 * 60 * 1000;
@@ -10,6 +11,7 @@ export async function saveTrackingVisit(db: firestore.Firestore, collection: 'st
     const event = db.collection(collection).doc();
     const burstKey = createHash('sha256').update(JSON.stringify([visit.productPath || '', visit.location])).digest('hex');
     const burstGuard = collection === 'storeVisits' ? db.collection('storeVisitBurstDedup').doc(burstKey) : null;
+    const paidCounter = collection === 'storeVisits' && isPaidStoreProductPath(visit.productPath) ? db.collection('paidStoreVisitDashboard').doc(storeVisitMonthKey()) : null;
     return db.runTransaction(async tx => {
         const reset = await tx.get(db.collection('storeVisitSettings').doc('reset'));
         const previous = await tx.get(guard);
@@ -27,6 +29,7 @@ export async function saveTrackingVisit(db: firestore.Firestore, collection: 'st
         tx.set(event, { ...visit, createdAt: now });
         tx.set(guard, { createdAt: now });
         if (burstGuard) tx.set(burstGuard, { createdAt: now });
+        if (paidCounter) tx.set(paidCounter, { count: firestore.FieldValue.increment(1), updatedAt: now }, { merge: true });
         return { recorded: true };
     });
 }

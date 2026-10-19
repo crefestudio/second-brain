@@ -24,7 +24,7 @@ for (const id of TEMPLATE_IDS) {
         assert.ok(mail.html.includes(`menu=connect&amp;templateId=${id}`));
         assert.ok(mail.text.includes(`menu=connect&templateId=${id}`));
         if (product.welcome.reviewEvent) {
-            assert.ok(mail.text.includes(id === 'lifeUp' ? '(~10/31)' : '(~12/31)'));
+            assert.ok(mail.text.includes(id === 'lifeUp' ? '(~12/31)' : '(~12/31)'));
         }
     });
 }

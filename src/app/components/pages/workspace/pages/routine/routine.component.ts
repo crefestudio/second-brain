@@ -2,7 +2,7 @@ import { canUseAgent } from '../../../../../config/template-catalog';
 import { Component } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../../../../services/auth.service';
-import { ScrapbookUpgradeEventService } from '../../../../../services/scrapbook-upgrade-event.service';
+import { TemplateUpgradeEventService } from '../../../../../services/template-upgrade-event.service';
 import { Subscription } from 'rxjs';
 import { ScrapbookUpgradeCardComponent } from '../../../../common/scrapbook-upgrade-card.component';
 
@@ -33,7 +33,7 @@ export class RoutineComponent {
   private navigation?: Subscription;
   private routeVersion = 0;
 
-  constructor(private authService: AuthService, private router: Router, private upgradeEvent: ScrapbookUpgradeEventService) {
+  constructor(private authService: AuthService, private router: Router, private upgradeEvent: TemplateUpgradeEventService) {
     this.upgradeUrl = this.upgradeEvent.normalUrl('routine');
   }
 

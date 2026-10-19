@@ -42,13 +42,13 @@ export function templateWelcomeMail(templateId: TemplateId, name: string, links:
     if (config.introductionVideoUrl) {
         section('🎬', product.nameKoFull + ' 소개 영상', `짧은 소개 영상으로 ${config.usageName} 사용 방법을 확인해 보세요.`, [[config.usageName + ' 소개 영상 보기', config.introductionVideoUrl]]);
     }
-    const capture = product.kakaoCaptureScope === 'task' ? '할 일과 일정' : product.kakaoCaptureScope === 'reference' ? '메모와 자료' : '할 일, 일정, 아이디어와 자료';
+    const capture = product.kakaoCaptureScope === 'note' ? '할 일, 메모, 자료와 연락처를 기본 노트로' : product.kakaoCaptureScope === 'task' ? '할 일과 일정' : product.kakaoCaptureScope === 'reference' ? '메모와 자료' : '할 일, 일정, 아이디어와 자료';
     section('💬', '카카오톡 라이프봇', `카카오톡으로 보낸 ${capture}를 AI가 정리해 내 노션 템플릿에 저장합니다.\n카카오톡 라이프봇을 연결하고, 생각나는 순간마다 간편하게 기록해 보세요.`, [['카카오톡 라이프봇 연결하기', connectUrl]], true);
     section('🛡️', '라이프업 케어', '사용 문의, 오류 신고, 업데이트 소식과 활용 상담을 한곳에서 확인하세요.', [['라이프업 케어로 이동하기', links.lifeupCareUrl]]);
-    if (config.reviewEvent === 'standard') {
+    if (config.reviewEvent === 'review') {
         section('🎁', '리뷰 작성하고 라이프봇 1년 무료 이용권 받기', `${config.displayName} 구매 후 솔직한 사용 후기를 남겨주세요. (~12/31)\n정식 오픈 후 라이프봇을 1년 동안 무료로 이용하실 수 있습니다.`, [['리뷰 남기러 가기', links.reviewUrl]], false, true);
-    } else if (config.reviewEvent === 'lifeup') {
-        section('🎁', '리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기', `${config.displayName}를 구매해주신 분들께 감사의 마음을 담아, 라이프봇 1년 무료 이용권을 선물로 드립니다.(~10/31)\n라이프봇은 라이프업 템플릿을 더 편리하게 사용하고 꾸준히 활용할 수 있도록 도와드리는 자동화 서비스입니다.\n${config.displayName}를 직접 사용해보신 후 상품 페이지에 솔직한 리뷰를 남겨주세요.\n라이프업을 사용한 화면을 사진으로 함께 남겨주시면, 다른 분들께도 큰 도움이 됩니다. 😊\n⚠️ 결제처 ‘래피드’가 아닌, 아래 버튼으로 이동한 노셔너블 홈페이지 상품에 리뷰를 남겨주세요.`, [['라이프봇 알아보기', links.lifeupbotUrl], [config.displayName + ' 리뷰 작성하기', links.reviewUrl]], false, true);
+    } else if (config.reviewEvent === 'lifeup-review') {
+        section('🎁', '리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기', `${config.displayName}를 구매해주신 분들께 감사의 마음을 담아, 라이프봇 1년 무료 이용권을 선물로 드립니다.(~12/31)\n라이프봇은 라이프업 템플릿을 더 편리하게 사용하고 꾸준히 활용할 수 있도록 도와드리는 자동화 서비스입니다.\n${config.displayName}를 직접 사용해보신 후 상품 페이지에 솔직한 리뷰를 남겨주세요.\n라이프업을 사용한 화면을 사진으로 함께 남겨주시면, 다른 분들께도 큰 도움이 됩니다. 😊\n⚠️ 결제처 ‘래피드’가 아닌, 아래 버튼으로 이동한 노셔너블 홈페이지 상품에 리뷰를 남겨주세요.`, [['라이프봇 알아보기', links.lifeupbotUrl], [config.displayName + ' 리뷰 작성하기', links.reviewUrl]], false, true);
     }
     return {
         subject: config.displayName + ' 구매 안내 및 보관용 PDF를 보내드립니다',

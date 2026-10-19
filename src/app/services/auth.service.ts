@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { TemplateId } from '../config/template-catalog';
 import { SocialAuthService } from './social-auth.service';
 
 @Injectable({
@@ -9,7 +10,7 @@ export class AuthService {
 
     userId = '';            // 워크스페이스 id : user - template - notion - kakao
     memberUid = '';         // Firebase Authentication UID
-    templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite' = 'lifeUp';
+    templateId: TemplateId = 'lifeUp';
     kakaoUserId = '';       // 카카오톡 연결 여부
     notionAccessToken = ''; // 노션 연결 여부
 

@@ -55,21 +55,21 @@
             <p class="email-guide">💡 메일 인증 없이 바로 설치하려면, 구매 시 입력한 이메일의 안내 메일을 확인해 주세요.</p>
         </section>
         } @else {
-        @if (isScrapbook || isPlanner || isPlannerLite) {
+        @if (isScrapbook || isPlanner || isPlannerLite || isSecondBrainOS) {
         <section class="lifeupbot-promo scrapbook-upgrade-promo">
             <h2>🎁 {{ productName }} 사용자를 위한 라이프업 업그레이드 혜택</h2>
             <p>목표부터 프로젝트, 할 일, 메모, 자료까지 한곳에서 관리하고 싶으신가요?<br><strong>라이프업 통합 템플릿</strong>으로 더 많은 기능을 만나보세요.</p>
             <div class="upgrade-event">
                 @if (upgradeEvent.isActive) {
                 <p class="upgrade-copy">{{ productName }} 사용자만을 위한 <strong><span class="limited-time">48시간 한정</span> 보상 업그레이드 특별가</strong>를 준비했습니다.</p>
-                <p class="price"><del>79,000원</del> → <strong>{{ isPlanner ? '42,000원' : '64,000원' }}</strong></p>
-                <p class="reward">지금 업그레이드하면 <strong>{{ isPlanner ? '추가 37,000원 할인!' : '추가 15,000원 할인!' }}</strong></p>
+                <p class="price"><del>79,000원</del> → <strong>{{ hasPackUpgrade ? '42,000원' : '64,000원' }}</strong></p>
+                <p class="reward">지금 업그레이드하면 <strong>{{ hasPackUpgrade ? '추가 37,000원 할인!' : '추가 15,000원 할인!' }}</strong></p>
                 } @else {
                 <p class="upgrade-copy">{{ productName }} 사용자만을 위한 <strong>보상 업그레이드 특별가</strong>를 준비했습니다.</p>
-                <p class="price"><del>79,000원</del> → <strong>{{ isPlanner ? '49,000원' : '69,000원' }}</strong></p>
-                <p class="reward">지금 업그레이드하면 <strong>{{ isPlanner ? '추가 30,000원 할인!' : '추가 10,000원 할인!' }}</strong></p>
+                <p class="price"><del>79,000원</del> → <strong>{{ hasPackUpgrade ? '49,000원' : '69,000원' }}</strong></p>
+                <p class="reward">지금 업그레이드하면 <strong>{{ hasPackUpgrade ? '추가 30,000원 할인!' : '추가 10,000원 할인!' }}</strong></p>
                 }
-                <a class="primary-btn large" [href]="upgradeEvent.upgradeUrl(isPlanner ? 'download_lifeup-planner' : 'download_lifeup-scrapbook')" target="_blank" rel="noopener noreferrer">라이프업 업그레이드 알아보기 <span>→</span></a>
+                <a class="primary-btn large" [href]="upgradeEvent.upgradeUrl(upgradeSource)" target="_blank" rel="noopener noreferrer">라이프업 업그레이드 알아보기 <span>→</span></a>
             </div>
         </section>
         <br>
@@ -79,6 +79,13 @@
             <p>아래 버튼을 클릭하면 최신 버전 <strong>{{ productName }}</strong>를 다운로드하고 설치할 수 있습니다.</p>
             <a class="primary-button" [href]="downloadUrl" target="_blank" rel="noopener">{{ productName }} 다운로드
                 <span>→</span></a>
+            @if (isScrapbook) {
+            <a class="template-video-link" href="https://youtu.be/LgLuE7GB_qA" target="_blank"
+                rel="noopener">라이프업 스크랩북 소개 영상 보기 <span>↗</span></a>
+            }
+            @if (isSecondBrainOS && introductionVideoUrl) {
+            <a class="template-video-link" [href]="introductionVideoUrl" target="_blank" rel="noopener">세컨드브레인 OS 소개 영상 보기 <span>↗</span></a>
+            }
             <a class="template-video-link" href="https://www.youtube.com/shorts/QnR_gnGWOQE" target="_blank"
                 rel="noopener">노션 라이프업 템플릿 설치 안내 영상 보기 <span>↗</span></a>
         </section>
@@ -118,7 +125,7 @@
         @if (showReviewEvent) {
         <section class="lifeupbot-promo">
             <h2>🎁 리뷰 작성하고 라이프봇 1년 무료 이용권 선물 받기</h2>
-            <p>라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아,<br><strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.(~10/31)</p>
+            <p>라이프업 1.5를 구매해주신 분들께 감사의 마음을 담아,<br><strong>라이프봇 1년 무료 이용권</strong>을 선물로 드립니다.(~12/31)</p>
             <details class="lifeupbot-details">
                 <summary>라이프봇 리뷰 이벤트 안내</summary>
                 <p>

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const catalog = require('../lib/template-catalog');
-const source = fs.readFileSync('src/app/services/scrapbook-upgrade-event.service.ts', 'utf8');
+const source = fs.readFileSync('src/app/services/template-upgrade-event.service.ts', 'utf8');
 function fixture(ageHours) {
     const context = { exports: {}, require: name => {
         if (name === '@angular/core') return { Injectable: () => target => target };
@@ -14,7 +14,7 @@ function fixture(ageHours) {
         return {};
     } };
     vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, experimentalDecorators: true } }).outputText, context);
-    return new context.exports.ScrapbookUpgradeEventService({ post: async () => ({ firstSeenAt: Date.now() - ageHours * 3600000, serverNow: Date.now() }) });
+    return new context.exports.TemplateUpgradeEventService({ post: async () => ({ firstSeenAt: Date.now() - ageHours * 3600000, serverNow: Date.now() }) });
 }
 test('planner active and expired offers use pack routes; scrapbook retains single-product offers', async () => {
     for (const [id, prefix] of [['lifeupPlanner', 'lifeup-reward-pack'], ['lifeupPlannerLite', 'lifeup-reward'], ['lifeUpScrapbook', 'lifeup-reward']]) {
