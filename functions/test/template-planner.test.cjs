@@ -55,7 +55,7 @@ test('planner and scrapbook sales use actual paid amounts and stay outside LifeU
         { templateId: 'lifeupPlanner', paymentAmount: 0 }
     ].map(row => ({ ...row, source: 'imweb', purchasedAt: '2026.10.16', purchaseOption: '' }));
     assert.deepEqual(summarizeProductSales(rows, '2026-10'), {
-        'lifeup-planner': { count: 2, revenue: 48000 }, 'lifeup-scrapbook': { count: 1, revenue: 9000 }
+        'lifeup-planner': { count: 2, revenue: 48000, freeCount: 1 }, 'lifeup-scrapbook': { count: 1, revenue: 9000 }
     });
 });
 
@@ -103,51 +103,25 @@ test('confirmed Imweb planner SKU maps to canonical template ID with legacy alia
     assert.equal(map.get('legacy').memberType, 'premium');
 });
 
-test('planner purchase reception queues product-specific links with stable keys for retries', async () => {
+test('each individual product queues its own welcome links once per recipient across retries', async () => {
     const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
-    const start = source.indexOf('function lifeupPlannerWelcomeMail(');
-    const fn = source.slice(start, source.indexOf('function lifeupScrapbookWelcomeMail(', start));
-    const deliveries = new Map(), updates = [];
-    const context = { ...catalog, registerPurchaserCustomer: async () => {}, customerEmail: value => value,
-        LATPEED_ADMIN_EMAIL: 'admin@example.test', LIFEUP_PASSPORT_URL: 'https://example.test/lifeup.pdf',
-        escapeEmailHtml: value => value.replace(/</g, '&lt;'), withUnsubscribe: mail => mail,
-        admin: { firestore: { FieldValue: { serverTimestamp: () => 1 } } },
-        mailQueue: { send: async (mail, priority, key) => { deliveries.set(key, mail); return { data: { id: key } }; } } };
-    const mailBase = source.slice(source.indexOf('const LIFEUP_EMAIL_VARIABLES ='), source.indexOf('function lifeupStandardPurchaserUpdateMailDetailed('));
-    vm.runInNewContext(ts.transpile(mailBase + fn, { target: ts.ScriptTarget.ES2020 }), context);
-    const preview = context.lifeupPlannerWelcomeMail('<buyer>');
-    for (const output of [preview.html, preview.text]) {
-        for (const expected of ['https://www.youtube.com/watch?v=0LgzGdr8luU', 'https://notionable.net/app?menu=connect', 'https://notionable.net/app?menu=care', 'https://notionable.net/lifeup-review', '~12/31', '정식 오픈 후']) assert.ok(output.includes(expected), expected);
-        assert.ok(!output.includes('~12/31'));
-        assert.ok(output.includes('https://www.youtube.com/shorts/QnR_gnGWOQE'));
+    const tree = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
+    const fn = tree.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'receiveLifeupPlannerPurchase');
+    for (const templateId of catalog.TEMPLATE_IDS.filter(id => !['lifeUp', 'lifeUpScrapbook'].includes(id))) {
+        const deliveries = new Map(), updates = [];
+        const context = { ...catalog, registerPurchaserCustomer: async () => {}, customerEmail: value => value,
+            templateWelcomeMail: require('../lib/template-welcome-mail').templateWelcomeMail,
+            LATPEED_ADMIN_EMAIL: 'admin@example.test', withUnsubscribe: mail => mail,
+            LIFEUP_EMAIL_VARIABLES: { installYoutubeUrl: 'https://example.com/install', reviewUrl: 'https://example.com/review', lifeupbotUrl: 'https://example.com/bot', lifeupCareUrl: 'https://example.com/care' },
+            admin: { firestore: { FieldValue: { serverTimestamp: () => 1 } } },
+            mailQueue: { send: async (mail, priority, key) => { deliveries.set(key, mail); return { data: { id: key } }; } } };
+        vm.runInNewContext(ts.transpile(fn.getText(tree), { target: ts.ScriptTarget.ES2020 }), context);
+        const ref = { id: templateId + '-order', update: async value => updates.push(value) };
+        for (let i = 0; i < 2; i++) await context.receiveLifeupPlannerPurchase(ref, { templateId, email: 'buyer@example.test', name: '<buyer>' });
+        assert.equal(deliveries.size, 2);
+        assert.ok([...deliveries.values()].every(mail => mail.text.includes(catalog.TEMPLATE_PRODUCTS[templateId].releaseUrl) && mail.text.includes(catalog.TEMPLATE_PRODUCTS[templateId].pdfFileName)));
+        assert.equal(updates[0]['reception.status'], 'completed');
     }
-    assert.ok(preview.html.includes('max-width:640px'));
-    const cardStart = preview.html.indexOf('<div style="padding:24px;background:#f8faff;border-radius:12px">');
-    assert.ok(cardStart >= 0);
-    const card = preview.html.slice(cardStart, preview.html.indexOf('</div>', cardStart));
-    assert.ok(card.includes('리뷰 작성하고 라이프봇 1년 무료 이용권 받기'));
-    assert.ok(card.includes('~12/31'));
-    assert.ok(card.includes('https://notionable.net/lifeup-review'));
-    const mailAst = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
-    const scrapbookFn = mailAst.statements.find(node => ts.isFunctionDeclaration(node) && node.name.text === 'lifeupScrapbookWelcomeMail');
-    vm.runInNewContext(ts.transpile(scrapbookFn.getText(mailAst)), context);
-    const scrapbook = context.lifeupScrapbookWelcomeMail('');
-    for (const [mail, id] of [[preview, 'lifeupPlanner'], [scrapbook, 'lifeUpScrapbook']]) {
-        for (const output of [mail.html, mail.text]) {
-            assert.ok(output.includes('https://notionable.net/app?templateId=' + id));
-            assert.ok(output.includes('https://notionable.net/app?menu=connect&templateId=' + id));
-            assert.ok(!output.includes('from=lifebot-email'));
-        }
-    }
-    assert.ok(scrapbook.html.includes('https://www.youtube.com/shorts/QnR_gnGWOQE'));
-    assert.ok(scrapbook.html.includes('LifeUp1.5-Scrapbook.pdf'));
-    assert.ok(preview.html.includes('&lt;buyer>'));
-    assert.ok(!preview.html.includes('<buyer>'));
-    const ref = { id: 'planner-order', update: async value => updates.push(value) };
-    for (let i=0; i<2; i++) await context.receiveLifeupPlannerPurchase(ref, { email: 'buyer@example.test', name: '<buyer>' });
-    assert.equal(deliveries.size, 2);
-    assert.ok([...deliveries.values()].every(mail => mail.text.includes(catalog.TEMPLATE_PRODUCTS.lifeupPlanner.releaseUrl) && mail.text.includes('LifeUp1.5-Planner.pdf')));
-    assert.equal(updates[0]['reception.status'], 'completed');
 });
 
 test('purchase lookup accepts planner and scrapbook without applying LifeUp membership tiers', async () => {
@@ -155,9 +129,9 @@ test('purchase lookup accepts planner and scrapbook without applying LifeUp memb
     const tree = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
     const handler = tree.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => d.name.getText(tree) === 'verifyPurchaser'));
     const start = source.indexOf('function selectBestPurchaserForTemplate(');
-    const selector = source.slice(start, source.indexOf('async function imwebAccessToken(', start));
-    for (const templateId of ['lifeupPlanner', 'lifeUpScrapbook']) {
-        const context = { exports: {}, onRequest: fn => fn, withCors: fn => fn,
+    const selector = tree.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'selectBestPurchaserForTemplate').getText(tree);
+    for (const templateId of catalog.TEMPLATE_IDS.filter(id => id !== 'lifeUp')) {
+        const context = { ...catalog, exports: {}, onRequest: fn => fn, withCors: fn => fn,
             findPurchaserRecords: async id => id === templateId ? [{ id: 'purchase', data: { templateId, email: 'buyer@example.test' } }] : [],
             isLifeupUpgrade: () => false, purchaserTimestamp: () => 1,
             selectBestPurchaser: () => { throw new Error('LifeUp tier selection must not run'); }, console };

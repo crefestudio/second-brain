@@ -77,7 +77,7 @@ export class SocialAuthService {
         await user.reload();
         this.account.set(auth.currentUser);
     }
-    private async purchaseRequest(endpoint: string, payload: { email: string; code?: string; templateId?: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite' | 'lifeUpSecondBrainOS' }): Promise<any> {
+    private async purchaseRequest(endpoint: string, payload: { email: string; code?: string; templateId?: TemplateId }): Promise<any> {
         const response = await fetch(`${this.config.functionsBaseUrl}/${endpoint}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
@@ -85,7 +85,7 @@ export class SocialAuthService {
         if (!response.ok) throw new Error(result.message || '인증 요청을 처리하지 못했습니다.');
         return result;
     }
-    async requestPurchaseCode(email: string, templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite' | 'lifeUpSecondBrainOS' = 'lifeUp'): Promise<boolean> {
+    async requestPurchaseCode(email: string, templateId: TemplateId = 'lifeUp'): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true); this.error.set(''); this.notice.set('');
         try {
@@ -97,7 +97,7 @@ export class SocialAuthService {
             return false;
         } finally { this.busy.set(false); }
     }
-    async loginWithPurchase(email: string, code: string, templateId: 'lifeUp' | 'lifeUpScrapbook' | 'lifeupPlanner' | 'lifeupPlannerLite' | 'lifeUpSecondBrainOS' = 'lifeUp'): Promise<boolean> {
+    async loginWithPurchase(email: string, code: string, templateId: TemplateId = 'lifeUp'): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true); this.error.set(''); this.notice.set('');
         try {
@@ -152,3 +152,4 @@ export class SocialAuthService {
         finally { this.busy.set(false); }
     }
 }
+import { TemplateId } from '../config/template-catalog';

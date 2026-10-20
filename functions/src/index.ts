@@ -4,6 +4,7 @@ import { consentEmailId, migrateMarketingConsents, syncImwebMarketingConsents } 
 import { templateWelcomeMail } from './template-welcome-mail';
 import { fallbackCaptureTitle, toNoteCapture } from './template-capture';
 import { TemplateId, TEMPLATE_IDS, TEMPLATE_PRODUCTS, isTemplateId, templateIdOrLegacy, canUseAgent } from './template-catalog';
+import { PURCHASE_OPTIONS, CUSTOMER_GRADES, MAIL_OPTIONS } from './template-catalog';
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from 'firebase-functions/v2/scheduler';
@@ -230,17 +231,11 @@ export const disconnectNotionTemplate = onRequest(withCors(async (req, res) => {
 }));
 
 const LIFEUP_TEMPLATE_DATABASES = ["lifeup info", "apps", "note", "task", "memo", "reference", "contact"];
-const LIFEUP_SCRAPBOOK_TEMPLATE_DATABASES = ["lifeup info", "apps", "reference", "reference tag", "reference sub tag", "reference type"];
-const LIFEUP_PLANNER_TEMPLATE_DATABASES = ["lifeup info", "apps", "task", "habit", "habit log"];
 
 async function templateDatabaseNames(userId: string): Promise<string[]> {
     const workspace = (await db.collection('users').doc(userId).get()).data();
     const templateId = workspaceTemplate(workspace || {});
-    if (templateId === 'lifeUpScrapbook') return LIFEUP_SCRAPBOOK_TEMPLATE_DATABASES;
-    if (templateId === 'lifeupPlannerLite') return ['lifeup info', 'apps', 'task'];
-    if (templateId === 'lifeupPlanner') return LIFEUP_PLANNER_TEMPLATE_DATABASES;
-    if (templateId === 'lifeUpSecondBrainOS') return ['lifeup info', 'apps', 'note'];
-    return LIFEUP_TEMPLATE_DATABASES;
+    return TEMPLATE_PRODUCTS[templateId].databaseNames || LIFEUP_TEMPLATE_DATABASES;
 }
 
 async function completeNotionTemplateConnection(
@@ -2602,16 +2597,7 @@ function escapeEmailHtml(value: string): string {
     }[character]!));
 }
 
-type LifeupEmailTemplateId = 'planner-purchaser-welcome' | 'planner-lite-purchaser-welcome' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome';
-const LIFEUP_EMAIL_TEMPLATES: ReadonlyArray<{ id: LifeupEmailTemplateId; name: string }> = [
-    { id: 'standard-purchaser-update', name: '라이프업 - 일반 - 업데이트' },
-    { id: 'premium-purchaser-update', name: '라이프업 - 프리미엄 - 업데이트' },
-    { id: 'standard-purchaser-welcome', name: '(자동) 라이프업 - 일반 - 월컴 - 구매시' },
-    { id: 'premium-purchaser-welcome', name: '(자동) 라이프업 - 프리미엄 - 월컴 - 구매시' },
-    { id: 'planner-purchaser-welcome', name: '(자동) 라이프업 - 플래너 - 웰컴 - 구매시' },
-    { id: 'planner-lite-purchaser-welcome', name: '(자동) 라이프업 - 플래너 Lite - 웰컴 - 구매시' },
-    { id: 'scrapbook-purchaser-welcome', name: '(자동) 라이프업 - 스크랩북 - 일반 - 웰컴 - 구매시' },
-];
+const LIFEUP_EMAIL_TEMPLATES = MAIL_OPTIONS;
 const LIFEUP_EMAIL_VARIABLES = {
     lifeupbotUrl: 'https://notionable.net/app?templateId=lifeUp',
     lifeupCareUrl: 'https://notionable.net/app?menu=care',
@@ -3126,7 +3112,7 @@ function purchaserPurchasedAtKstMs(purchaser: any): number {
 async function dailyPurchaserSales(startMs: number, endMs: number): Promise<Record<TemplateId, number>> {
     const snapshots = await Promise.all(TEMPLATE_IDS.map(templateId =>
         db.collection('purchasers').where('templateId', '==', templateId).get()));
-    const counts: Record<TemplateId, number> = { lifeUp: 0, lifeUpScrapbook: 0, lifeupPlanner: 0, lifeupPlannerLite: 0, lifeUpSecondBrainOS: 0 };
+    const counts = Object.fromEntries(TEMPLATE_IDS.map(id => [id, 0])) as Record<TemplateId, number>;
     for (const snapshot of snapshots) for (const doc of snapshot.docs) {
         const purchaser = doc.data();
         const templateId = purchaser.templateId as TemplateId;
@@ -3231,7 +3217,7 @@ export const syncImwebPurchasersDaily = onSchedule({ schedule: '5 18 * * *', tim
     const productInflows = (await db.collection('storeVisits')
         .where('createdAt', '>=', Timestamp.fromMillis(window.startMs))
         .where('createdAt', '<', Timestamp.fromMillis(window.endMs)).count().get()).data().count;
-    const text = `[아임웹 판매 관리 리포트]\n기준: 어제 18:00 ~ 오늘 18:00\n\n상품 유입수: ${productInflows}건\n라이프업 판매 수: ${sales.lifeUp}건\n라이프업 스크랩북 판매 수: ${sales.lifeUpScrapbook}건\n라이프업 플래너 판매 수: ${sales.lifeupPlanner}건`;
+    const text = `[아임웹 판매 관리 리포트]\n기준: 어제 18:00 ~ 오늘 18:00\n\n상품 유입수: ${productInflows}건\n` + TEMPLATE_IDS.map(id => `${TEMPLATE_PRODUCTS[id].nameKoShort} 판매 수: ${sales[id]}건`).join('\n');
     const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: LATPEED_ADMIN_EMAIL,
         subject: `[판매 관리] 아임웹 일일 결제 리포트 · ${window.date}`, text, html: `<p>${text.replace(/\n/g, '<br>')}</p>` }, 'high', `imweb-daily-sales:${window.date}`);
     if (sent.error) throw new Error('IMWEB_DAILY_REPORT_QUEUE_FAILED');
@@ -3253,7 +3239,7 @@ export const syncImwebPurchasersAdmin = onRequest({ secrets: [IMWEB_API_KEY, IMW
     } catch (error) { logger.error('[Imweb] admin sync failed', error); return res.status(500).json({ error: '아임웹 구매자 정보를 갱신하지 못했습니다.' }); }
 }));
 
-const STORE_TRACKED_PRODUCTS = new Set(['lifeup-secondbrain', 'lifeup', 'lifeup-reward', 'lifeup-reward-sale', 'lifeup-reward-pack', 'lifeup-reward-pack-sale', 'lifeup-imweb', 'lifeup-scrapbook', 'lifeup-planner', 'lifeup-planner-lite', 'lifeup-planner-reward', 'lifeup-planner-reward-sale', 'bizup-custom']);
+const STORE_TRACKED_PRODUCTS = new Set([...TEMPLATE_IDS.map(id => TEMPLATE_PRODUCTS[id].slug), ...TEMPLATE_IDS.flatMap(id => Object.values(TEMPLATE_PRODUCTS[id].salesUrls).map(url => new URL(url).pathname.split('/').pop()!)), 'lifeup-imweb', 'lifeup-planner-reward', 'lifeup-planner-reward-sale', 'bizup-custom']);
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 async function youtubeContentTitle(videoId: string): Promise<string | null> {
@@ -3975,9 +3961,8 @@ export const listLifeupPurchasers = onRequest(withCors(async (req, res) => {
         const identity = await getCareIdentity(req);
         if (!identity.isAdmin) return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
         const snapshot = await db.collection('purchasers').where('templateId', 'in', TEMPLATE_IDS).get();
-        // Historical zero-price Latpeed options stay excluded. Newly synced
-        // Imweb orders are already SKU-approved, so zero-price Imweb orders
-        // are intentionally included as complimentary purchasers.
+        // Imweb orders, including zero-price orders, are included. Preserve the
+        // legacy exclusion for unpaid LifeUp records from other sources.
         const purchasers = snapshot.docs.filter(doc => doc.data().templateId !== 'lifeUp' || doc.data().source === 'imweb' || isLifeupPaidPurchase(doc.data())).map(doc => {
             const data = doc.data();
             const memberType = lifeupMemberType(data);
@@ -3995,7 +3980,7 @@ export const listLifeupPurchasers = onRequest(withCors(async (req, res) => {
     }
 }));
 
-type ManualLifeupProduct = 'standard' | 'premium' | 'upgrade' | 'scrapbook' | 'planner' | 'plannerLite';
+type ManualLifeupProduct = string;
 function manualPurchaseText(value: unknown, field: string, maxLength: number): string {
     const text = typeof value === 'string' ? value.trim() : '';
     if (!text || text.length > maxLength || [...text].some(character => character.charCodeAt(0) < 32)) throw new Error(`${field}을(를) 확인해주세요.`);
@@ -4012,24 +3997,20 @@ export const createManualLifeupPurchase = onRequest(withCors(async (req, res) =>
         const phone = manualPurchaseText(req.body?.phone, '휴대폰 번호', 30);
         if (!/^\d{9,15}$/.test(phone.replace(/\D/g, ''))) return res.status(400).json({ error: '휴대폰 번호를 확인해주세요.' });
         const product = req.body?.product as ManualLifeupProduct;
-        if (!['standard', 'premium', 'upgrade', 'scrapbook', 'planner', 'plannerLite'].includes(product)) return res.status(400).json({ error: '상품을 선택해주세요.' });
+        const selectedProduct = PURCHASE_OPTIONS.find(option => option.id === product);
+        if (!selectedProduct) return res.status(400).json({ error: '상품을 선택해주세요.' });
         const amount = Number(req.body?.amount);
         if (!Number.isSafeInteger(amount) || (product === 'plannerLite' ? amount < 0 : amount <= 0)) return res.status(400).json({ error: '결제 금액은 1원 이상으로 입력해주세요.' });
         const purchasedAtValue = manualPurchaseText(req.body?.purchasedAt, '구매 일시', 40);
         const purchasedAtDate = new Date(purchasedAtValue);
         if (Number.isNaN(purchasedAtDate.getTime())) return res.status(400).json({ error: '구매 일시를 확인해주세요.' });
-        const productInfo = {
-            standard: { templateId: 'lifeUp', memberType: 'standard' as LifeupMemberType, purchaseOption: '라이프업', upgradeOnly: false },
-            premium: { templateId: 'lifeUp', memberType: 'premium' as LifeupMemberType, purchaseOption: '라이프업 프리미엄', upgradeOnly: false },
-            upgrade: { templateId: 'lifeUp', memberType: 'premium' as LifeupMemberType, purchaseOption: '프리미엄 승격', upgradeOnly: true },
-            scrapbook: { templateId: 'lifeUpScrapbook', memberType: null, purchaseOption: '라이프업 스크랩북', upgradeOnly: false },
-            planner: { templateId: 'lifeupPlanner', memberType: null, purchaseOption: '라이프업 플래너', upgradeOnly: false },
-            plannerLite: { templateId: 'lifeupPlannerLite', memberType: null, purchaseOption: '라이프업 플래너 Lite', upgradeOnly: false }
-        }[product];
+        const productInfo = { templateId: selectedProduct.templateId,
+            memberType: selectedProduct.templateId === 'lifeUp' ? (product === 'standard' ? 'standard' : 'premium') : null,
+            purchaseOption: product === 'upgrade' ? '프리미엄 승격' : selectedProduct.name, upgradeOnly: product === 'upgrade' };
         const purchaserRef = db.collection('purchasers').doc(`manual_${nanoid()}`);
         const purchaser = { ...productInfo, name, email, phone, amount: `${amount.toLocaleString('ko-KR')}원`, paymentAmount: amount, paymentMethod: '수기 등록',
             purchasedAt: formatLatpeedDate(purchasedAtDate.toISOString()), status: '결제 완료', notify: '미수집', source: 'manual', registrationStatus: 'manual',
-            purchaseEligible: productInfo.templateId === 'lifeUp' && !productInfo.upgradeOnly, registeredBy: identity.email,
+            purchaseEligible: !productInfo.upgradeOnly, registeredBy: identity.email,
             createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() };
         await purchaserRef.create(purchaser);
         return res.status(201).json({ success: true, purchaser: { id: purchaserRef.id, ...purchaser } });
@@ -4291,7 +4272,7 @@ export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency:
             const snapshot = await query.get();
             for (const doc of snapshot.docs) {
                 const purchase = doc.data();
-                addCustomerGrade(grades, purchase.phone, ['lifeupPlanner', 'lifeupPlannerLite'].includes(purchase.templateId) ? 'planner' : purchase.templateId === 'lifeUpScrapbook' ? 'scrapbook' : lifeupMemberType(purchase));
+                addCustomerGrade(grades, purchase.phone, isTemplateId(purchase.templateId) && purchase.templateId !== 'lifeUp' ? TEMPLATE_PRODUCTS[purchase.templateId].admin.customerGrade : lifeupMemberType(purchase));
             }
             if (snapshot.size < 100) break;
             purchaseAfter = snapshot.docs[snapshot.size - 1];
@@ -4299,13 +4280,13 @@ export const listLifeupCustomers = onRequest({ timeoutSeconds: 540, concurrency:
         // Membership is determined by the workspace a customer actually owns,
         // not merely by whether an authentication preference document exists.
         const workspaceMemberships = new Map<string, CustomerGrade>();
-        const membershipRanks: Record<CustomerGrade, number> = { planner: 1, scrapbook: 1, standard: 2, premium: 3 };
+        const membershipRanks: Record<CustomerGrade, number> = Object.fromEntries(CUSTOMER_GRADES.map(grade => [grade, grade === 'premium' ? 3 : grade === 'standard' ? 2 : 1]));
         const workspaces = await db.collection('users').select('email', 'templateId', 'memberType').get();
         for (const workspace of workspaces.docs) {
             const data = workspace.data();
             const email = customerEmail(data.email);
             if (!email) continue;
-            const membership: CustomerGrade = ['lifeupPlanner', 'lifeupPlannerLite'].includes(workspaceTemplate(data)) ? 'planner' : workspaceTemplate(data) === 'lifeUpScrapbook' ? 'scrapbook' : data.memberType === 'premium' ? 'premium' : 'standard';
+            const membership: CustomerGrade = workspaceTemplate(data) === 'lifeUp' && data.memberType === 'premium' ? 'premium' : TEMPLATE_PRODUCTS[workspaceTemplate(data)].admin.customerGrade;
             const current = workspaceMemberships.get(email);
             if (!current || membershipRanks[membership] > membershipRanks[current]) workspaceMemberships.set(email, membership);
         }
@@ -4406,7 +4387,8 @@ export const sendLifeupCustomerMail = onRequest({ timeoutSeconds: 540 }, withCor
         const firstAttemptAt = Date.now() + 5_000;
         for (const [index, [email, recipient]] of deliverable.entries()) {
             try {
-                const mail = withUnsubscribe(template === 'planner-purchaser-welcome' ? lifeupPlannerWelcomeMail(recipient.name) : template === 'planner-lite-purchaser-welcome' ? lifeupPlannerLiteWelcomeMail(recipient.name) : template === 'standard-purchaser-update'
+                const welcomeProduct = TEMPLATE_IDS.find(id => TEMPLATE_PRODUCTS[id].admin.welcomeTemplateId === template);
+                const mail = withUnsubscribe(welcomeProduct ? templateWelcomeMail(welcomeProduct, recipient.name, LIFEUP_EMAIL_VARIABLES) : template === 'standard-purchaser-update'
                     ? lifeupStandardPurchaserUpdateMailDetailed(recipient.name)
                     : template === 'premium-purchaser-update'
                         ? lifeupPremiumPurchaserUpdateMail(recipient.name)
@@ -4472,7 +4454,7 @@ export const listMarketingBlocks = onRequest(withCors(async (req, res) => {
 export const addLifeupPurchaserToCustomers = onDocumentCreated({ document: 'purchasers/{purchaserId}', retry: true, timeoutSeconds: 120 }, async event => {
     const purchaser = event.data?.data();
     if (!purchaser || !TEMPLATE_IDS.includes(purchaser.templateId)) return;
-    if (purchaser.templateId === 'lifeupPlanner' || purchaser.templateId === 'lifeupPlannerLite' || purchaser.templateId === 'lifeUpSecondBrainOS') {
+    if (purchaser.templateId !== 'lifeUp' && purchaser.templateId !== 'lifeUpScrapbook') {
         await receiveLifeupPlannerPurchase(event.data!.ref, purchaser);
         return;
     }
@@ -4483,31 +4465,19 @@ export const addLifeupPurchaserToCustomers = onDocumentCreated({ document: 'purc
     await receiveLifeupPurchase(event.data!.ref, purchaser);
 });
 
-function lifeupPlannerWelcomeMail(name: string): { subject: string; text: string; html: string } {
-    return templateWelcomeMail('lifeupPlanner', name, LIFEUP_EMAIL_VARIABLES);
-}
-
 async function receiveLifeupPlannerPurchase(purchaserRef: admin.firestore.DocumentReference, purchaser: admin.firestore.DocumentData): Promise<void> {
     await registerPurchaserCustomer(purchaser);
     const recipients = [...new Set([LATPEED_ADMIN_EMAIL, customerEmail(purchaser.email)])]
         .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
     const deliveries = await Promise.all(recipients.map(async email => {
         const sent = await mailQueue.send({ from: 'Notionable <noreply@notionable.net>', to: email,
-            ...withUnsubscribe(purchaser.templateId === 'lifeUpSecondBrainOS'
-                ? templateWelcomeMail('lifeUpSecondBrainOS', String(purchaser.name || ''), LIFEUP_EMAIL_VARIABLES)
-                : purchaser.templateId === 'lifeupPlannerLite'
-                ? lifeupPlannerLiteWelcomeMail(String(purchaser.name || ''))
-                : lifeupPlannerWelcomeMail(String(purchaser.name || ''))) }, 'high', `purchase-planner-welcome:${purchaserRef.id}:${email}`);
+            ...withUnsubscribe(templateWelcomeMail(templateIdOrLegacy(purchaser.templateId), String(purchaser.name || ''), LIFEUP_EMAIL_VARIABLES)) }, 'high', `purchase-planner-welcome:${purchaserRef.id}:${email}`);
         if (sent.error) throw new Error('PURCHASE_MAIL_QUEUE_FAILED');
         return { email, queueId: sent.data?.id || '', status: 'queued' };
     }));
     await purchaserRef.update({ 'welcomeEmail.status': 'queued', 'welcomeEmail.recipients': deliveries,
         'welcomeEmail.queuedAt': admin.firestore.FieldValue.serverTimestamp(), 'reception.status': 'completed',
         'reception.completedAt': admin.firestore.FieldValue.serverTimestamp() });
-}
-
-function lifeupPlannerLiteWelcomeMail(name: string): { subject: string; text: string; html: string } {
-    return templateWelcomeMail('lifeupPlannerLite', name, LIFEUP_EMAIL_VARIABLES);
 }
 
 function lifeupScrapbookWelcomeMail(name: string): { subject: string; text: string; html: string } {
@@ -12509,7 +12479,7 @@ async function processKakaoAgent(
 
         if (TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'note' &&
             ['create', 'correct'].includes(enrichedResult.action)) {
-            enrichedResult = toNoteCapture(enrichedResult, entity, userMessage);
+            enrichedResult = toNoteCapture({ ...enrichedResult, templateId: captureTemplate }, entity, userMessage);
         }
 
         const payload: any = {
@@ -12548,7 +12518,7 @@ async function processKakaoAgent(
         console.log("[TIME] sendKakaoCallback START");
         if (enrichedResult.noteCapture) {
             await processAfterResponse(userId, entity, enrichedResult, guard);
-            await reply('세컨드브레인 OS에서는 기본 노트에 저장됩니다. 라이프업 통합버전을 이용하면 각 글에 맞게 저장됩니다.', callbackUrl);
+            await reply(buildAssistantResponse(enrichedResult, undefined, pageUrls), callbackUrl);
             return;
         }
         await guard();
@@ -13098,6 +13068,7 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
     // Some templates (including Scrapbook) have no mobile app pages.
     // Their root page is still a valid destination after saving.
     if (!pageUrl) { pageUrl = pageUrls?.root ?? ""; }
+    if (result.noteCapture) { pageUrl = pageUrls?.root ?? ""; }
 
     // 날짜
     if (result.dateData?.date) {
@@ -13114,7 +13085,7 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
 
     // 제목
     if (result.title) {
-        lines.push(`📝제목 : ${result.title}`);
+        lines.push(`📝제목 : ${result.noteCapture ? result.originalTitle || result.title : result.title}`);
     }
 
     // 카테고리
@@ -13125,7 +13096,7 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
         contact: { icon: "👤", name: "연락처" }
     };
 
-    const category = categoryMap[result.db];
+    const category = categoryMap[result.noteCapture ? result.sourceDb : result.db];
     if (category) {
         lines.push(result.type
             ? `📥저장 위치 : ${category.icon} ${category.name} · ${result.type}`
@@ -13156,7 +13127,13 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
         lines.push("");
     }
 
-    switch (result.action) {
+    if (result.noteCapture) {
+        lines.push(`'${result.title}'을 수집함으로 등록했습니다. 세컨드브레인OS는 항상 노트 수집함에 저장합니다.`);
+        lines.push("");
+        lines.push("할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?");
+        lines.push("👉 라이프업 보상 업그레이드");
+        lines.push(`https://app.notionable.net/upgrade/lifeup-planner-lite?from=${result.templateId || 'lifeUpSecondBrainOS'}_kakao`);
+    } else switch (result.action) {
         case "create":
             lines.push(`'${result.title}'을 ${result.type ?? category?.name}으로 등록했습니다.`);
             break;
@@ -18028,7 +18005,7 @@ export const getScrapbookUpgradeEvent = onRequest(
             const snapshot = await transaction.get(workspaceRef);
             const account = await transaction.get(db.collection('appAccounts').doc(identity.uid));
             if (!snapshot.exists || snapshot.data()?.firebaseUid !== identity.uid ||
-                !['lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite', 'lifeUpSecondBrainOS'].includes(snapshot.data()?.templateId) ||
+                (!isTemplateId(snapshot.data()?.templateId) || snapshot.data()?.templateId === 'lifeUp') ||
                 snapshot.data()?.deletionStatus === 'archived' || account.data()?.deletionStatus === 'pending') return null;
             const existing = snapshot.data()?.scrapbookUpgradeEventFirstSeenAt;
             const bannerDismissed = req.body?.dismissBanner === true || snapshot.data()?.upgradeBannerDismissed === true;

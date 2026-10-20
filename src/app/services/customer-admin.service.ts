@@ -5,8 +5,8 @@ import { auth } from '../firebase';
 export type LifeupCustomer = {
     id: string; name?: string; phone?: string; phoneDisplay?: string; emails?: string[];
     smsNotificationConsent?: '예' | '아니오' | '미응답' | '차단';
-    purchasedAt?: string; notificationConsent?: '예' | '아니오' | '미응답' | '차단'; membership?: 'premium' | 'standard' | 'scrapbook' | 'planner' | 'none';
-    memberType?: 'standard' | 'premium' | 'scrapbook' | 'planner' | null; [key: string]: unknown;
+    purchasedAt?: string; notificationConsent?: '예' | '아니오' | '미응답' | '차단'; membership?: string;
+    memberType?: string | null; [key: string]: unknown;
 };
 export type LifeupCustomerQuery = { search: string; memberFilter: string; membershipFilter: string; notifyFilter: string; sort: string; direction: string };
 export type LifeupCustomerPage = { customers: LifeupCustomer[]; nextCursor: string | null; totalCount: number; filteredCount: number };
@@ -23,7 +23,7 @@ export class CustomerAdminService {
         return this.request('importLifeupCustomersCsv', { csv });
     }
 
-    async sendSelectedMail(customerIds: string[], template: 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome' | 'planner-purchaser-welcome' | 'planner-lite-purchaser-welcome', confirmNonConsenting = false, requestId: string = crypto.randomUUID()): Promise<{ requiresConsentConfirmation?: boolean; recipientCount?: number; nonConsentingCount?: number; blockedCount?: number; queuedCount?: number; failedCount?: number }> {
+    async sendSelectedMail(customerIds: string[], template: string, confirmNonConsenting = false, requestId: string = crypto.randomUUID()): Promise<{ requiresConsentConfirmation?: boolean; recipientCount?: number; nonConsentingCount?: number; blockedCount?: number; queuedCount?: number; failedCount?: number }> {
         return this.request('sendLifeupCustomerMail', { customerIds, template, confirmNonConsenting, requestId });
     }
 

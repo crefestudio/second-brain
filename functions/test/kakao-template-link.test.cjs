@@ -28,11 +28,26 @@ test('confirmed Scrapbook saves use the same response builder', () => {
     const end = source.indexOf(';', start) + 1;
     const converted = { ...result, scrapbookConfirmed: true, response: 'Saved' };
     vm.runInNewContext(source.slice(start, end), {
-        converted, pageUrls: { root, reference_mobile: '' }, buildAssistantResponse: context.buildAssistantResponse
+        converted, pageId: undefined, pageUrls: { root, reference_mobile: '' }, buildAssistantResponse: context.buildAssistantResponse
     });
     assert.ok(converted.response.includes('notion://app.notion.com/template'));
 });
 
 test('missing template URLs do not produce a broken link', () => {
     assert.ok(!context.buildAssistantResponse(result).includes('notion://'));
+});
+
+test('Second Brain keeps classification and title while linking to the inbox template root', () => {
+    const { toNoteCapture } = require('../lib/template-capture');
+    const capture = toNoteCapture({ action: 'create', db: 'task', title: '회의 준비' }, {}, '회의 준비');
+    const response = context.buildAssistantResponse(capture, undefined,
+        { root: 'https://www.notion.so/template-root', task_mobile: mobile }, 'created-page');
+    assert.ok(response.includes('📝제목 : 회의 준비'));
+    assert.ok(response.includes('📥저장 위치 : ✅ 할일 관리'));
+    assert.ok(response.includes("'[할일] 회의 준비'을 수집함으로 등록했습니다. 세컨드브레인OS는 항상 노트 수집함에 저장합니다."));
+    assert.ok(response.includes('https://app.notionable.net/upgrade/lifeup-planner-lite?from=lifeUpSecondBrainOS_kakao'));
+    assert.ok(response.includes('https://www.notion.so/template-root'));
+    assert.ok(!response.includes('createdpage'));
+    assert.ok(!response.includes(mobile));
+    assert.ok(response.includes('📢 [시험 운영 안내]'));
 });

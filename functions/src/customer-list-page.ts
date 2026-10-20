@@ -1,3 +1,4 @@
+import { CUSTOMER_GRADES } from './template-catalog';
 /* eslint-disable */
 export interface CustomerRow {
     id: string; name?: string; phone?: string; phoneDisplay?: string; emails?: string[];
@@ -11,8 +12,8 @@ export function customerListOptions(body: Record<string, unknown>) {
     };
     return {
         search: String(body.search || '').trim().toLowerCase().slice(0, 200),
-        memberFilter: choice('memberFilter', ['all', 'standard', 'premium', 'scrapbook', 'planner', 'none'], 'all'),
-        membershipFilter: choice('membershipFilter', ['all', 'standard', 'premium', 'scrapbook', 'planner', 'none'], 'all'),
+        memberFilter: choice('memberFilter', ['all', ...CUSTOMER_GRADES, 'none'], 'all'),
+        membershipFilter: choice('membershipFilter', ['all', ...CUSTOMER_GRADES, 'none'], 'all'),
         notifyFilter: choice('notifyFilter', ['all', 'yes', 'no', 'blocked'], 'all'),
         sort: choice('sort', ['purchasedAt', 'name', 'phone'], 'purchasedAt'),
         direction: choice('direction', ['asc', 'desc'], 'desc')

@@ -11,7 +11,7 @@ function setup(workspace, authenticated = true) {
   const db = {collection: name => ({doc: () => name === 'users' ? ref : {id:'account'}}),
     runTransaction: fn => fn({get: async r => ({exists: !!workspace, data: () => r === ref ? workspace : {}}),
       set: (_, value) => {writes++; Object.assign(workspace, value);}})};
-  const context = {exports:{}, onRequest:fn=>fn, withCors:fn=>fn, db, Date,
+  const context = {...require('../lib/template-catalog'), exports:{}, onRequest:fn=>fn, withCors:fn=>fn, db, Date,
     admin:{auth:()=>({verifyIdToken:async()=>{if(!authenticated) throw Error(); return {uid:'owner'};}}),
       firestore:{Timestamp:{now:()=>({toMillis:()=>1000})}}}};
   vm.runInNewContext(ts.transpileModule(section,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText, context);

@@ -1,3 +1,4 @@
+import { PURCHASE_OPTIONS, TEMPLATE_PRODUCTS, isTemplateId } from '../../../../../config/template-catalog';
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -7,11 +8,12 @@ import { CreatedInvitation, InvitationTier, PurchaseInvitationService } from '..
 
 type SortKey = 'purchasedAt' | 'email' | 'phone';
 type MemberFilter = 'all' | 'standard' | 'premium' | 'other';
-type ProductOptionFilter = 'all' | 'standard' | 'premium' | 'upgrade' | 'scrapbook' | 'planner' | 'plannerLite';
+type ProductOptionFilter = string;
 type RegistrationFilter = 'all' | 'webhook' | 'file_added' | 'file_verified' | 'file_mismatch' | 'invitation' | 'manual';
 type NotifyFilter = 'all' | 'yes' | 'no';
 @Component({ selector: 'app-purchaser-admin', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './purchaser-admin.component.html', styleUrl: './purchaser-admin.component.scss' })
 export class PurchaserAdminComponent implements OnInit {
+    readonly productOptions = PURCHASE_OPTIONS;
     isLoading = true; errorMessage = ''; purchasers: LifeupPurchaser[] = []; selectedPurchaser: LifeupPurchaser | null = null;
     search = ''; sortKey: SortKey = 'purchasedAt'; memberFilter: MemberFilter = 'all'; productOptionFilter: ProductOptionFilter = 'all'; registrationFilter: RegistrationFilter = 'all'; notifyFilter: NotifyFilter = 'all';
     isValidatingCsv = false; csvMessage = ''; private validations = new Map<string, CsvValidation>(); private csvOnly: LifeupPurchaser[] = [];
@@ -35,9 +37,9 @@ export class PurchaserAdminComponent implements OnInit {
     }
     async ngOnInit(): Promise<void> { try { if (!(await this.care.access()).isAdmin) throw new Error('관리자 계정으로 로그인해주세요.'); this.purchasers = await this.purchaserAdmin.listLifeupPurchasers(); } catch (error) { this.errorMessage = error instanceof Error ? error.message : '구매자 목록을 불러오지 못했습니다.'; } finally { this.isLoading = false; } }
     get filteredPurchasers(): LifeupPurchaser[] { const source = [...this.purchasers, ...this.csvOnly]; const term = this.search.trim().toLowerCase(); const searched = !term ? source : source.filter(p => [p.email, p.name, p.phone, p.purchaseOption, p.purchasedAt, this.serviceLabel(p), this.productOptionLabel(p)].join(' ').toLowerCase().includes(term)); const memberFiltered = this.memberFilter === 'all' ? searched : searched.filter(p => this.memberFilter === 'other' ? !['standard', 'premium'].includes(String(p.memberType || '')) : p.memberType === this.memberFilter); const productOptionFiltered = this.productOptionFilter === 'all' ? memberFiltered : memberFiltered.filter(p => this.productOption(p) === this.productOptionFilter); const registrationFiltered = this.registrationFilter === 'all' ? productOptionFiltered : productOptionFiltered.filter(p => this.registration(p) === this.registrationFilter); const filtered = this.notifyFilter === 'all' ? registrationFiltered : registrationFiltered.filter(p => this.notifyFilter === 'yes' ? p['notify'] === '예' : p['notify'] === '아니오'); return [...filtered].sort((a, b) => this.sortKey === 'purchasedAt' ? this.timestamp(b) - this.timestamp(a) : String(a[this.sortKey] || '').localeCompare(String(b[this.sortKey] || ''), 'ko')); }
-    serviceLabel(p: LifeupPurchaser): string { return p['templateId'] === 'lifeupPlannerLite' ? '라이프업 플래너 Lite' : p['templateId'] === 'lifeupPlanner' ? '라이프업 플래너' : p['templateId'] === 'lifeUpScrapbook' ? '라이프업 스크랩북' : p.memberType === 'premium' ? '라이프업 프리미엄' : p.memberType === 'standard' ? '라이프업' : '기타'; }
-    productOption(p: LifeupPurchaser): Exclude<ProductOptionFilter, 'all'> | null { return p['templateId'] === 'lifeupPlannerLite' ? 'plannerLite' : p['templateId'] === 'lifeupPlanner' ? 'planner' : p['templateId'] === 'lifeUpScrapbook' ? 'scrapbook' : p.upgradeOnly ? 'upgrade' : p.memberType === 'premium' ? 'premium' : p.memberType === 'standard' ? 'standard' : null; }
-    productOptionLabel(p: LifeupPurchaser): string { const option = this.productOption(p); return option ? ({ standard: '라이프업', premium: '라이프업 프리미엄', upgrade: '라이프업 프리미엄 승격', scrapbook: '라이프업 스크랩북', planner: '라이프업 플래너', plannerLite: '라이프업 플래너 Lite' } as const)[option] : String(p.purchaseOption || '-'); }
+    serviceLabel(p: LifeupPurchaser): string { return p.memberType === 'premium' && p['templateId'] === 'lifeUp' ? '라이프업 프리미엄' : isTemplateId(p['templateId']) ? TEMPLATE_PRODUCTS[p['templateId']].nameKoShort : '기타'; }
+    productOption(p: LifeupPurchaser): string | null { return p.upgradeOnly ? 'upgrade' : p.memberType === 'premium' && p['templateId'] === 'lifeUp' ? 'premium' : isTemplateId(p['templateId']) ? TEMPLATE_PRODUCTS[p['templateId']].admin.purchaseKey : null; }
+    productOptionLabel(p: LifeupPurchaser): string { return PURCHASE_OPTIONS.find(option => option.id === this.productOption(p))?.name || String(p.purchaseOption || '-'); }
     toggleDetail(p: LifeupPurchaser): void { this.selectedPurchaser = this.selectedPurchaser?.id === p.id ? null : p; }
     detailEntries(p: LifeupPurchaser): Array<{ key: string; value: string }> { return Object.entries(p).map(([key, value]) => ({ key, value: typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '') })); }
     registration(p: LifeupPurchaser): Exclude<RegistrationFilter, 'all'> { if (p['source'] === 'manual') return 'manual'; if (p['source'] === 'invitation') return 'invitation'; return this.validations.get(p.id)?.registrationStatus || p['registrationStatus'] as CsvValidation['registrationStatus'] || 'webhook'; }

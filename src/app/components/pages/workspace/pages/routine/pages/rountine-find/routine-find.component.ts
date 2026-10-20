@@ -1,4 +1,4 @@
-import { canUseAgent } from '../../../../../../../config/template-catalog';
+import { canUseAgent, isTemplateId } from '../../../../../../../config/template-catalog';
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -172,7 +172,7 @@ export class RoutineFindComponent {
 
         // A workspace must exist before its template can determine permission.
         if (!canUseAgent(this.authService.templateId, 'routine')) {
-            if (this.authService.templateId === 'lifeUpScrapbook' || this.authService.templateId === 'lifeupPlannerLite' || this.authService.templateId === 'lifeUpSecondBrainOS') {
+            if (isTemplateId(this.authService.templateId) && this.authService.templateId !== 'lifeUp') {
                 this.upgradeLoading = true;
                 this.addingHabits.add(habit);
                 try { await this.upgradeEvent.initialize(this.userId, this.authService.templateId); }

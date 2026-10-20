@@ -1,4 +1,4 @@
-import { TEMPLATE_PRODUCTS } from '../../../../../config/template-catalog';
+import { TEMPLATE_PRODUCTS, TEMPLATE_IDS } from '../../../../../config/template-catalog';
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -174,13 +174,11 @@ export class SalesAdminComponent implements OnInit {
 
 
     readonly products: Product[] = [
-        { name: '라이프업', price: 79000, storePath: 'lifeup', trackingKey: 'lifeup-imweb' },
-        { name: TEMPLATE_PRODUCTS.lifeupPlanner.nameKoShort, price: TEMPLATE_PRODUCTS.lifeupPlanner.displayPrice, storePath: 'lifeup-planner' },
-        { name: TEMPLATE_PRODUCTS.lifeupPlannerLite.nameKoShort, price: 0, storePath: 'lifeup-planner-lite' },
-        { name: '라이프업 스크랩북', price: 0, storePath: 'lifeup-scrapbook' },
+        ...TEMPLATE_IDS.map(id => ({ name: TEMPLATE_PRODUCTS[id].nameKoShort, price: TEMPLATE_PRODUCTS[id].displayPrice,
+            storePath: new URL(TEMPLATE_PRODUCTS[id].salesUrls.normal).pathname.split('/').pop()!,
+            trackingKey: id === 'lifeUp' ? 'lifeup-imweb' : TEMPLATE_PRODUCTS[id].slug })),
         { name: '라이프업 보상', price: 69000, storePath: 'lifeup-reward' },
         { name: '라이프업 보상 타임세일', price: 64000, storePath: 'lifeup-reward-sale' },
-        { name: '라이프업 세컨드브레인 OS', price: 19000, storePath: 'lifeup-secondbrain-os', trackingKey: 'lifeup-secondbrain' },
         { name: '라이프업 묶음 보상', price: 49000, storePath: 'lifeup-reward-pack' },
         { name: '라이프업 묶음 보상 타임세일', price: 42000, storePath: 'lifeup-reward-pack-sale' },
         { name: '비즈업 맞춤제작', price: 0, storePath: 'bizup-custom' }

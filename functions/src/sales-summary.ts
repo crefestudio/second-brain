@@ -1,9 +1,10 @@
-import { TEMPLATE_PRODUCTS, isTemplateId } from './template-catalog';
+import { TEMPLATE_PRODUCTS, TEMPLATE_IDS, isTemplateId } from './template-catalog';
 
 // Only these redirect targets represent products that currently have a price.
 // Keep free templates and consultation links out of the paid-inflow KPI while
 // retaining them in the per-product and source reports.
 const PAID_STORE_PRODUCT_PATHS = new Set([
+    ...TEMPLATE_IDS.filter(id => TEMPLATE_PRODUCTS[id].displayPrice > 0).map(id => TEMPLATE_PRODUCTS[id].slug),
     'lifeup', 'lifeup-imweb', 'lifeup-r', 'lifeup-planner', 'lifeup-secondbrain',
     'lifeup-reward', 'lifeup-reward-sale',
     'lifeup-reward-pack', 'lifeup-reward-pack-sale'

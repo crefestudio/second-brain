@@ -12,10 +12,10 @@ import { TemplateUpgradeEventService } from '../../services/template-upgrade-eve
         <div class="content">
           @if (event.isActive) {
             <strong>할 일·메모·프로젝트를 한곳에서! 마감 직전 특별 혜택을 놓치지 마세요.</strong>
-            <span>🎁 <span class="remaining">[<span role="timer">{{ remainingTime }}</span> 남음]</span> {{ event.hasPackUpgrade ? '플래너' : event.productName }} 사용자 전용 보상 업그레이드 특가!</span>
+            <span>🎁 <span class="remaining">[<span role="timer">{{ remainingTime }}</span> 남음]</span> {{ event.productName }} 사용자 전용 보상 업그레이드 특가!</span>
           } @else {
             <strong>모든 일상과 프로젝트를 라이프업 통합 템플릿 하나로 연결해 보세요.</strong>
-            <span>🎁 {{ event.hasPackUpgrade ? '플래너' : event.productName }} 사용자를 위한 보상 업그레이드 특별가 혜택이 준비되어 있습니다.</span>
+            <span>🎁 {{ event.productName }} 사용자를 위한 <span class="special-price">보상 업그레이드 특별가 혜택</span>이 준비되어 있습니다.</span>
           }
           @if (error) { <span role="alert">닫기 상태를 저장하지 못했습니다. 다시 시도해 주세요.</span> }
         </div>
@@ -33,6 +33,7 @@ import { TemplateUpgradeEventService } from '../../services/template-upgrade-eve
     .close { flex:0 0 26px; width:26px; height:26px; margin-left:8px; padding:0; border:0; border-radius:7px; background:transparent; color:#888; font-size:19px; cursor:pointer; }
     .close:hover { background:rgba(255,255,255,.06); color:#ccc; }
     .remaining { font-weight:700; }
+    .special-price { color:#f0abfc; font-weight:700; }
     [role=timer] { color:#fbbf24; font-variant-numeric:tabular-nums; }
     @media(max-width:600px) { .notice { flex-wrap:wrap; gap:8px; } .content { flex-basis:calc(100% - 42px); } .close { order:1; align-self:flex-start; margin:0; } a { order:2; margin-left:0; } }
   `]

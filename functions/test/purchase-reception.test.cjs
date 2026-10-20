@@ -79,9 +79,10 @@ test('standard sends no premium mail; zero amount sends no purchase mail', async
 test('a newly imported scrapbook order queues its scrapbook welcome mail once per recipient', async () => {
     const queued = new Map(); const customerEmails = [];
     const context = {
+        templateWelcomeMail: require('../lib/template-welcome-mail').templateWelcomeMail,
         registerPurchaserCustomer: async purchaser => customerEmails.push(purchaser.email),
         customerEmail: email => email.trim().toLowerCase(), LATPEED_ADMIN_EMAIL: 'admin@example.com',
-        LIFEUP_EMAIL_VARIABLES: { lifeupScrapbookReleaseUrl: 'https://example.com/download', lifeupScrapbookPassportUrl: 'https://example.com/pdf', lifeupCareUrl: 'https://example.com/care' },
+        LIFEUP_EMAIL_VARIABLES: { installYoutubeUrl: 'https://example.com/install', reviewUrl: 'https://example.com/review', lifeupbotUrl: 'https://example.com/bot', lifeupScrapbookReleaseUrl: 'https://example.com/download', lifeupScrapbookPassportUrl: 'https://example.com/pdf', lifeupCareUrl: 'https://example.com/care' },
         escapeEmailHtml: value => value, withUnsubscribe: mail => mail,
         admin: { firestore: { FieldValue: { serverTimestamp: () => 123 } } },
         mailQueue: { send: async (mail, priority, key) => { queued.set(key, { mail, priority }); return { data: { id: key } }; } }

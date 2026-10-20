@@ -16,7 +16,7 @@ async function request({ authorized = true, owner = 'account', verified = true, 
         db: { collection: name => ({ doc: () => name === 'appAccounts'
             ? { get: async () => ({ data: () => ({ userId: active }) }) } : workspaceRef,
             where: (_field, _op, uid) => ({ get: async () => ({ docs: owner === uid ? [{ id: 'workspace', ref: workspaceRef, data: () => ({ firebaseUid: owner, templateId: 'lifeUp' }) }] : [] }) }) }) },
-        findPurchaserRecords: async (templateId, email) => { lookupEmail = email; return templateId === 'lifeupPlanner' ? [] : templateId === 'lifeUp' ? rows : [{ id: 'scrapbook', data: { email, date: 3 } }]; },
+        findPurchaserRecords: async (templateId, email) => { lookupEmail = email; return templateId === 'lifeUp' ? rows : [{ id: templateId, data: { templateId, email, amount: '0원', date: 3 } }]; },
         selectBestPurchaserForTemplate: (_template, records) => records.length ? { ...records.at(-1), memberType: 'premium' } : null,
         workspaceTemplate: data => data.templateId,
         purchaserTimestamp: data => data.date, lifeupMemberType: () => 'standard', isLifeupUpgrade: () => false,
@@ -53,10 +53,12 @@ test('changing active workspace does not change account purchase history', async
     assert.deepEqual(JSON.parse(JSON.stringify(first.res.body)), JSON.parse(JSON.stringify(second.res.body)));
 });
 
-test('verified Auth email retrieves both products without any workspace', async () => {
+test('verified Auth email retrieves all catalog products including zero-won OS without any workspace', async () => {
     const { res } = await request({ owner: 'other', authEmail: 'buyer@example.com', emailVerified: true });
-    assert.equal(res.body.purchases.length, 3);
-    assert.equal(res.body.purchases[0].templateId, 'lifeUpScrapbook');
+    const { TEMPLATE_IDS } = require('../lib/template-catalog');
+    assert.equal(res.body.purchases.length, TEMPLATE_IDS.length + 1);
+    assert.deepEqual([...new Set(res.body.purchases.map(p => p.templateId))].sort(), [...TEMPLATE_IDS].sort());
+    assert.equal(res.body.purchases.find(p => p.templateId === 'lifeUpSecondBrainOS').amount, '0원');
     assert.equal(res.body.purchases[0].workspaceId, '');
     assert.equal(res.body.purchases[0].connected, false);
 });

@@ -3,7 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { TemplateUpgradeEventService } from '../../../services/template-upgrade-event.service';
 import { ScrapbookUpgradeCardComponent } from '../../common/scrapbook-upgrade-card.component';
-import { TemplateId } from '../../../config/template-catalog';
+import { TemplateId, isTemplateId } from '../../../config/template-catalog';
 
 @Component({
   selector: 'app-lifeup-scrapbook-upgrade',
@@ -33,7 +33,7 @@ export class LifeupScrapbookUpgradeComponent {
     route: ActivatedRoute
   ) {
     this.source = route.snapshot.queryParamMap.get('from') ?? 'upgrade_lifeup-scrapbook';
-    this.templateId = route.snapshot.data['templateId'] === 'lifeUpSecondBrainOS' ? 'lifeUpSecondBrainOS' : route.snapshot.data['templateId'] === 'lifeupPlannerLite' ? 'lifeupPlannerLite' : route.snapshot.data['templateId'] === 'lifeupPlanner' ? 'lifeupPlanner' : 'lifeUpScrapbook';
+    this.templateId = isTemplateId(route.snapshot.data['templateId']) ? route.snapshot.data['templateId'] : 'lifeUpScrapbook';
   }
 
   async ngOnInit(): Promise<void> {

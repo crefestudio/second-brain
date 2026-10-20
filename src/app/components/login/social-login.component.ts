@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { SocialAuthService } from '../../services/social-auth.service';
+import { entryTemplate } from '../../config/app-entry';
 
 @Component({
     selector: 'app-social-login', standalone: true, imports: [FormsModule],
@@ -9,7 +10,7 @@ import { SocialAuthService } from '../../services/social-auth.service';
         <main>
             <img class="brand-icon" src="/favicon.ico" width="76" height="76" alt="NotionAble App">
             <h1>Notionable App</h1>
-            <p class="intro">구매 이메일을 인증하고 마이웹을 시작하세요.<br>다음 방문에는 저장된 로그인 상태로 연결됩니다.</p>
+            <p class="intro">로그인하고 내 워크스페이스로 이동하세요.<br>다음 방문에는 저장된 로그인 상태로 연결됩니다.</p>
             @if (!auth.account()) {
                 <form class="purchase-login" (ngSubmit)="verifyPurchase()">
                     <label for="purchase-email">라이프업 구매 이메일</label>
@@ -40,7 +41,7 @@ import { SocialAuthService } from '../../services/social-auth.service';
             @if (auth.busy()) { <p role="status">로그인 확인 중…</p> }
             @if (auth.notice()) { <p role="status">{{ auth.notice() }}</p> }
             @if (auth.error()) { <p role="alert">@for (line of errorLines; track line) { {{ line }}<br> }</p> }
-            <p class="hint">다른 기기 이용 시 다시 인증이 필요합니다.</p>
+            <p class="hint">새 기기에서는 기존 계정으로 로그인해주세요.</p>
             @if (auth.account()) { <button class="continue-button" (click)="continue()">계속하기</button><button class="logout-button" (click)="auth.logout()">로그아웃</button> }
         </main>
     `,
@@ -90,11 +91,14 @@ export class SocialLoginComponent {
     }
     async continue() {
         let session: any;
-        try { session = await this.auth.session(); }
+        const path = this.route.snapshot.queryParamMap.get('returnUrl') ?? '';
+        const target = entryTemplate(this.route.snapshot.queryParamMap.get('templateId'));
+        try { session = await this.auth.session(undefined, target); }
         catch { this.auth.error.set('계정 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
         if (!session) return;
-        const path = this.route.snapshot.queryParamMap.get('returnUrl') ?? '';
-        const allowedReturnPath = /^\/(workspace|mypage)(\/|$)/.test(path) || /^\/download\/lifeup(?:[?#]|$)/.test(path);
-        void this.router.navigateByUrl(allowedReturnPath ? path : session.userId ? '/workspace/home' : '/workspace/connect');
+        const allowedReturnPath = !/[\\\r\n]/.test(path) && (/^\/(workspace|mypage)(\/|\?|$)/.test(path) || /^\/download\/lifeup(?:[?#]|$)/.test(path));
+        const destination = this.router.parseUrl(allowedReturnPath ? path : '/workspace/home');
+        if (target) destination.queryParams['templateId'] = target;
+        await this.router.navigateByUrl(destination, { replaceUrl: true });
     }
 }

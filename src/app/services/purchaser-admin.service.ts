@@ -8,7 +8,7 @@ export type LifeupPurchaser = {
     memberType?: 'standard' | 'premium' | null; purchaseEligible?: boolean; upgradeOnly?: boolean;
     [key: string]: unknown;
 };
-export type ManualLifeupPurchase = { name: string; email: string; phone: string; product: 'standard' | 'premium' | 'upgrade' | 'scrapbook' | 'planner' | 'plannerLite'; amount: number; purchasedAt: string };
+export type ManualLifeupPurchase = { name: string; email: string; phone: string; product: string; amount: number; purchasedAt: string };
 
 @Injectable({ providedIn: 'root' })
 export class PurchaserAdminService {

@@ -1,3 +1,4 @@
+import { TEMPLATE_IDS, TEMPLATE_PRODUCTS, templateSlugs } from './config/template-catalog';
 import { Routes } from '@angular/router';
 import { SocialLoginComponent } from './components/login/social-login.component';
 
@@ -56,45 +57,29 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
-  { path: 'store/lifeup-secondbrain-os', component: StoreRedirectComponent },
-  { path: 'store/lifeup-secondbrain', component: StoreRedirectComponent },
-  { path: 'download/lifeup-secondbrain', component: LifeupDownloadComponent, data: { product: 'lifeUpSecondBrainOS' } },
-  { path: 'download/lifeup-secondbrain-os', component: LifeupDownloadComponent, data: { product: 'lifeUpSecondBrainOS' } },
-  { path: 'upgrade/lifeup-secondbrain', component: LifeupScrapbookUpgradeComponent, data: { templateId: 'lifeUpSecondBrainOS' } },
-  { path: 'store/lifeup-planner-lite', component: StoreRedirectComponent },
-  { path: 'download/lifeup-planner-lite', component: LifeupDownloadComponent, data: { product: 'lifeupPlannerLite' } },
-  { path: 'upgrade/lifeup-planner-lite', component: LifeupScrapbookUpgradeComponent, data: { templateId: 'lifeupPlannerLite' } },
+  ...TEMPLATE_IDS.flatMap(id => [
+    ...templateSlugs(id).map(slug => ({ path: 'store/' + slug, component: StoreRedirectComponent })),
+    ...templateSlugs(id).map(slug => ({ path: 'download/' + slug, component: LifeupDownloadComponent, data: { product: id } })),
+    ...(id === 'lifeUp' ? [] : [{ path: 'upgrade/' + TEMPLATE_PRODUCTS[id].slug, component: LifeupScrapbookUpgradeComponent, data: { templateId: id } }])
+  ]),
   { path: 'verify-purchase', component: LifeupDownloadComponent, data: { verificationOnly: true } },
-  { path: 'store/lifeup', component: StoreRedirectComponent },
   { path: 'store/lifeup-r', component: StoreRedirectComponent },
   { path: 'store/lifeup-reward', component: StoreRedirectComponent },
   { path: 'store/lifeup-reward-sale', component: StoreRedirectComponent },
   { path: 'store/lifeup-reward-pack', component: StoreRedirectComponent },
   { path: 'store/lifeup-reward-pack-sale', component: StoreRedirectComponent },
   { path: 'store/lifeup-imweb', component: StoreRedirectComponent },
-  { path: 'store/lifeup-planner', component: StoreRedirectComponent },
   { path: 'store/lifeup-planner-reward', component: StoreRedirectComponent },
   { path: 'store/lifeup-planner-reward-sale', component: StoreRedirectComponent },
-  { path: 'download/lifeup-planner', component: LifeupDownloadComponent, data: { product: 'lifeupPlanner' } },
-  { path: 'store/lifeup-scrapbook', component: StoreRedirectComponent },
   { path: 'store/bizup-custom', component: StoreRedirectComponent },
-  { path: 'upgrade/lifeup-scrapbook', component: LifeupScrapbookUpgradeComponent, data: { templateId: 'lifeUpScrapbook' } },
-  { path: 'upgrade/lifeup-planner', component: LifeupScrapbookUpgradeComponent, data: { templateId: 'lifeupPlanner' } },
   { path: 'gift/lifeupfree', loadComponent: () => import('./components/pages/lifeup-free/lifeup-free.component').then(m => m.LifeupFreeComponent) },
   { path: 'gift/lifeupfree/lifeup-scrapbook', loadComponent: () => import('./components/pages/lifeup-free/lifeup-free.component').then(m => m.LifeupFreeComponent) },
   { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },
   { path: 'block', component: UnsubscribeComponent },
   { path: 'unsubscribe', redirectTo: 'block', pathMatch: 'full' },
   { path: 'login', component: SocialLoginComponent },
-  {
-    path: 'download/lifeup',
-    component: LifeupDownloadComponent
-  },
-  {
-    path: 'download/lifeup-scrapbook',
-    component: LifeupDownloadComponent,
-    data: { product: 'lifeUpScrapbook' }
-  },
+
+
   {
     path: '',
     redirectTo: 'workspace/home',

@@ -51,7 +51,7 @@ export class LifeupDownloadComponent implements OnInit {
     get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
     get isPlannerLite(): boolean { return this.templateId === 'lifeupPlannerLite'; }
     get isSecondBrainOS(): boolean { return this.templateId === 'lifeUpSecondBrainOS'; }
-    get hasPackUpgrade(): boolean { return this.isPlanner || this.isSecondBrainOS; }
+    get hasPackUpgrade(): boolean { return TEMPLATE_PRODUCTS[this.templateId].upgradeKind === 'pack'; }
     get upgradeSource(): string { return `download_${TEMPLATE_PRODUCTS[this.templateId].slug}`; }
     get introductionVideoUrl(): string | null { return TEMPLATE_PRODUCTS[this.templateId].welcome.introductionVideoUrl; }
 
@@ -86,7 +86,23 @@ export class LifeupDownloadComponent implements OnInit {
 
     async ngOnInit(): Promise<void> {
         try {
-            if (this.chooseTemplate) return;
+            if (this.verificationOnly) {
+                const session = await this.socialAuth.session(undefined, this.chooseTemplate ? undefined : this.templateId);
+                if (!session) {
+                    await this.router.navigate(['/login'], { replaceUrl: true, queryParams: {
+                        returnUrl: this.returnUrl, ...(!this.chooseTemplate ? { templateId: this.templateId } : {})
+                    } });
+                    return;
+                }
+                if (this.chooseTemplate) {
+                    if (session.userId && entryTemplate(session.templateId)) {
+                        window.location.replace(this.router.createUrlTree(['/verify-purchase'], { queryParams: {
+                            templateId: session.templateId, returnUrl: this.returnUrl
+                        } }).toString());
+                    }
+                    return;
+                }
+            }
             if (!this.verificationOnly && this.templateId === 'lifeUpScrapbook' && this.giftAccess) {
                 const response = await fetch(`${this.functionsBaseUrl}/validateLifeupFreeScrapbookAccess`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pass: this.giftAccess })
@@ -100,6 +116,13 @@ export class LifeupDownloadComponent implements OnInit {
             }
             await this.initializeUpgradeEvent();
         } catch {
+            if (this.verificationOnly) {
+                this.socialAuth.error.set('계정 정보를 불러오지 못했습니다. 잠시 후 계속하기를 눌러 다시 시도해주세요.');
+                await this.router.navigate(['/login'], { replaceUrl: true, queryParams: {
+                    returnUrl: this.returnUrl, ...(!this.chooseTemplate ? { templateId: this.templateId } : {})
+                } });
+                return;
+            }
             this.verificationError = '구매 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.';
         } finally {
             this.isLoading = false;

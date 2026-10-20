@@ -1,4 +1,4 @@
-import { TEMPLATE_PRODUCTS } from '../../../config/template-catalog';
+import { TEMPLATE_PRODUCTS, TEMPLATE_IDS, templateSlugs, TEMPLATE_STORE_DESTINATIONS } from '../../../config/template-catalog';
 import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { APP_CONFIG, AppConfig } from '../../../config/app-config.token';
@@ -8,11 +8,7 @@ export class StoreRedirectComponent implements OnInit {
     message = '';
     private readonly config = inject<AppConfig>(APP_CONFIG);
     private readonly destinations: Record<string, string> = {
-        'store/lifeup-secondbrain-os': TEMPLATE_PRODUCTS.lifeUpSecondBrainOS.checkoutUrls.normal,
-        'store/lifeup-secondbrain': TEMPLATE_PRODUCTS.lifeUpSecondBrainOS.checkoutUrls.normal,
-        'store/lifeup-planner-lite': TEMPLATE_PRODUCTS.lifeupPlannerLite.checkoutUrls.normal,
-        'store/lifeup': TEMPLATE_PRODUCTS.lifeUp.checkoutUrls.normal,
-        'store/lifeup-planner': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.normal,
+        ...TEMPLATE_STORE_DESTINATIONS,
         'store/lifeup-planner-reward': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.reward,
         'store/lifeup-planner-reward-sale': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.rewardSale,
         'store/lifeup-r': 'https://www.latpeed.com/products/HEPXz',
@@ -21,7 +17,6 @@ export class StoreRedirectComponent implements OnInit {
         'store/lifeup-reward-pack': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.reward,
         'store/lifeup-reward-pack-sale': TEMPLATE_PRODUCTS.lifeupPlanner.checkoutUrls.rewardSale,
         'store/lifeup-imweb': 'https://notionable.net/store/?idx=1',
-        'store/lifeup-scrapbook': TEMPLATE_PRODUCTS.lifeUpScrapbook.checkoutUrls.normal,
         'store/bizup-custom': 'https://notionable.net/store/?idx=7'
     };
     constructor(private readonly route: ActivatedRoute) {}
@@ -32,7 +27,8 @@ export class StoreRedirectComponent implements OnInit {
         if (!destination) { this.message = '판매 페이지를 준비 중입니다.'; return; }
         const location = this.route.snapshot.queryParamMap.get('from') || '';
         // Keep historical analytics keys stable when public URLs change.
-        const trackingProduct = productPath === 'lifeup-secondbrain-os' ? 'lifeup-secondbrain' : productPath === 'lifeup' ? 'lifeup-imweb' : productPath === 'lifeup-r' ? 'lifeup'
+        const templateId = TEMPLATE_IDS.find(id => templateSlugs(id).includes(productPath));
+        const trackingProduct = templateId ? (templateId === 'lifeUp' ? 'lifeup-imweb' : TEMPLATE_PRODUCTS[templateId].slug) : productPath === 'lifeup-r' ? 'lifeup'
             : productPath === 'lifeup-planner-reward' ? 'lifeup-reward-pack'
             : productPath === 'lifeup-planner-reward-sale' ? 'lifeup-reward-pack-sale' : productPath;
         try {

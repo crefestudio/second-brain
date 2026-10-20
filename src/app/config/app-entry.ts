@@ -1,13 +1,10 @@
-import { TemplateId } from './template-catalog';
+import { TemplateId, TEMPLATE_IDS, templateSlugs } from './template-catalog';
 
 export function entryTemplate(value: string | null): TemplateId | undefined {
     if (!value) return undefined;
-    const aliases: Record<string, TemplateId> = {
-        lifeupsecondbrainos: 'lifeUpSecondBrainOS', 'lifeup-secondbrain': 'lifeUpSecondBrainOS', 'lifeup-secondbrain-os': 'lifeUpSecondBrainOS',
-        lifeup: 'lifeUp', lifeupscrapbook: 'lifeUpScrapbook', 'lifeup-scrapbook': 'lifeUpScrapbook',
-        lifeupplanner: 'lifeupPlanner', 'lifeup-planner': 'lifeupPlanner',
-        lifeupplannerlite: 'lifeupPlannerLite', plannerlite: 'lifeupPlannerLite', 'lifeup-planner-lite': 'lifeupPlannerLite'
-    };
+    const aliases: Record<string, TemplateId> = Object.fromEntries(TEMPLATE_IDS.flatMap(id =>
+        [id.toLowerCase(), ...templateSlugs(id)].map(alias => [alias, id])));
+    aliases['plannerlite'] = 'lifeupPlannerLite'; // Historical public alias.
     return aliases[value.toLowerCase()];
 }
 

@@ -43,7 +43,7 @@ export class TemplateUpgradeEventService {
     this.bannerDismissed = true;
   }
   get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
-  get hasPackUpgrade(): boolean { return this.isPlanner || this.templateId === 'lifeUpSecondBrainOS'; }
+  get hasPackUpgrade(): boolean { return TEMPLATE_PRODUCTS[this.templateId].upgradeKind === 'pack'; }
   get productName(): string { return TEMPLATE_PRODUCTS[this.templateId].nameKoShort; }
   get remainingSeconds(): number { return Math.max(0, Math.ceil((this.firstSeenAt + this.duration - Date.now() - this.clockOffset) / 1000)); }
   upgradeUrl(source: string): string { return this.rewardUrl(this.isActive, source); }

@@ -10,11 +10,11 @@ function compile(file, require) {
     }).outputText, context);
     return context.exports;
 }
-const entry = compile('src/app/config/app-entry.ts', () => ({}));
+const entry = compile('src/app/config/app-entry.ts', () => require('../lib/template-catalog'));
 async function enter(query, session, purchase) {
     const calls = [];
     const router = { createUrlTree: (path, options) => ({ path: path[0], ...options }) };
-    const auth = { session: async (_id, target) => { calls.push(target); return session; } };
+    const auth = { error: { set() {} }, session: async (_id, target) => { calls.push(target); if (session instanceof Error) throw session; return session; } };
     const guard = compile('src/app/services/auth.guard.ts', name => {
         if (name === '@angular/router') return { Router: 'router' };
         if (name === '@angular/core') return { inject: token => token === 'router' ? router : auth };
@@ -26,7 +26,7 @@ async function enter(query, session, purchase) {
 }
 test('anonymous app entry preserves destination and canonical target', async () => {
     const { result, calls } = await enter('lifeup', null, null);
-    assert.equal(result.path, '/verify-purchase');
+    assert.equal(result.path, '/login');
     assert.equal(result.queryParams.templateId, 'lifeUp');
     assert.equal(result.queryParams.returnUrl, '/workspace/connect');
     assert.deepEqual(calls, ['lifeUp']);
@@ -50,4 +50,16 @@ test('return destinations cannot leave the app or loop through verification', ()
         assert.equal(entry.safeAppReturn(url), '/workspace/home');
     }
     assert.equal(entry.safeAppReturn('/workspace/connect?templateId=lifeup'), '/workspace/connect?templateId=lifeup');
+});
+test('session lookup failure offers login retry instead of purchase verification', async () => {
+    const { result } = await enter('lifeup', new Error('network failure'), null);
+    assert.equal(result.path, '/login');
+    assert.equal(result.queryParams.templateId, 'lifeUp');
+    assert.equal(result.queryParams.returnUrl, '/workspace/connect');
+});
+test('only signed-in accounts without a workspace reach untargeted selection', async () => {
+    assert.equal((await enter(null, null, null)).result.path, '/login');
+    const { result } = await enter(null, { userId: '', workspaces: [] }, null);
+    assert.equal(result.path, '/verify-purchase');
+    assert.equal(result.queryParams.templateId, undefined);
 });

@@ -35,18 +35,12 @@
       </select></label>
     <label>서비스 유형<select [(ngModel)]="memberFilter" (ngModelChange)="criteriaChanged()">
         <option value="all">전체</option>
-        <option value="standard">라이프업</option>
-        <option value="premium">라이프업 프리미엄</option>
-        <option value="scrapbook">라이프업 스크랩북</option>
-        <option value="planner">라이프업 플래너</option>
+        @for (option of gradeOptions; track option.id) { <option [value]="option.id">{{ option.name }}</option> }
         <option value="none">비구매자</option>
       </select></label>
     <label>회원 유형<select [(ngModel)]="membershipFilter" (ngModelChange)="criteriaChanged()">
         <option value="all">전체</option>
-        <option value="premium">라이프업 프리미엄 회원</option>
-        <option value="standard">라이프업 회원</option>
-        <option value="scrapbook">라이프업 스크랩북 회원</option>
-        <option value="planner">라이프업 플래너 회원</option>
+        @for (option of gradeOptions; track option.id) { <option [value]="option.id">{{ option.name }} 회원</option> }
         <option value="none">비회원</option>
       </select></label>
     <label>이메일 동의 여부<select [(ngModel)]="notifyFilter" (ngModelChange)="criteriaChanged()">
@@ -64,13 +58,7 @@
   <div class="mail-toolbar">
     <label>메일 템플릿<select [(ngModel)]="mailTemplate">
         <option value="">선택 없음</option>
-        <option value="standard-purchaser-update">라이프업 - 일반 - 업데이트</option>
-        <option value="premium-purchaser-update">라이프업 - 프리미엄 - 업데이트</option>
-        <option value="standard-purchaser-welcome">(자동) 라이프업 - 일반 - 월컴 - 구매시</option>
-        <option value="premium-purchaser-welcome">(자동) 라이프업 - 프리미엄 - 월컴 - 구매시</option>
-        <option value="planner-purchaser-welcome">(자동) 라이프업 - 플래너 - 웰컴 - 구매시</option>
-        <option value="planner-lite-purchaser-welcome">(자동) 라이프업 - 플래너 Lite - 웰컴 - 구매시</option>
-        <option value="scrapbook-purchaser-welcome">(자동) 라이프업 - 스크랩북 - 일반 - 웰컴 - 구매시</option>
+        @for (option of mailOptions; track option.id) { <option [value]="option.id">{{ option.name }}</option> }
       </select>
     </label>
     <button type="button" class="mail-send-btn" [disabled]="!selectedIds.size || !mailTemplate || isSendingMail"

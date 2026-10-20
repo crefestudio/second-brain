@@ -1,15 +1,18 @@
+import { CUSTOMER_GRADES, customerGradeLabel, MAIL_OPTIONS } from '../../../../../config/template-catalog';
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CareRequestService } from '../../../../../services/care-request.service';
 import { CustomerAdminService, LifeupCustomer } from '../../../../../services/customer-admin.service';
 
-type MemberFilter = 'all' | 'standard' | 'premium' | 'scrapbook' | 'planner' | 'none';
+type MemberFilter = string;
 type NotifyFilter = 'all' | 'yes' | 'no' | 'blocked';
-type MembershipFilter = 'all' | 'premium' | 'standard' | 'scrapbook' | 'planner' | 'none';
+type MembershipFilter = string;
 
 @Component({ selector: 'app-customer-admin', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './customer-admin.component.html', styleUrl: './customer-admin.component.scss' })
 export class CustomerAdminComponent implements OnInit, OnDestroy {
+    readonly gradeOptions = CUSTOMER_GRADES.map(id => ({ id, name: customerGradeLabel(id) }));
+    readonly mailOptions = MAIL_OPTIONS;
     sort = 'purchasedAt'; direction = 'desc'; filteredCount = 0; listError = ''; isRefreshing = false;
     private requestVersion = 0;
     private controller?: AbortController;
@@ -18,7 +21,7 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
     isLoading = true; isImporting = false; isSendingMail = false; isLoadingMore = false; hasMore = false; errorMessage = ''; csvMessage = ''; mailMessage = '';
     private nextCursor: string | null = null;
     customers: LifeupCustomer[] = []; totalCustomerCount = 0; selectedCustomer: LifeupCustomer | null = null; selectedIds = new Set<string>();
-    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: '' | 'standard-purchaser-welcome' | 'standard-purchaser-update' | 'premium-purchaser-welcome' | 'premium-purchaser-update' | 'scrapbook-purchaser-welcome' | 'planner-purchaser-welcome' | 'planner-lite-purchaser-welcome' = '';
+    search = ''; memberFilter: MemberFilter = 'all'; membershipFilter: MembershipFilter = 'all'; notifyFilter: NotifyFilter = 'all'; mailTemplate: string = '';
     constructor(private readonly care: CareRequestService, private readonly customerAdmin: CustomerAdminService) {}
 
     async ngOnInit(): Promise<void> {
@@ -53,8 +56,8 @@ export class CustomerAdminComponent implements OnInit, OnDestroy {
     toggleAll(): void { const selected = this.allVisibleSelected; for (const customer of this.filteredCustomers) selected ? this.selectedIds.delete(customer.id) : this.selectedIds.add(customer.id); }
     toggle(customer: LifeupCustomer): void { this.selectedIds.has(customer.id) ? this.selectedIds.delete(customer.id) : this.selectedIds.add(customer.id); }
     toggleDetail(customer: LifeupCustomer): void { this.selectedCustomer = this.selectedCustomer?.id === customer.id ? null : customer; }
-    serviceLabel(customer: LifeupCustomer): string { return customer.memberType === 'planner' ? '라이프업 플래너' : customer.memberType === 'premium' ? '라이프업 프리미엄' : customer.memberType === 'standard' ? '라이프업' : customer.memberType === 'scrapbook' ? '라이프업 스크랩북' : '비구매자'; }
-    membershipLabel(customer: LifeupCustomer): string { return customer.membership === 'planner' ? '라이프업 플래너 회원' : customer.membership === 'premium' ? '라이프업 프리미엄 회원' : customer.membership === 'standard' ? '라이프업 회원' : customer.membership === 'scrapbook' ? '라이프업 스크랩북 회원' : '비회원'; }
+    serviceLabel(customer: LifeupCustomer): string { return customerGradeLabel(customer.memberType) || '비구매자'; }
+    membershipLabel(customer: LifeupCustomer): string { const name = customerGradeLabel(customer.membership); return name ? name + ' 회원' : '비회원'; }
     detailEntries(customer: LifeupCustomer): Array<{ key: string; value: string }> { return Object.entries(customer).map(([key, value]) => ({ key, value: Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '') })); }
 
     async sendSelectedMail(): Promise<void> {

@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "dist": "ng build --configuration production && firebase deploy --only hosting:notionable-secondbrain",
-    "dist:stage": "ng build --configuration production && firebase deploy --only hosting:notionable-stage"
+    "dist:stage": "ng build --configuration production && firebase deploy --only hosting:notionable-stage",
+    "deploy:products": "npm run build --prefix functions && ng build --configuration production && firebase deploy --only functions,hosting:notionable-secondbrain --project notionable-secondbrain"
   },
   "private": true,
   "dependencies": {

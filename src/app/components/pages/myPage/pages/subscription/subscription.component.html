@@ -26,8 +26,8 @@
         <tr>
           <td>{{ purchaseDate(purchase.purchasedAt) }}</td>
           <td>
-            <div>{{ purchase.productName }}</div>
-            @if (purchase.purchaseOption) { <div>{{ purchase.purchaseOption }}</div> }
+            <div class="purchase-product">{{ purchase.productName }}</div>
+            @if (purchase.purchaseOption) { <div class="purchase-option">{{ purchase.purchaseOption }}</div> }
             <div class="purchase-status">{{ purchase.active ? '현재 적용 중' : purchase.upgradeOnly ? '서비스 등급 승격 내역' : '현재 적용 제외' }}</div>
           </td>
           <td>{{ purchase.memberType === 'premium' ? '프리미엄' : purchase.memberType === 'standard' ? '일반' : '해당 없음' }}</td>
