@@ -6,6 +6,7 @@ export interface TemplateProduct {
     admin: { purchaseKey: string; customerGrade: string; welcomeTemplateId: string };
     nameEnFull: string; nameEnShort: string; nameKoFull: string; nameKoShort: string;
     slug: string; sku: string; releaseUrl: string; pdfFileName: string; displayPrice: number;
+    imwebProductNo?: number;
     // Public links always pass through the app so product inflows are recorded.
     salesUrls: { normal: string; reward: string; rewardSale: string };
     // Actual checkout destinations used only after the tracking redirect.
@@ -19,6 +20,20 @@ export interface TemplateProduct {
     welcome: { displayName: string; usageName: string; introductionVideoUrl: string | null; reviewEvent: 'lifeup-review' | 'review' | null };
 }
 export const TEMPLATE_PRODUCTS = {
+    lifeUpSecondBrainOSLite: {
+        order: 5, upgradeKind: 'single', admin: { purchaseKey: 'secondBrainLite', customerGrade: 'secondBrainLite', welcomeTemplateId: 'secondbrain-lite-purchaser-welcome' },
+        nameEnFull: 'LifeUp Second Brain OS Lite', nameEnShort: 'LifeUp Second Brain OS Lite',
+        nameKoFull: '라이프업 세컨드브레인 OS Lite', nameKoShort: '라이프업 세컨드브레인 OS Lite',
+        slug: 'lifeup-secondbrain-lite', sku: 'lifeUpSecondBrainOSLite', displayPrice: 0,
+        imwebProductNo: 15,
+        releaseUrl: 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-Second-Brain-OS-LITE-3ffeea79fd8c80b3b3ecdbc7f2ca7392?source=copy_link',
+        pdfFileName: 'LifeUp1.5-SecondBrainOSLite.pdf',
+        salesUrls: { normal: 'https://app.notionable.net/store/lifeup-secondbrain-lite', reward: 'https://app.notionable.net/store/lifeup-reward', rewardSale: 'https://app.notionable.net/store/lifeup-reward-sale' },
+        checkoutUrls: { normal: 'https://notionable.net/store/?idx=15', reward: 'https://notionable.net/store/?idx=9', rewardSale: 'https://notionable.net/store/?idx=10' },
+        agents: { 'kakao-capture': true, routine: false, secondbrain: false },
+        kakaoCaptureScope: 'note', notionDbSuffix: 'secondbrainLite', databaseNames: ['lifeup info', 'apps', 'note'],
+        welcome: { displayName: '라이프업 세컨드브레인 OS Lite', usageName: '라이프업 세컨드브레인 OS Lite', introductionVideoUrl: 'https://youtu.be/yUlK0I64p3w', reviewEvent: null }
+    },
     lifeUpSecondBrainOS: {
         order: 2, upgradeKind: 'pack', admin: { purchaseKey: 'secondBrain', customerGrade: 'secondBrain', welcomeTemplateId: 'secondbrain-purchaser-welcome' },
         nameEnFull: 'LifeUp Second Brain OS', nameEnShort: 'LifeUp Second Brain OS',

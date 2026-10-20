@@ -3,7 +3,7 @@ import { channelConsent, resolveChannelConsent, MarketingChannel } from './marke
 import { consentEmailId, migrateMarketingConsents, syncImwebMarketingConsents } from './imweb-marketing-consent';
 import { templateWelcomeMail } from './template-welcome-mail';
 import { fallbackCaptureTitle, toNoteCapture } from './template-capture';
-import { TemplateId, TEMPLATE_IDS, TEMPLATE_PRODUCTS, isTemplateId, templateIdOrLegacy, canUseAgent } from './template-catalog';
+import { TemplateId, TemplateProduct, TEMPLATE_IDS, TEMPLATE_PRODUCTS, isTemplateId, templateIdOrLegacy, canUseAgent } from './template-catalog';
 import { PURCHASE_OPTIONS, CUSTOMER_GRADES, MAIL_OPTIONS } from './template-catalog';
 /* eslint-disable */
 import { onRequest } from "firebase-functions/v2/https";
@@ -3152,9 +3152,20 @@ async function syncImwebPurchasers(sinceMs: number, untilMs = Date.now()): Promi
             const orderAmount = Number(payment?.payment_amount ?? payment?.paymentAmount ?? payment?.total_price ?? 0);
             const items = imwebPurchasedItems(itemData, new Set(skuMap.keys()), orderAmount);
             if (!items.length) { skipped++; continue; }
-            // Preserve the original purchaser document and its queued mail keys.
-            const primarySku = existing.exists ? String(existing.data()?.productSku || '') : items[0].sku;
-            if (existing.exists && !items.some(item => item.sku === primarySku)) throw new Error('IMWEB_EXISTING_SKU_MISMATCH');
+            // An administrator can correct a SKU after a product has already
+            // been imported.  Permit that one-time correction only when the
+            // immutable Imweb product number identifies the same catalog item.
+            const existingData = existing.data();
+            const firstItem = items[0];
+            const firstProduct = skuMap.get(firstItem.sku)!;
+            const isSafeSkuCorrection = Boolean(existing.exists && items.length === 1 &&
+                existingData?.source === 'imweb' &&
+                Number(existingData?.productNo) === Number(firstItem.item?.prod_no) &&
+                Number(firstItem.item?.prod_no) === (TEMPLATE_PRODUCTS[firstProduct.templateId] as TemplateProduct).imwebProductNo);
+            const primarySku = isSafeSkuCorrection ? firstItem.sku : existing.exists ? String(existingData?.productSku || '') : firstItem.sku;
+            if (existing.exists && !items.some(item => item.sku === primarySku)) {
+                throw new Error('상품 정보가 일치하지 않습니다. 관리자에게 문의해주세요.');
+            }
             for (const item of items) {
                 const product = skuMap.get(item.sku)!;
                 const purchaserRef = item.sku === primarySku ? baseRef : db.collection('purchasers').doc(baseId + '_' + crypto.createHash('sha256').update(item.sku).digest('hex'));
@@ -3174,8 +3185,14 @@ async function syncImwebPurchasers(sinceMs: number, untilMs = Date.now()): Promi
                     const previous = await tx.get(purchaserRef);
                     if (previous.exists) {
                         const old = previous.data()!;
-                        if (old.templateId !== product.templateId) throw new Error('IMWEB_EXISTING_TEMPLATE_MISMATCH');
+                        const safeTemplateCorrection = old.source === 'imweb' &&
+                            Number(old.productNo) === Number(item.item?.prod_no) &&
+                            Number(item.item?.prod_no) === (TEMPLATE_PRODUCTS[product.templateId] as TemplateProduct).imwebProductNo;
+                        if (old.templateId !== product.templateId && !safeTemplateCorrection) {
+                            throw new Error('상품 정보가 일치하지 않습니다. 관리자에게 문의해주세요.');
+                        }
                         tx.update(purchaserRef, { status: statusLabel, amount: purchaser.amount, paymentAmount, productNo: purchaser.productNo,
+                            ...(safeTemplateCorrection ? { templateId: product.templateId, productSku: item.sku } : {}),
                             ...(purchaser.purchaseOption ? { purchaseOption: purchaser.purchaseOption, imwebOptionVersion: 1 } : {}),
                             updatedAt: admin.firestore.FieldValue.serverTimestamp() });
                         return false;
@@ -12036,7 +12053,9 @@ function generateKeywordGraphDataOnlyKeywordType(
 
 */
 
-export const verifyPurchaser = onRequest(withCors(async (req, res) => {
+export const verifyPurchaser = onRequest(
+    { secrets: [IMWEB_API_KEY, IMWEB_API_SECRET, IMWEB_PRODUCT_SKU_MAP] },
+    withCors(async (req, res) => {
     try {
         const { templateId, email, phone } = req.body;
 
@@ -12052,15 +12071,23 @@ export const verifyPurchaser = onRequest(withCors(async (req, res) => {
             });
         }
 
+        const verifiedTemplateId = templateIdOrLegacy(templateId);
         const normalizedEmail = email?.trim().toLowerCase();
         const normalizedPhone = phone?.trim();
 
         // 한 사람이 여러 옵션을 구매했을 수 있으므로, 이메일 우선 조회 후 최고 등급 구매를 선택한다.
-        let purchaserRecords = await findPurchaserRecords(templateId, normalizedEmail);
+        let purchaserRecords = await findPurchaserRecords(verifiedTemplateId, normalizedEmail);
         if (!purchaserRecords.length && normalizedPhone) {
-            purchaserRecords = await findPurchaserRecords(templateId, undefined, normalizedPhone);
+            purchaserRecords = await findPurchaserRecords(verifiedTemplateId, undefined, normalizedPhone);
         }
-        const bestPurchaser = selectBestPurchaserForTemplate(templateId, purchaserRecords);
+        if (!purchaserRecords.length) {
+            await syncImwebPurchasers(imwebYesterdayStartKst());
+            purchaserRecords = await findPurchaserRecords(verifiedTemplateId, normalizedEmail);
+            if (!purchaserRecords.length && normalizedPhone) {
+                purchaserRecords = await findPurchaserRecords(verifiedTemplateId, undefined, normalizedPhone);
+            }
+        }
+        const bestPurchaser = selectBestPurchaserForTemplate(verifiedTemplateId, purchaserRecords);
         const purchaserData = bestPurchaser?.data || null;
         const purchaserId = bestPurchaser?.id || null;
 
@@ -13132,7 +13159,10 @@ function buildAssistantResponse(result: any, previousResult?: any, pageUrls?: Li
         lines.push("");
         lines.push("할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?");
         lines.push("👉 라이프업 보상 업그레이드");
-        lines.push(`https://app.notionable.net/upgrade/lifeup-planner-lite?from=${result.templateId || 'lifeUpSecondBrainOS'}_kakao`);
+        const templateId: TemplateId = typeof result.templateId === 'string' && result.templateId in TEMPLATE_PRODUCTS
+            ? result.templateId as TemplateId
+            : 'lifeUpSecondBrainOS';
+        lines.push(`https://app.notionable.net/upgrade/${TEMPLATE_PRODUCTS[templateId].slug}?from=${templateId}_kakao`);
     } else switch (result.action) {
         case "create":
             lines.push(`'${result.title}'을 ${result.type ?? category?.name}으로 등록했습니다.`);

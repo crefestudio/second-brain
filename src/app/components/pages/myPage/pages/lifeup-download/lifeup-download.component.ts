@@ -50,7 +50,7 @@ export class LifeupDownloadComponent implements OnInit {
     readonly isScrapbook: boolean;
     get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
     get isPlannerLite(): boolean { return this.templateId === 'lifeupPlannerLite'; }
-    get isSecondBrainOS(): boolean { return this.templateId === 'lifeUpSecondBrainOS'; }
+    get isSecondBrainOS(): boolean { return TEMPLATE_PRODUCTS[this.templateId].kakaoCaptureScope === 'note'; }
     get hasPackUpgrade(): boolean { return TEMPLATE_PRODUCTS[this.templateId].upgradeKind === 'pack'; }
     get upgradeSource(): string { return `download_${TEMPLATE_PRODUCTS[this.templateId].slug}`; }
     get introductionVideoUrl(): string | null { return TEMPLATE_PRODUCTS[this.templateId].welcome.introductionVideoUrl; }

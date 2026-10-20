@@ -2,8 +2,8 @@
 export function fallbackCaptureTitle(title: string, sourceDb: string): string {
     const labels: Record<string, string> = { task: '할일', memo: '메모', reference: '자료', contact: '연락처', project: '프로젝트', book: '도서' };
     const label = labels[sourceDb];
-    if (!label || title.startsWith(`[${label}]`)) return title;
-    return `[${label}] ${title}`;
+    if (!label || title.startsWith(`[ ${label} ]`) || title.startsWith(`[${label}]`)) return title;
+    return `[ ${label} ] ${title}`;
 }
 
 export function toNoteCapture(result: any, entity: any, userMessage: string): any {

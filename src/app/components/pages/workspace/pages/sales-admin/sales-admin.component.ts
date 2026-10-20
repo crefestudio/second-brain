@@ -212,6 +212,10 @@ export class SalesAdminComponent implements OnInit {
         return actual === null || !Number.isFinite(target) || target <= 0 ? null : (actual - target) / target * 100;
     }
     purchaseConversion(product: Product): number | null { return this.views(product) > 0 ? this.salesCount(product) / this.views(product) * 100 : null; }
+    get sortedProducts(): Product[] {
+        return [...this.products].sort((a, b) =>
+            this.views(b) - this.views(a) || a.name.localeCompare(b.name, 'ko-KR'));
+    }
     won(value: number): string { return `${value.toLocaleString('ko-KR')}원`; }
     views(product: Product): number { return this.productViews[product.trackingKey || product.storePath] || 0; }
     salesCount(product: Product): number { return this.productSales[product.trackingKey || product.storePath]?.count || 0; }
