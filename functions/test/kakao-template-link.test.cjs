@@ -52,3 +52,11 @@ test('Second Brain keeps classification and title while linking to the inbox tem
     assert.ok(!response.includes(mobile));
     assert.ok(response.includes('📢 [시험 운영 안내]'));
 });
+
+test('Second Brain editions use their own upgrade path and tracking source', () => {
+    for (const [templateId, slug] of [['lifeUpSecondBrainOSLite', 'lifeup-secondbrain-lite'], ['lifeUpSecondBrainOS', 'lifeup-secondbrain']]) {
+        const response = context.buildAssistantResponse({ action: 'create', noteCapture: true, title: 'Note', templateId });
+        assert.ok(response.includes('https://app.notionable.net/upgrade/' + slug + '?from=' + templateId + '_kakao'));
+        assert.ok(!response.includes('/upgrade/lifeup-planner-lite'));
+    }
+});

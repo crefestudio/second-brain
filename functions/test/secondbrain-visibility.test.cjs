@@ -5,8 +5,8 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
-const start = source.indexOf('function sameNotionId(');
-const end = source.indexOf('// #webhook', start);
+const start = source.indexOf('async function reconcileSecondBrainPage(');
+const end = source.indexOf('const notionWebhookRouting =', start);
 const noteProperties = { '키워드': { type: 'multi_select', multi_select: [] } };
 function fixture(page, existing = { keywords: ['retained'] }, config = {}) {
     let record = existing;

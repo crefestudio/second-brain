@@ -28,7 +28,7 @@ function fixture(preference) {
     } });
     const helpers = source.slice(source.indexOf('async function memberPreferenceRefs'), source.indexOf('// Customers are a marketing audience.'));
     vm.runInContext(ts.transpile(`function customerEmail(value: unknown): string { return String(value ?? '').trim().toLowerCase(); }\n${helpers}`, { target: ts.ScriptTarget.ES2020 }), context);
-    return { records, update: (value, source) => context.setCurrentCustomerConsent('member@example.com', value, source) };
+    return { records, update: (value, source, smsValue) => context.setCurrentCustomerConsent('member@example.com', value, source, smsValue) };
 }
 
 test('profile opt-out updates all matching customers including legacy and unnormalized emails', async () => {
@@ -55,4 +55,13 @@ test('nonmember keeps survey consent', async () => {
     const f = fixture(undefined);
     await f.update(true, 'csv');
     assert.ok(f.records.every(r => r.notificationConsent === '예' && r.notificationConsentSource === 'csv'));
+});
+
+test('gift registration always registers email and applies the optional choice to SMS', async () => {
+  const member = fixture({ marketingConsent: false, marketingConsentSource: 'user' });
+  await member.update(true, 'lifeup-free');
+  assert.ok(member.records.every(r => r.notificationConsent !== '\uC608' && r.marketingEmailConsent === false));
+  const guest = fixture(undefined);
+  await guest.update(true, 'lifeup-free', false);
+  assert.ok(guest.records.every(r => r.marketingEmailConsent === true && r.marketingSmsConsent === false && r.consentSchemaVersion === 2));
 });

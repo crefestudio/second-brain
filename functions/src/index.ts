@@ -1,4 +1,8 @@
+import { createNotionWebhookRouting, deferredWebhookStatus, webhookRoutingKeys } from './notion-webhook-routing';
 import { imwebPurchasedItems } from './imweb-order-items';
+import { giftApplicationError } from './lifeup-gift';
+import { GiftRegistrationConflict, registerGiftApplication } from './lifeup-gift-registration';
+import { GiftCommentError, verifyGiftComment } from './lifeup-gift-youtube';
 import { channelConsent, resolveChannelConsent, MarketingChannel } from './marketing-consent';
 import { consentEmailId, migrateMarketingConsents, syncImwebMarketingConsents } from './imweb-marketing-consent';
 import { templateWelcomeMail } from './template-welcome-mail';
@@ -27,7 +31,7 @@ import OpenAI from "openai";
 import { customAlphabet } from 'nanoid';
 
 import { getStorage } from "firebase-admin/storage";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 
 import { AssistantEntity, TextEntity, WebPageEntity, ImageEntity, ContactEntity, YoutubeEntity, ProductEntity, BookEntity } from './services/assistant-entity';
@@ -199,8 +203,16 @@ async function replaceNotionConnection(userId: string, pending?: { accessToken: 
             cacheGeneration: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         mappings.docs.forEach(doc => tx.delete(doc.ref));
-        if (kakaoRef && kakao?.exists && (kakao.data()?.uid ?? kakao.data()?.userId) === userId)
-            tx.update(kakaoRef, { pageUrls: remove });
+        if (!pending) {
+            tx.update(ref, { kakaoUserId: remove,
+                notionDbCacheRevision: admin.firestore.FieldValue.increment(1) });
+            tx.set(ref.collection('integrations').doc('kakao-capture'),
+                { enabled: false, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        }
+        if (kakaoRef && kakao?.exists && (kakao.data()?.uid ?? kakao.data()?.userId) === userId) {
+            if (pending) tx.update(kakaoRef, { pageUrls: remove });
+            else tx.delete(kakaoRef);
+        }
     });
     return connectionId;
 }
@@ -3874,6 +3886,33 @@ export const redeemLifeupFreeTemplates = onRequest(withCors(async (req, res) => 
         downloadPath: id === 'lifeUpScrapbook' ? '/download/lifeup-scrapbook' : '/download/lifeup' })) });
 }));
 
+// Record the six-template giveaway application without granting a paid product.
+export const claimLifeupFreeTemplates = onRequest(withCors(async (req, res) => {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+    const error = giftApplicationError(req.body || {});
+    if (error) return res.status(400).json({ error });
+    let comment;
+    try {
+        comment = await verifyGiftComment(req.body.youtubeHandle, process.env.YOUTUBE_API_KEY);
+    } catch (error) {
+        return res.status(error instanceof GiftCommentError ? error.status : 503).json({
+            error: error instanceof GiftCommentError ? error.message : '유튜브 댓글 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+        });
+    }
+    try {
+        const smsConsent = typeof req.body.marketingConsent === 'boolean' ? req.body.marketingConsent : undefined;
+        const recordedSmsConsent = await registerGiftApplication(db, {
+            youtubeHandle: req.body.youtubeHandle, email: req.body.email, comment, marketingConsent: smsConsent
+        });
+        // Giveaway email is always registered. The optional check box controls SMS only.
+        await setCurrentCustomerConsent(req.body.email, true, 'lifeup-free', recordedSmsConsent);
+    } catch (error) {
+        if (error instanceof GiftRegistrationConflict) return res.status(409).json({ error: error.message });
+        throw error;
+    }
+    return res.json({ success: true });
+}));
+
 // This gift deliberately uses an email confirmation rather than an email-code
 // challenge. The opaque pass lets the recipient open the download page directly.
 export const claimLifeupFreeScrapbook = onRequest(withCors(async (req, res) => {
@@ -4180,7 +4219,7 @@ async function removeCustomerEmailForDeletedAccount(email: string): Promise<void
     });
 }
 
-async function setCurrentCustomerConsent(email: string, consent: boolean, source: 'purchase' | 'csv' | 'account', smsConsent?: boolean): Promise<void> {
+async function setCurrentCustomerConsent(email: string, consent: boolean, source: 'purchase' | 'csv' | 'account' | 'lifeup-free', smsConsent?: boolean): Promise<void> {
     const normalized = customerEmail(email);
     if (!normalized) return;
     // Update every matching record. Older imports can contain separate customer
@@ -4201,7 +4240,13 @@ async function setCurrentCustomerConsent(email: string, consent: boolean, source
             // An account owner's later choice must never be undone by a CSV reimport
             // or an old purchase webhook.
             if (explicit === undefined && source !== 'account' && existing.notificationConsentSource === 'account') return;
+            if (source === 'lifeup-free' && existing.notificationConsentSource && existing.notificationConsentSource !== 'lifeup-free') return;
             transaction.set(refs[index], {
+                ...(source === 'lifeup-free' ? {
+                    marketingEmailConsent: explicit ?? consent,
+                    ...(typeof (explicitSms ?? smsConsent) === 'boolean' ? { marketingSmsConsent: explicitSms ?? smsConsent } : {}),
+                    consentSchemaVersion: 2
+                } : {}),
                 templateId: 'lifeUp', emails: [...new Set([...emails, normalized])],
                 ...(source === 'account' ? { marketingEmailConsent: explicit ?? consent, marketingSmsConsent: explicitSms ?? smsConsent ?? consent, consentSchemaVersion: 2 } : {}),
                 notificationConsent: (explicit ?? consent) ? '예' : '아니오', notificationConsentSource: explicit === undefined ? source : 'account',
@@ -8757,11 +8802,6 @@ async function assertSecondBrainEnabled(userId: string): Promise<void> {
     }
 }
 
-function sameNotionId(left: unknown, right: unknown): boolean {
-    return typeof left === 'string' && typeof right === 'string' && !!left &&
-        left.replace(/-/g, '').toLowerCase() === right.replace(/-/g, '').toLowerCase();
-}
-
 // Only a successful page retrieval can change visibility. A 403/404 or timeout
 // is never treated as deletion. Keep keywords so restoring a page is reversible.
 async function reconcileSecondBrainPage(userId: string, accessToken: string, page: any): Promise<boolean> {
@@ -8786,12 +8826,65 @@ async function reconcileSecondBrainPage(userId: string, accessToken: string, pag
         if ((previous.data()?.visibilityObservedAt || 0) > observedAt) return false;
         // Never create analysis records for unrelated pages.
         if (!active && !previous.exists) return false;
-        tx.set(ref, { active, inactiveReason: active ? null : page.archived === true || page.in_trash === true ? 'deleted' : 'missing-keyword-property',
+        tx.set(ref, { routingConnectionId: currentUser?.notionConnectionId || null, active, inactiveReason: active ? null : page.archived === true || page.in_trash === true ? 'deleted' : 'missing-keyword-property',
             visibilityObservedAt: observedAt,
             visibilityCheckedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
         return active;
     });
 }
+
+const notionWebhookRouting = createNotionWebhookRouting(db, async (token, databaseId) => {
+    const database: any = await new Client({ auth: token, logger: () => {} }).databases.retrieve({ database_id: databaseId });
+    return (database.data_sources || []).map((source: any) => source.id);
+});
+
+async function syncWebhookConnectionRoutes(userId: string): Promise<void> {
+    try { await notionWebhookRouting.syncConnection(userId); }
+    catch (error: any) {
+        if (error?.message === 'NOTION_CONNECTION_CHANGED') return; // A newer connection event will reconcile it.
+        if ([400, 401, 403, 404].includes(error?.status)) {
+            await db.collection('notionWebhookRouteOwners').doc(userId).set({
+                indexStatus: 'needs_attention', lastErrorCode: String(error.code || error.status),
+                checkedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            logger.warn('Notion webhook routing requires connection review', { userId, status: error.status });
+            return;
+        }
+        throw new Error('NOTION_ROUTING_SYNC_RETRY');
+    }
+}
+
+export const syncNotionWebhookConnectionRoutes = onDocumentWritten({
+    document: 'users/{userId}/integrations/secondbrain', retry: true, timeoutSeconds: 120,
+}, async event => {
+    const relevant = (value: any) => JSON.stringify([value?.noteDatabaseId, value?.accessToken, value?.connectionId, value?.connectionStatus]);
+    if (relevant(event.data?.before.data()) === relevant(event.data?.after.data())) return;
+    await syncWebhookConnectionRoutes(event.params.userId);
+});
+
+export const syncNotionWebhookUserRoutes = onDocumentWritten({
+    document: 'users/{userId}', retry: true, timeoutSeconds: 120,
+}, async event => {
+    const relevant = (value: any) => JSON.stringify([value?.notionAccessToken, value?.notionConnectionId, value?.notionConnection?.status, value?.notionConnection?.databases, value?.deletionStatus]);
+    if (relevant(event.data?.before.data()) === relevant(event.data?.after.data())) return;
+    await syncWebhookConnectionRoutes(event.params.userId);
+});
+
+export const syncNotionWebhookPageRoute = onDocumentWritten({
+    document: 'users/{userId}/integrations/secondbrain/pages/{pageId}', retry: true, timeoutSeconds: 120,
+}, async event => {
+    const before = event.data?.before, after = event.data?.after;
+    if (before?.exists === after?.exists && before?.data()?.routingConnectionId === after?.data()?.routingConnectionId) return;
+    await notionWebhookRouting.syncPage(event.params.userId, event.params.pageId);
+});
+
+export const replayNotionWebhookRoute = onDocumentWritten({
+    document: 'notionWebhookRoutes/{routeId}', retry: true, timeoutSeconds: 540,
+}, async event => {
+    const owners = event.data?.after.data()?.owners || {};
+    if (!Object.keys(owners).length || JSON.stringify(owners) === JSON.stringify(event.data?.before.data()?.owners || {})) return;
+    await notionWebhookRouting.replayForRoute(event.params.routeId);
+});
 
 // #webhook
 export const handleNotionWebhookSinglePage = onRequest({ timeoutSeconds: 30, memory: "256MiB" }, withCors(async (req, res) => {
@@ -8830,7 +8923,7 @@ export const processNotionWebhookInbox = onDocumentCreated({
     const claim = randomUUID();
     const item = await db.runTransaction(async tx => {
         const data = (await tx.get(ref)).data();
-        if (!data || ['completed', 'needs_attention'].includes(data.status)) return null;
+        if (!data || ['completed', 'needs_attention', 'waiting_mapping', 'replay_queued'].includes(data.status)) return null;
         if (data.leaseUntil > Date.now()) throw new Error('WEBHOOK_ALREADY_PROCESSING');
         tx.update(ref, { status: 'processing', claim, leaseUntil: Date.now() + 600000,
             attempts: (data.attempts || 0) + 1 });
@@ -8845,18 +8938,24 @@ export const processNotionWebhookInbox = onDocumentCreated({
             });
         });
     } catch (error: any) {
+        const deferred = deferredWebhookStatus(error);
         const exhausted = (item.attempts || 0) + 1 >= 10;
         // Store only a bounded error code, never SDK request headers or tokens.
         const candidate = String(error?.code || error?.message || 'PROCESSING_FAILED');
         const code = /^[A-Z0-9_]{1,80}$/i.test(candidate) ? candidate : 'PROCESSING_FAILED';
         await db.runTransaction(async tx => {
             if ((await tx.get(ref)).data()?.claim === claim) tx.update(ref, {
-                status: exhausted ? 'needs_attention' : 'retry', leaseUntil: 0, lastErrorCode: code,
+                status: deferred || (exhausted ? 'needs_attention' : 'retry'), leaseUntil: 0, lastErrorCode: code,
+                ...(deferred === 'waiting_mapping' ? { waitingRouteKeys: webhookRoutingKeys(item.event) } : {}),
                 failedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
         });
         console.error('[Notion webhook] processing failed', { eventId: trigger.params.eventId, code, exhausted });
-        if (!exhausted) throw new Error('NOTION_WEBHOOK_RETRY');
+        if (deferred === 'waiting_mapping') {
+            // Close the race where an index was repaired while this event was being deferred.
+            await notionWebhookRouting.requeueWaiting(ref);
+        }
+        if (!deferred && !exhausted) throw new Error('NOTION_WEBHOOK_RETRY');
     }
 });
 
@@ -8874,11 +8973,7 @@ async function processNotionWebhookDelivery(event: any) {
     }
 
     const pageId = event.entity?.id;
-    const databaseId =
-        event.data?.parent?.database_id ?? event.data?.parent?.data_source_id ??
-        event.data?.parent?.id;
-
-    if (typeof pageId !== 'string' || pageId.includes('/') || (databaseId && (typeof databaseId !== 'string' || databaseId.includes('/')))) {
+    if (typeof pageId !== 'string' || pageId.includes('/')) {
         throw new Error('INVALID_WEBHOOK_IDS');
     }
 
@@ -8887,82 +8982,8 @@ async function processNotionWebhookDelivery(event: any) {
         // Firestore에서 userId / accessToken 찾기
         // ----------------------------
 
-        let userId: string | null = null;
-        let accessToken: string | null = null;
-
-        // 1️⃣ 빠른 lookup
-        const mapRef = db.collection("notionDatabaseMap").doc(databaseId || pageId);
-        const mapDoc = await mapRef.get();
-
-        if (mapDoc.exists) {
-            const data = mapDoc.data();
-            const mappedUser = data?.userId ? (await db.collection('users').doc(data.userId).get()).data() : null;
-            if (isUsableNotionConnection(mappedUser) && (!data?.connectionId || mappedUser?.notionConnectionId === data.connectionId)) {
-                userId = data?.userId;
-                accessToken = mappedUser!.notionAccessToken;
-            }
-        }
-
-        // 2️⃣ fallback (기존 구조)
-        if (!userId || !accessToken) {
-            console.log(`[Webhook] mapping 없음 → fallback search`);
-
-            const usersSnapshot = await db.collection("users").get();
-            const matches: Array<{ userId: string; accessToken: string; connectionId: string | null; parentMatch: boolean }> = [];
-
-            for (const userDoc of usersSnapshot.docs) {
-                if (!isUsableNotionConnection(userDoc.data())) continue;
-                const sbDoc = await userDoc.ref
-                    .collection("integrations")
-                    .doc("secondbrain")
-                    .get();
-
-                if (!sbDoc.exists) continue;
-
-                const sbData = sbDoc.data();
-                if (sbData?.accessToken !== userDoc.data().notionAccessToken ||
-                    (sbData?.connectionId && sbData.connectionId !== userDoc.data().notionConnectionId)) continue;
-                let matchesDataSource = false;
-                if (event.data?.parent?.type === 'data_source' || event.data?.parent?.data_source_id) {
-                    if (sbData?.accessToken && sbData?.noteDatabaseId) {
-                        try {
-                            const database: any = await new Client({ auth: sbData.accessToken, logger: () => {} }).databases.retrieve({ database_id: sbData.noteDatabaseId });
-                            matchesDataSource = (database.data_sources || []).some((source: any) => sameNotionId(source.id, databaseId));
-                        } catch { /* One stale connection must not abort routing for other users. */ }
-                    }
-                }
-                if (sameNotionId(sbData?.noteDatabaseId, databaseId) || matchesDataSource ||
-                    (await sbDoc.ref.collection('pages').doc(pageId).get()).exists) {
-                    matches.push({ userId: userDoc.id, accessToken: sbData!.accessToken,
-                        connectionId: userDoc.data().notionConnectionId || null,
-                        parentMatch: sameNotionId(sbData?.noteDatabaseId, databaseId) || matchesDataSource });
-                }
-            }
-            // Never route a shared Notion database to the first account encountered.
-            if (matches.length > 1) throw new Error('AMBIGUOUS_WEBHOOK_WORKSPACE');
-            if (matches.length === 1) {
-                    const match = matches[0];
-                    userId = match.userId;
-                    accessToken = match.accessToken;
-
-                    // 찾았으면 mapping 생성 (자동 마이그레이션)
-                    if (match.parentMatch) await mapRef.set(
-                        {
-                            userId,
-                            connectionId: match.connectionId,
-                            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                        },
-                        { merge: true }
-                    );
-
-                    console.log(`[Webhook] mapping 자동 생성: ${databaseId}`);
-            }
-        }
-
-        if (!userId || !accessToken) {
-            console.error("해당 DB와 매칭되는 userId 또는 accessToken을 찾을 수 없음");
-            throw new Error('NO_MATCHING_WORKSPACE');
-        }
+        const { userId, accessToken, connectionId } = await notionWebhookRouting.resolve(event);
+        await assertNotionConnection(userId, accessToken, connectionId || undefined);
 
         // ----------------------------
         // 3️⃣ Firestore에 이벤트 큐 기록 (마지막 이벤트 덮어쓰기)

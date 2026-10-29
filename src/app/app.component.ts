@@ -113,8 +113,9 @@ export class AppComponent implements OnInit {
         window.setInterval(() => void this.swUpdate.checkForUpdate(), 5 * 60 * 1000);
     }
 
-    async reloadWithLatestApp(): Promise<void> {
-        await this.swUpdate.activateUpdate();
+    reloadWithLatestApp(): void {
+        // Reload atomically at the browser's current URL (including query/hash).
+        // Activating first can mix old routes/chunks with the new app while awaiting.
         window.location.reload();
     }
 

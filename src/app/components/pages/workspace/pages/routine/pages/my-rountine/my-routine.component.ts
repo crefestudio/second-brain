@@ -244,8 +244,10 @@ export class MyRoutineComponent implements OnInit {
 
     getHabitTop(habit: UserHabit): number {
         const [hour, minute] = habit.time.split(':').map(Number);
+        // The calendar runs from 05:00 to 29:00, so early morning follows midnight.
+        const displayHour = hour < this.startHour ? hour + 24 : hour;
 
-        return ((hour - this.startHour) * 60 + minute) * this.hourHeight / 60;
+        return ((displayHour - this.startHour) * 60 + minute) * this.hourHeight / 60;
     }
 
     getHabitHeight(habit: UserHabit): number {

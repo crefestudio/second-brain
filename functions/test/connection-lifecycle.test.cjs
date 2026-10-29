@@ -79,7 +79,38 @@ test('Notion disconnect removes all connection copies but preserves graphs and m
     assert.ok(records.has('users/u/integrations/templateTransfer'));
     assert.equal(records.has('notionDatabaseMap/old'), false);
     assert.equal(records.has('notionDatabaseMap/other'), true);
-    assert.equal(records.has('kakaoConnections/k1'), true);
+    assert.equal(records.has('kakaoConnections/k1'), false);
+    assert.equal(user().kakaoUserId, undefined);
+    assert.equal(records.get('users/u/integrations/kakao-capture').enabled, false);
+    assert.equal(user().notionDbCacheRevision, 1);
+});
+test('connecting template B after disconnecting A does not restore Kakao or accept old jobs', async () => {
+    const { context, records, user } = fixture({
+        'users/u/integrations/kakao-capture': { enabled: true }
+    });
+    await context.replaceNotionConnection('u');
+    await context.replaceNotionConnection('u', { accessToken: 'template-b-token' });
+    await context.completeNotionTemplateConnection('u', 'template-b-token');
+    assert.equal(user().notionConnection.status, 'connected');
+    assert.equal(user().kakaoUserId, undefined);
+    assert.equal(records.has('kakaoConnections/k1'), false);
+    assert.equal(records.get('users/u/integrations/kakao-capture').enabled, false);
+    assert.equal(await context.findEnabledConnectedUser('k1'), null);
+    await assert.rejects(context.assertKakaoJobConnection('u', {
+        kakaoUserId: 'k1', kakaoConnectionId: 'k-old', notionConnectionId: 'n1'
+    }), /KAKAO_CONNECTION_CHANGED/);
+});
+test('Notion disconnect tolerates missing Kakao mappings and preserves another workspace mapping', async () => {
+    for (const mapping of [undefined, { uid: 'other' }, { userId: 'u' }]) {
+        const { context, records, user } = fixture();
+        if (mapping) records.set('kakaoConnections/k1', mapping);
+        else records.delete('kakaoConnections/k1');
+        await context.replaceNotionConnection('u');
+        await context.replaceNotionConnection('u');
+        assert.equal(user().kakaoUserId, undefined);
+        assert.equal(records.get('users/u/integrations/kakao-capture').enabled, false);
+        assert.equal(records.has('kakaoConnections/k1'), mapping?.uid === 'other');
+    }
 });
 test('reconnect enters pending with empty DB cache and cannot use previous token', async () => {
     const { context, records, user } = fixture();
@@ -90,6 +121,40 @@ test('reconnect enters pending with empty DB cache and cannot use previous token
     assert.equal(context.isUsableNotionConnection(user(), 'new-token'), false);
     assert.equal(records.get('users/u/integrations/secondbrain').enabled, true);
     assert.ok(records.has('users/u/integrations/secondbrain/pages/p'));
+});
+test('OAuth refresh without explicit disconnect preserves the existing Kakao binding', async () => {
+    const { context, records, user } = fixture({
+        'users/u/integrations/kakao-capture': { enabled: true }
+    });
+    await context.replaceNotionConnection('u', { accessToken: 'new-token' });
+    await context.completeNotionTemplateConnection('u', 'new-token');
+    assert.equal(user().kakaoUserId, 'k1');
+    assert.equal(records.get('kakaoConnections/k1').connectionId, 'k-old');
+    assert.equal(records.get('users/u/integrations/kakao-capture').enabled, true);
+    assert.equal((await context.findEnabledConnectedUser('k1')).enabled, true);
+});
+test('Kakao can be explicitly connected again after template replacement', async () => {
+    const { context, records, user } = fixture();
+    await context.replaceNotionConnection('u');
+    await context.replaceNotionConnection('u', { accessToken: 'new-token' });
+    await context.completeNotionTemplateConnection('u', 'new-token');
+    assert.equal(await context.connectKakaoUser('u', 'k1'), 'connected');
+    assert.equal(user().kakaoUserId, 'k1');
+    assert.equal(records.get('users/u/integrations/kakao-capture').enabled, true);
+    await context.assertKakaoJobConnection('u', {
+        kakaoUserId: 'k1', kakaoConnectionId: 'fresh-connection', notionConnectionId: user().notionConnectionId
+    });
+});
+test('template disconnect works without Kakao and preserves its event history', async () => {
+    const { context, records, user } = fixture({
+        'users/u/integrations/kakao-capture/events/e': { status: 'completed' }
+    });
+    delete user().kakaoUserId;
+    records.delete('kakaoConnections/k1');
+    await context.replaceNotionConnection('u');
+    assert.equal(user().notionConnection.status, 'disconnected');
+    assert.equal(records.get('users/u/integrations/kakao-capture').enabled, false);
+    assert.equal(records.get('users/u/integrations/kakao-capture/events/e').status, 'completed');
 });
 test('successful reconnect replaces the full DB map and preserves graph and enabled preference', async () => {
     const { context, records, user } = fixture();

@@ -2,22 +2,46 @@
   <article class="gift-card">
     <header class="brand-header"><a href="https://notionable.net"><img src="/assets/images/logo_notionable.png" alt="Notionable"></a></header>
     <span class="eyebrow">LIFEUP FREE GIFT</span>
-    <h1>라이프업 스크랩북을<br>무료로 받아보세요</h1>
-    <p class="lead">아래 이메일로 ‘라이프업 스크랩북’을 무료로 보내드립니다.</p>
-    <section class="form-section">
-      <label for="email">신청 이메일</label>
-      <input id="email" type="email" autocomplete="email" [(ngModel)]="email" [disabled]="busy" placeholder="example@email.com" (keyup.enter)="confirming = true">
-      <label class="consent"><input type="checkbox" [(ngModel)]="marketingConsent" [disabled]="busy"><span><strong>(선택)</strong> 라이프업 소식과 새로운 상품·이벤트·할인 혜택 등 마케팅 정보 수신에 동의합니다.</span></label>
-      @if (confirming) {
-        <div class="confirmation" role="status">
-          <strong>이 이메일로 상품을 받으시겠습니까?</strong>
-          <span>이메일을 맞는지 다시 한번 확인해 주세요.</span>
-          <button type="button" class="primary-button" [disabled]="busy || !canClaim" (click)="claim()">{{ busy ? '템플릿 준비 중...' : '네, 맞습니다.' }} <span>→</span></button>
+    @if (completed) {
+      <section class="complete" aria-live="polite">
+        <h1>🎁 신청이 완료되었습니다!</h1>
+        <p>응원해 주셔서 감사합니다. 아래에서 무료 템플릿을 받아보세요.</p>
+        <div class="download-list">
+          @for (gift of gifts; track gift.url) {
+            <a class="primary-button" [href]="gift.url" target="_blank" rel="noopener noreferrer">{{ gift.name }} <span>무료로 받기 ↗</span></a>
+          }
         </div>
-      } @else {
-        <button type="button" class="primary-button" [disabled]="busy || !canClaim" (click)="confirming = true">템플릿 받기 <span>→</span></button>
-      }
-    </section>
-    @if (error) { <p class="error" role="alert">{{ error }}</p> }
+      </section>
+      <section class="upcoming-section" aria-labelledby="upcoming-title">
+        <h2 id="upcoming-title">곧 만나요</h2>
+        <ul class="upcoming-list">
+          <li><strong>메모 <span>(~10/27 예정)</span></strong><p>마무리 작업중입니다. 조금만 기다려주세요.</p></li>
+          <li><strong>연락처 <span>(~10/31 예정)</span></strong></li>
+          <li><strong>루틴 <span>(~11/7 예정)</span></strong></li>
+        </ul>
+      </section>
+    } @else {
+      <h1>🎁 라이프업 업무관리 필수6종 템플릿을<br>무료로 받아보세요</h1>
+      <section class="instructions" aria-labelledby="instructions-title">
+        <h2 id="instructions-title">🧡 노션 업무 관리 무료 템플릿 받는 방법</h2>
+        <ol><li>구독과 좋아요로 응원하기</li><li>댓글에 응원 한마디 남기기</li></ol>
+        <a class="primary-button" href="https://youtu.be/77Upxaer2nA" target="_blank" rel="noopener noreferrer">유튜브 영상에서 댓글 남기기 ↗</a>
+        <p class="notice">답글은 확인이 안됩니다. 새 댓글로 남겨주세요.</p>
+      </section>
+      <form class="form-section" (ngSubmit)="claim()">
+        <label class="consent"><input type="checkbox" name="subscribedAndLiked" [(ngModel)]="subscribedAndLiked" [disabled]="busy" required><span>구독, 좋아요를 했습니다.</span></label>
+        <label class="consent"><input type="checkbox" name="commented" [(ngModel)]="commented" [disabled]="busy" required><span>응원한마디 댓글을 남겼습니다.</span></label>
+        <label for="youtube-handle">유튜브 댓글에 표시된 아이디</label>
+        <input id="youtube-handle" name="youtubeHandle" type="text" [(ngModel)]="youtubeHandle" (blur)="normalizeHandle()" [disabled]="busy" placeholder="예: @OOOOO" autocomplete="off" spellcheck="false" required aria-describedby="handle-help" [attr.aria-invalid]="youtubeHandle.length > 0 && !validYoutubeHandle">
+        <p id="handle-help" class="notice" [class.error]="youtubeHandle.length > 0 && !validYoutubeHandle">유튜브 댓글에 표시된 아이디를 입력해 주세요.</p>
+        <label for="gift-email">이메일</label>
+        <input id="gift-email" name="email" type="email" [(ngModel)]="email" [disabled]="busy" placeholder="example@email.com" autocomplete="email" maxlength="254" required aria-describedby="email-help">
+        <p id="email-help" class="notice">입력하신 이메일로 고객 등록되며, 다시 신청할 때는 최초 등록한 이메일을 입력해 주세요.</p>
+        <label class="consent"><input type="checkbox" name="marketingConsent" [(ngModel)]="marketingConsent" [disabled]="busy" aria-describedby="marketing-help"><span>마케팅 수신 동의 (선택)</span></label>
+        <p id="marketing-help" class="notice">Notionable의 신규 상품, 이벤트, 할인 및 특별 혜택 알림을 받아보시겠습니까? 선택하면 문자와 이메일로 받아보실 수 있으며, 선택하지 않아도 이메일로 받아보실 수 있습니다. (서비스 이용에 필요한 기본 안내는 이메일로 발송되며, 알림 수신 설정은 언제든 변경할 수 있습니다.)</p>
+        <button type="submit" class="primary-button" [disabled]="busy || !canClaim">{{ busy ? '유튜브 댓글 확인 중...' : '무료 템플릿 받기' }} <span>→</span></button>
+      </form>
+      @if (error) { <p class="error" role="alert">{{ error }}</p> }
+    }
   </article>
 </main>

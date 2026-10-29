@@ -18,6 +18,7 @@ function fixture() {
         update: (r, patch) => records.set(r.id, { ...records.get(r.id), ...patch }),
     }) };
     const context = { exports: {}, db, crypto, randomUUID: crypto.randomUUID,
+        ...require('../lib/notion-webhook-routing'), notionWebhookRouting: { requeueWaiting: async () => false },
         onRequest: (_, fn) => fn, withCors: fn => fn, onDocumentCreated: (_, fn) => fn,
         admin: { firestore: { FieldValue: { serverTimestamp: () => 1 } } },
         console: { error() {}, log() {} }, Date };
@@ -50,16 +51,33 @@ test('Firestore write failure is not acknowledged', async () => {
     assert.equal((await f.request()).code, 503);
     assert.equal(f.records.size, 0);
 });
-test('unmatched events are retained, retried and eventually flagged', async () => {
+test('unmatched events are retained once without repeated searches', async () => {
     const f = fixture(); await f.request();
     f.context.processNotionWebhookDelivery = async () => { throw new Error('NO_MATCHING_WORKSPACE'); };
-    for (let i = 0; i < 9; i++) await assert.rejects(f.work(), /NOTION_WEBHOOK_RETRY/);
     await f.work();
     const item = [...f.records.values()][0];
-    assert.equal(item.status, 'needs_attention');
-    assert.equal(item.attempts, 10);
+    assert.equal(item.status, 'waiting_mapping');
+    assert.equal(item.attempts, 1);
     assert.equal(item.lastErrorCode, 'NO_MATCHING_WORKSPACE');
-    await f.work(); assert.equal([...f.records.values()][0].attempts, 10);
+    assert.ok(item.event);
+    await f.work(); assert.equal([...f.records.values()][0].attempts, 1);
+});
+
+test('temporary provider errors still retry and stop at the existing limit', async () => {
+    const f = fixture(); await f.request();
+    f.context.processNotionWebhookDelivery = async () => { throw new Error('RATE_LIMITED'); };
+    for (let i = 0; i < 9; i++) await assert.rejects(f.work(), /NOTION_WEBHOOK_RETRY/);
+    await f.work();
+    assert.equal([...f.records.values()][0].status, 'needs_attention');
+    assert.equal([...f.records.values()][0].attempts, 10);
+});
+
+test('ambiguous ownership is retained for review without retrying or writing Notion', async () => {
+    const f = fixture(); await f.request();
+    f.context.processNotionWebhookDelivery = async () => { throw new Error('AMBIGUOUS_WEBHOOK_WORKSPACE'); };
+    await f.work(); await f.work();
+    assert.equal([...f.records.values()][0].status, 'needs_attention');
+    assert.equal([...f.records.values()][0].attempts, 1);
 });
 test('completed event is not processed again', async () => {
     const f = fixture(); let calls = 0; await f.request();

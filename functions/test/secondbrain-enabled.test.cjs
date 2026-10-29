@@ -9,7 +9,7 @@ function fixture(enabled) {
     const ref = { collection: () => ref, doc: () => ref, get: async () => ({ data: () => config }) };
     const context = { ...require('../lib/template-catalog'), workspaceTemplate: require('../lib/workspace-purchase').workspaceTemplate, db: { collection: () => ref } };
     vm.createContext(context);
-    const helper = source.slice(source.indexOf('async function assertSecondBrainEnabled('), source.indexOf('function sameNotionId('));
+    const helper = source.slice(source.indexOf('async function assertSecondBrainEnabled('), source.indexOf('async function reconcileSecondBrainPage('));
     const start = source.indexOf('async function processWebhookEvent(');
     const worker = source.slice(start, source.indexOf('//////////////////////////////////////////////////////////////////////', start));
     vm.runInContext(ts.transpile(helper + worker, { target: ts.ScriptTarget.ES2020 }), context);

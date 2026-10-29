@@ -38,7 +38,7 @@ test('confirmation preserves text-only notes and ordinary photo saves retain all
 function classify(db, template = 'lifeUpScrapbook') {
     const enrichedResult = { action: 'create', db, response: 'Original response' };
     vm.runInNewContext(ts.transpile(source.slice(pendingStart, pendingEnd)), {
-        enrichedResult, workspaceTemplate: () => template, userDoc: { data: () => ({}) },
+        enrichedResult, captureTemplate: template, workspaceTemplate: () => template, userDoc: { data: () => ({}) },
         TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS
     });
     return enrichedResult;
@@ -105,6 +105,7 @@ async function confirm(templateId, result) {
         reply: async text => replies.push(text), guard: async () => {},
         NotionService: { createDbItemFromAiResult: async (_uid, value) => { saves.push(value); return 'page'; } },
         buildAssistantResponse: value => value.response, removeUndefined: value => value,
+        fallbackCaptureTitle: require('../lib/template-capture').fallbackCaptureTitle,
         db: ref, logger: { error() {} }
     };
     await vm.runInNewContext(ts.transpile('(async () => {' + source.slice(start, end) + '})()'), context);
