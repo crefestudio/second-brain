@@ -18,6 +18,7 @@ import { AuthService } from '../../../../../services/auth.service';
 })
 export class AutoManagerComponent {
     isLoading = true;
+    updatingAgentIds = new Set<string>();
 
     memberUid: string = '';
     userId: string = '';
@@ -88,12 +89,14 @@ export class AutoManagerComponent {
         await this.updateSession();
 
         const automations = await UserService.getUserIntegrations(this.userId);
-        this.automationAgents =
-            this.automationAgents.map(agent => ({
-                ...agent,
-                enabled: canUseAgent(this.authService.templateId, agent.id) && (automations[agent.id]?.enabled ?? agent.enabled),
-                status: canUseAgent(this.authService.templateId, agent.id) && (automations[agent.id]?.enabled ?? agent.enabled) ? 'running' : 'waiting'
-            }));
+        this.automationAgents = await Promise.all(this.automationAgents.map(async agent => {
+            const enabled = canUseAgent(this.authService.templateId, agent.id) &&
+                (automations[agent.id]?.enabled ?? agent.enabled);
+            const status = agent.id === 'routine'
+                ? await UserService.getRoutineAutomationStatus(this.userId, enabled)
+                : enabled ? 'running' : 'waiting';
+            return { ...agent, enabled, status };
+        }));
     }
 
     async updateSession() {
@@ -126,6 +129,8 @@ export class AutoManagerComponent {
     async onChangeAgentEnabled(agent: any) {
         if (this.isAgentDisabled(agent)) return;
         const oldValue = !agent.enabled;
+        this.updatingAgentIds.add(agent.id);
+        try {
         const result = await UserService.updateUserAutomation(
             this.userId,
             agent.id,
@@ -135,15 +140,24 @@ export class AutoManagerComponent {
         );
 
         if (result) {
+            agent.status = agent.id === 'routine'
+                ? await UserService.getRoutineAutomationStatus(this.userId, agent.enabled)
+                : agent.enabled ? 'running' : 'waiting';
             ToastService.show(`${agent.name}이 ${agent.enabled ? '활성화' : '비활성화'}되었습니다.`);
         } else {
             agent.enabled = oldValue;
             ToastService.error('상태 변경에 실패하였습니다.');
         }
+        } catch (error) {
+            agent.enabled = oldValue;
+            ToastService.error('상태 변경에 실패하였습니다.');
+        } finally {
+            this.updatingAgentIds.delete(agent.id);
+        }
     }
 
     isAgentDisabled(agent: any): boolean {
-        return !canUseAgent(this.authService.templateId, agent.id) || (agent.id === 'kakao-capture' && !this.kakaoUserId);
+        return this.updatingAgentIds.has(agent.id) || !canUseAgent(this.authService.templateId, agent.id) || (agent.id === 'kakao-capture' && !this.kakaoUserId);
     }
     isAgentSupported(agent: any): boolean {
         return canUseAgent(this.authService.templateId, agent.id);

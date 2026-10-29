@@ -1052,6 +1052,18 @@ export class UserService {
     }
     ////////////////////////
 
+    static async getRoutineAutomationStatus(userId: string, enabled: boolean): Promise<'running' | 'waiting' | 'error' | 'unknown'> {
+        if (!enabled) return 'waiting';
+        if (!userId) return 'unknown';
+        try {
+            const { events } = await this.getUserEvents(userId, 'routine', null, 1);
+            return events[0]?.status === 'failed' ? 'error' : 'running';
+        } catch (error) {
+            console.error('Routine status lookup failed', error);
+            return 'unknown';
+        }
+    }
+
     static async getUserEvents(
         userId: string,
         agentId: string,

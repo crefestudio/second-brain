@@ -262,6 +262,8 @@
 ========================= */
 
 .Habit-card {
+    touch-action: none;
+    user-select: none;
     position: absolute;
     left: 4px;
     right: 4px;
@@ -272,7 +274,7 @@
     border-radius: 6px;
     border-left: 3px solid currentColor;
     background: #252932;
-    cursor: pointer;
+    cursor: grab;
     transition: filter 0.15s, transform 0.15s;
     z-index: 2;
 
@@ -280,6 +282,28 @@
         filter: brightness(1.15);
         transform: translateY(-1px);
     }
+}
+
+.Habit-card.Habit-dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+    transform: none;
+}
+
+.Habit-drop-preview {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    z-index: 3;
+    pointer-events: none;
+    box-sizing: border-box;
+    border: 2px dashed #60a5fa;
+    border-radius: 6px;
+    background: #1d4ed866;
+    color: #fff;
+    padding: 3px;
+    font-size: 12px;
+    overflow: hidden;
 }
 
 .Habit-content {

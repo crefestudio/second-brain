@@ -382,6 +382,12 @@ body {
     background: #1d4ed8;
 }
 
+.badge.error {
+  background: rgba(239, 68, 68, .15);
+  color: #f87171;
+  text-decoration: none;
+}
+
 /* LifeUp migration guide controls live here to stay within the component-style budget. */
 .lifeup-migration-page .connection-header-actions {
     display: flex;

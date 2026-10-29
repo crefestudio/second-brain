@@ -7471,11 +7471,13 @@ class NotionService {
             },
 
             '시작 시간': {
-                date: habit.time
-                    ? {
-                        start: `1970-01-01T${habit.time}:00+09:00`
+                rich_text: [
+                    {
+                        text: {
+                            content: habit.time ?? ''
+                        }
                     }
-                    : null
+                ]
             },
 
             '소요 시간(분)': {

@@ -115,8 +115,12 @@
                         정지됨
                     </span>
 
-                    <span class="badge error" *ngIf="agent.status === 'error'">
+                    <a class="badge error" *ngIf="agent.status === 'error'"
+                        [routerLink]="['/workspace/auto/log', agent.id]" title="최근 실행 실패 · 오류 기록 보기">
                         오류
+                    </a>
+                    <span class="badge pending" *ngIf="agent.status === 'unknown'">
+                        확인 불가
                     </span>
                 </div>
             </div>

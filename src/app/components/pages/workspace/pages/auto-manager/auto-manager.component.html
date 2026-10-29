@@ -109,8 +109,11 @@
               정지됨
             </span>
 
-            <span class="badge error" *ngIf="agent.status === 'error'">
+            <span class="badge error" *ngIf="agent.status === 'error'" title="최근 루틴 실행 기록이 실패입니다. 로그 보기에서 확인해주세요.">
               오류
+            </span>
+            <span class="badge pending" *ngIf="agent.status === 'unknown'">
+              확인 불가
             </span>
           </td>
 

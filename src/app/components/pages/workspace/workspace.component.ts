@@ -44,6 +44,11 @@ export class WorkspaceComponent implements OnInit {
             id: 'kakao-capture',
             name: '카카오톡 AI 비서',
             status: 'waiting',
+        },
+        {
+            id: 'routine',
+            name: '루틴',
+            status: 'waiting',
         }
     ];
 
@@ -69,12 +74,18 @@ export class WorkspaceComponent implements OnInit {
 
         // 자동화 정보
         const automations = await UserService.getUserIntegrations(this.userId);
-        this.automationAgents =
-            this.automationAgents.filter(agent => canUseAgent(this.authService.templateId, agent.id)).map(agent => ({
-                ...agent,
-                enabled: automations[agent.id]?.enabled ?? false,
-                status: automations[agent.id]?.enabled ? 'running' : 'waiting'
-            }));
+        this.automationAgents = await Promise.all(
+            this.automationAgents.filter(agent => canUseAgent(this.authService.templateId, agent.id)).map(async agent => {
+                // Routine automation defaults to enabled on the server for existing users.
+                const enabled = agent.id === 'routine'
+                    ? automations[agent.id]?.enabled !== false
+                    : !!automations[agent.id]?.enabled;
+                const status = agent.id === 'routine'
+                    ? await UserService.getRoutineAutomationStatus(this.userId, enabled)
+                    : enabled ? 'running' : 'waiting';
+                return { ...agent, enabled, status };
+            })
+        );
 
     }
 

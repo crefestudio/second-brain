@@ -517,6 +517,17 @@
   color: #ffffff;
 }
 
+.disconnect-all-btn {
+    float: right;
+    margin-left: 12px;
+}
+
+.disconnect-all-btn:disabled,
+.confirm-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
 .detail-btn:hover,
 .remove-btn:hover {
 

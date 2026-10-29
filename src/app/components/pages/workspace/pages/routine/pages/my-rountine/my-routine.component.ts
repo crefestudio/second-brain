@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { _log } from '../../../../../../../lib/cf-common/cf-common';
@@ -47,6 +47,80 @@ export class MyRoutineComponent implements OnInit {
 
     isLoading = true;
     isCreatingHabit = false;
+    isMovingHabit = false;
+    habitDrag: {
+        habit: UserHabit; sourceDay: string; pointerId: number;
+        startY: number; offsetY: number; active: boolean;
+        day: string; time: string; top: number; element: HTMLElement;
+    } | null = null;
+
+    startHabitDrag(event: PointerEvent, habit: UserHabit, day: string): void {
+        if (event.button !== 0 || !event.isPrimary || this.isMovingHabit || this.habitDrag ||
+            (event.target as HTMLElement).closest('button')) return;
+        const element = event.currentTarget as HTMLElement;
+        this.habitDrag = {
+            habit, sourceDay: day, pointerId: event.pointerId,
+            startY: event.clientY,
+            offsetY: event.clientY - element.getBoundingClientRect().top,
+            active: false, day: '', time: habit.time, top: this.getHabitTop(habit), element
+        };
+        element.setPointerCapture(event.pointerId);
+    }
+
+    moveHabitDrag(event: PointerEvent): void {
+        const drag = this.habitDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        if (!drag.active && Math.abs(event.clientY - drag.startY) < 6) return;
+        drag.active = true;
+        const calendar = drag.element.closest('.calendar');
+        const column = drag.element.ownerDocument.elementFromPoint(event.clientX, event.clientY)
+            ?.closest<HTMLElement>('.day-column');
+        if (!column || !calendar?.contains(column)) { drag.day = ''; return; }
+        const minutes = Math.max(0, Math.min(24 * 60 - 5,
+            Math.round((event.clientY - column.getBoundingClientRect().top - drag.offsetY) / this.hourHeight * 60 / 5) * 5));
+        const clockMinutes = (this.startHour * 60 + minutes) % (24 * 60);
+        drag.day = drag.sourceDay;
+        drag.time = `${String(Math.floor(clockMinutes / 60)).padStart(2, '0')}:${String(clockMinutes % 60).padStart(2, '0')}`;
+        drag.top = minutes * this.hourHeight / 60;
+    }
+
+    @HostListener('document:keydown.escape')
+    cancelHabitDrag(): void {
+        const drag = this.habitDrag;
+        this.habitDrag = null;
+        if (drag?.element.hasPointerCapture(drag.pointerId)) drag.element.releasePointerCapture(drag.pointerId);
+    }
+
+    async finishHabitDrag(event: PointerEvent): Promise<void> {
+        if (this.habitDrag?.pointerId !== event.pointerId) return;
+        this.moveHabitDrag(event);
+        const drag = this.habitDrag!;
+        this.cancelHabitDrag();
+        if (!drag.active || !drag.day || drag.habit.time === drag.time) return;
+        const habit: UserHabit = {
+            ...drag.habit,
+            name: drag.habit.name.replace(`${drag.habit.icon ?? ''} `, ''),
+            days: [...drag.habit.days],
+            time: drag.time
+        };
+        this.isMovingHabit = true;
+        try {
+            const result = await UserService.updateUserHabit(this.userId, habit);
+            if (!result.success) {
+                ToastService.warning(result.message || '루틴을 이동하지 못했습니다. 다시 시도해주세요.');
+                return;
+            }
+            await this.loadHabits();
+            const sync = await this.userService.syncMyHabitsWithUserId(this.userId, habit.id);
+            if (sync.success) ToastService.show(`${drag.time}(으)로 시간을 변경했습니다. 모든 반복 요일에 적용됩니다.`);
+            else ToastService.warning('이동은 저장됐지만 노션 동기화에 실패했습니다. 루틴 동기화를 다시 실행해주세요.');
+        } catch (error) {
+            console.error('[Habit] 이동 실패:', error);
+            ToastService.error('루틴 이동 처리 중 오류가 발생했습니다. 목록을 새로고침해 확인해주세요.');
+        } finally {
+            this.isMovingHabit = false;
+        }
+    }
 
     habits: UserHabit[] = [];
     filteredHabits: UserHabit[] = [];

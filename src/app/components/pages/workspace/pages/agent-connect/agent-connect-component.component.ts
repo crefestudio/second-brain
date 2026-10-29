@@ -82,7 +82,8 @@ export class AgentConnectComponentComponent implements OnInit {
     public isWaitingKakaoVerification = false;
     public isKakaoVerificationSuccess = false;
     kakaoVerificationError = '';
-    isConfirmRemoveDisconnectKakao: boolean = false;
+    isConfirmDisconnectAll = false;
+    isDisconnecting = false;
     isKakaoGuideOpen = false;
 
     // notion tempalte
@@ -191,7 +192,7 @@ export class AgentConnectComponentComponent implements OnInit {
     }
 
     cancelConfirm() {
-        this.isConfirmRemoveDisconnectKakao = false;
+        if (!this.isDisconnecting) this.isConfirmDisconnectAll = false;
     }
 
     async updateSession() {
@@ -617,25 +618,39 @@ export class AgentConnectComponentComponent implements OnInit {
         this.updateSession();
     }
 
-    onClickDisconnectKakaoBtn() {
-        // 컨펌창 띄우기
-        setTimeout(() => {
-            this.isConfirmRemoveDisconnectKakao = true;
-        }, 10)
+    onClickDisconnectAll() {
+        if (!this.userId || this.isDisconnecting) return;
+        this.isConfirmDisconnectAll = true;
     }
 
-    async disconectKakao() {
-
-        // 컨펌창 닫기
-        this.isConfirmRemoveDisconnectKakao = false;
-
-        const result = await this.userService.disconnectKakao(this.userId);
-        if (result) {
-            ToastService.show('카카오톡 연결을 해제 하였습니다.');
-        } else {
-            ToastService.error('카카오톡 연결 해제에 실패하였습니다.');
+    async disconnectAll() {
+        if (!this.isConfirmDisconnectAll || !this.userId || this.isDisconnecting) return;
+        this.isDisconnecting = true;
+        try {
+            // The server atomically clears both Notion and Kakao connections.
+            const result = await this.userService.disconnectNotionTemplate(this.userId);
+            if (!result) {
+                ToastService.error('템플릿과 카카오톡 연결 해제에 실패했습니다. 다시 시도해주세요.');
+                return;
+            }
+            this.notionAccessToken = '';
+            this.kakaoUserId = '';
+            this.onClickCancelConnectTemplateBtn();
+            this.cancelKakaoVerification();
+            this.isConfirmDisconnectAll = false;
+            ToastService.show('템플릿과 카카오톡 연결을 모두 해제했습니다.');
+            try {
+                await this.updateSession();
+            } catch (error) {
+                console.error('Connection session refresh failed', error);
+                ToastService.warning('연결은 해제됐지만 화면 갱신에 실패했습니다. 새로고침해주세요.');
+            }
+        } catch (error) {
+            console.error('Disconnect failed', error);
+            ToastService.error('템플릿과 카카오톡 연결 해제에 실패했습니다. 다시 시도해주세요.');
+        } finally {
+            this.isDisconnecting = false;
         }
-        this.updateSession();
     }
 
     ///////////////////////////////////////////////////////////////
@@ -672,23 +687,6 @@ export class AgentConnectComponentComponent implements OnInit {
             '노션 템플릿 연결이 완료되었습니다.'
         );
         this.updateSession();
-    }
-
-    async onClickDisconnectNotionTemplate() {
-        const result = await this.userService.disconnectNotionTemplate(this.userId);
-        this.updateSession();
-
-        if (result) {
-            ToastService.show(
-                '노션 템플릿 연결을 해제하였습니다.'
-            );
-
-            this.notionAccessToken = '';
-        } else {
-            ToastService.error(
-                '노션 템플릿 연결 해제에 실패하였습니다.'
-            );
-        }
     }
 
 }
