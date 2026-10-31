@@ -249,3 +249,38 @@
     width: 18px;
     height: 18px;
 }
+.account-menu .workspace-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    .workspace-name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    &.workspace-current { color: #7aa2f7; }
+    .workspace-selected { flex: 0 0 16px; width: 16px; height: 16px; color: #7aa2f7; }
+}
+.workspace-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    .workspace-heading-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.workspace-connection {
+    flex: 0 0 10px;
+    width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    border: 1px solid #363b3b;
+    border-radius: 50%;
+    background: #646769;
+    &.connected {
+        border-color: #7b9986;
+        background: #22c55e;
+    }
+}

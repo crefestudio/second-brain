@@ -1,3 +1,4 @@
+import { KAKAO_CONNECTION_REQUIRED, kakaoConnectionErrorMessage } from './kakao-connection-feedback';
 import { createNotionWebhookRouting, deferredWebhookStatus, webhookRoutingKeys } from './notion-webhook-routing';
 import { imwebPurchasedItems } from './imweb-order-items';
 import { giftApplicationError } from './lifeup-gift';
@@ -286,6 +287,43 @@ async function completeNotionTemplateConnection(
         if (current?.notionAccessToken !== accessToken || current?.notionConnectionId !== before.notionConnectionId || current?.notionConnection?.status !== 'pending') throw new Error('NOTION_CONNECTION_CHANGED');
         const sbRef = userRef.collection('integrations').doc('secondbrain');
         const sb = await tx.get(sbRef);
+        // Reading all owned workspaces in this transaction serializes concurrent
+        // completions. A losing pending connection cannot later become connected.
+        const owned = current.firebaseUid
+            ? await tx.get(db.collection('users').where('firebaseUid', '==', current.firebaseUid))
+            : null;
+        const others = [];
+        for (const doc of owned?.docs || []) {
+            const data = doc.data();
+            if (doc.id === userId || (!data.notionAccessToken && !data.kakaoUserId)) continue;
+            const integrationRef = doc.ref.collection('integrations').doc('secondbrain');
+            const integration = await tx.get(integrationRef);
+            const mappings = await tx.get(db.collection('notionDatabaseMap').where('userId', '==', doc.id));
+            const kakaoRef = data.kakaoUserId ? db.collection('kakaoConnections').doc(data.kakaoUserId) : null;
+            const kakao = kakaoRef ? await tx.get(kakaoRef) : null;
+            others.push({ doc, integrationRef, integration, mappings, kakaoRef, kakao });
+        }
+        const remove = admin.firestore.FieldValue.delete();
+        for (const other of others) {
+            const disconnectedId = randomUUID();
+            tx.update(other.doc.ref, {
+                notionAccessToken: remove, kakaoUserId: remove, lifeupTemplateInfo: remove,
+                notionConnectionId: disconnectedId,
+                notionConnection: { status: 'disconnected', databases: {} },
+                notionDbCacheRevision: admin.firestore.FieldValue.increment(1),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            if (other.integration.exists) tx.update(other.integrationRef, {
+                accessToken: remove, noteDatabaseId: remove, workspaceId: remove, botId: remove,
+                duplicatedTemplateId: remove, connectionId: disconnectedId, connectionStatus: 'disconnected',
+                cacheGeneration: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            tx.set(other.doc.ref.collection('integrations').doc('kakao-capture'),
+                { enabled: false, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            for (const mapping of other.mappings.docs) tx.delete(mapping.ref);
+            if (other.kakaoRef && other.kakao?.exists &&
+                (other.kakao.data()?.uid ?? other.kakao.data()?.userId) === other.doc.id) tx.delete(other.kakaoRef);
+        }
         tx.update(userRef, {
         notionAccessToken: accessToken,
         notionConnection: {
@@ -4703,7 +4741,7 @@ export const getAppSession = onRequest(withCors(async (req, res) => {
                 userId: userId || admin.firestore.FieldValue.delete()
             }, { merge: true });
             const workspaces = owned.docs.map(doc => ({ userId: doc.id, templateId: workspaceTemplate(doc.data()),
-                name: TEMPLATE_PRODUCTS[workspaceTemplate(doc.data())].nameKoShort }));
+                name: TEMPLATE_PRODUCTS[workspaceTemplate(doc.data())].nameKoShort, notionConnected: isUsableNotionConnection(doc.data()) }));
             const workspace = current?.data();
             return { status: 200, userId, workspaces,
                 templateId: workspace ? workspaceTemplate(workspace) : '',
@@ -12213,8 +12251,8 @@ export const kakaoWebhook = onRequest({ timeoutSeconds: 60, memory: "512MiB", mi
             [
                 "노셔너블 비서입니다.",
                 "",
-                "아직 카카오톡 연결이 완료되지 않았습니다.",
-                "notionable.net에 접속하여 카카오톡 연결을 먼저 진행해주세요."
+                KAKAO_CONNECTION_REQUIRED,
+                "https://notionable.net"
             ].join('\n'),
             res
         );
@@ -12335,7 +12373,7 @@ async function processKakaoAgent(
         });
 
         await reply(
-            "라이프업 템플릿이 연결되어 있지 않습니다.\n라이프봇을 이용하시려면 먼저 라이프업 템플릿을 연결해주세요.\n👇 템플릿 연결하기\nhttps://notionable.net",
+            KAKAO_CONNECTION_REQUIRED,
             callbackUrl
         );
         throw new Error('NOTION_CONNECTION_REQUIRED');
@@ -12344,11 +12382,11 @@ async function processKakaoAgent(
     const totalStart = Date.now();
     const logTime = (label: string, start: number) => { console.log(`[TIME] ${label}: ${Date.now() - start}ms`); };
 
-    let entity: AssistantEntity;
+    let entity: AssistantEntity | undefined;
     let enrichedResult: any;
     let dateData: DateProcessData | undefined;
 
-    {
+    try {
         let t = Date.now();
 
         const captureTemplate = workspaceTemplate(userDoc.data() || {});
@@ -12398,7 +12436,7 @@ async function processKakaoAgent(
                 await reply(converted.response, callbackUrl);
             } catch (error) {
                 logger.error('[TemplateCapture] confirmed save failed', { userId, templateId: captureTemplate, error });
-                await reply(`${destinationLabel}에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.`, callbackUrl);
+                await reply(kakaoConnectionErrorMessage(error) || `${destinationLabel}에 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.`, callbackUrl);
                 throw error;
             }
             return;
@@ -12560,10 +12598,7 @@ async function processKakaoAgent(
         });
 
         logTime("saveAssistantContext", t);
-    }
-
-    try {
-        let t = Date.now();
+        t = Date.now();
 
         console.log("[TIME] sendKakaoCallback START");
         if (enrichedResult.noteCapture) {
@@ -12603,7 +12638,7 @@ async function processKakaoAgent(
 
         try {
             await reply(
-                "처리 중 오류가 발생했습니다.",
+                kakaoConnectionErrorMessage(e, entity?.type === 'image') || "처리 중 오류가 발생했습니다.",
                 callbackUrl
             );
         } catch { }

@@ -12,8 +12,11 @@ export class SocialAuthService {
     readonly busy = signal(false);
     readonly error = signal('');
     readonly notice = signal('');
-    readonly workspaces = signal<Array<{userId: string; templateId: string; name: string}>>([]);
+    readonly workspaces = signal<Array<{userId: string; templateId: string; name: string; notionConnected: boolean}>>([]);
     readonly activeWorkspaceId = signal('');
+    get workspaceConnected(): boolean {
+        return this.workspaces().find(item => item.userId === this.activeWorkspaceId())?.notionConnected === true;
+    }
     get workspaceName(): string {
         return this.workspaces().find(item => item.userId === this.activeWorkspaceId())?.name || '라이프업';
     }

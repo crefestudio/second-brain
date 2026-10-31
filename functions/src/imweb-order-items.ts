@@ -25,11 +25,10 @@ export function imwebPurchasedItems(value: unknown, knownSkus: ReadonlySet<strin
             amount = payments.reduce((sum: number, payment: any) => {
                 if (!payment || payment.price === undefined || payment.price === null || payment.price === '') throw new Error('IMWEB_ITEM_PAYMENT_UNAVAILABLE');
                 const price = Number(payment.price);
-                const discounts = ['price_sale', 'point', 'coupon', 'membership_discount', 'period_discount']
-                    .reduce((total, key) => total + Number(payment[key] || 0), 0);
-                const net = price - discounts;
-                if (!Number.isFinite(net) || net < 0) throw new Error('IMWEB_ITEM_PAYMENT_UNAVAILABLE');
-                return sum + net;
+                // Use the supplied item price directly. Subtracting discount
+                // metadata again makes valid zero-price baskets negative.
+                if (!Number.isFinite(price) || price < 0) throw new Error('IMWEB_ITEM_PAYMENT_UNAVAILABLE');
+                return sum + price;
             }, 0);
         }
         if (!Number.isFinite(amount) || amount < 0) throw new Error('IMWEB_ITEM_PAYMENT_UNAVAILABLE');

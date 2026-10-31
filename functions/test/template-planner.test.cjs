@@ -70,7 +70,7 @@ test('customer keeps a single grade with premium then standard above individual 
 
 test('basket imports every registered SKU using item payments rather than repeating order total', () => {
     const rows = { list: [{ items: [
-        { prod_sku_no: 'lifeup', payment: { price: 79000, coupon: 10000 } },
+        { prod_sku_no: 'lifeup', payment: { price: 69000, coupon: 10000 } },
         { prod_sku_no: 'planner', payment: { price: 29000 } }
     ] }] };
     const result = imwebPurchasedItems(rows, new Set(['lifeup', 'planner']), 98000);
@@ -82,6 +82,30 @@ test('single-item orders keep order payment compatibility; missing multi-item am
     assert.equal(imwebPurchasedItems([{ sku: 'planner' }], new Set(['planner']), 29000)[0].paymentAmount, 29000);
     assert.throws(() => imwebPurchasedItems([{ sku: 'planner' }, { sku: 'other' }], new Set(['planner']), 29000), /IMWEB_ITEM_PAYMENT_UNAVAILABLE/);
     assert.deepEqual(imwebPurchasedItems([{ sku: 'unregistered' }], new Set(['planner']), 29000), []);
+});
+
+test('free multi-item orders retain zero prices despite discount metadata', () => {
+    const rows = [
+        { sku: 'scrapbook', payment: { price: 0, price_sale: 9900 } },
+        { sku: 'planner', payment: { price: 0, price_sale: 19000 } },
+        { sku: 'other', payment: { price: 0, price_sale: 19000 } }
+    ];
+    const result = imwebPurchasedItems(rows, new Set(['scrapbook', 'planner']), 0);
+    assert.deepEqual(result.map(x => [x.sku, x.paymentAmount]), [['planner', 0], ['scrapbook', 0]]);
+});
+
+test('item price is not reduced by discount metadata; invalid prices still fail', () => {
+    const rows = [
+        { sku: 'planner', payment: [{ price: 19000, price_sale: 10000, point: 1000,
+            coupon: 2000, membership_discount: 3000, period_discount: 4000 }] },
+        { sku: 'other', payment: { price: 0 } }
+    ];
+    assert.equal(imwebPurchasedItems(rows, new Set(['planner']), 19000)[0].paymentAmount, 19000);
+    assert.throws(() => imwebPurchasedItems(rows, new Set(['planner']), 18000), /IMWEB_ITEM_PAYMENT_MISMATCH/);
+    for (const price of [-1, 'invalid', null, undefined, '']) {
+        rows[0].payment[0].price = price;
+        assert.throws(() => imwebPurchasedItems(rows, new Set(['planner']), 19000), /IMWEB_ITEM_PAYMENT_UNAVAILABLE/);
+    }
 });
 
 test('unregistered products do not cause their payment to be attached to a registered SKU', () => {

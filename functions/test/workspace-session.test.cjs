@@ -36,6 +36,8 @@ test('session lists template names and selecting an owned workspace changes acti
     assert.equal(res.body.templateId, 'lifeUpScrapbook');
     assert.equal(res.body.workspaces.map(w => w.name).join(','), '라이프업,라이프업 스크랩북');
     assert.equal(res.body.notionConnected, true);
+    assert.equal(res.body.workspaces.find(w => w.userId === 'lifeup').notionConnected, false);
+    assert.equal(res.body.workspaces.find(w => w.userId === 'scrapbook').notionConnected, true);
     assert.equal(res.body.notionAccessToken, undefined);
 });
 

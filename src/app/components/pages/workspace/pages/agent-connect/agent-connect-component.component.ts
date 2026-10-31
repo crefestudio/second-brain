@@ -1,3 +1,4 @@
+import { ConfirmDialogComponent } from '../../../../common/confirm-dialog/confirm-dialog.component';
 import { _log } from '../../../../../lib/cf-common/cf-common';
 import { RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -29,7 +30,7 @@ const TEMPLATE_KEY_LIFEUP = 'lifeUp';
 
 @Component({
     selector: 'app-agent-connect-component',
-    imports: [CommonModule, FormsModule, RouterLink, LifebotGuideModalComponent, UpgradeBannerComponent],
+    imports: [CommonModule, FormsModule, RouterLink, LifebotGuideModalComponent, UpgradeBannerComponent, ConfirmDialogComponent],
     templateUrl: './agent-connect-component.component.html',
     styleUrl: './agent-connect-component.component.css'
 })
@@ -83,6 +84,8 @@ export class AgentConnectComponentComponent implements OnInit {
     public isKakaoVerificationSuccess = false;
     kakaoVerificationError = '';
     isConfirmDisconnectAll = false;
+    isConfirmReplaceConnection = false;
+    isCheckingConnection = false;
     isDisconnecting = false;
     isKakaoGuideOpen = false;
 
@@ -658,6 +661,27 @@ export class AgentConnectComponentComponent implements OnInit {
     // notion tempate 연결
 
     async onClickConnectTemplate() {
+        if (this.isOpenNotionConnectWindow || this.isCheckingConnection || this.isConfirmReplaceConnection) return;
+        this.isCheckingConnection = true;
+        try {
+            const session = await this.socialAuth.session(this.userId);
+            if (!session) return;
+            if (this.socialAuth.workspaces().some(workspace => workspace.notionConnected)) {
+                this.isConfirmReplaceConnection = true;
+                return;
+            }
+        } catch {
+            ToastService.error('기존 연결 정보를 확인하지 못했습니다. 다시 시도해주세요.');
+            return;
+        } finally {
+            this.isCheckingConnection = false;
+        }
+        await this.proceedTemplateConnection();
+    }
+
+    async proceedTemplateConnection() {
+        if (this.isOpenNotionConnectWindow) return;
+        this.isConfirmReplaceConnection = false;
         this.isOpenNotionConnectWindow = true;
         await this.userService.startNotionConnectWatcher(this.userId);
         this.openNotionConnectWindow();

@@ -32,7 +32,12 @@
 
         <div class="menu-item collapsible" (click)="lifeupOpen = !lifeupOpen">
 
-          <span>{{ auth.workspaceName }}</span>
+          <span class="workspace-heading">
+            <span class="workspace-connection" [class.connected]="auth.workspaceConnected"
+              role="img" [attr.aria-label]="auth.workspaceConnected ? '연결됨' : '비연결'"
+              [attr.title]="auth.workspaceConnected ? '연결됨' : '비연결'"></span>
+            <span class="workspace-heading-name">{{ auth.workspaceName }}</span>
+          </span>
 
           <span class="arrow" [class.open]="lifeupOpen" aria-hidden="true"><svg viewBox="0 0 24 24">
               <path d="m6 9 6 6 6-6" />
@@ -345,13 +350,21 @@
           @if (auth.account(); as account) {
           <div class="account-info"><strong>{{ account.displayName || '내 계정' }}</strong><small>{{ account.email
               }}</small></div>
-          @if (auth.workspaces().length > 1) {
+          @if (auth.workspaces().length > 0) {
           <div class="account-divider" aria-hidden="true"></div>
           @for (workspace of auth.workspaces(); track workspace.userId) {
-          <button type="button" [disabled]="auth.busy()"
+          <button type="button" class="workspace-option" [disabled]="auth.busy()"
+            [class.workspace-current]="workspace.userId === auth.activeWorkspaceId()"
             [attr.aria-pressed]="workspace.userId === auth.activeWorkspaceId()"
-            (click)="auth.switchWorkspace(workspace.userId)">{{ workspace.name }}{{ workspace.userId ===
-            auth.activeWorkspaceId() ? ' ✓' : '' }}</button>
+            [attr.title]="workspace.name"
+            (click)="auth.switchWorkspace(workspace.userId)">
+            <span class="workspace-name">{{ workspace.name }}</span>
+            @if (workspace.userId === auth.activeWorkspaceId()) {
+            <svg class="workspace-selected" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 12L10.2426 16.2426L18.727 7.75732" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            }
+          </button>
           }
           <div class="account-divider" aria-hidden="true"></div>
           }

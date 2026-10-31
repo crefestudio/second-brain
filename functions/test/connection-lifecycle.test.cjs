@@ -66,6 +66,46 @@ function fixture(extra = {}) {
     return { records, context, user: () => records.get('users/u') };
 }
 
+test('successful connection disconnects all other owned templates and Kakao, preserving foreign accounts', async () => {
+    const { context, records } = fixture({
+        'users/new': { firebaseUid: 'owner', notionAccessToken: 'new-token', notionConnectionId: 'new-generation', notionConnection: { status: 'pending' } },
+        'users/foreign': { firebaseUid: 'another-owner', notionAccessToken: 'token', kakaoUserId: 'foreign-kakao', notionConnection: { status: 'connected' } },
+        'kakaoConnections/foreign-kakao': { uid: 'foreign' }
+    });
+    await context.completeNotionTemplateConnection('new', 'new-token');
+    assert.equal(records.get('users/new').notionConnection.status, 'connected');
+    assert.equal(records.get('users/u').notionConnection.status, 'disconnected');
+    assert.equal(records.get('users/u').notionAccessToken, undefined);
+    assert.equal(records.get('users/u').kakaoUserId, undefined);
+    assert.equal(records.get('users/u/integrations/secondbrain').accessToken, undefined);
+    assert.equal(records.get('users/u/integrations/kakao-capture').enabled, false);
+    assert.equal(records.has('kakaoConnections/k1'), false);
+    assert.equal(records.has('notionDatabaseMap/old'), false);
+    assert.ok(records.has('users/u/integrations/secondbrain/pages/p'));
+    assert.equal(records.get('users/foreign').notionAccessToken, 'token');
+    assert.ok(records.has('kakaoConnections/foreign-kakao'));
+});
+
+test('failed new connection leaves the existing template and Kakao unchanged', async () => {
+    const { context, records } = fixture({
+        'users/new': { firebaseUid: 'owner', notionAccessToken: 'new-token', notionConnectionId: 'new-generation', notionConnection: { status: 'pending' } }
+    });
+    const before = structuredClone([...records]);
+    context.NotionService.resolveDataSourceId = async () => { throw Error('permission denied'); };
+    await assert.rejects(context.completeNotionTemplateConnection('new', 'new-token'), /Template databases not found/);
+    assert.deepEqual([...records], before);
+});
+
+test('a superseded pending connection cannot complete after another owned template wins', async () => {
+    const { context, records } = fixture({
+        'users/a': { firebaseUid: 'owner', notionAccessToken: 'a-token', notionConnectionId: 'a-generation', notionConnection: { status: 'pending' } },
+        'users/b': { firebaseUid: 'owner', notionAccessToken: 'b-token', notionConnectionId: 'b-generation', notionConnection: { status: 'pending' } }
+    });
+    await context.completeNotionTemplateConnection('a', 'a-token');
+    await assert.rejects(context.completeNotionTemplateConnection('b', 'b-token'), /NOTION_CONNECTION_CHANGED/);
+    assert.equal([...records].filter(([key, value]) => /^users\/[^/]+$/.test(key) && value.notionConnection?.status === 'connected').length, 1);
+});
+
 test('Notion disconnect removes all connection copies but preserves graphs and migration records', async () => {
     const { context, records, user } = fixture();
     await context.replaceNotionConnection('u');
