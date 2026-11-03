@@ -313,7 +313,7 @@ export class MyRoutineComponent implements OnInit {
     }
 
     isValidTime(time: string): boolean {
-        return /^\d{2}:\d{2}$/.test(time);
+        return typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
     }
 
     getHabitTop(habit: UserHabit): number {
@@ -368,6 +368,11 @@ export class MyRoutineComponent implements OnInit {
 
         if (!this.editingHabit.days?.length) {
             ToastService.warning('반복할 요일을 선택해주세요.');
+            return;
+        }
+
+        if (!this.isValidTime(this.editingHabit.time)) {
+            ToastService.warning('시간을 입력해주세요.');
             return;
         }
 

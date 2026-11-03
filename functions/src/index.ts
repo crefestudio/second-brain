@@ -39,7 +39,7 @@ import { AssistantEntity, TextEntity, WebPageEntity, ImageEntity, ContactEntity,
 import { WebPageAnalyzer } from './services/web-page-analyzer';
 
 import * as functions from "firebase-functions";
-import { formatKoreanDate, formatKoreanDateTime, resolveDateData, toNotionDate, DateProcessData, hasMonthWithoutDay, parseExplicitDateRange } from './services/date-service';
+import { formatKoreanDate, formatKoreanDateTime, resolveDateData, toNotionDate, DateProcessData, hasMonthWithoutDay, parseExplicitDateRange, parseUpcomingWeekday } from './services/date-service';
 
 // notion
 import { Client } from "@notionhq/client";
@@ -7746,7 +7746,7 @@ class NotionService {
 
             '날짜': {
                 date: {
-                    start: `${todayDate}T${habit.time}:00+09:00`
+                    start: `${todayDate}T${/^([01]\d|2[0-3]):[0-5]\d$/.test(habit.time) ? habit.time : '09:00'}:00+09:00`
                 }
             },
 
@@ -11233,7 +11233,8 @@ date: ${dateResult.data!.date}${dateResult.data!.time
             : "";
 
     let userPrompt: string;
-    if (previousResult?.result?.action === "ask") {
+    if (previousResult?.result?.action === "ask" ||
+        (previousResult?.result?.action === "dateAsk" && /^(오전|오후|아침|저녁|밤|새벽)(?:으로|이요|요)?[.!?]?$/.test(userMessage.trim()))) {
         userPrompt = `
 [이전 요청]
 ${previousResult.userMessage}
@@ -12601,9 +12602,11 @@ async function processKakaoAgent(
         t = Date.now();
 
         console.log("[TIME] sendKakaoCallback START");
-        if (enrichedResult.noteCapture) {
+        if (enrichedResult.noteCapture || ['create', 'correct'].includes(enrichedResult.action)) {
             await processAfterResponse(userId, entity, enrichedResult, guard);
-            await reply(buildAssistantResponse(enrichedResult, undefined, pageUrls), callbackUrl);
+            await reply(enrichedResult.noteCapture
+                ? buildAssistantResponse(enrichedResult, undefined, pageUrls)
+                : enrichedResult.response, callbackUrl);
             return;
         }
         await guard();
@@ -12681,6 +12684,12 @@ export async function processDateExpression(
     userMessage: string,
     previousContext?: AssistantContext | null
 ): Promise<DateProcessResult> {
+    const meridiem = userMessage.trim().match(/^(오전|오후|아침|저녁|밤|새벽)(?:으로|이요|요)?[.!?]?$/);
+    if (previousContext?.result?.action === 'dateAsk' && meridiem && previousContext.dateData?.time) {
+        return resolveDateResult({ status: 'resolved', dateExpr: /오후|저녁|밤/.test(meridiem[1]) ? 'pm' : 'am' }, previousContext.dateData);
+    }
+    const weekday = parseUpcomingWeekday(userMessage);
+    if (weekday) return { status: weekday.question ? 'dateAsk' : 'resolved', ...weekday };
     const explicitRange = parseExplicitDateRange(userMessage);
     if (explicitRange?.question) return { status: 'dateAsk', question: explicitRange.question };
     if (explicitRange?.data) return {
@@ -12736,7 +12745,7 @@ export async function processDateExpression(
         const candidate = resolveDateResult({
             status: "resolved",
             dateExpr: aiResult.dateExpr
-        });
+        }, getPreviousDateData(previousContext));
 
         return {
             status: "dateAsk",
@@ -12802,7 +12811,9 @@ function resolveDateResult(
 
     const data = resolveDateData(result.dateExpr, previousData);
     if (!data) {
-        return { status: "dateAsk", question: "날짜를 확인하지 못했습니다. 시작일과 종료일을 연도·월·일까지 다시 알려주세요." };
+        return { status: "dateAsk", question: result.dateExpr.includes("..")
+            ? "날짜 범위를 확인하지 못했습니다. 시작일과 종료일을 다시 알려주세요."
+            : "날짜와 시간을 확인하지 못했습니다. 예: 금요일 오전 11시처럼 다시 알려주세요." };
     }
     return { status: result.status, data };
 }
@@ -12904,6 +12915,12 @@ async function requestDateExpressionFromAI(
 
 이번주 월요일    => this:monday
 다음주 월요일    => next:monday
+금요일          => next:friday
+
+주를 지정하지 않은 요일은 오늘 이후 가장 가까운 해당 요일이다.
+요일은 반드시 next:friday처럼 전체 영문 이름을 쓴다. fri 같은 축약형을 만들지 않는다.
+오전/오후를 질문할 때도 날짜와 시간을 모두 dateExpr에 보존한다.
+금요일 11시 => dateAsk / next:friday+11:00
 
 2026년 7월 3일   => date:2026-07-03
 8월 8일          => date:08-08
@@ -15952,6 +15969,8 @@ async function getLastAssistantContext(userId: string): Promise<AssistantContext
         .collection("users")
         .doc(userId)
         .collection("assistantContext")
+        // Exclude legacy map-valued timestamps that sort above actual timestamps.
+        .where("createdAt", "<=", admin.firestore.Timestamp.now())
         .orderBy("createdAt", "desc")
         .limit(1)
         .get();
@@ -16039,7 +16058,7 @@ export async function saveAssistantContext(userId: string, payload: any): Promis
     const docRef = collectionRef.doc();
     await db.runTransaction(async tx => {
         const user = (await tx.get(db.collection('users').doc(userId))).data();
-        const previous = await tx.get(collectionRef.orderBy('createdAt', 'desc').limit(1));
+        const previous = await tx.get(collectionRef.where('createdAt', '<=', admin.firestore.Timestamp.now()).orderBy('createdAt', 'desc').limit(1));
         const scope = connectionContextKey(user);
         if (payload.connectionContext && payload.connectionContext !== scope) throw new Error('CONNECTION_CHANGED');
         const data = removeUndefined({ ...payload, connectionContext: scope,

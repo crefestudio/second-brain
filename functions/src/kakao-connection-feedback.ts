@@ -4,6 +4,7 @@ export function kakaoConnectionErrorMessage(error: unknown, isPhoto = false): st
     const value = error as { code?: string; message?: string } | null;
     if (value?.message === 'NOTION_CONNECTION_REQUIRED') return KAKAO_CONNECTION_REQUIRED;
     const message = value?.message || '';
+    if (/검색된 DB가 모두 휴지통 또는 보관 상태/.test(message)) return '연결된 노션 데이터베이스가 휴지통 또는 보관 상태여서 저장하지 못했습니다.\n노션에서 해당 데이터베이스를 복원하거나, 사용할 템플릿을 다시 연결한 뒤 요청을 다시 보내주세요.';
     const permissionError = ['unauthorized', 'restricted_resource', 'object_not_found'].includes(value?.code || '') ||
         /Notion API 호출 실패: (401|403|404)\b/.test(message);
     if (permissionError) return `노션 API 연결 권한이 없어 ${isPhoto ? '사진을 저장' : '요청을 처리'}하지 못했습니다.\n라이프봇은 한 번에 하나의 템플릿만 연결하여 사용할 수 있습니다.\n계속 이용하시려면 기존 템플릿 연결을 해제한 뒤, 사용할 템플릿과 카카오톡을 다시 연결해주세요.`;

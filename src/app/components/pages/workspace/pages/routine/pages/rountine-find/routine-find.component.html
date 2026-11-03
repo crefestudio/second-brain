@@ -82,7 +82,7 @@
 
             <input
               type="time"
-              [(ngModel)]="habit.time">
+              [(ngModel)]="habit.time" required>
           </div>
 
           <div class="field">
@@ -105,7 +105,7 @@
 
         <button
           class="add-btn"
-          [disabled]="isAddingHabit(habit)"
+          [disabled]="isAddingHabit(habit) || !isValidTime(habit.time)"
           (click)="addHabit(habit)">
 
           {{ isAddingHabit(habit) ? '추가 중...' : '+ 추가하기' }}

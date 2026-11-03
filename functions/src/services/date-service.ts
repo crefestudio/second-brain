@@ -106,11 +106,38 @@ function getKoreaNow(): Date {
     return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
 }
 
+// A bare weekday means the upcoming occurrence, independent of AI token choices.
+export function parseUpcomingWeekday(message: string, now = getKoreaNow()):
+    { data: DateProcessData; question?: string } | null {
+    const match = message.trim().match(/^([월화수목금토일])요일(?:\s*(오전|오후|아침|저녁|밤|새벽)?\s*(\d{1,2})시(?:\s*(반|\d{1,2}분))?)?(?=$|\s)/);
+    if (!match) return null;
+    const rest = message.trim().slice(match[0].length);
+    // Complex dates/ranges remain on the date AI path.
+    if (/오늘|내일|모레|요일|이번|다음|지난|\d\s*(?:년|월|일|시|분)|오전|오후|부터|까지|[~:]/.test(rest)) return null;
+    const target = '일월화수목금토'.indexOf(match[1]);
+    const date = new Date(now);
+    const diff = (target - date.getDay() + 7) % 7 || 7;
+    date.setDate(date.getDate() + diff);
+    const data: DateProcessData = { date: formatDateExpr(date) };
+    if (!match[3]) return { data };
+    let hour = Number(match[3]);
+    const minute = match[4] === '반' ? 30 : Number(match[4]?.replace('분', '') || 0);
+    if (hour > 23 || minute > 59 || (match[2] && hour > 12)) return null;
+    if (match[2]) hour = hour % 12 + (/오후|저녁|밤/.test(match[2]) ? 12 : 0);
+    data.time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    return { data, ...(!match[2] && hour >= 1 && hour <= 12
+        ? { question: `${hour}시가 오전인가요, 오후인가요?` } : {}) };
+}
+
 export function resolveDateExpr(
     dateExpr: string | null,
     previousData?: DateProcessData
 ): ParsedDate | null {
     if (!dateExpr) return null;
+
+    const aliases: Record<string, string> = { sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday' };
+    dateExpr = dateExpr.trim().toLowerCase().replace(/^(?:(next|this):)?(sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)(?=\+|$)/,
+        (_, prefix, day) => `${prefix || 'next'}:${aliases[day] || day}`);
 
     const now: Date = getKoreaNow();
     const previous = createDateFromData(previousData);

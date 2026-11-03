@@ -1347,7 +1347,7 @@ export class UserService {
     }
 
     static async addUserHabit(userId: string, habit: UserHabit): Promise<{ success: boolean; duplicate?: boolean; message?: string; id?: string }> {
-        if (!userId || !habit?.name || !habit?.time) {
+        if (!userId || !habit?.name || !this.isValidHabitTime(habit?.time)) {
             return { success: false };
         }
 
@@ -1409,6 +1409,10 @@ export class UserService {
         }
     }
 
+    static isValidHabitTime(time: unknown): boolean {
+        return typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+    }
+
     private static formatTime(minutes: number): string {
         const hour = Math.floor(minutes / 60);
         const minute = minutes % 60;
@@ -1450,7 +1454,7 @@ export class UserService {
     }
 
     static async updateUserHabit(userId: string, habit: UserHabit): Promise<{ success: boolean; duplicate?: boolean; message?: string }> {
-        if (!userId || !habit?.id || !habit.name || !habit.time) {
+        if (!userId || !habit?.id || !habit.name || !this.isValidHabitTime(habit.time)) {
             return { success: false };
         }
 

@@ -45,7 +45,7 @@ function setup({ syncError, existingLog, receipt: initialReceipt } = {}) {
     const subject = context.Subject;
     subject.resolveDatabaseId = async (_token, _user, name) => name === 'habit log' ? 'log-source' : 'habit-source';
     subject.resolveDataSourceId = async (_token, database) => database;
-    const run = () => subject.createNotionHabitLog('user', { id: 'habit', name: 'Read', time: '23:59', days: ['월'] }, '2026-09-21');
+    const run = (time = '23:59') => subject.createNotionHabitLog('user', { id: 'habit', name: 'Read', time, days: ['월'] }, '2026-09-21');
     return { run, calls, receipt: () => receipt };
 }
 
@@ -148,4 +148,12 @@ test('a day without scheduled records does not spend a rest token', async () => 
     });
     await harness.run();
     assert.equal(harness.writes.some(w => w.path.endsWith('/restHistory/use_2026-09-21')), false);
+});
+
+test('legacy missing and descriptive times generate a valid 09:00 record', async () => {
+    for (const time of [null, '', '종일', '식사 전', '24:00']) {
+        const harness = setup();
+        await harness.run(time);
+        assert.equal(harness.calls.create[0].properties.날짜.date.start, '2026-09-21T09:00:00+09:00');
+    }
 });

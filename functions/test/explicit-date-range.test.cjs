@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-const { parseExplicitDateRange, toNotionDate } = require('../lib/services/date-service');
+const { parseExplicitDateRange, toNotionDate, parseUpcomingWeekday } = require('../lib/services/date-service');
 const { resolveTaskKinds } = require('../lib/task-classification');
 
 test('numeric ranges with optional 일 resolve independently of the task title', () => {
@@ -42,7 +42,7 @@ test('actual processing bypasses AI for supported ranges and asks for ambiguous 
     const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
     const start = source.indexOf('export async function processDateExpression(');
     const end = source.indexOf('function getPreviousDateData(', start);
-    const context = { exports: {}, parseExplicitDateRange: text => parseExplicitDateRange(text, 2026),
+    const context = { exports: {}, parseUpcomingWeekday, parseExplicitDateRange: text => parseExplicitDateRange(text, 2026),
         hasMonthWithoutDay: () => { throw Error('explicit range must resolve first'); },
         requestDateExpressionFromAI: () => { throw Error('must not call AI'); } };
     vm.createContext(context);

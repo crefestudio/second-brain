@@ -41,27 +41,27 @@ export class RoutineFindComponent {
         // 💊 건강
         { icon: '💊', name: '유산균 섭취하기', categories: ['건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '08:00', duration: 5 },
         { icon: '💊', name: '비타민 챙겨 먹기', categories: ['건강', '추천'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '08:00', duration: 5 },
-        { icon: '💧', name: '물 1.5L 이상 마시기', categories: ['건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '종일', duration: 5 },
+        { icon: '💧', name: '물 1.5L 이상 마시기', categories: ['건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '09:00', duration: 5 },
         { icon: '💧', name: '공복에 물 한 잔', categories: ['건강', '아침 루틴', '추천'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '07:30', duration: 5 },
         { icon: '🧘', name: '아침 스트레칭', categories: ['건강', '아침 루틴', '추천'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '07:40', duration: 10 },
         { icon: '🚶', name: '가벼운 산책', categories: ['건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '18:00', duration: 30 },
         { icon: '🏃', name: '런닝머신', categories: ['건강', '운동'], days: ['월', '수', '금'], time: '19:00', duration: 30 },
-        { icon: '☕', name: '커피 하루 2잔 이내', categories: ['건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '종일', duration: 5 },
-        { icon: '👟', name: '6000보 이상 걷기', categories: ['건강', '운동', '추천'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '종일', duration: 5 },
+        { icon: '☕', name: '커피 하루 2잔 이내', categories: ['건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '09:00', duration: 5 },
+        { icon: '👟', name: '6000보 이상 걷기', categories: ['건강', '운동', '추천'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '09:00', duration: 5 },
 
         // 🏠 생활
         { icon: '🛏️', name: '침구 정리하기', categories: ['생활', '아침 루틴'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '08:00', duration: 5 },
         { icon: '📋', name: '오늘 할 일 정리하기', categories: ['생활', '아침 루틴', '추천'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '08:10', duration: 10 },
         { icon: '🧹', name: '방 정리하기', categories: ['생활'], days: ['월', '수', '금', '일'], time: '20:00', duration: 15 },
         { icon: '🪟', name: '집 환기하기', categories: ['생활', '아침 루틴'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '08:15', duration: 5 },
-        { icon: '🍽️', name: '설거지 바로 하기', categories: ['생활'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '식사 후', duration: 5 },
+        { icon: '🍽️', name: '설거지 바로 하기', categories: ['생활'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '09:00', duration: 5 },
         { icon: '🧽', name: '하루 10분 청소', categories: ['생활'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '20:30', duration: 10 },
 
         // 🔥 다이어트
         { icon: '🏃', name: '공복 걷기 30분', categories: ['다이어트', '운동'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '07:00', duration: 30 },
         { icon: '⛔', name: '저녁 6시 이후 금식', categories: ['다이어트'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '18:00', duration: 5 },
-        { icon: '💧', name: '식사 전 물 한 컵', categories: ['다이어트', '건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '식사 전', duration: 5 },
-        { icon: '🍚', name: '탄수화물 줄이기', categories: ['다이어트'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '식사', duration: 5 },
+        { icon: '💧', name: '식사 전 물 한 컵', categories: ['다이어트', '건강'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '09:00', duration: 5 },
+        { icon: '🍚', name: '탄수화물 줄이기', categories: ['다이어트'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '09:00', duration: 5 },
         { icon: '📊', name: '하루 칼로리 기록하기', categories: ['다이어트'], days: ['월', '화', '수', '목', '금', '토', '일'], time: '21:30', duration: 5 },
         { icon: '⚖️', name: '몸무게 기록', categories: ['다이어트'], days: ['월', '수', '금'], time: '07:30', duration: 5 },
 
@@ -158,7 +158,15 @@ export class RoutineFindComponent {
         return habit.days.includes(day);
     }
 
+    isValidTime(time: unknown): boolean {
+        return typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+    }
+
     async addHabit(habit: any) {
+        if (!this.isValidTime(habit.time)) {
+            ToastService.warning('시간을 입력해주세요.');
+            return;
+        }
         if (this.addingHabits.has(habit) || this.upgradeLoading || this.showUpgradeNotice) return;
         if (!this.memberUid) {
             ToastService.show('로그인이 필요합니다.');

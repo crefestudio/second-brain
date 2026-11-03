@@ -6,6 +6,12 @@
       <a routerLink="/workspace/routine/find" routerLinkActive="active" class="sub-menu-item">추천 습관</a>
     </nav>
   </div>
+  <div class="routine-notice">
+    <div class="routine-notice-content">
+      루틴 관리는 <strong>시험 운영(~12/31)</strong> 중이며, 이용 가능한 상태로 개선을 진행하고 있습니다.
+      <a href="https://notionable.net/feedback">오류 신고</a>
+    </div>
+  </div>
   <div class="routine-content">
     @if (isLoading) { <p class="routine-status" role="status">워크스페이스 정보를 불러오는 중입니다.</p> }
     @else if (sessionLoadFailed) { <p class="routine-status" role="alert">워크스페이스 정보를 불러오지 못했습니다. 다시 시도해 주세요.</p> }

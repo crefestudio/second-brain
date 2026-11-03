@@ -63,6 +63,7 @@ service cloud.firestore {
           && request.resource.data.categories is list
           && request.resource.data.days is list
           && request.resource.data.time is string
+          && request.resource.data.time.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
           && request.resource.data.duration is number
           && request.resource.data.duration >= 5
           && request.resource.data.notify is bool

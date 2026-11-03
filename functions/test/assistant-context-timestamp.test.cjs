@@ -11,7 +11,7 @@ const end = source.indexOf('async function resolveTargetPageId', start);
 test('pending Scrapbook context retains a Firestore timestamp and can be read back', async () => {
     let saved;
     const reference = { id: 'pending', collection: () => reference, doc: () => reference,
-        orderBy: () => reference, limit: () => reference };
+        where: () => reference, orderBy: () => reference, limit: () => reference };
     const db = { collection: () => reference, runTransaction: async callback => {
         let reads = 0;
         await callback({ get: async () => ++reads === 1 ? { data: () => ({}) } : { empty: true },
