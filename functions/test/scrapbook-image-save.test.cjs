@@ -13,10 +13,11 @@ const image = { object: 'block', type: 'image', image: { type: 'external', exter
 const paragraph = text => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: text } }] } });
 
 // Execute the production block selection used by Notion page creation.
-function blocks(confirmed, entityBlocks) {
+function blocks(confirmed, entityBlocks, confirmedFlag = 'scrapbookConfirmed') {
     const context = {
-        entity: { type: 'image' }, aiResult: { scrapbookConfirmed: confirmed, content: 'Converted memo' },
+        entity: { type: 'image' }, aiResult: { [confirmedFlag]: confirmed, content: 'Converted memo' },
         buildContentBlocks: () => entityBlocks,
+        buildTextBlocks: content => [paragraph(content)],
         buildAiContentBlocks: content => [paragraph(content)]
     };
     return vm.runInNewContext(ts.transpile(source.slice(blocksStart, blocksEnd) + '\ncontentBlocks;'), context);
@@ -35,6 +36,33 @@ test('confirmation preserves text-only notes and ordinary photo saves retain all
     assert.equal(blocks(false, original), original);
 });
 
+test('file attachments survive every confirmation and note conversion', () => {
+    const file = { object: 'block', type: 'file', file: { type: 'external', external: { url: 'https://example.test/report.pdf' }, name: 'report.pdf' } };
+    for (const flag of ['scrapbookConfirmed', 'plannerConfirmed', 'memoConfirmed', 'noteCapture']) {
+        assert.equal(blocks(true, [file], flag)[0], file);
+    }
+});
+
+test('Memo confirmation uses the same content builder and image preservation as Scrapbook', () => {
+    for (const entityBlocks of [[], [image, paragraph('Original OCR')]]) {
+        assert.equal(JSON.stringify(blocks(true, entityBlocks, 'memoConfirmed')),
+            JSON.stringify(blocks(true, entityBlocks, 'scrapbookConfirmed')));
+    }
+});
+
+test('Memo preserves normal AI memo create/correct data and never invokes forced note conversion', () => {
+    for (const action of ['create', 'correct']) {
+        const enrichedResult = { action, db: 'memo', title: 'Idea', content: 'Body', tags: ['tag'], type: 'idea', response: 'Original response' };
+        const expected = JSON.stringify(enrichedResult);
+        vm.runInNewContext(ts.transpile(source.slice(pendingStart, pendingEnd)), {
+            enrichedResult, captureTemplate: 'lifeUpMemo', workspaceTemplate: () => 'lifeUpMemo', userDoc: { data: () => ({}) },
+            TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS,
+            toNoteCapture: () => { throw new Error('Memo must not force note conversion'); }
+        });
+        assert.equal(JSON.stringify(enrichedResult), expected);
+    }
+});
+
 function classify(db, template = 'lifeUpScrapbook') {
     const enrichedResult = { action: 'create', db, response: 'Original response' };
     vm.runInNewContext(ts.transpile(source.slice(pendingStart, pendingEnd)), {
@@ -48,11 +76,11 @@ test('Notion write boundary rejects every unsupported destination for limited te
     const start = source.indexOf("        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'reference' && aiResult.db");
     const end = source.indexOf('        const notion = guardedNotionClient', start);
     const code = ts.transpile(source.slice(start, end));
-    for (const template of ['lifeUp', 'lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite']) {
-        for (const db of ['task', 'reference', 'memo', 'project', 'contact', 'book']) {
+    for (const template of ['lifeUp', 'lifeUpScrapbook', 'lifeupPlanner', 'lifeupPlannerLite', 'lifeUpMemo']) {
+        for (const db of ['task', 'reference', 'memo', 'project', 'contact', 'book', 'note']) {
             const run = () => vm.runInNewContext(code, { workspaceTemplate: () => template,
                 userDoc: { data: () => ({}) }, aiResult: { db }, TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS });
-            const allowed = template === 'lifeUp' || db === (template === 'lifeUpScrapbook' ? 'reference' : 'task');
+            const allowed = template === 'lifeUp' || db === (template === 'lifeUpScrapbook' ? 'reference' : template === 'lifeUpMemo' ? 'memo' : 'task');
             if (allowed) assert.doesNotThrow(run); else assert.throws(run, /_ONLY/);
         }
     }
@@ -111,6 +139,27 @@ async function confirm(templateId, result) {
     await vm.runInNewContext(ts.transpile('(async () => {' + source.slice(start, end) + '})()'), context);
     return { saves, replies, updates };
 }
+
+test('Memo saves memos directly and confirms other classifications into memo only', async () => {
+    assert.equal(classify('memo', 'lifeUpMemo').action, 'create');
+    for (const db of ['task', 'reference', 'contact', 'note']) {
+        const pending = classify(db, 'lifeUpMemo');
+        assert.equal(pending.action, 'memoPending');
+        assert.equal(pending.memoPending, true);
+        assert.match(pending.response, /메모로 저장할까요/);
+        assert.match(pending.response, /upgrade\/lifeup-memo\?/);
+        const { saves, updates } = await confirm('lifeUpMemo', { ...pending, content: 'Details' });
+        assert.equal(saves.length, 1);
+        assert.equal(saves[0].db, 'memo');
+        assert.equal(saves[0].memoConfirmed, true);
+        assert.equal(saves[0].memoPending, false);
+        assert.match(saves[0].content, /Details/);
+        assert.equal(updates[0].pageId, 'page');
+    }
+    for (const result of [{ memoPending: false }, { plannerPending: true }, { scrapbookPending: true }]) {
+        assert.equal((await confirm('lifeUpMemo', result)).saves.length, 0);
+    }
+});
 
 test('Planner confirmation writes task and consumes pending status', async () => {
     const { saves, updates } = await confirm('lifeupPlanner', { db: 'reference', plannerPending: true, title: 'Title', content: 'Details' });

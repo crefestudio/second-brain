@@ -48,6 +48,7 @@ export class LifeupDownloadComponent implements OnInit {
     readonly templateId: TemplateId;
     readonly productName: string;
     readonly isScrapbook: boolean;
+    get isMemo(): boolean { return this.templateId === 'lifeUpMemo'; }
     get isPlanner(): boolean { return this.templateId === 'lifeupPlanner'; }
     get isPlannerLite(): boolean { return this.templateId === 'lifeupPlannerLite'; }
     get isSecondBrainOS(): boolean { return TEMPLATE_PRODUCTS[this.templateId].kakaoCaptureScope === 'note'; }
@@ -143,7 +144,7 @@ export class LifeupDownloadComponent implements OnInit {
     }
 
     private async initializeUpgradeEvent(): Promise<void> {
-        if ((!this.isScrapbook && !this.isPlanner && !this.isPlannerLite && !this.isSecondBrainOS) || !this.isPurchaser) return;
+        if ((!this.isScrapbook && !this.isPlanner && !this.isPlannerLite && !this.isSecondBrainOS && !this.isMemo) || !this.isPurchaser) return;
         try {
             await this.upgradeEvent.initialize(this.authService.getUserId(), this.templateId);
         } catch {

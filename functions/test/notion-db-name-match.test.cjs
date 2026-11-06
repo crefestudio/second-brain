@@ -14,6 +14,14 @@ function resolver(titles) {
     vm.runInContext(ts.transpile(`class Resolver { ${method} } globalThis.Resolver = Resolver;`, { target: ts.ScriptTarget.ES2020 }), context);
     return context.Resolver;
 }
+test('Memo resolves every required DB by Memo suffix and rejects other product databases', async () => {
+    for (const name of ['lifeup info', 'apps', 'memo', 'memo tag', 'memo type']) {
+        const r = resolver([`${name} / 15 / LifeUp`, `${name} / 15 / Memo`]);
+        assert.equal(await r.getDatabaseIdByDatabaseName('token', name, undefined, 'lifeUpMemo'), '1');
+        await assert.rejects(resolver([`${name} / 15 / LifeUp`]).getDatabaseIdByDatabaseName('token', name, undefined, 'lifeUpMemo'));
+    }
+});
+
 test('PlannerLite catalog suffix selects its database without selecting Planner', async () => {
     const r = resolver(['project / 15 / Planner', 'project / 15 / PlannerLite']);
     assert.equal(await r.getDatabaseIdByDatabaseName('token', 'project', undefined, 'lifeupPlannerLite'), '1');

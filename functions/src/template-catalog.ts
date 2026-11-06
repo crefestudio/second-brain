@@ -12,7 +12,7 @@ export interface TemplateProduct {
     // Actual checkout destinations used only after the tracking redirect.
     checkoutUrls: { normal: string; reward: string; rewardSale: string };
     agents: Record<AutomationId, boolean>;
-    kakaoCaptureScope: 'all' | 'reference' | 'task' | 'note';
+    kakaoCaptureScope: 'all' | 'reference' | 'task' | 'note' | 'memo';
     // null keeps LifeUp's legacy/version-based database naming rules.
     notionDbSuffix: string | null;
     databaseNames: string[] | null;
@@ -20,6 +20,18 @@ export interface TemplateProduct {
     welcome: { displayName: string; usageName: string; introductionVideoUrl: string | null; reviewEvent: 'lifeup-review' | 'review' | null };
 }
 export const TEMPLATE_PRODUCTS = {
+    lifeUpMemo: {
+        order: 6, upgradeKind: 'single', admin: { purchaseKey: 'memo', customerGrade: 'memo', welcomeTemplateId: 'memo-purchaser-welcome' },
+        nameEnFull: 'LifeUp Memo', nameEnShort: 'LifeUp Memo', nameKoFull: '라이프업 메모', nameKoShort: '라이프업 메모',
+        slug: 'lifeup-memo', sku: 'lifeUpMemo', displayPrice: 0, imwebProductNo: 16,
+        releaseUrl: 'https://internal-kingfisher-bbf.notion.site/L-I-F-E-U-P-400eea79fd8c80d78937e06621c66b09?source=copy_link',
+        pdfFileName: 'LifeUp1.5-Memo.pdf',
+        salesUrls: { normal: 'https://app.notionable.net/store/lifeup-memo', reward: 'https://app.notionable.net/store/lifeup-reward', rewardSale: 'https://app.notionable.net/store/lifeup-reward-sale' },
+        checkoutUrls: { normal: 'https://notionable.net/store/?idx=16', reward: 'https://notionable.net/store/?idx=9', rewardSale: 'https://notionable.net/store/?idx=10' },
+        agents: { 'kakao-capture': true, routine: false, secondbrain: false },
+        kakaoCaptureScope: 'memo', notionDbSuffix: 'Memo', databaseNames: ['lifeup info', 'apps', 'memo', 'memo tag', 'memo type'],
+        welcome: { displayName: '라이프업 메모', usageName: '메모', introductionVideoUrl: null, reviewEvent: null }
+    },
     lifeUpSecondBrainOSLite: {
         order: 5, upgradeKind: 'single', admin: { purchaseKey: 'secondBrainLite', customerGrade: 'secondBrainLite', welcomeTemplateId: 'secondbrain-lite-purchaser-welcome' },
         nameEnFull: 'LifeUp Second Brain OS Lite', nameEnShort: 'LifeUp Second Brain OS Lite',

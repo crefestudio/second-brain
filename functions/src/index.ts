@@ -1,4 +1,5 @@
 import { KAKAO_CONNECTION_REQUIRED, kakaoConnectionErrorMessage } from './kakao-connection-feedback';
+import { receiveKakaoAttachment, buildFileBlocks, kakaoAttachmentName } from './kakao-attachment';
 import { createNotionWebhookRouting, deferredWebhookStatus, webhookRoutingKeys } from './notion-webhook-routing';
 import { imwebPurchasedItems } from './imweb-order-items';
 import { giftApplicationError } from './lifeup-gift';
@@ -5973,6 +5974,9 @@ class NotionService {
         if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'note' && aiResult.db !== 'note') {
             throw new Error('SECOND_BRAIN_NOTE_ONLY');
         }
+        if (TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].kakaoCaptureScope === 'memo' && aiResult.db !== 'memo') {
+            throw new Error('MEMO_ONLY');
+        }
         const notion = guardedNotionClient(accessToken, async () => {
             await guard();
             await assertNotionConnection(userId, accessToken, userDoc.data()?.notionConnectionId);
@@ -5983,14 +5987,14 @@ class NotionService {
 
         // entity있으면 entity만, 컨텐츠까지 넣으면 중복됨
         const entityBlocks = this.buildContentBlocks(entity);
-        // Confirmation converts the destination, but must retain the original photo.
+        // Confirmation converts the destination, but must retain original attachments.
         // The converted text already includes OCR/contact details; keep image blocks
         // alongside it without duplicating the entity's text blocks.
         const confirmedContentBlocks = aiResult.plannerConfirmed || aiResult.noteCapture
             ? this.buildTextBlocks(aiResult.content)
             : this.buildAiContentBlocks(aiResult.content);
-        const contentBlocks = aiResult.scrapbookConfirmed || aiResult.plannerConfirmed || aiResult.noteCapture
-            ? [...entityBlocks.filter(block => block.type === 'image'), ...confirmedContentBlocks]
+        const contentBlocks = aiResult.scrapbookConfirmed || aiResult.plannerConfirmed || aiResult.memoConfirmed || aiResult.noteCapture
+            ? [...entityBlocks.filter(block => block.type === 'image' || block.type === 'file'), ...confirmedContentBlocks]
             : entityBlocks.length > 0
             ? entityBlocks
             : this.buildAiContentBlocks(aiResult.content);
@@ -6062,7 +6066,8 @@ class NotionService {
         let properties: any;
         let cover: any;
         if (((aiResult.scrapbookConfirmed && aiResult.scrapbookSourceDb === 'contact') ||
-            (aiResult.plannerConfirmed && aiResult.plannerSourceDb === 'contact')) && entity?.imageUrl) {
+            (aiResult.plannerConfirmed && aiResult.plannerSourceDb === 'contact') ||
+            (aiResult.memoConfirmed && aiResult.memoSourceDb === 'contact')) && entity?.imageUrl) {
             cover = { type: 'external', external: { url: entity.imageUrl } };
         }
         const normalizePropertyValue = (value?: string) => {
@@ -6444,6 +6449,8 @@ class NotionService {
         }
 
         switch (entity.type) {
+            case "file":
+                return buildFileBlocks(entity);
             case "image":
                 return this.buildImageBlocks(entity);
             case "youtube":
@@ -12391,11 +12398,12 @@ async function processKakaoAgent(
         let t = Date.now();
 
         const captureTemplate = workspaceTemplate(userDoc.data() || {});
-        if (['reference', 'task'].includes(TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope) && userMessage.trim() === '저장') {
+        if (['reference', 'task', 'memo'].includes(TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope) && userMessage.trim() === '저장') {
             const isPlanner = TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'task';
-            const destinationLabel = isPlanner ? '할 일' : '스크랩북';
+            const isMemo = TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'memo';
+            const destinationLabel = isPlanner ? '할 일' : isMemo ? '메모' : '스크랩북';
             const pending = await getLastAssistantContext(userId);
-            if (!pending || !(isPlanner ? pending.result?.plannerPending : pending.result?.scrapbookPending)) {
+            if (!pending || !(isPlanner ? pending.result?.plannerPending : isMemo ? pending.result?.memoPending : pending.result?.scrapbookPending)) {
                 await reply('저장할 대기 내용이 없습니다. 저장할 내용을 다시 보내 주세요.', callbackUrl);
                 return;
             }
@@ -12419,17 +12427,18 @@ async function processKakaoAgent(
                     return true;
                 })
                 .join('\n');
-            const converted = { ...original, action: 'create', db: isPlanner ? 'task' : 'reference', type: undefined,
+            const converted = { ...original, action: 'create', db: isPlanner ? 'task' : isMemo ? 'memo' : 'reference', type: undefined,
                 title: fallbackCaptureTitle(original.title || '새 항목', original.db),
                 content,
                 ...(isPlanner
                     ? { plannerConfirmed: true, plannerSourceDb: original.db, plannerPending: false, kinds: '수집함' }
+                    : isMemo ? { memoConfirmed: true, memoSourceDb: original.db, memoPending: false }
                     : { scrapbookConfirmed: true, scrapbookSourceDb: original.db, scrapbookPending: false }),
                 contextId: pending.contextId, response: `${destinationLabel}에 저장했습니다.` };
             try {
                 await guard();
                 const pageId = await NotionService.createDbItemFromAiResult(userId, converted, contact, guard);
-                if (!pageId) throw new Error(isPlanner ? 'PLANNER_SAVE_FAILED' : 'SCRAPBOOK_SAVE_FAILED');
+                if (!pageId) throw new Error(isPlanner ? 'PLANNER_SAVE_FAILED' : isMemo ? 'MEMO_SAVE_FAILED' : 'SCRAPBOOK_SAVE_FAILED');
                 converted.response = buildAssistantResponse(converted, undefined, pageUrls, pageId);
                 await db.collection('users').doc(userId).collection('assistantContext').doc(pending.contextId).update({
                     pageId, result: removeUndefined(converted)
@@ -12448,7 +12457,7 @@ async function processKakaoAgent(
             userMessage
         });
 
-        entity = await processAssistantEntity(userMessage, userId);
+        entity = await processAssistantEntity(userMessage, userId, receivedAt);
         const aiEntityMessage = buildAiEntityMessage(entity);
 
         console.log("[KAKAO] processAssistantEntity RESULT", {
@@ -12481,7 +12490,7 @@ async function processKakaoAgent(
             hasPreviousContext: !!previousContext
         });
 
-        const dateResult = await processDateExpression(
+        const dateResult = entity.type === 'file' ? { status: 'none' as const, data: undefined, question: undefined } : await processDateExpression(
             userMessage,
             previousContext
         );
@@ -12521,7 +12530,10 @@ async function processKakaoAgent(
                 dateResult
             });
 
-            const result = await requestKakaoAssistantActionFromAI(
+            const result = entity.type === 'file' ? {
+                action: 'create', db: 'reference', title: entity.originalName,
+                content: `첨부 파일: ${entity.originalName}`, response: '파일을 저장했습니다.'
+            } : await requestKakaoAssistantActionFromAI(
                 userId,
                 userMessage,
                 aiEntityMessage,
@@ -12564,6 +12576,15 @@ async function processKakaoAgent(
             enrichedResult.plannerPending = true;
             enrichedResult.action = 'plannerPending';
             enrichedResult.response = `분류 결과: ${classifiedAs}\n플래너는 할 일 저장만 지원하므로 아직 저장하지 않았습니다.\n할 일로 저장할까요? 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/${TEMPLATE_PRODUCTS[workspaceTemplate(userDoc.data() || {})].slug}?from=${workspaceTemplate(userDoc.data() || {})}_kakao`;
+        }
+
+        if (TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'memo' &&
+            ['create', 'correct'].includes(enrichedResult.action) && enrichedResult.db !== 'memo') {
+            const sourceLabel: Record<string, string> = { task: '할 일', reference: '참고자료', project: '프로젝트', contact: '연락처', book: '도서', note: '노트' };
+            const classifiedAs = sourceLabel[enrichedResult.db] || '메모 외 항목';
+            enrichedResult.memoPending = true;
+            enrichedResult.action = 'memoPending';
+            enrichedResult.response = `분류 결과: ${classifiedAs}\n메모 상품은 메모 저장만 지원하므로 아직 저장하지 않았습니다.\n메모로 저장할까요? 저장하려면 ‘저장’을 입력해 주세요.\n\n할일·메모·프로젝트까지 한곳에서 관리하고 싶으시다면?\n👉 라이프업 보상 업그레이드\nhttps://app.notionable.net/upgrade/${TEMPLATE_PRODUCTS[captureTemplate].slug}?from=${captureTemplate}_kakao`;
         }
 
         if (TEMPLATE_PRODUCTS[captureTemplate].kakaoCaptureScope === 'note' &&
@@ -13442,11 +13463,13 @@ export const trimKorean = (text = '', max = 50) =>
         ? [...text].slice(0, max).join('') + '...'
         : text;
 
-export async function processAssistantEntity(userMessage: string, uid: string): Promise<AssistantEntity> {
+export async function processAssistantEntity(userMessage: string, uid: string, receivedAt = Date.now()): Promise<AssistantEntity> {
 
     // 이미지 
     if (isKakaoImageUrl(userMessage)) {
-        return processImageEntity(userMessage, uid);
+        const attachment = await receiveKakaoAttachment(userMessage, uid, getStorage().bucket(), fetch, receivedAt);
+        if (attachment.type === 'file') return attachment;
+        return processImageEntity(userMessage, uid, attachment);
     }
 
     // url - 유튜브
@@ -13559,18 +13582,24 @@ async function processTextEntity(userMessage: string): Promise<TextEntity> {
 // }
 
 function isKakaoImageUrl(url: string) {
-    return /^https?:\/\/.*\.(jpg|jpeg|png|webp)/i.test(url)
-        || url.includes('talk.kakaocdn.net');
+    try {
+        const parsed = new URL(url);
+        return ['http:', 'https:'].includes(parsed.protocol) &&
+            (/\.(jpg|jpeg|png|webp|gif|pdf)$/i.test(parsed.pathname) || parsed.hostname === 'talk.kakaocdn.net');
+    } catch { return false; }
 }
 
 async function processImageEntity(
     userMessage: string,
-    uid: string
+    uid: string,
+    downloaded?: { buffer: Buffer; contentType: string; originalName: string }
 ): Promise<ImageEntity | ContactEntity | BookEntity> {
     console.log("[PREPARE] IMAGE start", { uid, userMessage });
 
     try {
-        const result = await processKakaoImage(userMessage, uid);
+        const result = downloaded
+            ? { ...downloaded, ...await uploadTempImage(downloaded.buffer, uid, downloaded.contentType, downloaded.originalName) }
+            : await processKakaoImage(userMessage, uid);
 
         console.log("[PREPARE] processKakaoImage success", {
             fileName: result.fileName,
@@ -14649,6 +14678,8 @@ function buildAiEntityMessage(entity: AssistantEntity): string {
     if (entity.type === "text") {
         return "";
     }
+
+    if (entity.type === "file") return `#첨부 파일\n파일명: ${entity.originalName}\n형식: ${entity.contentType}`;
 
     if (entity.type === "image") {
         return `#이미지
@@ -16658,7 +16689,8 @@ export async function downloadImage(url: string) {
 export async function uploadTempImage(
     buffer: Buffer,
     uid: string,
-    contentType = "image/jpeg"
+    contentType = "image/jpeg",
+    displayName = kakaoAttachmentName(contentType)
 ) {
     console.log("[UPLOAD] start", {
         uid,
@@ -16672,14 +16704,7 @@ export async function uploadTempImage(
         name: bucket.name
     });
 
-    const ext =
-        contentType.includes("png") ? "png" :
-            contentType.includes("webp") ? "webp" :
-                contentType.includes("gif") ? "gif" :
-                    contentType.includes("jpeg") ? "jpg" :
-                        "jpg";
-
-    const fileName = `tmp/${uid}/${Date.now()}.${ext}`;
+    const fileName = `tmp/${uid}/${randomUUID()}/${displayName}`;
     const token = randomUUID();
 
     console.log("[UPLOAD] fileName", { fileName });
@@ -16690,6 +16715,7 @@ export async function uploadTempImage(
         resumable: false,
         metadata: {
             contentType,
+            contentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(displayName)}`,
             cacheControl: "private, max-age=0, no-cache",
             metadata: {
                 firebaseStorageDownloadTokens: token

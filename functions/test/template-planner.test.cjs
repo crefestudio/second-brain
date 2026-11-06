@@ -155,7 +155,8 @@ test('purchase lookup accepts planner and scrapbook without applying LifeUp memb
     const start = source.indexOf('function selectBestPurchaserForTemplate(');
     const selector = tree.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'selectBestPurchaserForTemplate').getText(tree);
     for (const templateId of catalog.TEMPLATE_IDS.filter(id => id !== 'lifeUp')) {
-        const context = { ...catalog, exports: {}, onRequest: fn => fn, withCors: fn => fn,
+        const context = { ...catalog, exports: {}, onRequest: (_options, fn) => fn, withCors: fn => fn,
+            IMWEB_API_KEY: {}, IMWEB_API_SECRET: {}, IMWEB_PRODUCT_SKU_MAP: {},
             findPurchaserRecords: async id => id === templateId ? [{ id: 'purchase', data: { templateId, email: 'buyer@example.test' } }] : [],
             isLifeupUpgrade: () => false, purchaserTimestamp: () => 1,
             selectBestPurchaser: () => { throw new Error('LifeUp tier selection must not run'); }, console };

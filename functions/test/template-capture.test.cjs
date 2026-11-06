@@ -25,6 +25,18 @@ test('legacy labels are not duplicated and unsupported sources are unchanged', (
     assert.equal(fallbackCaptureTitle('note title', 'note'), 'note title');
 });
 
+test('Memo is free with only memo capture and its five required databases', () => {
+    const p = TEMPLATE_PRODUCTS.lifeUpMemo;
+    assert.equal(p.displayPrice, 0);
+    assert.equal(p.checkoutUrls.normal, 'https://notionable.net/store/?idx=16');
+    assert.equal(p.kakaoCaptureScope, 'memo');
+    assert.equal(p.welcome.introductionVideoUrl, null);
+    assert.deepEqual(p.databaseNames, ['lifeup info', 'apps', 'memo', 'memo tag', 'memo type']);
+    assert.equal(canUseAgent('lifeUpMemo', 'routine'), false);
+    assert.equal(canUseAgent('lifeUpMemo', 'secondbrain'), false);
+    assert.equal(canUseAgent('lifeUpMemo', 'kakao-capture'), true);
+});
+
 test('Second Brain OS has its own sales destination and appropriate permissions', () => {
     const p = TEMPLATE_PRODUCTS.lifeUpSecondBrainOS;
     assert.equal(p.checkoutUrls.normal, 'https://notionable.net/store/?idx=14');

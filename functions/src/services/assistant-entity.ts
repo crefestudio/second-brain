@@ -1,6 +1,7 @@
 export type AssistantEntityType =
     | "text"
     | "image"
+    | "file"
 
     | "youtube"
     | "product"
@@ -33,6 +34,15 @@ export interface ImageEntity extends BaseEntity {
     hint?: string;
     fileName?: string;
     entityType?: AssistantEntityType
+}
+
+export interface FileEntity extends BaseEntity {
+    type: "file";
+    fileUrl: string;
+    fileName: string;
+    originalName: string;
+    contentType: string;
+    size: number;
 }
 
 export interface YoutubeEntity extends BaseEntity {
@@ -136,6 +146,7 @@ export interface ContactEntity extends BaseEntity {
 export type AssistantEntity =
     | TextEntity
     | ImageEntity
+    | FileEntity
     | YoutubeEntity
     | ProductEntity
     | BookEntity
