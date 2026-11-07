@@ -1,3 +1,4 @@
+import { createRecurringSchedules } from './recurring-schedules';
 import { KAKAO_CONNECTION_REQUIRED, kakaoConnectionErrorMessage } from './kakao-connection-feedback';
 import { receiveKakaoAttachment, buildFileBlocks, kakaoAttachmentName } from './kakao-attachment';
 import { createNotionWebhookRouting, deferredWebhookStatus, webhookRoutingKeys } from './notion-webhook-routing';
@@ -18226,3 +18227,57 @@ export const deleteLifeupTemplateInfo = onRequest(
         }
     })
 );
+
+
+// Recurring task schedules are intentionally independent of RoutineService.
+const recurringSchedules = createRecurringSchedules({ db,
+    resolveDatabase: (token, userId) => NotionService.resolveDatabaseId(token, userId, 'task'),
+    resolveSource: (token, databaseId) => NotionService.resolveDataSourceId(token, databaseId),
+    assertConnection: assertNotionConnection,
+    allowed: workspace => ['lifeUp', 'lifeupPlanner'].includes(workspaceTemplate(workspace))
+});
+export const manageRecurringSchedules = onRequest({ timeoutSeconds: 120 }, withCors(async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ error: 'METHOD_NOT_ALLOWED' }); return; }
+    try {
+        const identity = await getCareIdentity(req);
+        const uid = req.body?.userId;
+        if (typeof uid !== 'string' || !/^[^/]{1,150}$/.test(uid)) { res.status(400).json({ error: "워크스페이스를 확인해주세요." }); return; }
+        const [user, account] = await Promise.all([db.collection('users').doc(uid).get(), db.collection('appAccounts').doc(identity.uid).get()]);
+        if (!user.exists || user.data()?.firebaseUid !== identity.uid || account.data()?.userId !== uid || user.data()?.deletionStatus === 'archived') {
+            res.status(403).json({ error: "워크스페이스 접근 권한이 없습니다." }); return;
+        }
+        if (!['lifeUp', 'lifeupPlanner'].includes(workspaceTemplate(user.data() || {}))) { res.status(403).json({ error: "라이프업 또는 플래너에서 사용할 수 있습니다." }); return; }
+        const action = req.body?.action;
+        if (action === 'save') {
+            if (req.body.schedule?.id && !/^[a-zA-Z0-9_-]{1,100}$/.test(req.body.schedule.id)) throw new Error("일정 ID를 확인해주세요.");
+            await recurringSchedules.save(uid, req.body.schedule);
+        } else if (action === 'delete') {
+            if (typeof req.body.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(req.body.id)) throw new Error("일정 ID를 확인해주세요.");
+            await recurringSchedules.remove(uid, req.body.id, req.body.version);
+        } else if (action === 'enable') {
+            if (typeof req.body.enabled !== 'boolean') throw new Error("활성 상태를 확인해주세요.");
+            await recurringSchedules.enable(uid, req.body.enabled);
+        } else if (action === 'run') await recurringSchedules.processUser(uid);
+        else if (action !== 'list') { res.status(400).json({ error: "지원하지 않는 요청입니다." }); return; }
+        res.json(await recurringSchedules.state(uid));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "처리하지 못했습니다.";
+        logger.error('[RecurringSchedules] request failed', { error: message });
+        res.status(message === 'LOGIN_REQUIRED' ? 401 : 400).json({ error: message });
+    }
+}));
+export const createRecurringTasks = onSchedule({ schedule: '*/15 * * * *', timeZone: 'Asia/Seoul', region: 'asia-northeast3', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1 }, async () => {
+    let cursor: admin.firestore.QueryDocumentSnapshot | undefined;
+    do {
+        let query = db.collection('users').orderBy(admin.firestore.FieldPath.documentId()).limit(100);
+        if (cursor) query = query.startAfter(cursor);
+        const page = await query.get();
+        for (let i = 0; i < page.docs.length; i += 5) {
+            await Promise.all(page.docs.slice(i, i + 5).map(async user => {
+                try { await recurringSchedules.processUser(user.id); }
+                catch (error) { logger.error('[RecurringSchedules] user failed', { userId: user.id, error: String(error) }); }
+            }));
+        }
+        cursor = page.size === 100 ? page.docs[page.docs.length - 1] : undefined;
+    } while (cursor);
+});

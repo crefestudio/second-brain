@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const ts = require('typescript');
 const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../src/index.ts'), 'utf8');
+const source = fs.readFileSync(require('node:path').join(__dirname, '../src/index.ts'), 'utf8').replace(/\r\n/g, '\n');
 const section = source.slice(source.indexOf('export const getScrapbookUpgradeEvent ='), source.indexOf('// #template\n// #lifeup template', source.indexOf('export const getScrapbookUpgradeEvent =')));
 function setup(workspace, authenticated = true) {
   let writes = 0;

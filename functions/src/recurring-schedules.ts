@@ -1,0 +1,137 @@
+import { firestore } from 'firebase-admin';
+import { Client } from '@notionhq/client';
+import { randomUUID } from 'crypto';
+import { RecurringSchedule, isScheduleDue, koreaDate, occurrenceKey, scheduleConflict, validateSchedule } from './recurring-schedule-model';
+
+const KEY = '자동생성 키';
+type Firestore = firestore.Firestore;
+const FieldValue = firestore.FieldValue;
+type Dependencies = {
+    db: Firestore;
+    resolveDatabase: (token: string, userId: string) => Promise<string>;
+    resolveSource: (token: string, databaseId: string) => Promise<string>;
+    assertConnection: (userId: string, token: string, connectionId: any) => Promise<unknown>;
+    allowed: (workspace: any) => boolean;
+};
+export function createRecurringSchedules(deps: Dependencies) {
+    const { db } = deps;
+    const root = (uid: string) => db.collection('users').doc(uid).collection('integrations').doc('recurringSchedules');
+    async function connection(uid: string, setup = false) {
+        const workspace = (await db.collection('users').doc(uid).get()).data();
+        if (!workspace || workspace.deletionStatus === 'archived' || !deps.allowed(workspace) || !workspace.notionAccessToken) throw new Error("지원하는 템플릿의 노션 연결이 필요합니다.");
+        const token = workspace.notionAccessToken;
+        await deps.assertConnection(uid, token, workspace.notionConnectionId);
+        const notion = new Client({ auth: token, timeoutMs: 20000, retry: false });
+        const databaseId = await deps.resolveDatabase(token, uid);
+        const sourceId = await deps.resolveSource(token, databaseId);
+        const schema: any = await notion.dataSources.retrieve({ data_source_id: sourceId });
+        for (const [name, type] of [['할일','title'],['날짜','date'],['유형','status'],['분류','select']]) {
+            if (schema.properties?.[name]?.type !== type) throw new Error("할일 DB 속성을 확인해주세요: " + name);
+        }
+        if (!schema.properties[KEY] && setup) {
+            await deps.assertConnection(uid, token, workspace.notionConnectionId);
+            await notion.dataSources.update({ data_source_id: sourceId, properties: { [KEY]: { rich_text: {} } } });
+        } else if (schema.properties[KEY]?.type !== 'rich_text') throw new Error("자동생성 키 텍스트 속성이 필요합니다. 연결 준비를 다시 실행해주세요.");
+        return { notion, sourceId, token, connectionId: workspace.notionConnectionId };
+    }
+    async function state(uid: string) {
+        const [config, schedules, receipts] = await Promise.all([root(uid).get(), root(uid).collection('schedules').get(), root(uid).collection('occurrences').orderBy('updatedAt','desc').limit(30).get()]);
+        return { enabled: config.data()?.enabled === true, sourceId: config.data()?.sourceId || '',
+            schedules: schedules.docs.map(d => ({ ...d.data(), id: d.id })),
+            receipts: receipts.docs.map(d => ({ id: d.id, status: d.data().status, date: d.data().date, name: d.data().name, pageId: d.data().pageId || '' })) };
+    }
+    async function save(uid: string, value: any) {
+        const error = validateSchedule(value);
+        if (error) throw new Error(error);
+        const ref = value.id ? root(uid).collection('schedules').doc(value.id) : root(uid).collection('schedules').doc();
+        await db.runTransaction(async tx => {
+            const [all, config] = await Promise.all([tx.get(root(uid).collection('schedules')), tx.get(root(uid))]);
+            const old = all.docs.find(d => d.id === ref.id)?.data();
+            if (value.id && !old) throw new Error("일정을 찾을 수 없습니다. 새로고침해주세요.");
+            if (old && value.version !== old.version) throw new Error("다른 화면에서 수정됐습니다. 새로고침 후 다시 시도해주세요.");
+            if (!old && all.size >= 200) throw new Error("반복 일정은 최대 200개까지 등록할 수 있습니다.");
+            const schedule: RecurringSchedule = { id: ref.id, name: value.name.trim(), icon: value.icon, category: value.category,
+                kind: value.kind, month: value.kind === 'monthly' ? 1 : value.month, day: value.day,
+                time: value.time, duration: value.duration, enabled: value.enabled, calendar: value.calendar, leapMonth: value.calendar === 'lunar' && value.leapMonth === true,
+                startDate: old?.startDate || koreaDate(), version: (old?.version || 0) + 1 };
+            const conflict = all.docs.find(d => scheduleConflict(schedule, { ...d.data(), id: d.id } as RecurringSchedule));
+            if (conflict) throw new Error("같은 반복 유형 안에서 일정이 겹칩니다: " + conflict.data().name);
+            tx.set(ref, { ...schedule, updatedAt: FieldValue.serverTimestamp() });
+            tx.set(root(uid), { revision: (config.data()?.revision || 0) + 1 }, { merge: true });
+        });
+    }
+    async function remove(uid: string, id: string, version: number) {
+        const ref = root(uid).collection('schedules').doc(id);
+        await db.runTransaction(async tx => {
+            const [row, config] = await Promise.all([tx.get(ref), tx.get(root(uid))]);
+            if (!row.exists || row.data()?.version !== version) throw new Error("일정이 변경됐습니다. 새로고침해주세요.");
+            tx.delete(ref);
+            tx.set(root(uid), { revision: (config.data()?.revision || 0) + 1 }, { merge: true });
+        });
+    }
+    async function enable(uid: string, enabled: boolean) {
+        if (!enabled) { await root(uid).set({ enabled: false }, { merge: true }); return; }
+        const c = await connection(uid, true);
+        await root(uid).set({ enabled: true, sourceId: c.sourceId, activatedDate: koreaDate(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+    async function processUser(uid: string) {
+        const config = (await root(uid).get()).data();
+        if (!config?.enabled) return;
+        const schedules = await root(uid).collection('schedules').get();
+        const today = koreaDate();
+        // First version only produces today's occurrences; no silent historical backfill.
+        const due = schedules.docs.map(d => ({ ...d.data(), id: d.id } as RecurringSchedule)).filter(s => isScheduleDue(s, today));
+        if (!due.length) return;
+        const c = await connection(uid);
+        if (c.sourceId !== config.sourceId) throw new Error("할일 DB 연결이 변경됐습니다. 연결 준비를 다시 실행해주세요.");
+        for (const schedule of due) {
+            const ref = root(uid).collection('occurrences').doc(occurrenceKey(schedule.id, today));
+            const token = randomUUID();
+            const claim = await db.runTransaction(async tx => {
+                const [receipt, current, settings] = await Promise.all([tx.get(ref), tx.get(root(uid).collection('schedules').doc(schedule.id)), tx.get(root(uid))]);
+                const previous = receipt.data();
+                if (!settings.data()?.enabled || settings.data()?.sourceId !== c.sourceId || current.data()?.version !== schedule.version || !current.data()?.enabled) return null;
+                if (previous?.status === 'created' || previous?.leaseUntil > Date.now()) return null;
+                tx.set(ref, { name: schedule.name, date: today, sourceId: c.sourceId, token, leaseUntil: Date.now() + 180000,
+                    status: previous?.attempted ? 'review' : 'checking', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                return { attempted: previous?.attempted === true, sourceId: previous?.sourceId };
+            });
+            if (!claim) continue;
+            try {
+                // A previous ambiguous POST is never automatically repeated, even if query visibility lags.
+                if (claim.sourceId && claim.sourceId !== c.sourceId) throw new Error("이전 생성 대상 DB 확인이 필요합니다.");
+                const found = await c.notion.dataSources.query({ data_source_id: c.sourceId, filter: { property: KEY, rich_text: { equals: ref.id } } });
+                let pageId = found.results[0]?.id;
+                if (!pageId && claim.attempted) {
+                    await ref.set({ status: 'review', leaseUntil: 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                    continue;
+                }
+                if (!pageId) {
+                    await deps.assertConnection(uid, c.token, c.connectionId);
+                    const proceed = await db.runTransaction(async tx => {
+                        const [receipt, row, settings] = await Promise.all([tx.get(ref), tx.get(root(uid).collection('schedules').doc(schedule.id)), tx.get(root(uid))]);
+                        if (receipt.data()?.token !== token || row.data()?.version !== schedule.version || !row.data()?.enabled || !settings.data()?.enabled) return false;
+                        tx.set(ref, { attempted: true, status: 'creating', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                        return true;
+                    });
+                    if (!proceed) { await ref.set({ leaseUntil: 0, status: 'cancelled', updatedAt: FieldValue.serverTimestamp() }, { merge: true }); continue; }
+                    const page = await c.notion.pages.create({ parent: { data_source_id: c.sourceId }, properties: {
+                        '할일': { title: [{ text: { content: ((schedule.calendar === 'lunar' ? '(음) ' : '') + schedule.icon + ' ' + schedule.name).trim() } }] },
+                        '유형': { status: { name: '할 것' } }, '분류': { select: { name: '일정' } },
+                        '날짜': { date: schedule.time ? {
+                            start: today + 'T' + schedule.time + ':00+09:00',
+                            end: new Date(Date.parse(today + 'T' + schedule.time + ':00+09:00') + schedule.duration * 60000).toISOString()
+                        } : { start: today } },
+                        [KEY]: { rich_text: [{ text: { content: ref.id } }] }
+                    }, template: { type: 'default' } });
+                    pageId = page.id;
+                }
+                await ref.set({ status: 'created', pageId, leaseUntil: 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+            } catch (error) {
+                await ref.set({ status: 'review', leaseUntil: 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                console.error('[RecurringSchedules] occurrence failed', { userId: uid, occurrence: ref.id, error: String(error) });
+            }
+        }
+    }
+    return { state, save, remove, enable, processUser };
+}

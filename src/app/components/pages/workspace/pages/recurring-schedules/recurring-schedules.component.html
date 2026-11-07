@@ -1,0 +1,101 @@
+<div class="routine-layout">
+  <div class="routine-header"><nav class="sub-menu" aria-label="반복 일정 메뉴">
+    <a class="sub-menu-item" routerLink="/workspace/recurring-schedules/dashboard" [class.active]="tab==='dashboard'">대시보드</a>
+    <a class="sub-menu-item" routerLink="/workspace/recurring-schedules/mine" [class.active]="tab==='mine'">내 반복 일정</a>
+    <a class="sub-menu-item" routerLink="/workspace/recurring-schedules/recommendations" [class.active]="tab==='recommendations'">추천 반복 일정</a>
+  </nav></div>
+  <div class="routine-notice"><div class="routine-notice-content">반복일정 서비스는 현재 <strong>🚧 개발 중</strong>입니다. 안전한 사용을 위해 조금만 기다려주세요.</div></div>
+  <div class="routine-content Habit-page">
+    @if(loading){<div class="page-loading"><div class="loading-spinner"></div><div class="loading-text" role="status">반복 일정을 불러오는 중입니다…</div></div>}
+    @if(error){<p class="routine-status" role="alert">{{error}} <button class="inline-action-btn" [disabled]="busy" (click)="perform('list')">다시 불러오기</button></p>}
+    @if(message){<p class="routine-dashboard-note" role="status">{{message}}</p>}
+    @if(!loading && (!userId || !connected || !allowed)){<div class="notion-connect-box"><div class="notion-connect-icon">🔗</div><h2>노션 연결이 필요합니다.</h2><p>라이프업 또는 플래너 워크스페이스를 연결해주세요.</p><a class="notion-connect-btn" routerLink="/workspace/connect">연결 설정</a></div>}
+    @if(tab==='dashboard'){
+      <div class="habit-dashboard">
+        <section class="routine-dashboard-intro"><h1>📅 반복 일정 관리</h1><div class="routine-dashboard-hero">
+          <div class="routine-dashboard-hero-title">중요한 날짜를 놓치지 않도록 준비하세요. 😊</div>
+          <p><strong>내 반복 일정</strong>은 매달 돌아오는 납부일, 일 년에 한 번 찾아오는 기념일을 관리하는 공간입니다. 날짜를 정하면 노션 할일에 일정으로 등록해드립니다.</p>
+          <details class="routine-dashboard-guide"><summary>반복 일정 관리 이용 가이드</summary><div class="routine-dashboard-guide-content">
+            <h2>반복 일정 관리 이용 가이드</h2><h3>1. 반복할 일을 골라보세요</h3><p>추천 목록에서 선택하거나 나만의 월간·년간 일정을 추가하세요. 추천 날짜는 실제 납부일·생일에 맞게 변경해주세요.</p><button class="inline-action-btn" routerLink="/workspace/recurring-schedules/recommendations">추천 반복 일정 보기</button>
+            <h3>2. 반복 날짜를 설정하세요</h3><p>월간은 31개, 년간은 선택한 연도의 날짜 셀로 관리합니다. 카드를 다른 셀로 드래그하거나 눌러 날짜와 시간을 수정하세요.</p>
+            <h3>3. 노션 자동 등록을 켜세요</h3><p>예정일 당일의 일정을 15분 간격으로 확인해 노션 할일 DB에 등록합니다. 습관 통계·뱃지·목표와는 연결하지 않습니다.</p>
+            <h3>날짜와 변경 사항 안내</h3><p>월간은 양력, 년간은 양력·음력을 지원합니다. 없는 날짜와 윤달은 건너뜁니다. 지난 일정은 소급 생성하지 않습니다. 설정을 수정·삭제해도 이미 생성된 노션 할일은 유지됩니다.</p>
+          </div></details>
+        </div></section>
+        <div class="dashboard-schedule-panels" [style.display]="'grid'" [style.grid-template-columns]="'repeat(auto-fit, minmax(min(100%, 320px), 1fr))'" [style.gap.px]="20">
+          <section class="routine-dashboard-action routine-dashboard-guide-content" [style.min-width.px]="0" aria-labelledby="month-list-title"><h2 id="month-list-title">이달의 반복 일정</h2><p>{{currentMonth}}월 · {{monthSchedules.length}}개</p>
+            @if(!monthSchedules.length){<p>이달에 예정된 반복 일정이 없습니다.</p>}
+            @else{<div class="routine-table-wrap"><table [style.min-width.px]="0"><thead><tr>@for(label of ['날짜','시간','일정 이름'];track label){<th [style.border-left]="'0'" [style.border-right]="'0'">{{label}}</th>}</tr></thead><tbody>@for(schedule of monthSchedules;track schedule.id+schedule.displayDate){<tr data-month-schedule [attr.data-date]="schedule.displayDate" [style.color]="schedule.displayDate<today?'#8b949e':null"><td [style.border-left]="'0'" [style.border-right]="'0'" [style.white-space]="'nowrap'">{{schedule.kind==='monthly'?'매월 '+schedule.day+'일':currentMonth+'월 '+(+schedule.displayDate.slice(8))+'일'}}</td><td [style.border-left]="'0'" [style.border-right]="'0'" [style.white-space]="'nowrap'">{{schedule.time||'—'}}</td><td [style.border-left]="'0'" [style.border-right]="'0'" [style.white-space]="'nowrap'">{{scheduleName(schedule)}}</td></tr>}</tbody></table></div>}
+          </section>
+          <section class="routine-dashboard-action routine-dashboard-guide-content" [style.min-width.px]="0" aria-labelledby="countdown-title"><h2 id="countdown-title">D-데이</h2><p>전체 년간 일정</p>
+            @if(!yearlyCountdowns.length){<p>등록된 년간 반복 일정이 없습니다.</p>}
+            @else{<div class="routine-table-wrap"><table [style.min-width.px]="0"><thead><tr><th [style.border-left]="'0'" [style.border-right]="'0'">D-데이</th><th [style.border-left]="'0'" [style.border-right]="'0'">반복 일정 이름</th><th [style.border-left]="'0'" [style.border-right]="'0'">다음 날짜</th></tr></thead><tbody>@for(item of yearlyCountdowns;track item.schedule.id){<tr data-countdown-row><td [style.border-left]="'0'" [style.border-right]="'0'" [style.white-space]="'nowrap'"><strong>{{item.days===null?'—':item.days===0?'D-Day':'D-'+item.days}}</strong></td><td [style.border-left]="'0'" [style.border-right]="'0'">{{scheduleName(item.schedule)}}@if(!item.schedule.enabled){<br><small>일시 정지</small>}</td><td [style.border-left]="'0'" [style.border-right]="'0'" [style.white-space]="'nowrap'">{{item.date||'지원 범위 내 날짜 없음'}}</td></tr>}</tbody></table></div>}
+            <p class="routine-dashboard-note">오늘은 D-Day, 지난 날짜는 다음 발생일 기준입니다. 일시 정지한 일정도 함께 표시합니다.</p>
+          </section>
+        </div>
+        <section class="routine-dashboard-action"><h2>노션 자동 등록</h2><p>{{state.enabled?'켜짐 · 오늘 일정부터 15분 간격으로 확인합니다.':'꺼짐 · 일정을 먼저 등록한 뒤 자동 등록을 켜주세요.'}}</p>
+          @if(state.enabled){<button class="inline-action-btn" [disabled]="!canEdit" (click)="perform('enable',{enabled:false},'자동 등록을 중지했습니다.')">자동 등록 끄기</button>}
+          @else{<button class="inline-action-btn" [disabled]="!canEdit || !connected" (click)="confirmEnable=true">연결 준비 및 자동 등록 켜기</button>}
+          <button class="inline-action-btn" [disabled]="!canEdit || !state.enabled" (click)="perform('run',{},'오늘 일정 확인을 마쳤습니다. 생성 결과를 확인해주세요.')">오늘 일정 지금 등록하기</button>
+          <p class="routine-dashboard-note">당일 일정만 생성하며 지난 날짜는 자동 보충하지 않습니다.</p>
+        </section>
+        @if(state.receipts.length){<section class="routine-dashboard-guide-content"><h2>최근 생성 결과</h2>@if(needsReview.length){<p>확인이 필요한 일정이 있습니다. 중복 방지를 위해 재생성을 보류했습니다. 노션 할일을 먼저 확인해주세요.</p>}
+          <div class="routine-table-wrap"><table><thead><tr><th>날짜</th><th>이름</th><th>상태</th></tr></thead><tbody>@for(receipt of state.receipts;track receipt.id){<tr><td>{{receipt.date}}</td><td>{{receipt.name}}</td><td>{{receipt.status==='created'?'등록 완료':receipt.status==='review'?'확인 필요':receipt.status==='cancelled'?'생성 취소':'처리 중'}} @if(receipt.pageId){<a class="inline-action-btn" [href]="'https://www.notion.so/'+receipt.pageId.replaceAll('-','')" target="_blank" rel="noopener">노션 열기</a>}</td></tr>}</tbody></table></div>
+        </section>}
+      </div>
+    }
+    @if(tab==='mine'||tab==='recommendations'){
+      <div class="page-header"><div class="page-header-content"><h1>{{tab==='mine'?'내 반복 일정':'추천 반복 일정'}}</h1><p>{{tab==='mine'?'카드를 드래그해 반복 날짜를 이동하거나 눌러서 수정하세요.':'필요한 반복 일정을 선택하고, 내 날짜에 맞게 등록하세요.'}}</p></div>@if(tab==='mine'){<div class="Habit-header-actions"><button class="add-Habit-btn" [disabled]="!canEdit" (click)="openEditor()">+ 반복 일정 추가</button></div>}</div>
+      <div class="category-row" role="group" aria-label="반복 유형"><button class="category-chip" [class.active]="kind==='monthly'" [attr.aria-pressed]="kind==='monthly'" (click)="setKind('monthly')">월간 반복 일정</button><button class="category-chip" [class.active]="kind==='yearly'" [attr.aria-pressed]="kind==='yearly'" (click)="setKind('yearly')">년간 반복 일정</button></div>
+      <p class="routine-dashboard-note">{{kind==='monthly'?'양력 기준 · 해당 날짜가 없는 달은 건너뜁니다.':'양력 달력에 음력 일정을 환산해 표시합니다. 괄호는 음력 월.일이며, 1·11·21·31일에 표시합니다. 음력 변환은 1900~2050년을 지원합니다.'}}</p>
+    }
+    @if(tab==='mine'){
+      @if(!state.enabled){<p class="routine-dashboard-note">자동 등록이 꺼져 있습니다. <a class="inline-action-btn" routerLink="/workspace/recurring-schedules/dashboard">대시보드에서 켜기</a></p>}
+      <p class="routine-dashboard-note">{{visibleSchedules.length}}개 반복 일정 · 드래그로 날짜 이동 · 눌러서 편집 · Esc로 취소</p>
+      @if(kind==='yearly'){<div class="category-row" aria-label="연도 이동"><button class="category-chip" [disabled]="selectedYear<=1900" (click)="changeYear(-1)">〈 이전 년</button><strong>{{selectedYear}}년</strong><button class="category-chip" [disabled]="selectedYear>=9998" (click)="changeYear(1)">내년 〉</button></div><nav class="category-row" aria-label="월 바로가기">@for(month of months;track month.month){<button class="category-chip" (click)="scrollMonth(month.month)">{{month.month}}월</button>}</nav>}
+      @if(kind==='yearly' && unplacedSchedules.length){<section class="routine-dashboard-action"><h3>{{selectedYear}}년에 표시할 날짜가 없는 일정</h3><p class="routine-dashboard-note">해당 날짜·윤달이 없거나 음력 변환 지원 범위 밖입니다. 일정을 다른 날짜로 미루지 않습니다.</p>@for(schedule of unplacedSchedules;track schedule.id){<button class="category-chip" [disabled]="!canEdit" (click)="openEditor(schedule)">{{scheduleName(schedule)}} · {{dateLabel(schedule)}} · 수정</button>}</section>}
+      <div class="date-board">
+        @if(kind==='monthly'){<div class="calendar-header" [style.grid-template-columns]="'1fr'"><div class="day-header">월간 반복 일정 · 매월 1~31일</div></div><ng-container *ngTemplateOutlet="dateTable;context:{days:days,month:1}"></ng-container>}
+        @else{@for(month of months;track month.month){<section [id]="'schedule-month-'+month.month" [style.margin-bottom.px]="24"><div class="calendar-header" [style.grid-template-columns]="'1fr'"><div class="day-header" [style.font-size.px]="20">{{selectedYear}}.{{month.month}}</div></div><ng-container *ngTemplateOutlet="dateTable;context:{days:month.days,month:month.month}"></ng-container></section>}}
+      </div>
+      <ng-template #dateTable let-cellDays="days" let-month="month"><div class="calendar">@if(kind==='yearly'){<div class="calendar-header" [style.grid-template-columns]="'repeat(7,minmax(0,1fr))'" [style.height.px]="28">@for(weekday of ['일','월','화','수','목','금','토'];track $index){<div class="day-header">{{weekday}}</div>}</div>}
+        @for(row of dateRowsForMonth(cellDays,month);track $index){
+          <div class="calendar-body" [style.grid-template-columns]="'repeat(7, minmax(0, 1fr))'">
+            @for(day of row;track $index){<div class="day-column date-cell" [class.today]="day===+today.slice(8) && (kind==='monthly'||(month===currentMonth&&selectedYear===+today.slice(0,4)))" [style.height.px]="cellHeight(month,row)" [style.border-bottom]="'1px solid #292d35'" [style.border-right]="'1px solid #292d35'" [attr.data-schedule-day]="day||null" [attr.data-schedule-month]="month">
+              @if(day){<button type="button" class="day-header" [disabled]="!canEdit" [attr.aria-label]="month+'월 '+day+'일에 일정 추가'" [style.width]="'100%'" [style.height.px]="32" [style.border]="'0'" [style.background]="'transparent'" (click)="openEditor(undefined,day,month)">{{day}}@if(kind==='yearly' && (day-1)%10===0){<small [style.font-size.px]="10" [style.margin-left.px]="4">{{lunarLabel(month,day)}}</small>}</button>}
+              @for(schedule of cellSchedules(month,day);track schedule.id;let i=$index){<div class="schedule-card Habit-card Habit-goal-default" role="button" tabindex="0" [class.Habit-dragging]="drag?.active && drag?.schedule?.id===schedule.id" [class.Habit-paused]="!schedule.enabled" [style.top.px]="40+i*36" [style.height.px]="28" [style.pointer-events]="drag?.active && drag?.schedule?.id===schedule.id?'none':null" [attr.aria-disabled]="!canEdit" [attr.aria-label]="schedule.name+' 편집 또는 날짜 이동'" (pointerdown)="startDrag($event,schedule)" (pointermove)="moveDrag($event)" (pointerup)="endDrag($event)" (pointercancel)="cancelDrag()" (lostpointercapture)="cancelDrag()" (keydown.enter)="openEditor(schedule)" (keydown.space)="$event.preventDefault();openEditor(schedule)">
+                <div class="Habit-content"><div class="Habit-title">@if(schedule.time){<small class="schedule-time" [style.font-size.px]="9" [style.flex-shrink]="0">{{schedule.time}}</small>}<span class="Habit-name" [title]="schedule.name">{{scheduleName(schedule)}}</span>@if(!schedule.enabled){<small [style.font-size.px]="9">정지</small>}</div></div>
+                <div class="Habit-actions"><button type="button" class="Habit-action edit" aria-label="수정" [disabled]="!canEdit" (click)="openEditor(schedule);$event.stopPropagation()">✎</button><button type="button" class="Habit-action delete" aria-label="삭제" [disabled]="!canEdit" (click)="deleting=schedule;$event.stopPropagation()">×</button></div>
+              </div>}
+              @if(drag?.active && drag?.day===day && drag?.month===month){<div class="Habit-drop-preview" [style.top.px]="40+cellSchedules(month,day).length*36" [style.height.px]="28">{{kind==='yearly'?month+'월 ':'매월 '}}{{day}}일 · {{drag!.schedule.name}}</div>}
+            </div>}
+          </div>
+        }
+      </div></ng-template>
+    }
+    @if(tab==='recommendations'){
+      <div class="habit-page"><p class="routine-dashboard-note">추천 날짜를 실제 일정에 맞게 설정해주세요. 실제 납부일·생일·계약일을 확인하고 변경해주세요.</p><div class="category-row">@for(item of categories;track item){<button class="category-chip" [class.active]="category===item" (click)="category=item">{{item}}</button>}</div>
+        <div class="habit-grid">@for(item of recommendations;track item.name){<article class="habit-card recommendation-card"><div class="habit-header"><span class="habit-icon">{{item.icon}}</span><div class="habit-title"><span class="habit-name">{{item.name}}</span><div class="keyword-row"><span class="habit-tag">#{{item.category}}</span></div></div></div><p class="routine-dashboard-note">{{dateLabel(item)}}</p>@if(item.note){<p class="routine-dashboard-note">{{item.note}}</p>}<button class="add-btn" [disabled]="!canEdit" (click)="openEditor(undefined,5,1,item)">날짜 확인하고 추가 +</button></article>}</div>
+      </div>
+    }
+  </div>
+</div>
+@if(editing){<div class="Habit-modal-backdrop" (click)="!busy && (editing=null)"><section class="Habit-modal" role="dialog" aria-modal="true" aria-label="반복 일정 편집" (click)="$event.stopPropagation()">
+  <button class="modal-close" [disabled]="busy" aria-label="닫기" (click)="editing=null">×</button>
+  <div class="modal-header"><span class="modal-icon">{{editing.icon}}</span><input class="modal-name" id="schedule-name" [disabled]="busy" [(ngModel)]="editing.name" required maxlength="200" placeholder="반복 일정 이름을 입력하세요"></div>
+  @if(editorNote){<p class="routine-dashboard-note">{{editorNote}}</p>}
+  <div class="input-row"><div class="field"><label for="schedule-icon">그림문자</label><input id="schedule-icon" [disabled]="busy" [(ngModel)]="editing.icon" maxlength="20"></div><div class="field"><label for="schedule-kind">반복 유형</label><select id="schedule-kind" [disabled]="busy" [(ngModel)]="editing.kind" (ngModelChange)="normalizeCalendar()"><option value="monthly">월간</option><option value="yearly">년간</option></select></div></div>
+  <div class="input-row" data-date-fields [style.display]="'grid'" [style.grid-template-columns]="editing.kind==='yearly'?'repeat(3,minmax(0,1fr))':'1fr'">
+    @if(editing.kind==='yearly'){<div class="field" [style.min-width.px]="0"><label for="schedule-calendar">달력</label><select id="schedule-calendar" [(ngModel)]="editing.calendar" [disabled]="busy" (ngModelChange)="normalizeCalendar()"><option value="solar">양력</option><option value="lunar">음력</option></select></div><div class="field" [style.min-width.px]="0"><label for="schedule-month">월 *</label><select id="schedule-month" [disabled]="busy" [(ngModel)]="editing.month">@for(month of months;track month.month){<option [ngValue]="month.month">{{month.month}}월</option>}</select></div>}
+    <div class="field" [style.min-width.px]="0"><label for="schedule-day">날짜 *</label><select id="schedule-day" [disabled]="busy" [(ngModel)]="editing.day"><option [ngValue]="0" disabled>날짜 선택</option>@for(day of (editing.calendar==='lunar'?days.slice(0,30):days);track day){<option [ngValue]="day">{{editing.kind==='monthly'?'매월 ':''}}{{day}}일</option>}</select></div>
+  </div>
+  @if(editing.kind==='yearly' && editing.calendar==='lunar'){<div class="input-row"><div class="field"><label for="schedule-leap">평달·윤달</label><select id="schedule-leap" [(ngModel)]="editing.leapMonth" [disabled]="busy"><option [ngValue]="false">평달</option><option [ngValue]="true">윤달 (없는 해는 건너뜀)</option></select></div></div>}
+  <div class="input-row"><div class="field"><label for="schedule-time">시간 · 비워두면 종일</label><input id="schedule-time" type="time" [disabled]="busy" [(ngModel)]="editing.time"></div><div class="field"><label for="schedule-duration">소요 시간(분)</label><input id="schedule-duration" type="number" [disabled]="busy" [(ngModel)]="editing.duration" min="5" max="1440"></div></div>
+  <div class="input-row"><div class="field"><label for="schedule-status">상태</label><select id="schedule-status" [disabled]="busy" [(ngModel)]="editing.enabled"><option [ngValue]="true">사용</option><option [ngValue]="false">일시 정지</option></select></div></div>
+  <p class="routine-dashboard-note">없는 날짜·윤달은 건너뛰고 다른 날짜로 미루지 않습니다. 기존 노션 할일은 수정하지 않습니다.</p>
+  @if(editing.kind==='yearly'){<p class="routine-dashboard-note">{{selectedYear}}년 양력 날짜: {{editorPreview()}}</p>}
+  @if(editorError){<p role="alert" class="routine-dashboard-note">{{editorError}}</p>}
+  <div data-editor-actions [style.display]="'grid'" [style.grid-template-columns]="editing.id?'repeat(2,minmax(0,1fr))':'1fr'" [style.gap.px]="10">@if(editing.id){<button class="save-btn" [style.background]="'#dc2626'" [disabled]="busy" (click)="deleting=editing;editing=null">이 일정 삭제</button>}<button class="save-btn" [disabled]="busy" (click)="save()">{{busy?'저장 중…':'저장하기'}}</button></div>
+</section></div>}
+@if(deleting){<div class="delete-confirm-backdrop"><section class="delete-confirm-box" role="dialog" aria-modal="true" aria-label="반복 설정 삭제"><div class="confirm-text"><strong>반복 설정을 삭제할까요?</strong><p>{{deleting.name}}</p><p>기존 노션 할일은 그대로 남습니다.</p>@if(error){<p role="alert">{{error}}</p>}</div><div class="confirm-actions"><button class="confirm-btn no" [disabled]="busy" (click)="deleting=null">취소</button><button class="confirm-btn yes" [disabled]="busy" (click)="remove()">삭제하기</button></div></section></div>}
+@if(confirmEnable){<div class="delete-confirm-backdrop"><section class="delete-confirm-box" role="dialog" aria-modal="true" aria-label="노션 자동 등록 켜기"><div class="confirm-text"><strong>노션 자동 등록 켜기</strong><p>할일 DB에 ‘자동생성 키’ 텍스트 속성을 준비합니다. 기존 할일은 변경하지 않습니다.</p><p>오늘부터 15분 간격으로 확인합니다. 지난 날짜는 소급 생성하지 않습니다.</p>@if(error){<p role="alert">{{error}}</p>}</div><div class="confirm-actions"><button class="confirm-btn no" [disabled]="busy" (click)="confirmEnable=false">취소</button><button class="confirm-btn yes" [disabled]="busy" (click)="enable()">{{busy?'연결 준비 중…':'준비하고 켜기'}}</button></div></section></div>}

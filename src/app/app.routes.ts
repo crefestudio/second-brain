@@ -169,6 +169,8 @@ export const routes: Routes = [
         path: 'secondbrain/:userId',
         component: SecondBrainWidgetComponent
       },
+      { path: 'recurring-schedules', redirectTo: 'recurring-schedules/dashboard', pathMatch: 'full' },
+      { path: 'recurring-schedules/:tab', loadComponent: () => import('./components/pages/workspace/pages/recurring-schedules/recurring-schedules.component').then(m => m.RecurringSchedulesComponent) },
       {
         path: 'routine',
         component: RoutineComponent,

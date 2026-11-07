@@ -23,6 +23,7 @@
     "@angular/router": "^19.2.0",
     "@angular/service-worker": "^19.2.0",
     "firebase": "^12.8.0",
+    "korean-lunar-calendar": "0.4.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "uuid": "^13.0.0",
