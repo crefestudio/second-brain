@@ -57,6 +57,7 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
+  { path: 'community', loadComponent: () => import('./components/pages/community/community.component').then(m => m.CommunityComponent) },
   ...TEMPLATE_IDS.flatMap(id => [
     ...templateSlugs(id).map(slug => ({ path: 'store/' + slug, component: StoreRedirectComponent })),
     ...templateSlugs(id).map(slug => ({ path: 'download/' + slug, component: LifeupDownloadComponent, data: { product: id } })),
@@ -82,7 +83,7 @@ export const routes: Routes = [
 
   {
     path: '',
-    redirectTo: 'workspace/home',
+    redirectTo: () => window.location.hostname === 'community.notionable.net' ? 'community' : 'workspace/home',
     pathMatch: 'full'
   },
 

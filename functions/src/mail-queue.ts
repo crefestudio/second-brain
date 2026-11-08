@@ -5,7 +5,7 @@ import { FieldValue, Firestore, DocumentData } from 'firebase-admin/firestore';
 // `critical` remains readable only for messages that were queued before the
 // two-pool policy. New messages are high or normal.
 export type MailPriority = 'critical' | 'high' | 'normal';
-export interface QueueMail { from: string; to: string | string[]; subject: string; text?: string; html?: string }
+export interface QueueMail { from: string; to: string | string[]; subject: string; text?: string; html?: string; communityRecipientId?: string }
 export const MAIL_LIMITS = { total: 100, normal: 70 };
 export const mailDay = (now: number) => new Date(now).toISOString().slice(0, 10);
 export function nextMailMorning(now: number): number {
@@ -20,8 +20,8 @@ type Provider = (mail: QueueMail, key: string) => Promise<{ data: { id: string }
 const hash = (key: string) => createHash('sha256').update(key).digest('hex');
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export function createMailQueue(db: Firestore, provider: Provider, canSend: (email: string) => Promise<boolean>) {
-    const queue = db.collection('mailQueue');
+export function createMailQueue(db: Firestore, provider: Provider, canSend: (email: string, mail?: QueueMail) => Promise<boolean>, queueName = 'mailQueue') {
+    const queue = db.collection(queueName);
     const control = db.collection('mailQueueControl').doc('sender');
     const quotas = db.collection('mailDailyUsage');
     async function enqueue(mail: QueueMail, priority: MailPriority, key: string = randomUUID(), immediate = false, notBeforeAt?: number, queueOrder?: number) {
@@ -30,7 +30,7 @@ export function createMailQueue(db: Firestore, provider: Provider, canSend: (ema
         for (const email of addresses) {
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('INVALID_EMAIL');
             const ref = queue.doc(hash(key + ':' + email));
-            const excluded = !await canSend(email);
+            const excluded = !await canSend(email, mail);
             await db.runTransaction(async tx => {
                 if ((await tx.get(ref)).exists) return;
                 const now = Date.now();
@@ -94,7 +94,7 @@ export function createMailQueue(db: Firestore, provider: Provider, canSend: (ema
         let pauseUntil = 0;
         let update: DocumentData;
         try {
-            const excluded = !await canSend(data.recipient);
+            const excluded = !await canSend(data.recipient, data.mail);
             if (excluded) {
                 status = 'cancelled';
                 update = { status, lastError: '수신 차단으로 미발송', excludedAt: Date.now(), mail: FieldValue.delete(), nextAttemptAt: FieldValue.delete() };
@@ -157,6 +157,10 @@ export function createMailQueue(db: Firestore, provider: Provider, canSend: (ema
         // Separate queries prevent a large normal backlog from hiding a newly
         // arrived authentication or purchase message.
         while (Date.now() < deadline) {
+            if (queueName !== 'mailQueue') {
+                const urgent = await db.collection('mailQueue').where('priority', '==', 'high').where('nextAttemptAt', '<=', Date.now()).limit(1).get();
+                if (!urgent.empty) break;
+            }
             const ready = await Promise.all(['high', 'normal', 'critical'].map(priority =>
                 queue.where('priority', '==', priority).where('nextAttemptAt', '<=', Date.now()).orderBy('nextAttemptAt').limit(1).get()));
             const row = ready.find(result => !result.empty)?.docs[0];

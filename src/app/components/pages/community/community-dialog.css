@@ -1,0 +1,13 @@
+.dialog-backdrop{position:fixed;inset:0;background:#f3f4f6;backdrop-filter:blur(5px);z-index:100;display:grid;place-items:center;padding:24px;overflow-y:auto}
+.dialog{background:#f3f4f6;border:1px solid #dce0e5;border-radius:18px;width:min(100%,460px);padding:34px;position:relative;max-height:calc(100dvh - 48px);overflow-y:auto;box-shadow:0 25px 100px #30353c}
+.editor-dialog{width:min(100%,680px)}
+.dialog h2{font-size:21px;letter-spacing:-.5px;padding-right:20px;line-height:1.5}
+.dialog>p{font-size:14px;color:#727983;margin-top:12px;line-height:1.8}
+.dialog-close{position:absolute;right:12px;top:12px}
+.dialog-close community-icon{width:18px;height:18px}
+.dialog-symbol{display:grid;place-items:center;width:48px;height:48px;border-radius:13px;background:#dce0e5;color:#30353c;margin-bottom:20px}
+.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:27px}
+.editor-options{display:grid;grid-template-columns:1fr 155px;gap:15px}
+.mobile-menu,.sidebar-shade{display:none}
+
+

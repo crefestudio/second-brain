@@ -1,4 +1,7 @@
+import { createCommunityNotifications } from './community-notifications';
+import { createCommunityDelivery, createKakaoEventClient, canSendCommunityEmail } from './community-delivery';
 import { createRecurringSchedules } from './recurring-schedules';
+import { createCommunity, CommunityError } from './community';
 import { KAKAO_CONNECTION_REQUIRED, kakaoConnectionErrorMessage } from './kakao-connection-feedback';
 import { receiveKakaoAttachment, buildFileBlocks, kakaoAttachmentName } from './kakao-attachment';
 import { createNotionWebhookRouting, deferredWebhookStatus, webhookRoutingKeys } from './notion-webhook-routing';
@@ -168,7 +171,7 @@ async function retryNotionDatabaseDiscovery<T>(
     }
 }
 
-const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net"];
+const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net", "https://community.notionable.net"];
 
 async function mergeActiveWorkspace(ref: admin.firestore.DocumentReference, data: admin.firestore.DocumentData): Promise<void> {
     await db.runTransaction(async tx => {
@@ -18295,4 +18298,87 @@ export const createRecurringTasks = onSchedule({ schedule: '5 0 * * *', timeZone
         }
         cursor = page.size === 100 ? page.docs[page.docs.length - 1] : undefined;
     } while (cursor);
+});
+
+// Community content is server-only; client Firestore access remains denied.
+let communityAdminCache: { ids: string[]; expires: number } | undefined;
+const communityService = createCommunity(db, undefined, async () => {
+    if (communityAdminCache && communityAdminCache.expires > Date.now()) return communityAdminCache.ids;
+    const result = await admin.auth().getUsers(Array.from(ADMIN_EMAILS, email => ({ email })));
+    const ids = result.users.filter(user => user.emailVerified && !user.disabled).map(user => user.uid);
+    communityAdminCache = { ids, expires: Date.now() + 60000 };
+    return ids;
+});
+export const communityApi = onRequest({ timeoutSeconds: 60, maxInstances: 10,
+    cors: ['http://localhost:4200', 'https://app.notionable.net', 'https://community.notionable.net', 'https://notionable-secondbrain.web.app', 'https://notionable-stage.web.app']
+}, async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    if (req.method !== 'POST') { res.status(405).json({ error: 'METHOD_NOT_ALLOWED' }); return; }
+    try {
+        const token = String(req.headers.authorization || '').match(/^Bearer (.+)$/i)?.[1];
+        if (!token) throw new CommunityError(401, '로그인이 필요합니다.');
+        const decoded = await admin.auth().verifyIdToken(token, true);
+        const account = await admin.auth().getUser(decoded.uid);
+        if (!account.emailVerified) throw new CommunityError(403, '인증된 이메일 계정으로 로그인해주세요.');
+        const appAccount = await db.collection('appAccounts').doc(decoded.uid).get();
+        if (appAccount.data()?.deletionStatus === 'pending') throw new CommunityError(403, '탈퇴 처리 중인 계정입니다.');
+        if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw new CommunityError(400, '잘못된 요청입니다.');
+        const result = await communityService({ uid: decoded.uid, name: account.displayName || '멤버',
+            isAdmin: ADMIN_EMAILS.has((account.email || '').trim().toLowerCase()) }, req.body);
+        res.json(result);
+    } catch (error) {
+        if (error instanceof CommunityError) { res.status(error.status).json({ error: error.message }); return; }
+        const code = (error as { code?: string })?.code || '';
+        if (['auth/argument-error', 'auth/invalid-id-token', 'auth/id-token-expired', 'auth/id-token-revoked', 'auth/user-disabled', 'auth/user-not-found'].includes(code)) {
+            res.status(401).json({ error: '로그인이 만료되었습니다. 다시 로그인해주세요.' }); return;
+        }
+        logger.error('[Community] request failed', { code, message: error instanceof Error ? error.message : String(error) });
+        res.status(500).json({ error: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.' });
+    }
+});
+
+
+// Community notification workers have their own queue; the existing auth mail worker stays unchanged.
+const communityTalkEnabled = process.env.COMMUNITY_KAKAO_ENABLED === 'true';
+const COMMUNITY_KAKAO_REST_API_KEY = communityTalkEnabled ? defineSecret('COMMUNITY_KAKAO_REST_API_KEY') : undefined;
+const communityTalkSecrets = COMMUNITY_KAKAO_REST_API_KEY ? [COMMUNITY_KAKAO_REST_API_KEY] : [];
+const communityNotificationStore = createCommunityNotifications(db);
+const communityMailQueue = createMailQueue(db, async (mail, key) => {
+    const { communityRecipientId: _recipientId, ...payload } = mail;
+    return resend.emails.send(payload as Parameters<typeof resend.emails.send>[0], { idempotencyKey: key });
+}, async (email, mail) => {
+    if ((await db.collection('marketingBlocks').doc(marketingBlockDocumentId(email)).get()).exists) return false;
+    return canSendCommunityEmail(db, admin.auth(), mail?.communityRecipientId, email);
+}, 'communityMailQueue');
+function communityDelivery() {
+    const client = createKakaoEventClient({
+        enabled: communityTalkEnabled, botId: process.env.COMMUNITY_KAKAO_BOT_ID || '',
+        eventName: process.env.COMMUNITY_KAKAO_EVENT_NAME || 'community_notification',
+        apiKey: COMMUNITY_KAKAO_REST_API_KEY?.value() || ''
+    });
+    return createCommunityDelivery(db, admin.auth(), async (uid, email, subject, text, key, html) => {
+        const result = await communityMailQueue.send({ from: 'Notionable <noreply@notionable.net>',
+            to: email, subject, text, ...(html ? {html} : {}), communityRecipientId: uid }, 'normal', key);
+        if (result.error) throw new Error('COMMUNITY_MAIL_QUEUE_FAILED');
+    }, client);
+}
+export const fanoutCommunityNotification = onDocumentCreated({
+    document: 'communityNotificationEvents/{eventId}', retry: true, timeoutSeconds: 540, maxInstances: 3
+}, async event => {
+    await communityNotificationStore.fanout(event.params.eventId);
+});
+export const deliverCommunityNotification = onDocumentCreated({
+    document: 'communityMemberPrivate/{uid}/notifications/{notificationId}', retry: true,
+    timeoutSeconds: 120, maxInstances: 3, secrets: communityTalkSecrets
+}, async event => {
+    await communityDelivery().deliver(event.params.uid, event.params.notificationId);
+});
+export const processCommunityNotificationDelivery = onSchedule({
+    schedule: 'every 1 minutes', timeZone: 'Asia/Seoul', timeoutSeconds: 120, maxInstances: 1, secrets: communityTalkSecrets
+}, async () => {
+    // Yield to pending authentication/purchase mail before processing normal community mail.
+    const urgent = await db.collection('mailQueue').where('priority', '==', 'high')
+        .where('nextAttemptAt', '<=', Date.now()).limit(1).get();
+    if (urgent.empty) await communityMailQueue.drain();
+    await communityDelivery().reconcile();
 });

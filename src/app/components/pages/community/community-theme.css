@@ -1,0 +1,52 @@
+
+.admin-tag{display:inline-flex;vertical-align:middle;font-size:11px;font-weight:600;line-height:1.6;padding:1px 6px;margin-left:5px;border-radius:4px;background:#ede9fe;color:#6d43a3;white-space:nowrap}
+.theme-picker{padding:12px 7px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:6px 0}
+.theme-picker>span{display:block;font-size:12px;color:var(--muted);margin-bottom:8px}
+.theme-picker>div{display:flex;gap:4px}
+.account-menu .theme-picker button{width:50%;padding:7px 3px;text-align:center;font-size:12px;border:1px solid transparent}
+.account-menu .theme-picker button.chosen{background:#edf0f4;border-color:#ccd2db;color:#242629}
+.link-group .room-button>span:last-child{margin-left:auto}
+:host(.community-dark){color-scheme:dark;--bg:#181a1e;--panel:#22252a;--line:#373b43;--muted:#a4aab5;--accent:#dce3f0;color:#e8eaf0}
+:host(.community-dark) .topbar,:host(.community-dark) .account-menu,:host(.community-dark) .room-header,:host(.community-dark) .dialog{background:var(--panel);color:#e8eaf0}
+:host(.community-dark) .sidebar{background:#1d1f23}
+:host(.community-dark) .brand-mark{background:#292d34;color:#f3f4f6;border-color:#444a55}
+:host(.community-dark) .top-nav button,:host(.community-dark) .icon-button,:host(.community-dark) .account-menu button,:host(.community-dark) .account-menu a,:host(.community-dark) .account-menu strong{color:#c3c8d2}
+:host(.community-dark) .top-nav button.active,:host(.community-dark) .top-nav button:hover,:host(.community-dark) .account-menu button:hover,:host(.community-dark) .account-menu a:hover{background:#333740;color:#fff}
+:host(.community-dark) .room-group h2{color:#d2d6df}
+:host(.community-dark) .room-button{color:#bfc5d0}
+:host(.community-dark) .room-button:hover{background:#2b2f36;color:#fff}
+:host(.community-dark) .room-button.selected{background:#e9ecf1;color:#202329}
+:host(.community-dark) .room-button.selected community-icon{color:#795f34}
+:host(.community-dark) .room-button community-icon{color:#a3acba}
+:host(.community-dark) .page-heading h1,:host(.community-dark) .post-card h2,:host(.community-dark) .author-row strong,:host(.community-dark) .member-card h2,:host(.community-dark) .discussion h3,:host(.community-dark) .about-card h2,:host(.community-dark) .join-landing h1{color:#f0f1f5}
+:host(.community-dark) .page-heading p,:host(.community-dark) .post-preview,:host(.community-dark) .post-body,:host(.community-dark) .about-card p,:host(.community-dark) .member-card p,:host(.community-dark) .dialog>p{color:#bec5d0}
+:host(.community-dark) .author-row small,:host(.community-dark) .post-footer,:host(.community-dark) .post-footer .read-more,:host(.community-dark) .feed-toolbar>span,:host(.community-dark) .composer,:host(.community-dark) .back-link,:host(.community-dark) .subtle{color:#a9b2c0}
+:host(.community-dark) .feed-tabs button{color:#aeb6c3}
+:host(.community-dark) .feed-tabs button.active{background:#353a43;color:#f0f1f5}
+:host(.community-dark) .primary{background:#e7ebf0;color:#202329;border-color:#e7ebf0}
+:host(.community-dark) .primary:hover:not(:disabled){background:#fff;color:#15171b}
+:host(.community-dark) .secondary{background:#30343c;color:#e6e9ef;border-color:#474e5b}
+:host(.community-dark) button:hover:not(:disabled){color:#f0f1f5}
+:host(.community-dark) .primary:hover:not(:disabled),:host(.community-dark) .room-button.selected:hover{color:#202329}
+:host(.community-dark) input,:host(.community-dark) textarea,:host(.community-dark) select{background:#1b1e23;color:#e9edf4;border-color:#454c59}
+:host(.community-dark) input::placeholder,:host(.community-dark) textarea::placeholder{color:#9099a9}
+:host(.community-dark) .avatar,:host(.community-dark) .avatar.large{background:#454038;color:#e2d6c2}
+:host(.community-dark) .post-footer{border-color:var(--line)}
+:host(.community-dark) .post-footer .liked{color:#f2a5be}
+:host(.community-dark) .comment-card,:host(.community-dark) .about-card,:host(.community-dark) .reply-form,:host(.community-dark) .empty-state,:host(.community-dark) .development-notice{background:var(--panel);border-color:var(--line)}
+:host(.community-dark) .development-notice strong{color:#e2e7ee}
+:host(.community-dark) .development-notice p{color:#aab4c3}
+:host(.community-dark) .development-notice button{color:#adcaee}
+:host(.community-dark) .comment-card.accepted,:host(.community-dark) .notice{background:#23352b;border-color:#405c49;color:#b1d8be}
+:host(.community-dark) .accepted-label,:host(.community-dark) .accept-button{color:#a2d1b1}
+:host(.community-dark) .error{background:#412b30;color:#f1b9bf;border-color:#68414a}
+:host(.community-dark) .status-tag,:host(.community-dark) .admin-tag{background:#3a3150;color:#d1b9f5}
+:host(.community-dark) .status-tag.solved{background:#2a4034;color:#b0d9bf}
+:host(.community-dark) .room-tag,:host(.community-dark) .question-mark,:host(.community-dark) .discussion h3>span{color:#b7c8e6}
+:host(.community-dark) .me-tag{background:#3a404b;color:#cad3e3}
+:host(.community-dark) .dialog-symbol,:host(.community-dark) .landing-symbol{background:#443243;color:#e5b6d6;border-color:#654660}
+:host(.community-dark) .landing-symbol community-icon{color:#e5b6d6}
+:host(.community-dark) .landing-topics span,:host(.community-dark) .load-more{background:var(--panel);border-color:var(--line);color:#c7ced9}
+:host(.community-dark) .empty-state h3{color:#d5dbe5}
+:host(.community-dark) .account-menu .theme-picker button.chosen{background:#444b59;border-color:#6d7a90;color:#fff}
+@media(max-width:760px){:host(.community-dark) .top-nav{background:var(--panel)}}

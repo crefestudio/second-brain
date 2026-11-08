@@ -100,7 +100,7 @@ export class SocialAuthService {
             return false;
         } finally { this.busy.set(false); }
     }
-    async loginWithPurchase(email: string, code: string, templateId: TemplateId = 'lifeUp'): Promise<boolean> {
+    async loginWithPurchase(email: string, code: string, templateId: TemplateId = 'lifeUp', community = false): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true); this.error.set(''); this.notice.set('');
         try {
@@ -111,7 +111,7 @@ export class SocialAuthService {
             });
             // Never store custom tokens or reuse the widget accessKey. The SDK maintains the session.
             await signInWithCustomToken(auth, result.token);
-            await this.session();
+            if (!community) await this.session();
             return true;
         } catch (error) {
             this.error.set(error instanceof Error && !('code' in error) ? error.message :
@@ -119,7 +119,7 @@ export class SocialAuthService {
             return false;
         } finally { this.busy.set(false); }
     }
-    async login(provider: 'google' | 'apple'): Promise<boolean> {
+    async login(provider: 'google' | 'apple', community = false): Promise<boolean> {
         if (provider === 'apple' && !this.appleEnabled) {
             this.error.set('Apple 로그인은 준비 중입니다. Google 로그인을 이용해주세요.');
             return false;
@@ -131,7 +131,7 @@ export class SocialAuthService {
             if (provider === 'google') oauth.setCustomParameters({ prompt: 'select_account' });
             else { oauth.addScope('email'); oauth.addScope('name'); }
             await signInWithPopup(auth, oauth);
-            await this.session();
+            if (!community) await this.session();
             return true;
         } catch (error: any) {
             const messages: Record<string, string> = {
