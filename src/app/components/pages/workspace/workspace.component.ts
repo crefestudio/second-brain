@@ -31,25 +31,27 @@ export class WorkspaceComponent implements OnInit {
     totalCount: number = 0;
     monthTotalCount = 0;
     routineCount = 0;
+    recurringCount = 0;
     kakaoCount: number = 0;
     secondbrainCount: number = 0;
 
     automationAgents = [
-        {
-            id: 'secondbrain',
-            name: '세컨드브레인 노트 키워드 추출',
-            status: 'waiting',
-        },
         {
             id: 'kakao-capture',
             name: '카카오톡 AI 비서',
             status: 'waiting',
         },
         {
+            id: 'secondbrain',
+            name: '세컨드브레인 노트 키워드 추출',
+            status: 'waiting',
+        },
+        {
             id: 'routine',
             name: '루틴',
             status: 'waiting',
-        }
+        },
+        { id: 'recurringSchedules', name: '반복 일정 동기화', status: 'waiting' }
     ];
 
 
@@ -80,8 +82,8 @@ export class WorkspaceComponent implements OnInit {
                 const enabled = agent.id === 'routine'
                     ? automations[agent.id]?.enabled !== false
                     : !!automations[agent.id]?.enabled;
-                const status = agent.id === 'routine'
-                    ? await UserService.getRoutineAutomationStatus(this.userId, enabled)
+                const status = (agent.id === 'routine' || agent.id === 'recurringSchedules')
+                    ? await UserService.getAutomationStatus(this.userId, agent.id, enabled)
                     : enabled ? 'running' : 'waiting';
                 return { ...agent, enabled, status };
             })
@@ -126,12 +128,14 @@ export class WorkspaceComponent implements OnInit {
             this.kakaoCount,
             this.secondbrainCount,
             this.routineCount,
+            this.recurringCount,
             this.monthTotalCount
         ] = await Promise.all([
             UserService.getTodayEventCount(this.userId),
             UserService.getTodayEventCount(this.userId, 'kakao-capture'),
             UserService.getTodayEventCount(this.userId, 'secondbrain'),
             UserService.getTodayEventCount(this.userId, 'routine'),
+            UserService.getTodayEventCount(this.userId, 'recurringSchedules'),
             UserService.getTodayEventCount(this.userId, undefined, 'month')
         ]);
     }

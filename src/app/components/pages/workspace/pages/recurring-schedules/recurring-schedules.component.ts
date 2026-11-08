@@ -1,3 +1,4 @@
+import { HABIT_RECOMMENDATIONS } from '../routine/habit-recommendations';
 import { yearlyCountdown } from './schedule-countdown';
 import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -13,14 +14,30 @@ import { SCHEDULE_RECOMMENDATIONS, ScheduleRecommendation } from './schedule-rec
         '../routine/routine.component.css',
         '../routine/pages/rountine-find/routine-find.component.scss',
         '../routine/pages/my-rountine/my-routine.component.scss',
-        '../routine/pages/routine-dashboard/routine-dashboard.component.scss'
+        '../routine/pages/routine-dashboard/routine-dashboard.component.scss',
+        './recurring-schedules.component.css'
     ] })
 export class RecurringSchedulesComponent implements OnInit, OnDestroy {
     tab = 'dashboard'; kind: ScheduleKind = 'monthly'; category = '전체'; userId = '';
     loading = true; busy = false; error = ''; message = ''; allowed = true; connected = false;
     state: ScheduleState = { enabled:false, schedules:[], receipts:[] };
     editing: RecurringSchedule | null = null; editorNote = ''; editorError = ''; deleting: RecurringSchedule | null = null; confirmEnable = false;
+    iconPickerOpen = false;
+    readonly recommendedIcons = [...new Set([...HABIT_RECOMMENDATIONS.map(item=>item.icon), ...SCHEDULE_RECOMMENDATIONS.map(item=>item.icon), '📅'])];
+    get iconOptions() { return [...new Set([...this.recommendedIcons, ...this.state.schedules.map(item=>item.icon), this.editing?.icon || ''].filter(Boolean))]; }
+    chooseIcon(icon:string) { if(!this.editing || this.busy)return;this.editing.icon=icon;this.iconPickerOpen=false;document.getElementById('schedule-icon')?.focus(); }
+    closeIconPicker(event:Event) { if(!this.iconPickerOpen)return;event.preventDefault();event.stopPropagation();this.iconPickerOpen=false;document.getElementById('schedule-icon')?.focus(); }
+    leaveIconPicker(event:FocusEvent) { if(!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node))this.iconPickerOpen=false; }
+    moveIconFocus(event:KeyboardEvent) {
+        if(!['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+        const buttons=Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button'));
+        const index=buttons.indexOf(document.activeElement as HTMLButtonElement);
+        let next=event.key==='Home'?0:event.key==='End'?buttons.length-1:index+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1);
+        next=(next+buttons.length)%buttons.length;event.preventDefault();buttons[next]?.focus();
+    }
+    focusIconOptions(event:Event) { event.preventDefault();this.iconPickerOpen=true;setTimeout(()=>document.querySelector<HTMLButtonElement>('#schedule-icon-options button')?.focus()); }
     days = Array.from({length:31},(_,i)=>i+1);
+    readonly monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     selectedYear = Number(koreaDate().slice(0,4));
     get months() { return Array.from({length:12},(_,i)=>({month:i+1,days:Array.from({length:new Date(Date.UTC(this.selectedYear,i+1,0)).getUTCDate()},(_,j)=>j+1)})); }
     changeYear(delta:number) { this.cancelDrag(); this.selectedYear=Math.max(1900,Math.min(9998,this.selectedYear+delta)); }
@@ -54,14 +71,14 @@ export class RecurringSchedulesComponent implements OnInit, OnDestroy {
         }).sort((a,b)=>a.displayDate.localeCompare(b.displayDate)||a.time.localeCompare(b.time));
     }
     get yearlyCountdowns() { return yearlyCountdown(this.state.schedules,this.today); }
-    cellHeight(month:number,days:number[]) { return Math.max(this.kind==='yearly'?72:180,...days.filter(day=>day>0).map(day=>(this.cellSchedules(month,day).length+(this.drag?.active && this.drag.day===day && this.drag.month===month?1:0))*36+44)); }
+    cellHeight(month:number,days:number[]) { return Math.max(this.kind==='yearly'?115:180,...days.filter(day=>day>0).map(day=>(this.cellSchedules(month,day).length+(this.drag?.active && this.drag.day===day && this.drag.month===month?1:0))*36+44)); }
     get needsReview() { return this.state.receipts.filter(r=>r.status==='review'); }
     setKind(kind:ScheduleKind) { this.cancelDrag(); this.kind=kind; this.category='전체'; }
     cellSchedules(month:number,day:number) { return this.visibleSchedules.filter(s=>day>0 && (s.kind==='monthly'?s.day===day:matchesDate(s,dateString(this.selectedYear,month,day)))).sort((a,b)=>a.time.localeCompare(b.time)); }
     dateLabel(schedule:{kind:ScheduleKind;month:number;day:number}) { return schedule.kind==='monthly' ? '매월 '+schedule.day+'일' : '매년 '+((schedule as RecurringSchedule).calendar==='lunar'?'(음) '+((schedule as RecurringSchedule).leapMonth?'윤':''):'')+schedule.month+'월 '+schedule.day+'일'; }
     openEditor(schedule?:RecurringSchedule, day=5, month=1, recommendation?:ScheduleRecommendation) {
         if(!this.canEdit) return;
-        this.editorError=''; this.editorNote=recommendation?.note || '';
+        this.iconPickerOpen=false; this.editorError=''; this.editorNote=recommendation?.note || '';
         this.editing=schedule ? {...schedule,leapMonth:!!schedule.leapMonth} : {id:'',name:recommendation?.name||'',icon:recommendation?.icon||'📅',category:recommendation?.category||'직접 등록',kind:recommendation?.kind||this.kind,month:recommendation?.month||month,day:recommendation?.day||day,time:'',duration:30,enabled:true,calendar:'solar',leapMonth:false,startDate:this.today,version:0};
         if(recommendation) this.editorNote='추천 날짜를 실제 일정에 맞게 설정해주세요. 실제 생일·납부일·계약일에 맞게 확인해주세요. '+this.editorNote;
         setTimeout(()=>document.getElementById('schedule-name')?.focus());
@@ -73,17 +90,17 @@ export class RecurringSchedulesComponent implements OnInit, OnDestroy {
         if(this.editorError)return;
         const conflict=this.state.schedules.find(s=>scheduleConflict(this.editing!,s));
         if(conflict){this.editorError='같은 반복 유형 안에서 일정이 겹칩니다: '+conflict.name;return;}
-        if(await this.perform('save',{schedule:this.editing},'반복 일정을 저장했습니다. 이미 생성된 노션 할일은 유지됩니다.')) this.editing=null;
+        if(await this.perform('save',{schedule:this.editing},'반복 일정을 저장했습니다. 변경 사항은 동기화 시 반영됩니다.')) this.editing=null;
         else this.editorError=this.error;
     }
     async perform(action:string,data:object={},message='') {
         if(this.busy||!this.userId)return false;
         this.busy=true;this.error='';this.message='';
-        try {this.state=await this.api.request(this.userId,action,data);this.message=message;return true;}
+        try {this.state=await this.api.request(this.userId,action,data);const result=this.state.syncResult;this.message=action==='run'&&result?'오늘 일정 동기화: 생성 '+result.created+'개 · 수정 '+result.updated+'개 · 확인 '+result.existing+'개 · 확인 필요 '+result.review+'개 · 처리 보류 '+result.skipped+'개':message;return true;}
         catch(error){this.error=this.errorText(error);return false;}finally{this.busy=false;}
     }
     async remove() { if(this.deleting && await this.perform('delete',{id:this.deleting.id,version:this.deleting.version},'반복 설정을 삭제했습니다. 기존 노션 할일은 유지됩니다.'))this.deleting=null; }
-    async enable() { if(await this.perform('enable',{enabled:true},'자동 등록을 켰습니다. 오늘 일정부터 15분 간격으로 확인합니다.'))this.confirmEnable=false; }
+    async enable() { if(await this.perform('enable',{enabled:true},'자동 등록을 켰습니다. 매일 한국시간 00:05에 오늘 일정을 확인합니다. 오늘 바로 반영하려면 오늘 일정 동기화를 눌러주세요.'))this.confirmEnable=false; }
     startDrag(event:PointerEvent,schedule:RecurringSchedule) {
         if(!this.canEdit||event.button!==0||!event.isPrimary||this.drag||(event.target as HTMLElement).closest('button'))return;
         const element=event.currentTarget as HTMLElement;

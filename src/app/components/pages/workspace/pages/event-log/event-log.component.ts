@@ -39,13 +39,15 @@ export class EventLogComponent {
 
     agents = [
         {
+            id: 'kakao-capture',
+            name: '카카오톡 AI 비서'
+        },
+        {
             id: 'secondbrain',
             name: '세컨드브레인 노트 키워드 추출'
         },
-        {
-            id: 'kakao-capture',
-            name: '카카오톡 AI 비서'
-        }
+        { id: 'routine', name: '루틴 관리 비서' },
+        { id: 'recurringSchedules', name: '반복 일정 동기화' }
     ];
 
     selectedAgentId = '';
@@ -221,6 +223,8 @@ export class EventLogComponent {
     }
 
     readonly agentNames: Record<string, string> = {
+        'recurringSchedules': '반복 일정 동기화',
+        'routine': '루틴 관리 비서',
         'secondbrain': '세컨드브레인 노트 키워드 추출',
         'kakao-capture': '카카오톡 AI 비서'
     };

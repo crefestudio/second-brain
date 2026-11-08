@@ -5,6 +5,7 @@ import { auth } from '../firebase';
 import { RecurringSchedule } from '../../../functions/src/recurring-schedule-model';
 export interface ScheduleState {
     enabled: boolean; schedules: RecurringSchedule[];
+    syncResult?: { created:number; updated:number; existing:number; review:number; skipped:number };
     receipts: { id: string; name: string; date: string; status: string; pageId: string }[];
 }
 @Injectable({ providedIn: 'root' })

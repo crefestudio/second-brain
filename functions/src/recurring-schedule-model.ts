@@ -13,7 +13,7 @@ export function koreaDate(now = new Date()): string {
 }
 export function validateSchedule(value: any): string {
     if (!value || typeof value.name !== 'string' || !value.name.trim() || value.name.length > 200) return '일정 이름을 200자 이내로 입력해주세요.';
-    if (!['monthly', 'yearly'].includes(value.kind) || !['solar','lunar'].includes(value.calendar) || (value.kind === 'monthly' && value.calendar !== 'solar')) return '양력 월간 또는 년간 일정을 선택해주세요.';
+    if (!['monthly', 'yearly'].includes(value.kind) || !['solar','lunar'].includes(value.calendar) || (value.kind === 'monthly' && value.calendar !== 'solar')) return '양력 월간 또는 연간 일정을 선택해주세요.';
     if (!Number.isInteger(value.day) || value.day < 1 || value.day > 31) return '날짜를 선택해주세요.';
     if (!Number.isInteger(value.month) || value.month < 1 || value.month > 12) return '월을 선택해주세요.';
     if (value.leapMonth !== undefined && typeof value.leapMonth !== 'boolean') return '윤달 설정을 확인해주세요.';

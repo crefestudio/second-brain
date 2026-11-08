@@ -1,6 +1,6 @@
 // Shared by Functions and Angular. IMWEB_PRODUCT_SKU_MAP retains legacy aliases.
 export type TemplateId = keyof typeof TEMPLATE_PRODUCTS;
-export type AutomationId = 'kakao-capture' | 'routine' | 'secondbrain';
+export type AutomationId = 'kakao-capture' | 'routine' | 'secondbrain' | 'recurringSchedules';
 export interface TemplateProduct {
     order: number;
     admin: { purchaseKey: string; customerGrade: string; welcomeTemplateId: string };
@@ -28,7 +28,7 @@ export const TEMPLATE_PRODUCTS = {
         pdfFileName: 'LifeUp1.5-Memo.pdf',
         salesUrls: { normal: 'https://app.notionable.net/store/lifeup-memo', reward: 'https://app.notionable.net/store/lifeup-reward', rewardSale: 'https://app.notionable.net/store/lifeup-reward-sale' },
         checkoutUrls: { normal: 'https://notionable.net/store/?idx=16', reward: 'https://notionable.net/store/?idx=9', rewardSale: 'https://notionable.net/store/?idx=10' },
-        agents: { 'kakao-capture': true, routine: false, secondbrain: false },
+        agents: { 'kakao-capture': true, routine: false, secondbrain: false, recurringSchedules: false },
         kakaoCaptureScope: 'memo', notionDbSuffix: 'Memo', databaseNames: ['lifeup info', 'apps', 'memo', 'memo tag', 'memo type'],
         welcome: { displayName: '라이프업 메모', usageName: '메모', introductionVideoUrl: null, reviewEvent: null }
     },
@@ -42,7 +42,7 @@ export const TEMPLATE_PRODUCTS = {
         pdfFileName: 'LifeUp1.5-SecondBrainOSLite.pdf',
         salesUrls: { normal: 'https://app.notionable.net/store/lifeup-secondbrain-lite', reward: 'https://app.notionable.net/store/lifeup-reward', rewardSale: 'https://app.notionable.net/store/lifeup-reward-sale' },
         checkoutUrls: { normal: 'https://notionable.net/store/?idx=15', reward: 'https://notionable.net/store/?idx=9', rewardSale: 'https://notionable.net/store/?idx=10' },
-        agents: { 'kakao-capture': true, routine: false, secondbrain: false },
+        agents: { 'kakao-capture': true, routine: false, secondbrain: false, recurringSchedules: false },
         kakaoCaptureScope: 'note', notionDbSuffix: 'secondbrainLite', databaseNames: ['lifeup info', 'apps', 'note'],
         welcome: { displayName: '라이프업 세컨드브레인 OS Lite', usageName: '라이프업 세컨드브레인 OS Lite', introductionVideoUrl: 'https://youtu.be/yUlK0I64p3w', reviewEvent: null }
     },
@@ -55,7 +55,7 @@ export const TEMPLATE_PRODUCTS = {
         pdfFileName: 'LifeUp1.5-SecondBrainOS.pdf',
         salesUrls: { normal: 'https://app.notionable.net/store/lifeup-secondbrain-os', reward: 'https://app.notionable.net/store/lifeup-reward-pack', rewardSale: 'https://app.notionable.net/store/lifeup-reward-pack-sale' },
         checkoutUrls: { normal: 'https://notionable.net/store/?idx=14', reward: 'https://notionable.net/store/?idx=11', rewardSale: 'https://notionable.net/store/?idx=12' },
-        agents: { 'kakao-capture': true, routine: false, secondbrain: true },
+        agents: { 'kakao-capture': true, routine: false, secondbrain: true, recurringSchedules: false },
         kakaoCaptureScope: 'note', notionDbSuffix: 'secondbrain', databaseNames: ['lifeup info', 'apps', 'note'],
         welcome: { displayName: '라이프업 1.5 세컨드브레인 OS', usageName: '세컨드브레인 OS', introductionVideoUrl: 'https://youtu.be/yUlK0I64p3w', reviewEvent: 'review' }
     },
@@ -67,7 +67,7 @@ export const TEMPLATE_PRODUCTS = {
         pdfFileName: 'LifeUp1.5.pdf',
         salesUrls: { normal: 'https://app.notionable.net/store/lifeup', reward: 'https://app.notionable.net/store/lifeup-reward', rewardSale: 'https://app.notionable.net/store/lifeup-reward-sale' },
         checkoutUrls: { normal: 'https://notionable.net/store/?idx=1', reward: 'https://notionable.net/store/?idx=9', rewardSale: 'https://notionable.net/store/?idx=10' },
-        agents: { 'kakao-capture': true, routine: true, secondbrain: true },
+        agents: { 'kakao-capture': true, routine: true, secondbrain: true, recurringSchedules: true },
         kakaoCaptureScope: 'all',
         notionDbSuffix: null, databaseNames: null,
         welcome: { displayName: '라이프업 1.5', usageName: '라이프업', introductionVideoUrl: 'https://www.youtube.com/watch?v=IZEwNYIEGck', reviewEvent: 'lifeup-review' }
@@ -80,7 +80,7 @@ export const TEMPLATE_PRODUCTS = {
         pdfFileName: 'LifeUp1.5-Scrapbook.pdf',
         salesUrls: { normal: 'https://app.notionable.net/store/lifeup-scrapbook', reward: 'https://app.notionable.net/store/lifeup-reward', rewardSale: 'https://app.notionable.net/store/lifeup-reward-sale' },
         checkoutUrls: { normal: 'https://notionable.net/store/?idx=6', reward: 'https://notionable.net/store/?idx=9', rewardSale: 'https://notionable.net/store/?idx=10' },
-        agents: { 'kakao-capture': true, routine: false, secondbrain: false },
+        agents: { 'kakao-capture': true, routine: false, secondbrain: false, recurringSchedules: false },
         kakaoCaptureScope: 'reference',
         notionDbSuffix: 'Scrapbook', databaseNames: ['lifeup info', 'apps', 'reference', 'reference tag', 'reference sub tag', 'reference type'],
         welcome: { displayName: '라이프업 1.5 스크랩북', usageName: '스크랩북', introductionVideoUrl: null, reviewEvent: null }
@@ -93,7 +93,7 @@ export const TEMPLATE_PRODUCTS = {
         pdfFileName: 'LifeUp1.5-Planner.pdf',
         salesUrls: { normal: 'https://app.notionable.net/store/lifeup-planner', reward: 'https://app.notionable.net/store/lifeup-reward-pack', rewardSale: 'https://app.notionable.net/store/lifeup-reward-pack-sale' },
         checkoutUrls: { normal: 'https://notionable.net/store/?idx=8', reward: 'https://notionable.net/store/?idx=11', rewardSale: 'https://notionable.net/store/?idx=12' },
-        agents: { 'kakao-capture': true, routine: true, secondbrain: false },
+        agents: { 'kakao-capture': true, routine: true, secondbrain: false, recurringSchedules: true },
         kakaoCaptureScope: 'task',
         notionDbSuffix: 'Planner', databaseNames: ['lifeup info', 'apps', 'task', 'habit', 'habit log'],
         welcome: { displayName: '라이프업 1.5 GTD 플래너', usageName: 'GTD 플래너', introductionVideoUrl: 'https://www.youtube.com/watch?v=0LgzGdr8luU', reviewEvent: 'review' }
@@ -107,7 +107,7 @@ export const TEMPLATE_PRODUCTS = {
         pdfFileName: 'LifeUp1.5-Planner-Lite.pdf',
         salesUrls: { normal: 'https://app.notionable.net/store/lifeup-planner-lite', reward: 'https://app.notionable.net/store/lifeup-reward', rewardSale: 'https://app.notionable.net/store/lifeup-reward-sale' },
         checkoutUrls: { normal: 'https://notionable.net/store/?idx=13', reward: 'https://notionable.net/store/?idx=9', rewardSale: 'https://notionable.net/store/?idx=10' },
-        agents: { 'kakao-capture': true, routine: false, secondbrain: false },
+        agents: { 'kakao-capture': true, routine: false, secondbrain: false, recurringSchedules: false },
         kakaoCaptureScope: 'task',
         notionDbSuffix: 'PlannerLite', databaseNames: ['lifeup info', 'apps', 'task'],
         welcome: { displayName: '라이프업 1.5 GTD 플래너 Lite', usageName: 'GTD 플래너 Lite', introductionVideoUrl: 'https://www.youtube.com/watch?v=0LgzGdr8luU', reviewEvent: null }

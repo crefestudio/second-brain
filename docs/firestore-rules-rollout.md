@@ -1,6 +1,12 @@
 # Firestore rules rollout
 
-`firestore.rules` is a proposed owner-scoped replacement for the deployed allow-all rules. It has not been deployed. Thirteen core allow/deny checks passed against the local Firestore emulator using `node scripts/test-firestore-rules.cjs` (emulator project `demo-lifeup-rules`, port 8189). Routine CRUD and end-to-end application flows still require the checks below. `firebase.json` now points to it; a full Firebase deploy will include these rules, so complete the checks below before deployment.
+Production rechecked on 2026-11-08 using the Firebase Rules API: the active `cloud.firestore` release (updated 2026-11-02T15:01:43.175480Z) matches the local `firestore.rules`. The previous statement that production still used allow-all rules was stale.
+
+Twenty-two allow/deny checks passed against the local Firestore emulator using `node scripts/test-firestore-rules.cjs` (project `demo-lifeup-rules`, port 8189), including recurring schedule reads, cross-account and anonymous denial, denial of direct schedule/config/receipt mutations, and pending-deletion/archived-account denial. The separate template entitlement test also passed with the emulator enabled. These checks are not a full audit of every Cloud Function, Storage bucket, or application flow.
+
+The deployed recurring API rejected anonymous list requests (401) and invalid ID tokens (400). Its source validates a revocation-checked Firebase ID token, deletion status, both account/workspace ownership bindings, supported template, and action inputs. Invalid-token errors currently expose the SDK diagnostic; return a generic 401 as follow-up hardening.
+
+Recurring config, schedules, and occurrence receipts are server-write-only under these rules. Owner reads still cover all workspace subcollections and all fields, including any Notion credentials in the user document. Move credentials to a server-only path with an explicit allowlist of readable paths; adding a narrower deny beneath the current recursive read rule would not override that allow.
 
 ## Ownership and allowed operations
 
@@ -10,7 +16,7 @@
 - Purchases cannot be self-certified; identity bindings cannot be changed by clients. Verification email codes and purchaser lists are inaccessible.
 - Admin SDK access bypasses rules. HTTP Functions must separately validate identity and ownership; these rules do not secure those endpoints.
 
-## Known compatibility work before production
+## Compatibility checklist retained from the original rollout (revalidate before changing rules)
 
 1. `UserService.savePurchaserInfo()` currently writes `verified: true` from the browser. This is intentionally denied. Move purchase verification/persistence into an authenticated server endpoint before enabling these rules in production.
 2. Public widgets/OAuth pages performing Firestore reads without Firebase login are intentionally denied. Route those reads through an access-key-validated server API, or use appropriately scoped Firebase custom-token identities.

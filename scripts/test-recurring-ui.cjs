@@ -18,7 +18,7 @@ import { provideRouter, RouterOutlet } from '@angular/router';
 import { RecurringSchedulesComponent } from './src/app/components/pages/workspace/pages/recurring-schedules/recurring-schedules.component';
 import { AuthService } from './src/app/services/auth.service';
 import { RecurringSchedulesService } from './src/app/services/recurring-schedules.service';
-let state={enabled:false,receipts:[],schedules:[{id:'sample',name:'관리비 납부하기',icon:'🏠',category:'생활',kind:'monthly',month:1,day:5,time:'09:00',duration:30,enabled:true,calendar:'solar',startDate:'2026-01-01',version:1}]};
+let state={enabled:false,receipts:[],schedules:[{id:'sample',name:'관리비 납부하기',icon:'🏠',category:'생활',kind:'monthly',month:1,day:5,time:'09:00',duration:30,enabled:false,calendar:'solar',startDate:'2026-01-01',version:1}]};
 @Component({selector:'app-root',standalone:true,imports:[RouterOutlet],template:'<router-outlet />'}) class Root {}
 bootstrapApplication(Root,{providers:[provideRouter([{path:'workspace/recurring-schedules/:tab',component:RecurringSchedulesComponent}]),
 {provide:AuthService,useValue:{updateSession:async()=>{},getUserId:()=> 'test',getNotionAccessToken:()=> 'connected',templateId:'lifeUp'}},
@@ -53,11 +53,18 @@ bootstrapApplication(Root,{providers:[provideRouter([{path:'workspace/recurring-
  await page.locator('[data-schedule-day="10"] .schedule-card').waitFor();
  await page.getByRole('button',{name:'1월 1일에 일정 추가',exact:true}).click();await page.locator('#schedule-name').fill('방금 등록한 1일 일정');await page.getByRole('button',{name:'저장하기',exact:true}).click();await page.locator('[role=dialog]').waitFor({state:'hidden'});
  await page.screenshot({path:path.join(out,'monthly.png'),fullPage:true});
- await page.getByRole('button',{name:'년간 반복 일정',exact:true}).click();assert.equal(await page.locator('[data-schedule-day]').count(),365);
- await page.getByRole('button',{name:'내년 〉',exact:true}).click();await page.getByRole('button',{name:'내년 〉',exact:true}).click();assert.equal(await page.locator('[data-schedule-day]').count(),366);
- await page.getByRole('button',{name:'〈 이전 년',exact:true}).click();await page.getByRole('button',{name:'〈 이전 년',exact:true}).click();
+ await page.getByRole('button',{name:'연간 반복 일정',exact:true}).click();assert.equal(await page.locator('[data-schedule-day]').count(),365);
+ await page.getByRole('button',{name:'내년',exact:true}).click();await page.getByRole('button',{name:'내년',exact:true}).click();assert.equal(await page.locator('[data-schedule-day]').count(),366);
+ await page.getByRole('button',{name:'이전 년',exact:true}).click();await page.getByRole('button',{name:'이전 년',exact:true}).click();
  await page.getByRole('button',{name:'3월 15일에 일정 추가',exact:true}).click();
- await page.locator('#schedule-name').fill('기념일 테스트');await page.getByRole('button',{name:'저장하기',exact:true}).click();await page.locator('[role=dialog]').waitFor({state:'hidden'});
+ await page.locator('#schedule-name').fill('기념일 테스트');await page.locator('#schedule-status').selectOption({label:'일시 정지'});
+ await page.getByRole('button',{name:'이모지 선택',exact:true}).click();
+ assert.ok(await page.locator('#schedule-icon-options button').count()>50);
+ await page.getByRole('button',{name:'💊 선택',exact:true}).click();assert.equal(await page.locator('#schedule-icon').inputValue(),'💊');
+ await page.locator('#schedule-icon').fill('🦊');await page.locator('#schedule-icon').press('ArrowDown');
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#schedule-icon-options').count(),0);assert.equal(await page.locator('[role=dialog]').count(),1);
+ await page.getByRole('button',{name:'이모지 선택',exact:true}).click();await page.getByRole('button',{name:'💕 선택',exact:true}).click();
+ await page.getByRole('button',{name:'저장하기',exact:true}).click();await page.locator('[role=dialog]').waitFor({state:'hidden'});
  assert.equal(await page.locator('[data-schedule-month="3"][data-schedule-day="15"] .schedule-card').count(),1);
  const yearlyCard=page.locator('[data-schedule-month="3"][data-schedule-day="15"] .schedule-card');
  await yearlyCard.scrollIntoViewIfNeeded();const start=await yearlyCard.boundingBox();
@@ -68,10 +75,10 @@ bootstrapApplication(Root,{providers:[provideRouter([{path:'workspace/recurring-
  await page.screenshot({path:path.join(out,'yearly.png'),fullPage:true});
  await page.locator('#schedule-month-1').screenshot({path:path.join(out,'yearly-january.png')});
  const jan=page.locator('#schedule-month-1');assert.equal(await jan.locator('[data-schedule-day="31"]').evaluate(n=>getComputedStyle(n).borderRightWidth),'1px');
- assert.ok(await jan.locator('[data-schedule-day="1"]').evaluate(n=>n.getBoundingClientRect().height)<110);
+ assert.ok(await jan.locator('[data-schedule-day="1"]').evaluate(n=>n.getBoundingClientRect().height)>=115);
  await page.getByRole('button',{name:'1월 1일에 일정 추가',exact:true}).click();await page.locator('#schedule-name').fill('음력 설 테스트');
  await page.locator('#schedule-calendar').selectOption('lunar');await page.locator('#schedule-month').selectOption({label:'1월'});await page.locator('#schedule-day').selectOption({label:'1일'});
- assert.ok((await page.locator('[role=dialog]').innerText()).includes('2026-02-17'));
+ assert.ok(!(await page.locator('[role=dialog]').innerText()).includes('양력 날짜:'));
  await page.getByRole('button',{name:'저장하기',exact:true}).click();await page.locator('[role=dialog]').waitFor({state:'hidden'});
  const lunarCard=page.locator('[data-schedule-month="2"][data-schedule-day="17"] .schedule-card');await lunarCard.waitFor();assert.ok((await lunarCard.innerText()).includes('(음)'));
  await lunarCard.scrollIntoViewIfNeeded();const lc=await lunarCard.boundingBox();const dest=page.locator('[data-schedule-month="2"][data-schedule-day="18"]');const ld=await dest.boundingBox();
@@ -79,16 +86,25 @@ bootstrapApplication(Root,{providers:[provideRouter([{path:'workspace/recurring-
  await dest.locator('.schedule-card').click();assert.equal(await page.locator('#schedule-calendar').inputValue(),'lunar');assert.equal(await page.locator('#schedule-day option:checked').innerText(),'2일');await page.setViewportSize({width:390,height:844});
  const fields=await page.locator('[data-date-fields] select').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().y));assert.equal(new Set(fields).size,1);
  const buttons=await page.locator('[data-editor-actions] button').evaluateAll(nodes=>nodes.map(n=>({w:n.getBoundingClientRect().width,y:n.getBoundingClientRect().y})));assert.equal(buttons[0].w,buttons[1].w);assert.equal(buttons[0].y,buttons[1].y);
- await page.screenshot({path:path.join(out,'editor-mobile.png'),fullPage:true});await page.setViewportSize({width:1360,height:1000});await page.getByRole('button',{name:'닫기',exact:true}).click();
+ await page.getByRole('button',{name:'이모지 선택',exact:true}).click();
+ const pickerBounds=await page.locator('#schedule-icon-options').boundingBox();assert.ok(pickerBounds.x>=0 && pickerBounds.x+pickerBounds.width<=390);
+ await page.screenshot({path:path.join(out,'editor-mobile.png'),fullPage:true});await page.keyboard.press('Escape');await page.setViewportSize({width:1360,height:1000});await page.getByRole('button',{name:'닫기',exact:true}).click();
 
  await page.getByRole('link',{name:'추천 반복 일정',exact:true}).click();await page.getByRole('button',{name:'월간 반복 일정',exact:true}).click();assert.equal(await page.locator('.recommendation-card').count(),23);
- await page.getByRole('button',{name:'년간 반복 일정',exact:true}).click();assert.equal(await page.locator('.recommendation-card').count(),29);
+ await page.getByRole('button',{name:'연간 반복 일정',exact:true}).click();assert.equal(await page.locator('.recommendation-card').count(),33);
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(out,'recommendations-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
  await page.getByRole('link',{name:'대시보드',exact:true}).click();assert.equal(await page.locator('.dashboard-schedule-panels > section').count(),2);assert.equal(await page.locator('[data-countdown-row]').count(),2);
+ const inactiveMonth=page.locator('[data-month-schedule]').filter({hasText:'관리비 납부하기'});assert.ok((await inactiveMonth.innerText()).includes('⏸ (비활성)'));assert.equal(await inactiveMonth.evaluate(n=>getComputedStyle(n).color),'rgb(139, 148, 158)');
+ const inactiveYear=page.locator('[data-countdown-row]').filter({hasText:'기념일 테스트'});assert.ok((await inactiveYear.innerText()).includes('⏸ (비활성)'));assert.equal(await inactiveYear.evaluate(n=>getComputedStyle(n).color),'rgb(139, 148, 158)');
+ assert.equal(await page.getByText('전체 연간 일정',{exact:true}).count(),0);
+ const autoRegistration=page.getByRole('button',{name:'연결 준비 및 자동 등록 켜기',exact:true});assert.equal(await autoRegistration.isVisible(),false);
+ await page.locator('summary').click();assert.equal(await autoRegistration.isVisible(),true);await page.locator('summary').click();
+ assert.equal(await page.getByRole('button',{name:'오늘 일정 동기화',exact:true}).isEnabled(),false);
+
  const firstDay=page.locator('[data-month-schedule]').filter({hasText:'방금 등록한 1일 일정'});assert.equal(await firstDay.count(),1);assert.equal(await firstDay.evaluate(n=>getComputedStyle(n).color),'rgb(139, 148, 158)');assert.deepEqual(await page.locator('[aria-labelledby="month-list-title"] th').allTextContents(),['날짜','시간','일정 이름']);await page.screenshot({path:path.join(out,'dashboard-mobile.png'),fullPage:true});
  await page.setViewportSize({width:1360,height:1000});await page.screenshot({path:path.join(out,'dashboard-desktop.png'),fullPage:true});
  const boxes=await page.locator('.dashboard-schedule-panels > section').evaluateAll(nodes=>nodes.map(n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));assert.equal(boxes[0].y,boxes[1].y);assert.ok(boxes[1].x>boxes[0].x);
- assert.deepEqual(errors,[]);console.log(JSON.stringify({success:true,screenshots:out,checks:['31 cells','365 cells','monthly drag','yearly create and drag across months','23 monthly recommendations','29 yearly recommendations','mobile overflow','no browser errors']}));
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({success:true,screenshots:out,checks:['31 cells','365 cells','monthly drag','yearly create and drag across months','23 monthly recommendations','33 yearly recommendations','mobile overflow','no browser errors']}));
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,0 +1,109 @@
+.schedule-year-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    padding: 32px 0 24px;
+}
+
+.schedule-year {
+    color: #f3f4f6;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    font-variant-numeric: tabular-nums;
+}
+
+.schedule-year-button {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid #383d48;
+    border-radius: 50%;
+    background: #20232b;
+    color: #d6dae2;
+    font-size: 20px;
+    cursor: pointer;
+    transition: background 150ms, border-color 150ms;
+}
+
+.schedule-year-button:hover:not(:disabled) {
+    background: #303642;
+    border-color: #687184;
+}
+
+.schedule-year-button:disabled { opacity: .35; cursor: default; }
+.schedule-year-button:focus-visible { outline: 2px solid #8baaff; outline-offset: 3px; }
+
+.category-row.schedule-month-navigation {
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+}
+
+.schedule-month-title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 0;
+    padding: 16px 4px;
+    color: #f3f4f6;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.schedule-month-title span { color: #929baa; font-size: 18px; font-weight: 500; }
+.calendar-header.schedule-weekdays { height: 36px; background: #101217; }
+.schedule-weekdays .day-header { color: #c2c8d3; }
+.date-cell { min-height: 115px; }
+
+.icon-picker { position: relative; }
+.icon-picker-input { display: flex; align-items: stretch; }
+.Habit-modal .field .icon-picker-input input { min-width: 0; width: 100%; border-radius: 7px 0 0 7px; border-right: 0; }
+.icon-picker-toggle {
+    flex: 0 0 28px;
+    border: 1px solid #333;
+    border-left: 0;
+    border-radius: 0 7px 7px 0;
+    background-color: #222;
+    color: #d6dae2;
+    font-size: 22px;
+    cursor: pointer;
+}
+.Habit-modal .field select, .icon-picker-toggle {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23eeeeee' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 12px 12px;
+}
+.Habit-modal .field select { appearance: none; padding-right: 28px; }
+.icon-picker-options {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 5;
+    width: 280px;
+    max-width: calc(100vw - 80px);
+    max-height: 240px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(38px, 1fr));
+    gap: 4px;
+    padding: 10px;
+    border: 1px solid #383d48;
+    border-radius: 12px;
+    background: #20232b;
+    box-shadow: 0 12px 32px #0006;
+}
+.icon-picker-options button {
+    min-height: 38px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 23px;
+    cursor: pointer;
+}
+.icon-picker-options button:hover, .icon-picker-options button[aria-pressed="true"] { background: #35415b; border-color: #6988c5; }
+.icon-picker button:focus-visible { outline: 2px solid #8baaff; outline-offset: -2px; }

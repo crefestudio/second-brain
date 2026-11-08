@@ -20,6 +20,9 @@ async function expect(label, method, path, credential, values, allowed) {
     'users/wb': { firebaseUid: 'b' },
     'users/wa/integrations/migration/migration/run/results/result': { status: 'ok' },
     'users/wa/integrations/secondbrain': { enabled: true },
+    'users/wa/integrations/recurringSchedules': { enabled: true },
+    'users/wa/integrations/recurringSchedules/schedules/one': { name: 'test' },
+    'users/wa/integrations/recurringSchedules/occurrences/one': { status: 'created' },
     'email_verifications/private': { code: 'secret' }
   })) {
     const response = await request('PATCH', path, 'owner', data);
@@ -38,4 +41,16 @@ async function expect(label, method, path, credential, values, allowed) {
   await expect('verification code denied', 'GET', 'email_verifications/private', token('a'), null, false);
   await expect('automation toggle', 'PATCH', 'users/wa/integrations/secondbrain', token('a'), { enabled: false }, true);
   await expect('automation token injection denied', 'PATCH', 'users/wa/integrations/secondbrain', token('a'), { enabled: false, accessToken: 'fake' }, false);
+  await expect('own recurring schedule read', 'GET', 'users/wa/integrations/recurringSchedules/schedules/one', token('a'), null, true);
+  await expect('foreign recurring schedule read denied', 'GET', 'users/wa/integrations/recurringSchedules/schedules/one', token('b'), null, false);
+  await expect('anonymous recurring schedule read denied', 'GET', 'users/wa/integrations/recurringSchedules/schedules/one', null, null, false);
+  await expect('direct recurring toggle denied', 'PATCH', 'users/wa/integrations/recurringSchedules', token('a'), { enabled: false }, false);
+  await expect('direct recurring schedule write denied', 'PATCH', 'users/wa/integrations/recurringSchedules/schedules/one', token('a'), { name: 'changed' }, false);
+  await expect('direct recurring receipt write denied', 'PATCH', 'users/wa/integrations/recurringSchedules/occurrences/one', token('a'), { status: 'created' }, false);
+  await expect('direct recurring receipt delete denied', 'DELETE', 'users/wa/integrations/recurringSchedules/occurrences/one', token('a'), null, false);
+  await request('PATCH', 'appAccounts/a', 'owner', { userId: 'wa', deletionStatus: 'pending' });
+  await expect('pending deletion read denied', 'GET', 'users/wa/integrations/recurringSchedules/schedules/one', token('a'), null, false);
+  await request('PATCH', 'appAccounts/a', 'owner', { userId: 'wa' });
+  await request('PATCH', 'users/wa', 'owner', { firebaseUid: 'a', deletionStatus: 'archived' });
+  await expect('archived workspace read denied', 'GET', 'users/wa/integrations/recurringSchedules/schedules/one', token('a'), null, false);
 })().catch(error => { console.error(error); process.exitCode = 1; });

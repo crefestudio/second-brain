@@ -12,6 +12,7 @@ type Dependencies = {
     resolveSource: (token: string, databaseId: string) => Promise<string>;
     assertConnection: (userId: string, token: string, connectionId: any) => Promise<unknown>;
     allowed: (workspace: any) => boolean;
+    writeEvent?: (uid: string, event: { status: 'running' | 'completed' | 'failed'; eventTitle: string; description: string; targetData?: Record<string, unknown> }) => Promise<void>;
 };
 export function createRecurringSchedules(deps: Dependencies) {
     const { db } = deps;
@@ -74,16 +75,24 @@ export function createRecurringSchedules(deps: Dependencies) {
         const c = await connection(uid, true);
         await root(uid).set({ enabled: true, sourceId: c.sourceId, activatedDate: koreaDate(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
-    async function processUser(uid: string) {
+    async function syncUser(uid: string, manual = false) {
         const config = (await root(uid).get()).data();
-        if (!config?.enabled) return;
+        if (!config?.enabled) {
+            if (manual) throw new Error('RECURRING_AUTOMATION_DISABLED');
+            return;
+        }
+        const result = { created: 0, updated: 0, existing: 0, review: 0, skipped: 0 };
         const schedules = await root(uid).collection('schedules').get();
         const today = koreaDate();
         // First version only produces today's occurrences; no silent historical backfill.
         const due = schedules.docs.map(d => ({ ...d.data(), id: d.id } as RecurringSchedule)).filter(s => isScheduleDue(s, today));
-        if (!due.length) return;
-        const c = await connection(uid);
-        if (c.sourceId !== config.sourceId) throw new Error("할일 DB 연결이 변경됐습니다. 연결 준비를 다시 실행해주세요.");
+        if (!due.length && !manual) return result;
+        const c = await connection(uid, manual);
+        if (manual) {
+            await deps.assertConnection(uid, c.token, c.connectionId);
+            await root(uid).set({ sourceId: c.sourceId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        } else if (c.sourceId !== config?.sourceId) throw new Error("할일 DB 연결이 변경됐습니다. 수동 동기화를 실행해주세요.");
+        if (!due.length) return result;
         for (const schedule of due) {
             const ref = root(uid).collection('occurrences').doc(occurrenceKey(schedule.id, today));
             const token = randomUUID();
@@ -91,46 +100,102 @@ export function createRecurringSchedules(deps: Dependencies) {
                 const [receipt, current, settings] = await Promise.all([tx.get(ref), tx.get(root(uid).collection('schedules').doc(schedule.id)), tx.get(root(uid))]);
                 const previous = receipt.data();
                 if (!settings.data()?.enabled || settings.data()?.sourceId !== c.sourceId || current.data()?.version !== schedule.version || !current.data()?.enabled) return null;
-                if (previous?.status === 'created' || previous?.leaseUntil > Date.now()) return null;
+                if (previous?.leaseUntil > Date.now()) return null;
+                const sameSource = previous?.sourceId === c.sourceId;
                 tx.set(ref, { name: schedule.name, date: today, sourceId: c.sourceId, token, leaseUntil: Date.now() + 180000,
-                    status: previous?.attempted ? 'review' : 'checking', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-                return { attempted: previous?.attempted === true, sourceId: previous?.sourceId };
+                    attempted: sameSource && previous?.attempted === true,
+                    pageId: sameSource ? previous?.pageId || '' : '',
+                    syncedVersion: sameSource ? previous?.syncedVersion || 0 : 0,
+                    status: 'checking', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                return { attempted: sameSource && previous?.attempted === true, pageId: sameSource ? previous?.pageId : '', syncedVersion: sameSource ? previous?.syncedVersion : 0 };
             });
-            if (!claim) continue;
+            if (!claim) { result.skipped++; continue; }
+            const finish = async (values: object) => db.runTransaction(async tx => {
+                const receipt = await tx.get(ref);
+                if (receipt.data()?.token === token) tx.set(ref, { ...values, leaseUntil: 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+            });
+            let creating = false;
             try {
-                // A previous ambiguous POST is never automatically repeated, even if query visibility lags.
-                if (claim.sourceId && claim.sourceId !== c.sourceId) throw new Error("이전 생성 대상 DB 확인이 필요합니다.");
+                // A failed lookup is not proof of deletion. A 404 can also mean lost permissions.
+                let knownPage: any;
+                let confirmedDeleted = false;
+                if (claim.pageId) {
+                    knownPage = await c.notion.pages.retrieve({ page_id: claim.pageId });
+                    const parentId = knownPage.parent?.data_source_id || knownPage.parent?.database_id;
+                    if (parentId !== c.sourceId) throw new Error("기존 할일이 다른 DB로 이동했습니다. 확인이 필요합니다.");
+                    confirmedDeleted = !!(knownPage.in_trash || knownPage.archived);
+                    if (!confirmedDeleted && knownPage.properties?.[KEY]?.rich_text?.map((part: any) => part.plain_text ?? part.text?.content ?? '').join('') !== ref.id) throw new Error("기존 할일의 자동생성 키가 변경되었습니다. 확인이 필요합니다.");
+                }
                 const found = await c.notion.dataSources.query({ data_source_id: c.sourceId, filter: { property: KEY, rich_text: { equals: ref.id } } });
-                let pageId = found.results[0]?.id;
-                if (!pageId && claim.attempted) {
-                    await ref.set({ status: 'review', leaseUntil: 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                const candidates = new Set(found.results.filter((page: any) => !page.in_trash && !page.archived).map(page => page.id));
+                if (knownPage && !confirmedDeleted) candidates.add(knownPage.id);
+                if (candidates.size > 1) throw new Error("같은 자동생성 키의 할일이 여러 개입니다. 확인이 필요합니다.");
+                let pageId = [...candidates][0];
+                if (!pageId && claim.attempted && !confirmedDeleted) {
+                    await finish({ status: 'review' }); result.review++;
                     continue;
                 }
-                if (!pageId) {
+                const properties = {
+                    '할일': { title: [{ text: { content: ((schedule.calendar === 'lunar' ? '(음) ' : '') + schedule.icon + ' ' + schedule.name).trim() } }] },
+                    '날짜': { date: schedule.time ? {
+                        start: today + 'T' + schedule.time + ':00+09:00',
+                        end: new Date(Date.parse(today + 'T' + schedule.time + ':00+09:00') + schedule.duration * 60000).toISOString()
+                    } : { start: today } },
+                    [KEY]: { rich_text: [{ text: { content: ref.id } }] }
+                };
+                if (!pageId || claim.syncedVersion !== schedule.version) {
                     await deps.assertConnection(uid, c.token, c.connectionId);
                     const proceed = await db.runTransaction(async tx => {
                         const [receipt, row, settings] = await Promise.all([tx.get(ref), tx.get(root(uid).collection('schedules').doc(schedule.id)), tx.get(root(uid))]);
-                        if (receipt.data()?.token !== token || row.data()?.version !== schedule.version || !row.data()?.enabled || !settings.data()?.enabled) return false;
-                        tx.set(ref, { attempted: true, status: 'creating', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                        if (receipt.data()?.token !== token || row.data()?.version !== schedule.version || !row.data()?.enabled || !settings.data()?.enabled || settings.data()?.sourceId !== c.sourceId) return false;
+                        tx.set(ref, { attempted: true, pageId: pageId || '', status: pageId ? 'updating' : 'creating', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
                         return true;
                     });
-                    if (!proceed) { await ref.set({ leaseUntil: 0, status: 'cancelled', updatedAt: FieldValue.serverTimestamp() }, { merge: true }); continue; }
-                    const page = await c.notion.pages.create({ parent: { data_source_id: c.sourceId }, properties: {
-                        '할일': { title: [{ text: { content: ((schedule.calendar === 'lunar' ? '(음) ' : '') + schedule.icon + ' ' + schedule.name).trim() } }] },
-                        '유형': { status: { name: '할 것' } }, '분류': { select: { name: '일정' } },
-                        '날짜': { date: schedule.time ? {
-                            start: today + 'T' + schedule.time + ':00+09:00',
-                            end: new Date(Date.parse(today + 'T' + schedule.time + ':00+09:00') + schedule.duration * 60000).toISOString()
-                        } : { start: today } },
-                        [KEY]: { rich_text: [{ text: { content: ref.id } }] }
-                    }, template: { type: 'default' } });
-                    pageId = page.id;
-                }
-                await ref.set({ status: 'created', pageId, leaseUntil: 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                    if (!proceed) { await finish({ status: 'cancelled' }); result.skipped++; continue; }
+                    if (pageId) {
+                        await c.notion.pages.update({ page_id: pageId, properties }); result.updated++;
+                    } else {
+                        creating = true;
+                        const page = await c.notion.pages.create({ parent: { data_source_id: c.sourceId }, properties: {
+                            ...properties, '유형': { status: { name: '할 것' } }, '분류': { select: { name: '일정' } }
+                        }, template: { type: 'default' } });
+                        pageId = page.id; result.created++;
+                    }
+                } else result.existing++;
+                await finish({ status: 'created', pageId, syncedVersion: schedule.version });
             } catch (error) {
-                await ref.set({ status: 'review', leaseUntil: 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+                // Explicit API rejection proves no page was created; a timeout or 5xx does not.
+                const rejected = creating && ['validation_error', 'unauthorized', 'restricted_resource', 'object_not_found', 'rate_limited'].includes((error as { code?: string })?.code || '');
+                await finish({ status: 'review', ...(rejected ? { attempted: false } : {}) }); result.review++;
                 console.error('[RecurringSchedules] occurrence failed', { userId: uid, occurrence: ref.id, error: String(error) });
             }
+        }
+        return result;
+    }
+    async function processUser(uid: string, manual = false) {
+        if (!(await root(uid).get()).data()?.enabled) {
+            if (manual) throw new Error('RECURRING_AUTOMATION_DISABLED');
+            return;
+        }
+        const trigger = manual ? '수동' : '자동';
+        const record = async (event: Parameters<NonNullable<Dependencies['writeEvent']>>[1]) => {
+            try { await deps.writeEvent?.(uid, event); }
+            catch (error) { console.error('[RecurringSchedules] event log failed', { userId: uid, error: String(error) }); }
+        };
+        await record({ status: 'running', eventTitle: '반복 일정 동기화 시작', description: `실행 방식: ${trigger}\n대상 날짜: ${koreaDate()}` });
+        try {
+            const result = await syncUser(uid, manual);
+            if (!result) {
+                await record({ status: 'completed', eventTitle: '반복 일정 동기화 중지', description: '사용 여부가 꺼져 실행을 중지했습니다.' });
+                return;
+            }
+            await record({ status: result.review ? 'failed' : 'completed', eventTitle: result.review ? '반복 일정 동기화 확인 필요' : '반복 일정 동기화 완료',
+                description: `실행 방식: ${trigger}\n대상 날짜: ${koreaDate()}\n생성: ${result.created}\n수정: ${result.updated}\n기존 확인: ${result.existing}\n확인 필요: ${result.review}\n처리 보류: ${result.skipped}`,
+                targetData: { trigger, date: koreaDate(), ...result } });
+            return result;
+        } catch (error) {
+            await record({ status: 'failed', eventTitle: '반복 일정 동기화 실패', description: `실행 방식: ${trigger}\n오류: ${error instanceof Error ? error.message : String(error)}` });
+            throw error;
         }
     }
     return { state, save, remove, enable, processUser };

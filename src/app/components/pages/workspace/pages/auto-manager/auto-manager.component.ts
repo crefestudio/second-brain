@@ -1,3 +1,4 @@
+import { RecurringSchedulesService } from '../../../../../services/recurring-schedules.service';
 import { canUseAgent } from '../../../../../config/template-catalog';
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -30,20 +31,6 @@ export class AutoManagerComponent {
 
     automationAgents = [
         {
-            id: 'secondbrain',
-            category: ['LifeUp', '지식관리'],
-            name: '세컨드브레인 노트 키워드 추출',
-            description: [
-                '노트 DB에서 페이지 생성 또는 수정',
-                '내용 변경 시 자동 감지',
-                '변경 후 약 1분 뒤 실행'
-            ],
-            status: 'waiting',
-            enabled: false,
-            tooltip:
-                '노트 DB에 페이지가 생성되거나 수정되면 AI가 자동으로 키워드를 추출하여 지정된 속성에 저장합니다.'
-        },
-        {
             id: 'kakao-capture',
             category: ['LifeUp', '비서'],
             name: '카카오톡 AI 비서',
@@ -58,6 +45,20 @@ export class AutoManagerComponent {
                 '카카오톡으로 입력된 내용을 자동으로 분석하여 노션 데이터베이스에 저장합니다.'
         },
         {
+            id: 'secondbrain',
+            category: ['LifeUp', '지식관리'],
+            name: '세컨드브레인 노트 키워드 추출',
+            description: [
+                '노트 DB에서 페이지 생성 또는 수정',
+                '내용 변경 시 자동 감지',
+                '변경 후 약 1분 뒤 실행'
+            ],
+            status: 'waiting',
+            enabled: false,
+            tooltip:
+                '노트 DB에 페이지가 생성되거나 수정되면 AI가 자동으로 키워드를 추출하여 지정된 속성에 저장합니다.'
+        },
+        {
             id: 'routine',
             category: ['LifeUp', '루틴'],
             name: '루틴 관리 비서',
@@ -69,10 +70,16 @@ export class AutoManagerComponent {
             status: 'running',
             enabled: true,
             tooltip: '루틴 기록 생성과 노션 동기화를 자동으로 관리합니다.'
+        },
+        {
+            id: 'recurringSchedules', category: ['LifeUp', '일정'], name: '반복 일정 동기화',
+            description: ['매일 한국시간 00:05에 오늘 일정 동기화', '수동 동기화로 노션 일정 확인 및 반영', '사용 중지 시 자동·수동 동기화 중지'],
+            status: 'waiting', enabled: false,
+            tooltip: '월간·연간 반복 일정을 노션 할일에 동기화하고 실행 결과를 기록합니다.'
         }
     ];
 
-    constructor(private userService: UserService, private authService: AuthService) {
+    constructor(private userService: UserService, private authService: AuthService, private recurringSchedules: RecurringSchedulesService) {
 
     }
 
@@ -92,8 +99,8 @@ export class AutoManagerComponent {
         this.automationAgents = await Promise.all(this.automationAgents.map(async agent => {
             const enabled = canUseAgent(this.authService.templateId, agent.id) &&
                 (automations[agent.id]?.enabled ?? agent.enabled);
-            const status = agent.id === 'routine'
-                ? await UserService.getRoutineAutomationStatus(this.userId, enabled)
+            const status = (agent.id === 'routine' || agent.id === 'recurringSchedules')
+                ? await UserService.getAutomationStatus(this.userId, agent.id, enabled)
                 : enabled ? 'running' : 'waiting';
             return { ...agent, enabled, status };
         }));
@@ -131,7 +138,9 @@ export class AutoManagerComponent {
         const oldValue = !agent.enabled;
         this.updatingAgentIds.add(agent.id);
         try {
-        const result = await UserService.updateUserAutomation(
+        const result = agent.id === 'recurringSchedules'
+            ? !!(await this.recurringSchedules.request(this.userId, 'enable', { enabled: agent.enabled }))
+            : await UserService.updateUserAutomation(
             this.userId,
             agent.id,
             {
@@ -140,8 +149,8 @@ export class AutoManagerComponent {
         );
 
         if (result) {
-            agent.status = agent.id === 'routine'
-                ? await UserService.getRoutineAutomationStatus(this.userId, agent.enabled)
+            agent.status = (agent.id === 'routine' || agent.id === 'recurringSchedules')
+                ? await UserService.getAutomationStatus(this.userId, agent.id, agent.enabled)
                 : agent.enabled ? 'running' : 'waiting';
             ToastService.show(`${agent.name}이 ${agent.enabled ? '활성화' : '비활성화'}되었습니다.`);
         } else {
@@ -150,14 +159,14 @@ export class AutoManagerComponent {
         }
         } catch (error) {
             agent.enabled = oldValue;
-            ToastService.error('상태 변경에 실패하였습니다.');
+            ToastService.error(error instanceof Error ? error.message : '상태 변경에 실패하였습니다.');
         } finally {
             this.updatingAgentIds.delete(agent.id);
         }
     }
 
     isAgentDisabled(agent: any): boolean {
-        return this.updatingAgentIds.has(agent.id) || !canUseAgent(this.authService.templateId, agent.id) || (agent.id === 'kakao-capture' && !this.kakaoUserId);
+        return this.updatingAgentIds.has(agent.id) || !canUseAgent(this.authService.templateId, agent.id) || (agent.id === 'recurringSchedules' && !this.notionAccessToken) || (agent.id === 'kakao-capture' && !this.kakaoUserId);
     }
     isAgentSupported(agent: any): boolean {
         return canUseAgent(this.authService.templateId, agent.id);

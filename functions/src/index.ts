@@ -377,7 +377,8 @@ async function cacheTemplateInfo(userId: string, token: string, connectionId: st
 export enum AgentId {
     SECOND_BRAIN = 'secondbrain',
     KAKAO_CAPTURE = 'kakao-capture',
-    ROUTINE = 'routine'
+    ROUTINE = 'routine',
+    RECURRING_SCHEDULES = 'recurringSchedules'
 }
 
 export type EventStatus =
@@ -18234,9 +18235,10 @@ const recurringSchedules = createRecurringSchedules({ db,
     resolveDatabase: (token, userId) => NotionService.resolveDatabaseId(token, userId, 'task'),
     resolveSource: (token, databaseId) => NotionService.resolveDataSourceId(token, databaseId),
     assertConnection: assertNotionConnection,
-    allowed: workspace => ['lifeUp', 'lifeupPlanner'].includes(workspaceTemplate(workspace))
+    allowed: workspace => canUseAgent(workspaceTemplate(workspace), 'recurringSchedules'),
+    writeEvent: (uid, event) => writeUserEvent(uid, { ...event, agentId: AgentId.RECURRING_SCHEDULES })
 });
-export const manageRecurringSchedules = onRequest({ timeoutSeconds: 120 }, withCors(async (req, res) => {
+export const manageRecurringSchedules = onRequest({ timeoutSeconds: 540 }, withCors(async (req, res) => {
     if (req.method !== 'POST') { res.status(405).json({ error: 'METHOD_NOT_ALLOWED' }); return; }
     try {
         const identity = await getCareIdentity(req);
@@ -18246,7 +18248,7 @@ export const manageRecurringSchedules = onRequest({ timeoutSeconds: 120 }, withC
         if (!user.exists || user.data()?.firebaseUid !== identity.uid || account.data()?.userId !== uid || user.data()?.deletionStatus === 'archived') {
             res.status(403).json({ error: "워크스페이스 접근 권한이 없습니다." }); return;
         }
-        if (!['lifeUp', 'lifeupPlanner'].includes(workspaceTemplate(user.data() || {}))) { res.status(403).json({ error: "라이프업 또는 플래너에서 사용할 수 있습니다." }); return; }
+        if (!canUseAgent(workspaceTemplate(user.data() || {}), 'recurringSchedules')) { res.status(403).json({ error: "라이프업 또는 플래너에서 사용할 수 있습니다." }); return; }
         const action = req.body?.action;
         if (action === 'save') {
             if (req.body.schedule?.id && !/^[a-zA-Z0-9_-]{1,100}$/.test(req.body.schedule.id)) throw new Error("일정 ID를 확인해주세요.");
@@ -18257,16 +18259,29 @@ export const manageRecurringSchedules = onRequest({ timeoutSeconds: 120 }, withC
         } else if (action === 'enable') {
             if (typeof req.body.enabled !== 'boolean') throw new Error("활성 상태를 확인해주세요.");
             await recurringSchedules.enable(uid, req.body.enabled);
-        } else if (action === 'run') await recurringSchedules.processUser(uid);
+        } else if (action === 'run') {
+            const syncResult = await recurringSchedules.processUser(uid, true);
+            res.json({ ...await recurringSchedules.state(uid), syncResult }); return;
+        }
         else if (action !== 'list') { res.status(400).json({ error: "지원하지 않는 요청입니다." }); return; }
         res.json(await recurringSchedules.state(uid));
     } catch (error) {
         const message = error instanceof Error ? error.message : "처리하지 못했습니다.";
+        const authCode = (error as { code?: string })?.code;
+        if (message === 'RECURRING_AUTOMATION_DISABLED') {
+            res.status(409).json({ error: '반복 일정 동기화가 중지되어 있습니다. 자동화 비서 관리에서 사용 여부를 켜주세요.' }); return;
+        }
+        if (message === 'LOGIN_REQUIRED' || ['auth/argument-error', 'auth/invalid-id-token', 'auth/id-token-expired', 'auth/id-token-revoked', 'auth/user-disabled', 'auth/user-not-found'].includes(authCode || '')) {
+            res.status(401).json({ error: '로그인이 필요합니다. 다시 로그인해주세요.' }); return;
+        }
+        if (message === 'ACCOUNT_DELETION_PENDING') {
+            res.status(403).json({ error: '탈퇴 처리 중인 계정입니다.' }); return;
+        }
         logger.error('[RecurringSchedules] request failed', { error: message });
-        res.status(message === 'LOGIN_REQUIRED' ? 401 : 400).json({ error: message });
+        res.status(400).json({ error: message });
     }
 }));
-export const createRecurringTasks = onSchedule({ schedule: '*/15 * * * *', timeZone: 'Asia/Seoul', region: 'asia-northeast3', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1 }, async () => {
+export const createRecurringTasks = onSchedule({ schedule: '5 0 * * *', timeZone: 'Asia/Seoul', region: 'asia-northeast3', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1 }, async () => {
     let cursor: admin.firestore.QueryDocumentSnapshot | undefined;
     do {
         let query = db.collection('users').orderBy(admin.firestore.FieldPath.documentId()).limit(100);
