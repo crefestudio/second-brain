@@ -1,3 +1,4 @@
+import { communityEventWithdrawn } from './community-withdrawal';
 import { createCommunityNotifications } from './community-notifications';
 import { createCommunityDelivery, createKakaoEventClient, canSendCommunityEmail } from './community-delivery';
 import { createRecurringSchedules } from './recurring-schedules';
@@ -171,7 +172,7 @@ async function retryNotionDatabaseDiscovery<T>(
     }
 }
 
-const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net", "https://community.notionable.net"];
+const allowedOrigins = ["http://localhost:4200", "https://notionable.net", "https://app.notionable.net", "https://club.notionable.net", "https://community.notionable.net"];
 
 async function mergeActiveWorkspace(ref: admin.firestore.DocumentReference, data: admin.firestore.DocumentData): Promise<void> {
     await db.runTransaction(async tx => {
@@ -18310,7 +18311,7 @@ const communityService = createCommunity(db, undefined, async () => {
     return ids;
 });
 export const communityApi = onRequest({ timeoutSeconds: 60, maxInstances: 10,
-    cors: ['http://localhost:4200', 'https://app.notionable.net', 'https://community.notionable.net', 'https://notionable-secondbrain.web.app', 'https://notionable-stage.web.app']
+    cors: ['http://localhost:4200', 'https://app.notionable.net', 'https://club.notionable.net', 'https://community.notionable.net', 'https://notionable-secondbrain.web.app', 'https://notionable-stage.web.app']
 }, async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     if (req.method !== 'POST') { res.status(405).json({ error: 'METHOD_NOT_ALLOWED' }); return; }
@@ -18344,11 +18345,12 @@ const COMMUNITY_KAKAO_REST_API_KEY = communityTalkEnabled ? defineSecret('COMMUN
 const communityTalkSecrets = COMMUNITY_KAKAO_REST_API_KEY ? [COMMUNITY_KAKAO_REST_API_KEY] : [];
 const communityNotificationStore = createCommunityNotifications(db);
 const communityMailQueue = createMailQueue(db, async (mail, key) => {
-    const { communityRecipientId: _recipientId, ...payload } = mail;
+    const { communityRecipientId: _recipientId, communityNewsletterPostId: _newsletterPostId, communityNotificationCategory: _notificationCategory, ...payload } = mail;
     return resend.emails.send(payload as Parameters<typeof resend.emails.send>[0], { idempotencyKey: key });
 }, async (email, mail) => {
     if ((await db.collection('marketingBlocks').doc(marketingBlockDocumentId(email)).get()).exists) return false;
-    return canSendCommunityEmail(db, admin.auth(), mail?.communityRecipientId, email);
+    if (mail?.communityNewsletterPostId && await communityEventWithdrawn(db, {postId: mail.communityNewsletterPostId})) return false;
+    return canSendCommunityEmail(db, admin.auth(), mail?.communityRecipientId, email, mail?.communityNotificationCategory, mail?.communityNewsletterPostId);
 }, 'communityMailQueue');
 function communityDelivery() {
     const client = createKakaoEventClient({
@@ -18356,9 +18358,9 @@ function communityDelivery() {
         eventName: process.env.COMMUNITY_KAKAO_EVENT_NAME || 'community_notification',
         apiKey: COMMUNITY_KAKAO_REST_API_KEY?.value() || ''
     });
-    return createCommunityDelivery(db, admin.auth(), async (uid, email, subject, text, key, html) => {
+    return createCommunityDelivery(db, admin.auth(), async (uid, email, subject, text, key, html, newsletterPostId, category) => {
         const result = await communityMailQueue.send({ from: 'Notionable <noreply@notionable.net>',
-            to: email, subject, text, ...(html ? {html} : {}), communityRecipientId: uid }, 'normal', key);
+            to: email, subject, text, ...(html ? {html} : {}), ...(newsletterPostId ? {communityNewsletterPostId: newsletterPostId} : {}), communityRecipientId: uid, communityNotificationCategory: category }, 'normal', key);
         if (result.error) throw new Error('COMMUNITY_MAIL_QUEUE_FAILED');
     }, client);
 }

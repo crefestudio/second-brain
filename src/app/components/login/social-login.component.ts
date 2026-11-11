@@ -1,3 +1,4 @@
+import { communityHomePath, isCommunityHost, isCommunityReturnPath } from '../../config/community-navigation';
 import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -10,7 +11,7 @@ import { entryTemplate } from '../../config/app-entry';
         <main>
             <img class="brand-icon" src="/favicon.ico" width="76" height="76" alt="NotionAble App">
             <h1>Notionable App</h1>
-            <p class="intro">{{ communityLogin ? '기존 계정으로 커뮤니티에 로그인하세요.' : '로그인하고 내 워크스페이스로 이동하세요.' }}<br>다음 방문에는 저장된 로그인 상태로 연결됩니다.</p>
+            <p class="intro">{{ communityLogin ? '기존 계정으로 클럽에 로그인하세요.' : '로그인하고 내 워크스페이스로 이동하세요.' }}<br>다음 방문에는 저장된 로그인 상태로 연결됩니다.</p>
             @if (!auth.account()) {
                 <form class="purchase-login" (ngSubmit)="verifyPurchase()">
                     <label for="purchase-email">라이프업 구매 이메일</label>
@@ -79,7 +80,7 @@ export class SocialLoginComponent {
             ? ['로그인 정보를 불러오지 못했습니다.', '잠시 후 다시 시도해주세요.']
             : [message];
     }
-    get communityLogin() { return /^\/community(?:[?#]|$)/.test(this.route.snapshot.queryParamMap.get('returnUrl') || '') || window.location.hostname === 'community.notionable.net'; }
+    get communityLogin() { return isCommunityReturnPath(this.route.snapshot.queryParamMap.get('returnUrl') || '') || isCommunityHost(); }
     async login(provider: 'google' | 'apple') { if (await this.auth.login(provider, this.communityLogin)) await this.continue(); }
     async sendPurchaseCode() {
         if (await this.auth.requestPurchaseCode(this.purchaseEmail)) this.codeSent = true;
@@ -95,13 +96,13 @@ export class SocialLoginComponent {
             await this.auth.init();
             if (this.auth.account()) {
                 const requested = this.route.snapshot.queryParamMap.get('returnUrl') || '';
-                const params = new URLSearchParams(/^\/community(?:[?#]|$)/.test(requested) ? requested.split('?')[1]?.split('#')[0] || '' : '');
+                const params = new URLSearchParams(isCommunityReturnPath(requested) ? requested.split('?')[1]?.split('#')[0] || '' : '');
                 const safe = new URLSearchParams();
-                for (const key of ['post', 'room', 'kind', 'settings']) {
+                for (const key of ['post', 'room', 'kind', 'settings', 'view']) {
                     const value = params.get(key);
                     if (value && /^[a-zA-Z0-9_-]{1,100}$/.test(value)) safe.set(key, value);
                 }
-                await this.router.navigateByUrl('/community' + (safe.size ? '?' + safe.toString() : ''), { replaceUrl: true });
+                await this.router.navigateByUrl(communityHomePath() + (safe.size ? '?' + safe.toString() : ''), { replaceUrl: true });
             }
             return;
         }

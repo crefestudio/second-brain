@@ -1,6 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Content remains server-only. This per-member document only signals a chat refresh.
+    match /communityChatSignals/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && get(/databases/$(database)/documents/communityMembers/$(uid)).data.get('active', false) == true
+        && get(/databases/$(database)/documents/communityMembers/$(uid)).data.get('blocked', false) == false
+        && !(get(/databases/$(database)/documents/communityMembers/$(uid)).data.get('withdrawalStatus', '') in ['pending', 'completed']);
+      allow list, write: if false;
+    }
     // Both sides of the server-managed binding must agree.
     function ownsWorkspace(userId) {
       return request.auth != null

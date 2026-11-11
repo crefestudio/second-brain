@@ -38,16 +38,17 @@ test('community login returns to /community and never a caller-supplied external
   const auth = { init: async () => {}, account: () => ({ uid: 'same-uid' }), session: async () => { throw new Error('Must not request a workspace'); } };
   const navigations = [];
   const router = { navigateByUrl: async (...args) => navigations.push(args) };
-  const route = { snapshot: { queryParamMap: { get: key => key === 'returnUrl' ? '/community?next=https://attacker.test' : null } } };
+  const route = { snapshot: { queryParamMap: { get: key => key === 'returnUrl' ? '/club?next=https://attacker.test' : null } } };
   class AuthToken {} class RouterToken {} class RouteToken {}
   const { SocialLoginComponent } = compile('components/login/social-login.component.ts', {
     '@angular/core': { Component: () => x => x, inject: token => token === AuthToken ? auth : token === RouterToken ? router : route },
     '@angular/router': { Router: RouterToken, ActivatedRoute: RouteToken }, '@angular/forms': { FormsModule: {} },
-    '../../services/social-auth.service': { SocialAuthService: AuthToken }, '../../config/app-entry': { entryTemplate: () => undefined }
+    '../../services/social-auth.service': { SocialAuthService: AuthToken }, '../../config/app-entry': { entryTemplate: () => undefined },
+    '../../config/community-navigation': compile('config/community-navigation.ts', {}, {window: {location: {hostname: 'app.notionable.net'}}})
   }, { window: { location: { hostname: 'app.notionable.net' } } });
   await new SocialLoginComponent().continue();
-  assert.equal(navigations[0][0], '/community');
-  route.snapshot.queryParamMap.get = key => key === 'returnUrl' ? '/community?post=post-1&settings=notifications&next=https://attacker.test' : null;
+  assert.equal(navigations[0][0], '/club');
+  route.snapshot.queryParamMap.get = key => key === 'returnUrl' ? '/club?post=post-1&settings=notifications&next=https://attacker.test' : null;
   await new SocialLoginComponent().continue();
-  assert.equal(navigations[1][0], '/community?post=post-1&settings=notifications');
+  assert.equal(navigations[1][0], '/club?post=post-1&settings=notifications');
 });

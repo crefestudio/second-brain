@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { auth } from '../firebase';
+import { auth, firestore } from '../firebase';
+import {doc, onSnapshot} from 'firebase/firestore';
 import { APP_CONFIG } from '../config/app-config.token';
 export { COMMUNITY_ROOMS } from '../../../functions/src/community-model';
 export type { CommunityRoom, CommunityPost, CommunityComment, CommunityMember } from '../../../functions/src/community-model';
@@ -7,6 +8,9 @@ export type { CommunityRoom, CommunityPost, CommunityComment, CommunityMember } 
 @Injectable({ providedIn: 'root' })
 export class CommunityService {
     private readonly baseUrl = inject(APP_CONFIG).functionsBaseUrl;
+    watchChat(uid: string, changed: () => void, failed: () => void): () => void {
+        return onSnapshot(doc(firestore, 'communityChatSignals', uid), () => changed(), () => failed());
+    }
     async request<T = any>(action: string, data: Record<string, unknown> = {}): Promise<T> {
         await auth.authStateReady();
         const user = auth.currentUser;

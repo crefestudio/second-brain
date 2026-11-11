@@ -1,0 +1,42 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const {createCommunity}=require('../lib/community');
+const {memoryDb}=require('./helpers/memory-db.cjs');
+test('pins are admin-only, public-only, ordered ahead of normal pages without duplicates, and expire after 24h',async()=>{
+ let time=100000;
+ const f=memoryDb({'communityMembers/admin':{active:true,name:'Admin'},'communityMembers/member':{active:true,name:'Member'}});
+ const api=createCommunity(f.db,()=>time),admin={uid:'admin',isAdmin:true},member={uid:'member',isAdmin:false};
+ const post=(id,extra={})=>f.rows.set('communityPosts/'+id,{title:id,body:'Body',roomId:'hello',kind:'feed',authorId:'member',authorName:'Member',createdAt:Number(id)||1,updatedAt:1,visible:true,version:1,comments:0,likes:0,...extra});
+ for(let i=1;i<=45;i++)post(''+i);
+ post('private',{isPrivate:true});post('hidden',{roomId:'requests'});
+ const pin=(who,id,mode)=>api(who,{action:'pinPost',postId:id,mode});
+ await assert.rejects(pin(member,'1','always'),e=>e.status===403);
+ await assert.rejects(pin(admin,'private','always'),e=>e.status===400);
+ await assert.rejects(pin(admin,'hidden','always'),e=>e.status===404);
+ await assert.rejects(pin(admin,'1','week'),e=>e.status===400);
+ await pin(admin,'1','always');time++;await pin(admin,'2','day');
+ let page=await api(member,{action:'feed',roomId:'hello'});assert.deepEqual(page.pinnedPosts.map(p=>p.id),['2','1']);assert.equal(page.posts.length,20);
+ const ids=[...page.posts.map(p=>p.id)];
+ while(page.nextCursor){page=await api(member,{action:'feed',roomId:'hello',cursor:page.nextCursor});ids.push(...page.posts.map(p=>p.id));}
+ assert.equal(new Set(ids).size,44);assert.ok(!ids.includes('1')&&!ids.includes('2'));
+ const all=await api(member,{action:'feed'});assert.equal(all.pinnedPosts.length,0);
+ const allIds=all.posts.map(p=>p.id);let next=all.nextCursor;
+ while(next){const p=await api(member,{action:'feed',cursor:next});allIds.push(...p.posts.map(p=>p.id));next=p.nextCursor;}
+ assert.ok(allIds.includes('1')&&allIds.includes('2'));assert.equal(new Set(allIds).size,46);
+ const mine=await api(member,{action:'feed',mine:true});assert.equal(mine.pinnedPosts.length,0);
+ assert.deepEqual((await api(member,{action:'pins'})).posts.map(p=>p.id),['2','1']);
+ assert.equal((await api(member,{action:'pins',roomId:'notion'})).posts.length,0);
+ assert.equal((await api(member,{action:'feed',roomId:'hello',kind:'question'})).pinnedPosts.length,0);
+ time+=86400000;
+ const expired=await api(member,{action:'feed',roomId:'hello'});assert.deepEqual(expired.pinnedPosts.map(p=>p.id),['1']);
+ assert.deepEqual((await api(member,{action:'pins'})).posts.map(p=>p.id),['1']);
+ assert.equal(f.rows.get('communityPosts/2').pinExpiresAt,time);
+ await pin(admin,'1','none');assert.equal((await api(member,{action:'pins'})).posts.length,0);
+ await pin(admin,'1','always');f.rows.get('communityPosts/1').visible=false;
+ assert.equal((await api(member,{action:'pins'})).posts.length,0);
+ post('other',{roomId:'notion',authorId:'admin'});await pin(admin,'other','always');
+ assert.deepEqual((await api(member,{action:'pins'})).posts.map(p=>p.id),['other']);
+ assert.equal((await api(member,{action:'pins',roomId:'hello'})).posts.length,0);
+ assert.deepEqual((await api(member,{action:'feed',roomId:'notion'})).pinnedPosts.map(p=>p.id),['other']);
+ f.rows.set('communityMembers/admin',{active:false,withdrawalStatus:'pending'});
+ assert.equal((await api(member,{action:'pins'})).posts.length,0);
+});

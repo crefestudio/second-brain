@@ -1,8 +1,12 @@
+import { communityEventWithdrawn } from './community-withdrawal';
+import {createHash} from 'crypto';
+import {COMMUNITY_ROOMS, isCommunityRoomVisible} from './community-model';
 import type { firestore, auth as firebaseAuth } from 'firebase-admin';
 type Firestore = firestore.Firestore;
 type Auth = firebaseAuth.Auth;
 import { renderCommunityNewsletter } from './community-newsletter';
-import { CommunityEvent, notificationSettings } from './community-notifications';
+import { NotificationCategory, NOTIFICATION_CATEGORIES } from './community-notification-settings';
+import { CommunityEvent, notificationSettings, notificationCategory } from './community-notifications';
 
 export interface KakaoEventConfig { enabled: boolean; botId: string; eventName: string; apiKey: string }
 export function createKakaoEventClient(config: KakaoEventConfig, request: typeof fetch = fetch) {
@@ -31,14 +35,20 @@ export function createKakaoEventClient(config: KakaoEventConfig, request: typeof
         }
     };
 }
-export async function canSendCommunityEmail(db: Firestore, auth: Auth, uid: string | undefined, email: string): Promise<boolean> {
+export async function canSendCommunityEmail(db: Firestore, auth: Auth, uid: string | undefined, email: string, category?: NotificationCategory, newsletterPostId?: string): Promise<boolean> {
     if (!uid) return false;
+    const blockId = createHash('sha256').update('email:' + email.trim().toLowerCase()).digest('hex');
+    if ((await db.collection('marketingBlocks').doc(blockId).get()).exists) return false;
+    if (newsletterPostId) {
+        const post = await db.collection('communityPosts').doc(newsletterPostId).get();
+        if (!post.exists || !post.get('visible') || post.get('isPrivate') || !isCommunityRoomVisible(post.get('roomId')) || await communityEventWithdrawn(db, {postId:newsletterPostId})) return false;
+    }
     const [member, state, account] = await Promise.all([
         db.collection('communityMembers').doc(uid).get(), db.collection('communityMemberPrivate').doc(uid).get(),
         db.collection('appAccounts').doc(uid).get()
     ]);
     const settings = notificationSettings(state.data());
-    if (!member.get('active') || !settings.confirmed || !settings.email || account.get('deletionStatus') === 'pending') return false;
+    if (!member.get('active') || !settings.confirmed || !(category ? settings.categories[category]?.email === true : NOTIFICATION_CATEGORIES.every(c => settings.categories[c.id].email)) || account.get('deletionStatus') === 'pending') return false;
     try {
         const user = await auth.getUser(uid);
         return !user.disabled && user.emailVerified && user.email?.toLowerCase() === email.toLowerCase();
@@ -68,7 +78,7 @@ export async function communityKakaoRecipient(db: Firestore, uid: string) {
     }
     return null;
 }
-type QueueEmail = (uid: string, email: string, subject: string, text: string, key: string, html?: string) => Promise<void>;
+type QueueEmail = (uid: string, email: string, subject: string, text: string, key: string, html?: string, newsletterPostId?: string, category?: NotificationCategory) => Promise<void>;
 export function createCommunityDelivery(db: Firestore, auth: Auth, queueEmail: QueueEmail,
     kakao: ReturnType<typeof createKakaoEventClient>, now = () => Date.now()) {
     const talks = db.collection('communityTalkDeliveries');
@@ -79,7 +89,7 @@ export function createCommunityDelivery(db: Firestore, auth: Auth, queueEmail: Q
         if (!row.exists) return;
         const event = row.data() as CommunityEvent & {message: string};
         const settings = notificationSettings(state.data());
-        if (!member.get('active') || !settings.confirmed || account.get('deletionStatus') === 'pending' || now() - event.createdAt > 86400000) {
+        if (!member.get('active') || !settings.confirmed || account.get('deletionStatus') === 'pending' || now() - event.createdAt > 86400000 || await communityEventWithdrawn(db, event)) {
             await ref.update({ 'delivery.email': 'skipped', 'delivery.talk': 'skipped' }); return;
         }
         let user;
@@ -89,16 +99,25 @@ export function createCommunityDelivery(db: Firestore, auth: Auth, queueEmail: Q
         }
         if (!user.emailVerified || user.disabled) { await ref.update({ 'delivery.email': 'skipped', 'delivery.talk': 'skipped' }); return; }
         const important = event.type !== 'like';
-        const url = 'https://community.notionable.net/community?post=' + encodeURIComponent(event.postId);
-        if (important && settings.email && user.email) {
-            const newsletter = event.type === 'admin-post' && event.newsletter ? renderCommunityNewsletter(event.newsletter.title, event.newsletter.body, url) : null;
+        const roomId = !event.category && event.type === 'admin-post' ? (await db.collection('communityPosts').doc(event.postId).get()).get('roomId') : undefined;
+        const category = notificationCategory(event, roomId);
+        const channels = settings.categories[category];
+        const url = 'https://club.notionable.net/?post=' + encodeURIComponent(event.postId);
+        const newsletterPost = event.newsletter ? await db.collection('communityPosts').doc(event.postId).get() : null;
+        if (event.newsletter && (!newsletterPost?.exists || !newsletterPost.get('visible') || newsletterPost.get('isPrivate') || !isCommunityRoomVisible(newsletterPost.get('roomId')))) {
+            await ref.update({'delivery.email':'skipped','delivery.talk':'skipped'}); return;
+        }
+        if (important && channels.email && user.email) {
+            const newsletter = event.type === 'admin-post' && event.newsletter ? renderCommunityNewsletter(event.newsletter.title, event.newsletter.body, url, {
+                authorName:newsletterPost?.get('authorName') || event.actorName, roomName:COMMUNITY_ROOMS.find(r=>r.id===newsletterPost?.get('roomId'))?.name || '클럽', publishedAt:newsletterPost?.get('createdAt') || event.createdAt
+            }, event.newsletter.bodyDocument) : null;
             // Generic message avoids distributing member-authored content outside the gated community.
-            await queueEmail(uid, user.email, newsletter ? '[라이프업 뉴스레터] ' + event.newsletter?.title : '[라이프업 커뮤니티] 새로운 알림이 있습니다',
-                newsletter ? newsletter.text : '라이프업 커뮤니티에 새로운 알림이 도착했습니다.\n\n로그인 후 확인하기: ' + url +
-                '\n\n알림 설정 변경: https://community.notionable.net/community?settings=notifications', 'community:' + uid + ':' + notificationId, newsletter?.html);
+            await queueEmail(uid, user.email, newsletter ? '[노셔너블 클럽 뉴스레터] ' + event.newsletter?.title : '[노셔너블 클럽] 새로운 알림이 있습니다',
+                newsletter ? newsletter.text : '노셔너블 클럽에 새로운 알림이 도착했습니다.\n\n로그인 후 확인하기: ' + url +
+                '\n\n알림 설정 변경: https://club.notionable.net/?settings=notifications', 'community:' + uid + ':' + notificationId, newsletter?.html, newsletter ? event.postId : undefined, category);
             await ref.update({ 'delivery.email': 'queued' });
         } else await ref.update({ 'delivery.email': 'disabled' });
-        if (!important || !settings.talk || (event.type === 'admin-post' && event.kakao === false)) { await ref.update({ 'delivery.talk': 'disabled' }); return; }
+        if (!important || !channels.talk || (event.type === 'admin-post' && event.kakao === false)) { await ref.update({ 'delivery.talk': 'disabled' }); return; }
         if (!kakao.ready()) { await ref.update({ 'delivery.talk': 'not-configured' }); return; }
         const recipient = await communityKakaoRecipient(db, uid);
         if (!recipient) { await ref.update({ 'delivery.talk': 'not-connected' }); return; }
@@ -112,9 +131,9 @@ export function createCommunityDelivery(db: Firestore, auth: Auth, queueEmail: Q
         if (!claim) return;
         // Recheck consent immediately before the external side effect.
         const latest = notificationSettings((await state.ref.get()).data());
-        if (!latest.confirmed || !latest.talk) { await job.update({ status: 'cancelled' }); await ref.update({ 'delivery.talk': 'disabled' }); return; }
+        if (!latest.confirmed || !latest.talk || !(await member.ref.get()).get('active') || await communityEventWithdrawn(db, event)) { await job.update({ status: 'cancelled' }); await ref.update({ 'delivery.talk': 'disabled' }); return; }
         let result: {status: string; taskId: string};
-        try { result = await kakao.send(recipient, { text: event.type === 'admin-post' && event.kakao === true ? '[라이프업 커뮤니티] ' + event.postTitle : '라이프업 커뮤니티에 새로운 알림이 도착했습니다.', url }); }
+        try { result = await kakao.send(recipient, { text: event.type === 'admin-post' && event.kakao === true ? '[노셔너블 클럽] ' + event.postTitle : '노셔너블 클럽에 새로운 알림이 도착했습니다.', url }); }
         catch { result = { status: 'review', taskId: '' }; }
         await job.update({ ...result, updatedAt: now() });
         await ref.update({ 'delivery.talk': result.status });

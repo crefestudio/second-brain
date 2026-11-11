@@ -1,9 +1,14 @@
 import { Component, Input } from '@angular/core';
 
-@Component({ selector: 'community-icon', standalone: true, template: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path [attr.d]="paths[name] || paths['grid']" /></svg>`, styles: [':host{display:inline-flex;width:20px;height:20px;flex-shrink:0}svg{width:100%;height:100%}'] })
+@Component({ selector: 'community-icon', standalone: true, template: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" [attr.stroke-width]="sketch ? 1.25 : 1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">@if (sketch) { <path [attr.d]="paths[name] || paths['grid']" transform="translate(.3 -.25) rotate(1 12 12)" stroke-width=".35" opacity=".65" /><path [attr.d]="paths[name] || paths['grid']" transform="translate(-.35 .3) rotate(-1 12 12)" stroke-width=".45" opacity=".5" /> }<path [attr.d]="paths[name] || paths['grid']" /></svg>`, styles: [':host{display:inline-flex;width:20px;height:20px;flex-shrink:0}svg{width:100%;height:100%}'] })
 export class CommunityIconComponent {
     @Input() name = 'grid';
+    @Input() sketch = false;
     paths: Record<string, string> = {
+        brain: 'M12 5a3 3 0 0 0-5-2 4 4 0 0 0-4 5 4 4 0 0 0 0 7 4 4 0 0 0 5 5 3 3 0 0 0 4-2V5Zm0 0a3 3 0 0 1 5-2 4 4 0 0 1 4 5 4 4 0 0 1 0 7 4 4 0 0 1-5 5 3 3 0 0 1-4-2M7 3v4l2 2M3 8l4 2m-4 5 4-1 2 2m-1 4v-2m9-15v4l-2 2m6-1-4 2m4 5-4-1-2 2m1 4v-2',
+        robot: 'M5 7h14a2 2 0 0 1 2 2v10H3V9a2 2 0 0 1 2-2Zm7 0V3m-2 0h4M7 12h1m8 0h1M8 16h8M1 11v5m22-5v5M7 19v3m10-3v3',
+        mail: 'M3 5h18v14H3Zm0 0 9 7 9-7',
+        instagram: 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4Zm9 9a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm1-5h.01',
         home: 'm3 10 9-7 9 7v10H3Zm6 10v-7h6v7',
         grid: 'M3 3h7v7H3Zm11 0h7v7h-7ZM3 14h7v7H3Zm11 0h7v7h-7Z',
         people: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-7.87a4 4 0 0 1 0 7.75',

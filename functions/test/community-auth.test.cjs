@@ -29,7 +29,7 @@ test('community trusts verified identity, checks revocation and keeps private re
   const r = await request();
   assert.equal(r.calls[0][0].uid, 'verified-user'); assert.equal(r.calls[0][0].isAdmin, false);
   assert.deepEqual(r.verified[0], ['test-token', true]); assert.equal(r.res.headers['Cache-Control'], 'private, no-store');
-  assert.ok(r.options.cors.includes('https://community.notionable.net'));
+  assert.ok(r.options.cors.includes('https://club.notionable.net'));
   assert.equal((await request({ email: 'operator@example.test' })).calls[0][0].isAdmin, true);
 });
 test('unexpected authentication failures remain monitored without leaking diagnostics', async () => {

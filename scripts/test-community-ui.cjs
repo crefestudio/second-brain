@@ -23,7 +23,7 @@ import { SocialAuthService } from './src/app/services/social-auth.service';
 import { CommunityService } from './src/app/services/community.service';
 const account = new URLSearchParams(location.search).has('signedOut') ? null : {uid:'me',displayName:'민지'};
 @Component({selector:'app-root',standalone:true,imports:[RouterOutlet],template:'<router-outlet />'}) class Root {}
-bootstrapApplication(Root,{providers:[provideRouter([{path:'community',component:CommunityComponent},{path:'login',component:Root}]),
+bootstrapApplication(Root,{providers:[provideRouter([{path:'club',component:CommunityComponent},{path:'login',component:Root}]),
 {provide:SocialAuthService,useValue:{init:async()=>{},account:()=>account,logout:async()=>{}}},
 {provide:CommunityService,useValue:{request:async(action,data={})=>{
  const r=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...data,action})});const result=await r.json();if(!r.ok)throw new Error(result.error);return result;
@@ -41,7 +41,7 @@ bootstrapApplication(Root,{providers:[provideRouter([{path:'community',component
     await db.collection('communityPosts').doc('guide-post').set({ ...data, createdAt: now - 1000, roomId: 'notion', title: '하루 10분, 나만의 주간 회고 루틴', body: '완벽하게 기록하려는 마음을 내려놓으니 꾸준히 쓸 수 있었어요.\n이번 주에 잘한 일 하나와 다음 주에 바꿔볼 일 하나를 적어보세요.' });
     await db.collection('communityPosts').doc('question-post').set({ ...data, createdAt: now - 2000, authorId: 'me', authorName: '민지', roomId: 'questions', kind: 'question', title: 'GTD의 다음 행동과 프로젝트는 어떻게 구분하시나요?', body: '할 일을 정리하다 보면 프로젝트와 다음 행동의 경계가 헷갈립니다.\n실제로 사용하고 계신 방법이 궁금해요.' });
     await esbuild.build({ stdin: { contents: entry, loader: 'ts', resolveDir: root }, bundle: true, target: 'es2016', format: 'iife', outfile: path.join(out, 'app.js'), tsconfigRaw: { compilerOptions: { experimentalDecorators: true } }, plugins: [{ name: 'community-fixture', setup(build) {
-      build.onLoad({ filter: /community(?:-icon)?\.component\.ts$/ }, args => {
+      build.onLoad({ filter: /community(?:-icon|-avatar)?\.component\.ts$/ }, args => {
         let source = fs.readFileSync(args.path, 'utf8');
         if (args.path.endsWith('community.component.ts')) {
           source = source.replace(/templateUrl: '[^']+', styleUrls: \[([^\]]+)\]/, (_, styles) => 'template: ' + JSON.stringify(fs.readFileSync(path.join(base, 'community.component.html'), 'utf8')) + ', styles: ' + JSON.stringify([...styles.matchAll(/'([^']+)'/g)].map(m => fs.readFileSync(path.resolve(base, m[1]), 'utf8'))));
@@ -71,27 +71,46 @@ bootstrapApplication(Root,{providers:[provideRouter([{path:'community',component
     page.on('console', m => { if (m.type() === 'error') console.error('Console:', m.text()); });
     await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:') ? route.continue() : route.abort());
     const url = 'http://127.0.0.1:' + server.address().port;
-    await page.goto(url + '/community?signedOut=1');
+    await page.goto(url + '/club?signedOut=1');
     try { await page.getByRole('link', { name: '기존 계정으로 로그인' }).waitFor({ timeout: 10000 }); }
     catch (e) { console.error('Page text:', await page.locator('body').innerText()); await page.screenshot({path:path.join(out,'failure.png'),fullPage:true}); throw e; }
     assert.deepEqual(calls, []);
-    await page.goto(url + '/community');
+    await page.goto(url + '/club');
     await page.getByRole('dialog').waitFor();
     assert.deepEqual(calls, ['state']);
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({path:path.join(out,'join-dialog.png'),fullPage:true});
     await page.getByRole('button', { name: '나중에', exact: true }).click();
     assert.equal(await page.locator('.post-card').count(), 0);
-    await page.getByRole('button', { name: '커뮤니티 가입하기', exact: true }).click();
+    await page.getByRole('button', { name: '부담 없이 시작하기', exact: true }).click();
     assert.equal(await page.getByLabel('기본 알림 메일로 받기',{exact:true}).isChecked(),true);
     assert.equal(await page.getByLabel('중요한 알림 문자 또는 카카오톡으로 받기',{exact:true}).isChecked(),true);
-    await page.getByLabel('커뮤니티에서 사용할 이름').fill('민지');
+    await page.getByLabel('클럽에서 사용할 이름').fill('민지');
     await page.getByRole('button', { name: '확인하고 가입하기', exact: true }).click();
     await page.locator('.post-card').first().waitFor();
     assert.equal(await page.locator('.post-card').count(), 3);
     assert.equal(await page.locator('.post-card .admin-tag').count(),2);
-    assert.equal(await page.locator('.sidebar .room-group').count(), 5);
-    assert.equal(await page.locator('.sidebar button.room-button').count(), 17);
+    assert.equal(await page.locator('.sidebar .room-group').count(), 6);
+    assert.equal(await page.locator('.sidebar button.room-button').count(), 20);
+    await page.getByRole('button', {name:'내 글',exact:true}).click();
+    await page.waitForFunction(() => document.querySelector('.page-heading h1')?.textContent === '내 글' && document.querySelectorAll('.post-card').length === 1);
+    await page.locator('.post-open').first().click();
+    await page.getByRole('button',{name:'목록으로',exact:true}).click();
+    assert.ok(new URL(page.url()).searchParams.get('view') === 'mine');
+    await page.getByRole('button',{name:'글쓰기',exact:true}).click();
+    await page.getByLabel('비공개 · 작성자와 관리자만 볼 수 있어요').check();
+    await page.getByLabel('제목',{exact:true}).fill('비공개 문의 테스트');
+    await page.getByLabel('내용',{exact:true}).fill('작성자와 관리자만 보는 내용');
+    await page.getByRole('button',{name:'게시하기',exact:true}).click();
+    await page.waitForFunction(() => document.querySelector('.post-detail h2')?.textContent.includes('비공개 문의 테스트'));
+    assert.equal(await page.locator('.post-detail .status-tag').filter({hasText:'비공개'}).count(),1);
+    await page.screenshot({path:path.join(out,'private-post.png'),fullPage:true});
+    await page.locator('.post-detail').getByRole('button',{name:'수정',exact:true}).click();
+    assert.equal(await page.getByLabel('비공개 · 작성자와 관리자만 볼 수 있어요').isDisabled(),true);
+    await page.getByRole('button',{name:'취소',exact:true}).click();
+    await db.collection('communityPosts').doc(new URL(page.url()).searchParams.get('post')).delete();
+    await page.getByRole('button',{name:'전체 글',exact:true}).click();
+    await page.locator('.post-card').first().waitFor();
     await page.screenshot({ path: path.join(out, 'desktop-feed.png'), fullPage: true });
     await page.getByRole('button',{name:'계정 메뉴',exact:true}).click();
     await page.getByRole('button',{name:'다크 모드',exact:true}).click();
@@ -157,9 +176,35 @@ bootstrapApplication(Root,{providers:[provideRouter([{path:'community',component
     await page.locator('.top-nav').getByRole('button', { name: '멤버', exact: true }).click();
     await page.locator('.member-card').first().waitFor(); assert.equal(await page.locator('.member-card').count(), 2);
     await page.getByRole('button', { name: '프로필 수정', exact: true }).click();
+    const avatarFile={name:'profile.png',mimeType:'image/png',buffer:await functionsRequire('sharp')({create:{width:400,height:300,channels:3,background:'#5894c8'}}).png().toBuffer()};
+    await page.locator('#profile-photo').setInputFiles({name:'bad.txt',mimeType:'text/plain',buffer:Buffer.from('bad')});
+    await page.getByRole('alert').filter({hasText:'5MB 이하'}).waitFor();
+    await page.locator('#profile-photo').setInputFiles(avatarFile);
+    await page.locator('.profile-photo-preview img').waitFor();
+    await page.getByRole('button',{name:'취소',exact:true}).click();
+    assert.equal(await page.locator('.account-button community-avatar img').count(),0);
+    await page.getByRole('button', { name: '프로필 수정', exact: true }).click();
+    assert.equal(await page.locator('.profile-photo-preview img').count(),0);
+    await page.locator('#profile-photo').setInputFiles(avatarFile);
+    await page.locator('.profile-photo-preview img').waitFor();
+    await page.screenshot({path:path.join(out,'profile-photo-editor.png'),fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    await page.screenshot({path:path.join(out,'profile-photo-mobile.png'),fullPage:true});
+    await page.setViewportSize({width:1440,height:1050});
     await page.getByLabel('한 줄 소개').fill('매일 조금씩 나아지는 일상을 기록합니다.');
     await page.getByRole('button', { name: '저장하기', exact: true }).click();
     await page.getByText('매일 조금씩 나아지는 일상을 기록합니다.', { exact: true }).waitFor();
+    await page.locator('.account-button community-avatar img').waitFor();
+    assert.equal(await page.locator('.member-card community-avatar img').count(),1);
+    await page.reload();
+    await page.locator('.member-card community-avatar img').waitFor();
+    await page.getByRole('button',{name:'프로필 수정',exact:true}).click();
+    await page.getByRole('button',{name:'사진 삭제',exact:true}).click();
+    assert.equal(await page.locator('.profile-photo-preview img').count(),0);
+    await page.getByRole('button',{name:'저장하기',exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('.dialog')&&!document.querySelector('.account-button community-avatar img'));
+    assert.equal(await page.locator('.member-card community-avatar img').count(),0);
     await page.screenshot({ path: path.join(out, 'members.png'), fullPage: true });
     await page.locator('.top-nav').getByRole('button', { name: '홈', exact: true }).click();
     await page.locator('.post-card').first().waitFor();
@@ -175,26 +220,46 @@ bootstrapApplication(Root,{providers:[provideRouter([{path:'community',component
     await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').count(), 0);
     adminMode = true;
     await page.setViewportSize({width:1440,height:1050});
-    await page.goto(url + '/community'); await page.locator('.post-card').first().waitFor();
+    await page.goto(url + '/club'); await page.locator('.post-card').first().waitFor();
     await page.getByRole('button',{name:'글쓰기',exact:true}).click();
     await page.getByLabel('제목',{exact:true}).fill('라이프업의 새로운 이야기');
-    await page.getByLabel('내용',{exact:true}).fill('이번 주 커뮤니티 소식을 함께 나눕니다.');
+    await page.getByLabel('내용',{exact:true}).fill('이번 주 클럽 소식을 함께 나눕니다.');
+    assert.equal(await page.getByText('유튜브 클럽 · 자동 게시 미지원',{exact:true}).count(),0);
     await page.getByLabel('이메일 뉴스레터',{exact:true}).check();
     await page.getByLabel('인스타그램 공유 준비',{exact:true}).check();
     await page.screenshot({path:path.join(out,'admin-sharing.png'),fullPage:true});
     await page.getByRole('button',{name:'게시하기',exact:true}).click();
     await page.getByRole('button',{name:'인스타그램 공유 준비',exact:true}).click();
     await page.locator('.instagram-preview').waitFor();
+    await page.getByLabel('게시 완료한 인스타그램 글 링크',{exact:true}).fill('https://www.instagram.com/p/test-post/');
+    await page.getByRole('button',{name:'공유 링크 저장',exact:true}).click();
+    await page.getByText('공유 링크를 저장했습니다.',{exact:true}).waitFor();
     const image = page.locator('.instagram-preview');
     assert.ok((await image.getAttribute('src')).startsWith('data:image/jpeg;'));
     assert.equal(await image.evaluate(el=>el.naturalWidth),1080);
-    assert.ok((await page.getByLabel('캡션',{exact:true}).inputValue()).includes('이번 주 커뮤니티'));
+    assert.ok((await page.getByLabel('캡션',{exact:true}).inputValue()).includes('이번 주 클럽'));
     await page.screenshot({path:path.join(out,'instagram-sharing.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     await page.keyboard.press('Escape');
+    const linkedPostId=new URL(page.url()).searchParams.get('post');
+    await db.collection('communityPosts').doc(linkedPostId).update({newsletterSentCount:434});
+    await page.reload(); await page.getByLabel('뉴스레터 발송 완료 434건',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('link',{name:'인스타그램 게시물 보기',exact:true}).getAttribute('href'),'https://www.instagram.com/p/test-post/');
+    await page.screenshot({path:path.join(out,'sharing-status-admin.png'),fullPage:true});
+    adminMode=false; await page.reload(); await page.locator('.post-detail').waitFor();
+    assert.equal(await page.getByLabel('뉴스레터 발송 완료 434건',{exact:true}).count(),0);
+    assert.equal(await page.getByRole('link',{name:'인스타그램 게시물 보기',exact:true}).count(),1);
+    for (const id of ['unread-one','unread-two']) await db.collection('communityPosts').doc(id).set({...data,roomId:'notion',title:id,body:'읽지 않은 새 글',createdAt:now+1});
+    await page.setViewportSize({width:1440,height:1050}); await page.goto(url+'/club');
+    const unreadRoom=page.locator('.sidebar button.room-button').filter({hasText:'노션'});
+    await page.waitForFunction(()=>Array.from(document.querySelectorAll('.sidebar .room-button')).some(el=>el.textContent.includes('노션')&&el.textContent.includes('(2)')));
+    await unreadRoom.click(); await page.locator('.post-open').filter({hasText:'unread-two'}).click();
+    await page.waitForFunction(()=>Array.from(document.querySelectorAll('.sidebar .room-button')).some(el=>el.textContent.includes('노션')&&el.textContent.includes('(1)')));
+    await page.reload(); await page.waitForFunction(()=>Array.from(document.querySelectorAll('.sidebar .room-button')).some(el=>el.textContent.includes('노션')&&el.textContent.includes('(1)')));
+    await page.screenshot({path:path.join(out,'room-unread.png'),fullPage:true});
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ success: true, screenshots: out, checks: ['guest gate', 'explicit join', '16 rooms', 'all feed', 'question filter', 'answer and acceptance', 'create edit delete', 'safe text rendering', 'likes', 'member profiles', 'mobile navigation and overflow', 'admin share options', 'Instagram JPEG and caption preparation'] }));
+    console.log(JSON.stringify({ success: true, screenshots: out, checks: ['guest gate', 'explicit join', '18 rooms', 'all feed', 'question filter', 'answer and acceptance', 'create edit delete', 'safe text rendering', 'likes', 'member profiles', 'mobile navigation and overflow', 'admin share options', 'Instagram JPEG and caption preparation'] }));
   } finally {
     if (browser) await browser.close();
     if (server) await new Promise(resolve => server.close(resolve));

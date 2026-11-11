@@ -15,6 +15,8 @@
 .question-mark{color:#30353c;margin-right:8px;font-size:22px}
 .status-tag{display:inline-flex;padding:3px 8px;background:#f3f4f6;color:#30353c;border-radius:5px;font-size:11px;white-space:nowrap}
 .status-tag.solved{color:#30353c;background:#f3f4f6}
+.private-tag{align-items:center;gap:4px;vertical-align:middle}
+.private-tag community-icon{width:12px;height:12px}
 .back-link{display:flex;align-items:center;gap:8px;color:#727983;font-size:13px;margin:0 0 18px;padding:0}
 .back-link community-icon{width:16px;height:16px}
 .post-meta{display:flex;gap:10px;align-items:center;margin-bottom:17px}
@@ -74,3 +76,4 @@
 .landing-topics span{font-size:12px;color:#727983;padding:6px 14px;border:1px solid #f3f4f6;border-radius:20px}
 .forward{transform:rotate(180deg)}
 
+.pinned-posts{margin-bottom:24px}.pinned-heading{font-size:13px;color:var(--muted);font-weight:650;margin:0 0 12px}.pinned-card{border:1px solid var(--line);padding-bottom:16px}.pinned-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px}.pinned-meta>button{margin-left:auto}.pinned-meta small{font-size:11px}.pin-label{background:#eee8f7;color:#725493;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:650}.pinned-author{display:flex;gap:12px;font-size:12px;color:var(--muted);padding-bottom:16px}.pin-control{display:block;margin-left:auto;margin-bottom:8px;font-size:11px}

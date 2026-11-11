@@ -11,7 +11,7 @@ test('community Firestore paths deny direct browser reads and writes', { skip: !
   const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
   const token = `${encode({ alg: 'none', typ: 'JWT' })}.${encode({ sub: 'member', user_id: 'member', aud: 'demo-community', iss: 'https://securetoken.google.com/demo-community', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600, firebase: { sign_in_provider: 'google.com', identities: {} } })}.`;
   const base = `http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/projects/demo-community/databases/(default)/documents`;
-  for (const path of ['communityMembers/member', 'communityPosts/post', 'communityPosts/post/comments/reply', 'communityMemberPrivate/member']) {
+  for (const path of ['communityMembers/member', 'communityPosts/post', 'communityPosts/post/comments/reply', 'communityMemberPrivate/member', 'communityMemberPrivate/member/drafts/draft-one']) {
     for (const method of ['GET', 'PATCH']) {
       const r = await fetch(`${base}/${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(method === 'PATCH' ? { body: JSON.stringify({ fields: { active: { booleanValue: true } } }) } : {}) });
       assert.equal(r.status, 403, `${method} ${path}`);
@@ -54,13 +54,14 @@ test('community membership, permissions, reconciliation and pagination', { skip:
       await denied(api(a, post('p', { body: 'x'.repeat(12001) })), 400);
       await denied(api(a, post('p', { roomId: 'missing' })), 400);
       await api(admin, post('announcement', { roomId: 'announcements' }));
-      assert.equal(COMMUNITY_ROOMS.length, 16);
+      assert.equal(COMMUNITY_ROOMS.length, 18);
       assert.equal((await api(a,{action:'post',postId:'announcement'})).post.authorIsAdmin,true);
       assert.equal((await api(a,{action:'members'})).members.find(m=>m.id==='admin').isAdmin,true);
     });
     await t.test('room formats are enforced for both members and admins; retired rooms cannot be used', async () => {
       await denied(api(a, post('removed', {roomId:'guides'})), 400);
       for (const r of COMMUNITY_ROOMS) {
+        if (r.hidden) { await denied(api(admin, post('hidden-' + r.id, {roomId:r.id})), 400); continue; }
         clock += 20000;
         const user = r.adminOnly ? admin : a;
         const result = await api(user, post('format-' + r.id, {roomId:r.id,kind:r.kind === 'question' ? 'feed' : 'question'}));

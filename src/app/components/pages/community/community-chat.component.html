@@ -1,0 +1,40 @@
+@if (open) {
+  <div class="chat-shade" (click)="close()"></div>
+  <section class="chat-panel" role="dialog" aria-modal="true" aria-labelledby="chat-title">
+    <header class="chat-header"><div><h2 id="chat-title">채팅</h2><small>클럽 멤버와 나누는 1:1 대화</small></div><button class="chat-close" (click)="close()" aria-label="채팅 닫기">✕</button></header>
+    @if (error) { <div class="chat-error" role="alert">{{ error }} <button (click)="refresh()">다시 시도</button></div> }
+    @if (realtimeFailed) { <p class="connection-note" role="status">실시간 연결을 확인하고 있어요. 주기적으로 새 메시지를 확인합니다.</p> }
+    <div class="chat-layout" [class.has-conversation]="activeId && !choosing">
+      <aside class="chat-inbox" aria-label="대화 목록">
+        <button class="new-chat" (click)="choose()" [disabled]="sending">＋ 새 대화</button>
+        @for (chat of conversations; track chat.id) {
+          <button class="conversation" [class.selected]="activeId === chat.id" (click)="select(chat.id)" [disabled]="sending">
+            <community-avatar [name]="chat.peer.name" [photo]="chat.peer.avatar || ''" /><span><strong>{{ chat.peer.name }}</strong><small>{{ chat.preview }}</small></span>@if (chat.unread) { <i aria-label="읽지 않은 메시지"></i> }
+          </button>
+        } @empty { <p class="chat-empty">아직 대화가 없어요.<br>멤버에게 먼저 인사를 건네보세요.</p> }
+        @if (inboxCursor) { <button (click)="moreConversations()" [disabled]="loading">대화 더 보기</button> }
+      </aside>
+      <main class="chat-main">
+        @if (choosing) {
+          <div class="people-picker"><button (click)="choosing = false; back()">← 대화 목록</button><h3>대화할 멤버 선택</h3><label for="chat-search">불러온 멤버 이름 검색</label><input id="chat-search" [(ngModel)]="search" placeholder="이름을 입력하세요" autocomplete="off">
+            @for (person of filteredPeople; track person.id) { <button class="person" (click)="start(person.id)"><community-avatar [name]="person.name" [photo]="person.avatar || ''" />{{ person.name }}<span>대화하기 →</span></button> }
+            @if (!filteredPeople.length && !loading) { <p>일치하는 멤버가 없어요.</p> }
+            @if (peopleCursor) { <button (click)="choose(true)" [disabled]="loading">멤버 더 불러오기</button> }
+          </div>
+        } @else if (activeId) {
+          <div class="conversation-header"><button class="inbox-back" (click)="back()" aria-label="대화 목록으로">←</button>@if (peer) { <community-avatar [name]="peer.name" [photo]="peer.avatar || ''" /><strong>{{ peer.name }}</strong><button class="block-button" (click)="toggleBlock()" [disabled]="sending">{{ blockedByMe ? '차단 해제' : '상대 차단' }}</button> }</div>
+          <div class="messages" #messageList (scroll)="scrolled()" role="log" aria-label="대화 내용" aria-live="polite" aria-relevant="additions">
+            @if (cursor) { <button class="older" (click)="loadMessages(true)" [disabled]="loading">이전 메시지 보기</button> }
+            @for (message of messages; track message.id) {
+              <article class="message" [class.mine]="message.authorId === ownId"><div class="bubble" [class.deleted]="message.deleted">{{ message.deleted ? '삭제된 메시지입니다.' : message.body }}</div><div class="message-meta"><time>{{ message.createdAt | date:'MM.dd HH:mm' }}</time>@if (message.authorId === ownId && !message.deleted) { <button (click)="deleteId = message.id" [disabled]="sending" aria-label="내 메시지 삭제">삭제</button> }</div></article>
+            } @empty { @if (!loading) { <p class="chat-empty">가벼운 인사로 대화를 시작해보세요.</p> } }
+          </div>
+          @if (deleteId) { <div class="delete-confirm" role="alert">메시지를 삭제할까요?<button (click)="remove()" [disabled]="sending">삭제</button><button (click)="deleteId = ''">취소</button></div> }
+          @if (blocked) { <p class="blocked-note">{{ blockedByMe ? '차단한 대화입니다. 차단을 해제하면 다시 메시지를 보낼 수 있어요.' : '현재 메시지를 보낼 수 없는 대화입니다.' }}</p> }
+          <form class="chat-composer" (ngSubmit)="send()"><label class="sr-only" for="chat-message">메시지</label><textarea id="chat-message" name="chatMessage" [(ngModel)]="draft" maxlength="4000" rows="2" [disabled]="blocked || !peer || sending" placeholder="메시지를 입력하세요" (keydown)="composeKey($event)"></textarea><button class="send" [disabled]="sending || blocked || !peer || !draft.trim()">{{ sending ? '전송 중…' : '보내기' }}</button><small>Enter 전송 · Shift+Enter 줄바꿈 <span>{{ draft.length }} / 4,000</span></small></form>
+        } @else { <div class="chat-welcome"><span>✉</span><h3>가까워지는 대화</h3><p>궁금한 점과 반가운 소식을<br>멤버와 편하게 나눠보세요.</p><button (click)="choose()">새 대화 시작하기</button></div> }
+        @if (loading) { <small class="chat-loading" role="status">불러오는 중…</small> }
+      </main>
+    </div>
+  </section>
+}

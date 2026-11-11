@@ -125,3 +125,18 @@ test('uncertain sends older than provider idempotency window require review', as
     assert.equal(await f.queue.attempt(id), 'review');
     assert.equal(f.calls(), 0);
 });
+
+
+test('quota-deferred mail resumes at next Korean 10am without expiring or duplicating', async () => {
+ const original = Date.now; let now = Date.parse('2026-11-08T03:00:00Z'); Date.now = () => now;
+ try {
+  const f = fixture(); f.records.set('mailDailyUsage/2026-11-08', {normal:70,high:30});
+  const [id] = await f.queue.enqueue(mail,'normal','deferred');
+  assert.equal(await f.queue.attempt(id),'pending'); assert.equal(f.calls(),0);
+  assert.equal(f.row(id).firstAttemptAt,undefined);
+  const resume=f.row(id).nextAttemptAt; assert.equal(new Date(resume).toISOString(),'2026-11-09T01:00:00.000Z');
+  now=resume-1; assert.equal(await f.queue.attempt(id),'pending'); assert.equal(f.calls(),0);
+  now=resume; assert.equal(await f.queue.attempt(id),'sent'); assert.equal(f.calls(),1);
+  assert.equal(await f.queue.attempt(id),'sent'); assert.equal(f.calls(),1);
+ } finally {Date.now=original;}
+});

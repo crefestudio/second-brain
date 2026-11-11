@@ -13,7 +13,7 @@ test('Kakao Event API separates accepted requests from verified delivery and han
   calls.push({url,options});return {ok:true,json:async()=>response};
  });
  assert.equal(client.ready(),true);
- assert.deepEqual(await client.send({type:'botUserKey',id:'recipient'},{text:'알림',url:'https://community.notionable.net/'}),{status:'submitted',taskId:'task-1'});
+ assert.deepEqual(await client.send({type:'botUserKey',id:'recipient'},{text:'알림',url:'https://club.notionable.net/'}),{status:'submitted',taskId:'task-1'});
  const payload=JSON.parse(calls[0].options.body);
  assert.equal(payload.event.name,'community_notification');assert.equal(payload.user[0].type,'botUserKey');
  response={status:'ALL SUCCESS',successCount:1};assert.equal(await client.status('task-1'),'sent');

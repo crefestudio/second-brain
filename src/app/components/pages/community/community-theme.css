@@ -50,3 +50,27 @@
 :host(.community-dark) .empty-state h3{color:#d5dbe5}
 :host(.community-dark) .account-menu .theme-picker button.chosen{background:#444b59;border-color:#6d7a90;color:#fff}
 @media(max-width:760px){:host(.community-dark) .top-nav{background:var(--panel)}}
+
+/* A subtle tint for the community welcome notice only. */
+.development-notice{background:#f0edfa;border-color:#e3ddf2}
+:host(.community-dark) .development-notice{background:#2b2638;border-color:#423951}
+
+.brand-logo{display:block;width:140px;height:40px;object-fit:contain;filter:brightness(0)}
+:host(.community-dark) .brand-logo{filter:none}
+@media(max-width:760px){.brand-logo{width:112px;height:32px}}
+
+.landing-gifts{width:fit-content;max-width:100%;box-sizing:border-box;margin:28px auto 32px;text-align:left;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+.join-landing .landing-intro{font-size:30px;font-weight:700;line-height:1.6;margin:24px 0 0;color:inherit;word-break:keep-all}
+.join-landing h1.landing-welcome{font-size:22px;font-weight:500}
+.landing-intro+.landing-symbol{margin:22px auto}
+.join-landing .landing-start{min-height:54px;padding:14px 28px;font-size:17px;box-sizing:border-box;max-width:100%}
+.join-landing>.landing-reassurance{font-size:14px;line-height:1.8;margin-top:20px;color:var(--muted)}
+.landing-reassurance strong{color:inherit;font-weight:600}
+@media(max-width:760px){.join-landing .landing-intro{font-size:25px}.join-landing h1.landing-welcome{font-size:18px}.join-landing .landing-start{font-size:16px;padding:14px 22px}}
+.landing-gifts h2{font-size:16px;line-height:1.7;margin:0 0 14px;word-break:keep-all}.landing-gifts ul{margin:0;padding-left:22px;line-height:2.2;font-size:15px}.join-landing h1{font-size:30px;word-break:keep-all}.request-mark{display:inline-grid;place-items:center;width:25px;height:25px;margin-right:8px;border-radius:6px;background:#eee8fa;color:#7147a8;font-size:16px;font-weight:750;vertical-align:middle}.request-guide{border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 18px;line-height:1.7}.request-guide p{margin:0 0 6px;font-size:14px}.request-guide small{font-size:12px;color:var(--muted)}.feed-tabs{flex-wrap:wrap}.feed-toolbar{gap:8px}.feed-toolbar>span{white-space:nowrap}
+:host(.community-dark) .request-mark{background:#453453;color:#e2c6fa}
+@media(max-width:760px){.join-landing h1{font-size:24px}.landing-gifts{padding:18px}.landing-gifts h2{font-size:15px}.landing-gifts ul{font-size:14px}.feed-tabs{gap:2px}.feed-tabs button{padding:7px 8px}}
+
+.brand{gap:2px}.brand-club{font-size:22px;font-weight:750;letter-spacing:-.8px;white-space:nowrap;margin-left:-6px;padding-bottom:1px}@media(max-width:760px){.brand{gap:2px}.brand-club{font-size:22px;margin-left:-6px}}
+
+.chat-unread-dot{position:absolute;right:5px;top:4px;width:7px;height:7px;border-radius:50%;background:#926cbb}

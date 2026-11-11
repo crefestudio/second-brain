@@ -2,26 +2,26 @@
   <header class="topbar">
     <div class="brand-area">
       <button class="icon-button mobile-menu" aria-label="방 메뉴 열기" [attr.aria-expanded]="sidebarOpen" (click)="sidebarOpen = !sidebarOpen"><community-icon name="menu" /></button>
-      <a class="brand" routerLink="/community"><span class="brand-mark">N<span>↗</span></span><span>라이프업 커뮤니티</span></a>
+      <a class="brand" [routerLink]="communityHome" aria-label="노셔너블 클럽 홈"><img class="brand-logo" src="assets/images/logo_notionable.png" alt="Notionable" width="140" height="40"><span class="brand-club">클럽</span></a>
     </div>
-    <nav class="top-nav" aria-label="커뮤니티 메뉴">
+    <nav class="top-nav" aria-label="클럽 메뉴">
       <button [class.active]="view === 'home'" (click)="navigate()"><community-icon name="home" />홈</button>
       <button [class.active]="view === 'members'" (click)="navigate('', 'members')"><community-icon name="people" />멤버</button>
     </nav>
     <div class="top-actions">
       <button class="icon-button notification-bell" [disabled]="!member" aria-label="알림" (click)="openNotifications()"><community-icon name="bell" /><span class="action-label">알림</span>@if (unreadCount) { <span class="notification-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span> }</button>
-      <button class="icon-button unavailable" disabled aria-label="채팅 · 준비 중" title="채팅 · 준비 중"><community-icon name="chat" /><span class="action-label">채팅</span></button>
+      <button class="icon-button notification-bell" [disabled]="!member" aria-label="채팅" (click)="openChat()"><community-icon name="chat" /><span class="action-label">채팅</span>@if (chatUnread) { <span class="chat-unread-dot" aria-label="읽지 않은 메시지"></span> }</button>
       <span class="top-divider"></span>
       @if (auth.account()) {
         <div class="account-wrap">
-          <button class="account-button" aria-label="계정 메뉴" [attr.aria-expanded]="accountOpen" (click)="accountOpen = !accountOpen"><span class="avatar small">{{ initials(member?.name || auth.account()?.displayName || 'N') }}</span><span class="action-label">계정</span><community-icon name="chevron" /></button>
+          <button class="account-button" aria-label="계정 메뉴" [attr.aria-expanded]="accountOpen" (click)="accountOpen = !accountOpen"><community-avatar class="avatar small" [name]="currentProfileName" [photo]="currentProfilePhoto" /><community-icon name="chevron" /></button>
           @if (accountOpen) {
             <div class="account-menu"><strong>{{ member?.name || auth.account()?.displayName || '내 계정' }} @if (isAdmin) { <span class="admin-tag">관리자</span> }</strong>
-              <div class="theme-picker" role="group" aria-label="커뮤니티 테마"><span>커뮤니티 테마</span><div><button [class.chosen]="theme === 'light'" [attr.aria-pressed]="theme === 'light'" (click)="setTheme('light')">화이트 모드</button><button [class.chosen]="theme === 'dark'" [attr.aria-pressed]="theme === 'dark'" (click)="setTheme('dark')">다크 모드</button></div></div>
-              @if (member) { <button (click)="editProfile()">커뮤니티 프로필</button> }
-              @if (member) { <button (click)="openDialog('notificationSettings')">알림 수신 설정</button> }
+              <div class="theme-picker" role="group" aria-label="클럽 테마"><span>클럽 테마</span><div><button [class.chosen]="theme === 'light'" [attr.aria-pressed]="theme === 'light'" (click)="setTheme('light')">화이트 모드</button><button [class.chosen]="theme === 'dark'" [attr.aria-pressed]="theme === 'dark'" (click)="setTheme('dark')">다크 모드</button></div></div>
+              @if (member) { <button (click)="editProfile()">클럽 프로필</button> }
+              @if (member) { <button (click)="openDialog('settings')">클럽 설정</button> }
               <a href="https://app.notionable.net/workspace/home">라이프업 앱</a>
-              <button (click)="auth.logout('/community')">로그아웃</button>
+              <button (click)="auth.logout(communityHome)">로그아웃</button>
             </div>
           }
         </div>
@@ -31,90 +31,135 @@
 
   @if (sidebarOpen) { <button class="sidebar-shade" aria-label="방 메뉴 닫기" (click)="sidebarOpen = false"></button> }
   <aside class="sidebar" [class.open]="sidebarOpen" aria-label="글 필터">
-    <div class="community-title"><span class="community-symbol"><community-icon name="spark" /></span><div><strong>라이프업 커뮤니티</strong><small>함께 만드는 더 나은 일상</small></div></div>
+    <div class="community-title"><span class="community-symbol"><community-icon name="spark" /></span><div><strong>노셔너블 클럽</strong><small>함께 만드는 더 나은 일상</small></div></div>
     <button class="room-button all-posts" [class.selected]="!roomId && view === 'home'" (click)="navigate()"><community-icon name="grid" /><span>전체 글</span></button>
+    <button class="room-button" [class.selected]="view === 'mine'" (click)="navigate('', 'mine')"><community-icon name="edit" /><span>내 글</span></button>
     @for (group of groups; track group) {
       <div class="room-group"><h2>{{ group }}</h2>
         @for (room of roomsIn(group); track room.id) {
-          <button class="room-button" [class.selected]="roomId === room.id && view === 'home'" (click)="navigate(room.id)"><community-icon [name]="room.icon" /><span>{{ room.name }}</span></button>
+          <button class="room-button" [class.selected]="roomId === room.id && view === 'home'" (click)="navigate(room.id)"><community-icon [name]="room.icon" /><span>{{ room.name }}@if (member && roomUnreadCounts[room.id]) { <span class="room-unread" [attr.aria-label]="'읽지 않은 새 글 ' + roomUnreadCounts[room.id] + '개'"> ({{ roomUnreadCounts[room.id] | number }})</span> }</span></button>
         }
       </div>
     }
-    <div class="room-group link-group"><h2>링크</h2><a class="room-button" href="https://app.notionable.net/" target="_blank" rel="noopener noreferrer"><community-icon name="link" /><span>라이프봇 앱</span><span aria-hidden="true">↗</span></a></div>
-    <div class="sidebar-bottom"><community-icon name="lock" /><span>멤버와 함께하는 공간</span></div>
+    <div class="room-group link-group"><h2>바로 가기</h2><a class="room-button" href="https://app.notionable.net/" target="_blank" rel="noopener noreferrer"><community-icon name="link" /><span>라이프봇 앱</span><span aria-hidden="true">↗</span></a></div>
   </aside>
 
   <main class="main-area" id="community-main">
-    @if (!ready) { <div class="loading-state" role="status"><span class="spinner"></span>커뮤니티를 준비하고 있어요.</div> }
+    @if (!ready) { <div class="loading-state" role="status"><span class="spinner"></span>클럽을 준비하고 있어요.</div> }
+    @else if (!member && withdrawalStatus) {
+      <section class="join-landing" aria-labelledby="withdrawal-complete">
+        <span class="eyebrow">NOTIONABLE CLUB</span>
+        <h1 id="withdrawal-complete" tabindex="-1">클럽에서 탈퇴했어요.</h1>
+        <p>작성한 글과 댓글은 더 이상 공개되지 않으며,<br>클럽 알림도 중단되었습니다.</p>
+        <p>라이프업 계정과 구매 내역은 그대로 유지됩니다.</p>
+        <a class="primary" href="https://app.notionable.net/workspace/home">라이프업 앱으로 이동</a>
+        <small>재가입은 탈퇴 데이터 정리 후 가능합니다.</small>
+      </section>
+    }
     @else if (!member) {
       <section class="join-landing">
-        <span class="eyebrow">NOTIONABLE COMMUNITY</span><div class="landing-symbol"><community-icon name="people" /></div>
-        <h1>혼자보다 함께,<br>더 나은 일상을 만들어요.</h1>
-        <p>노션부터 루틴까지, 경험을 나누고<br>서로의 질문에 답하며 함께 성장하는 공간입니다.</p>
-        @if (auth.account()) { <button class="primary" (click)="openDialog('join')">커뮤니티 가입하기<community-icon name="plus" /></button> }
-        @else { <a class="primary" routerLink="/login" [queryParams]="{ returnUrl: communityReturnUrl }">기존 계정으로 로그인<community-icon name="arrow" class="forward" /></a> }
-        <small>커뮤니티에 가입한 멤버만 글을 읽고 쓸 수 있어요.</small>
-        <div class="landing-topics"><span>노션</span><span>GTD</span><span>세컨드브레인</span><span>루틴 관리</span></div>
+        <span class="eyebrow">NOTIONABLE CLUB</span>
+        <p class="landing-intro">더 나은 일상을 만드는 사람들의 모임,</p>
+        <div class="landing-symbol"><community-icon name="people" /></div>
+        <h1 class="landing-welcome">노셔너블 클럽에 오신 것을 환영합니다!</h1>
+        <p>노션, AI, 세컨드브레인을 활용해 내 일과 삶을 똑똑하게 정돈하는 공간입니다.<br>혼자하면 어렵지만, 함께하면 쉬워집니다.</p>
+        <div class="landing-gifts"><h2>🎁 노셔너블 클럽에서 앞으로 차곡차곡 전해드릴 선물</h2><ul><li>일상을 바꿔줄 <strong>무료 프리미엄 템플릿</strong></li><li>트렌드에 뒤처지지 않는 <strong>AI &amp; 노션 &amp; 생산성 도구 뉴스레터</strong></li><li>함께 고민을 나누고 답을 찾는 <strong>따뜻한 동료들</strong></li></ul></div>
+        @if (auth.account()) { <button class="primary landing-start" (click)="openDialog('join')">시작하기<community-icon name="plus" /></button> }
+        @else { <a class="primary landing-start" routerLink="/login" [queryParams]="{ returnUrl: communityReturnUrl }">시작하기<community-icon name="arrow" class="forward" /></a> }
+        <small class="landing-reassurance"><strong>언제든 설정에서 바로 탈퇴가 가능해요.</strong><br>편한 마음으로 놀러 오세요!</small>
         @if (error) { <p class="error" role="alert">{{ error }}</p><button class="subtle" (click)="ngOnInit()">다시 확인</button> }
       </section>
     } @else {
-      <section class="room-header" [attr.data-room]="roomId"><div class="room-cover" aria-hidden="true"><span class="bubble"></span><span class="bubble"></span><span class="bubble"></span><span class="bubble"></span></div><div class="page-heading"><div><h1>{{ title }}</h1><p>{{ view === 'members' ? '같은 관심사로 연결된 우리를 만나보세요.' : room?.description || '인사와 질문, 일상의 발견을 한곳에서 만나보세요.' }}</p></div>
-        @if (canWrite && view === 'home') { <button class="primary" (click)="editPost()"><community-icon name="plus" />글쓰기</button> }
+      <section class="room-header" [attr.data-room]="roomId">@if (roomId && view === 'home') { <community-room-cover [roomId]="roomId" /> } @else { <div class="room-cover" aria-hidden="true"><span class="bubble"></span><span class="bubble"></span><span class="bubble"></span><span class="bubble"></span></div> }<div class="page-heading"><div><h1>{{ title }}</h1><p>{{ view === 'members' ? '같은 관심사로 연결된 우리를 만나보세요.' : view === 'mine' ? '내가 작성한 공개 글과 비공개 글을 모아보세요.' : room?.description || '인사와 질문, 일상의 발견을 한곳에서 만나보세요.' }}</p></div>
+        @if (canWrite && view !== 'members') { <button class="primary" (click)="editPost()"><community-icon name="plus" />글쓰기</button> }
       </div>
       </section>
-      <div class="development-notice"><strong>라이프업 커뮤니티에 오신 것을 환영합니다.</strong><p>커뮤니티는 현재 개발중이라 일부 기능이 정상 동작하지 않을 수 있습니다. <button (click)="navigate('development')">개선 의견 및 오류 신고 <span aria-hidden="true">↗</span></button></p></div>
+      <div class="development-notice"><strong>노셔너블 클럽에 오신 것을 환영합니다.</strong><p>클럽은 현재 개발중이라 일부 기능이 정상 동작하지 않을 수 있습니다. <button (click)="navigate('development')">개선 의견 및 오류 신고 <span aria-hidden="true">↗</span></button></p></div>
       @if (notice) { <div class="notice" role="status"><span>{{ notice }}</span><button class="icon-button" aria-label="안내 닫기" (click)="notice = ''"><community-icon name="close" /></button></div> }
-      @if (error) { <div class="error" role="alert">{{ error }}<button class="subtle" (click)="load()">다시 불러오기</button>@if (routePostPending()) { <button class="subtle" (click)="navigate(roomId, 'home', kind)">목록으로</button> }</div> }
+      @if (error) { <div class="error" role="alert">{{ error }}<button class="subtle" (click)="load()">다시 불러오기</button>@if (routePostPending()) { <button class="subtle" (click)="navigate(roomId, view, kind)">목록으로</button> }</div> }
 
       @if (view === 'members') {
-        <section class="member-grid" aria-label="커뮤니티 멤버">
+        <section class="member-grid" aria-label="클럽 멤버">
           @for (person of members; track person.id) {
-            <article class="member-card"><span class="avatar large">{{ initials(person.name) }}</span><h2>{{ person.name }} @if (person.isAdmin) { <span class="admin-tag">관리자</span> } @if (person.id === ownId) { <span class="me-tag">나</span> }</h2><p>{{ person.bio || '함께 배우고 나누는 라이프업 멤버' }}</p><small>{{ person.joinedAt | date:'yyyy.MM.dd' }} 가입</small>@if (person.id === ownId) { <button class="subtle" (click)="editProfile()">프로필 수정</button> }</article>
+            <article class="member-card"><community-avatar class="avatar large" [name]="person.name" [photo]="person.avatar" /><h2>{{ person.name }} @if (person.isAdmin) { <span class="admin-tag">관리자</span> } @if (person.id === ownId) { <span class="me-tag">나</span> }</h2><p>{{ person.bio || '함께 배우고 나누는 노셔너블 멤버' }}</p><small>{{ person.joinedAt | date:'yyyy.MM.dd' }} 가입</small>@if (person.id !== ownId) { <button class="subtle" (click)="openChat(person.id)">채팅하기</button> }@if (person.id === ownId) { <button class="subtle" (click)="editProfile()">프로필 수정</button> }</article>
           }
         </section>
       } @else {
-        <div class="content-columns"><section class="feed-column" aria-label="커뮤니티 글">
-          @if (selected; as post) {
-            <button class="back-link" (click)="navigate(roomId, 'home', kind)"><community-icon name="arrow" />목록으로</button>
+        @if (roomId === 'about' && view === 'home' && !selected) { <section class="about-card"><community-icon name="compass" /><h2>더 나은 일상을 만드는 사람들의 모임, 노셔너블 클럽</h2><p>나만의 일상과 일터를 스스로 설계하는 사람들의 공간입니다.<br>가장 먼저, 반가운 인사로 첫 걸음을 내딛어 보세요.</p><button class="subtle" (click)="navigate('hello')">소개 인사하러 가기 →</button></section> }
+        <div class="content-columns" [class.with-pins]="showPinnedSidebar"><section class="feed-column" aria-label="클럽 글">
+          @if (view === 'mine') { <div class="draft-tabs" aria-label="내 글 필터"><button [class.active]="!showingDrafts && !draftPreview" (click)="navigate('', 'mine')">게시한 글</button><button [class.active]="showingDrafts || !!draftPreview" (click)="showDrafts()">임시저장</button></div> }
+          @let post = selected;
+          @if (draftPreview; as saved) {
+            <div class="draft-banner"><span class="draft-badge">임시저장 · 나만 보기</span><p>아직 게시되지 않은 글입니다. 게시하기 전에는 다른 멤버에게 보이지 않고 알림도 발송되지 않습니다.</p><button class="primary" (click)="editSavedDraft(saved)">수정하기</button></div>
+            <article class="post-card post-detail"><span class="room-tag">{{roomName(saved.roomId)}}</span><h2>{{saved.title || '제목 없는 글'}}</h2><div class="author-row"><community-avatar class="avatar" [name]="currentProfileName" [photo]="currentProfilePhoto" /><div><strong>{{currentProfileName}}</strong><small>{{saved.updatedAt | date:'yyyy.MM.dd HH:mm'}} 저장</small></div></div><community-document [document]="saved.bodyDocument" [body]="saved.body" /><community-media [media]="saved.media" /><div class="draft-actions"><button class="secondary" (click)="editSavedDraft(saved)">수정하기</button><button class="subtle" [disabled]="busy" (click)="deleteSavedDraft(saved)">임시저장 삭제</button></div></article>
+          } @else if (showingDrafts) {
+            @for (saved of savedDrafts; track saved.id) { <article class="post-card"><span class="draft-badge">임시저장 · 나만 보기</span><button class="post-open" (click)="openSavedDraft(saved)"><h2>{{saved.title || '제목 없는 글'}}</h2><p class="post-preview">{{saved.body || '아직 작성한 내용이 없습니다.'}}</p></button><small>{{roomName(saved.roomId)}} · {{saved.updatedAt | date:'MM.dd HH:mm'}} 저장</small><div class="draft-actions"><button class="subtle" (click)="editSavedDraft(saved)">수정하기</button></div></article> }
+            @empty { @if(!loading && !error) { <div class="empty-state"><h3>임시저장한 글이 없어요.</h3><p>작성 중인 글을 임시저장하면 이곳에서 이어 쓸 수 있어요.</p><button class="subtle" (click)="editPost()">글 작성하기</button></div> } }
+          } @else if (post) {
+            <button class="back-link" (click)="navigate(roomId, view, kind)"><community-icon name="arrow" />목록으로</button>
             <article class="post-card post-detail">
-              <div class="post-meta"><span class="room-tag">{{ roomName(post.roomId) }}</span>@if (post.kind === 'question') { <span class="status-tag" [class.solved]="post.acceptedCommentId">{{ post.acceptedCommentId ? '답변 채택' : '질문' }}</span> }</div>
-              <h2>{{ post.title }}</h2>
-              <div class="author-row"><span class="avatar">{{ initials(post.authorName) }}</span><div><strong>{{ post.authorName }} @if (post.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><small>{{ post.createdAt | date:'yyyy.MM.dd HH:mm' }} @if (post.version > 1) { · 수정됨 }</small></div>
-                @if (mayEdit(post.authorId)) { <div class="author-tools"><button class="subtle" (click)="editPost(post)">수정</button><button class="subtle" (click)="askDelete(post)">삭제</button></div> }
+              <div class="post-meta">@if (post.kind === 'question') { <span class="status-tag" [class.solved]="post.acceptedCommentId">{{ post.acceptedCommentId ? '답변 채택' : '질문' }}</span> }</div>
+              <h2>@if (post.kind === 'request') { <span class="request-mark" aria-label="요청하기">A</span> }{{ post.title }} @if (post.isPrivate) { <span class="status-tag private-tag"><community-icon name="lock" />비공개</span> }</h2>
+              <div class="author-row"><community-avatar class="avatar" [name]="post.authorName" [photo]="post.authorAvatar" /><div><strong>{{ post.authorName }} @if (post.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><div class="post-date-row"><small>{{ post.createdAt | date:'yyyy.MM.dd HH:mm' }} @if (post.version > 1) { · 수정됨 }</small>@if(showChannelBadge(post)) { <a class="channel-badge" [attr.data-tone]="roomTone(post.roomId)" [routerLink]="communityHome" [queryParams]="{room:post.roomId}" [attr.aria-label]="roomName(post.roomId) + ' 방으로 이동'">{{ roomName(post.roomId) }}</a> }</div></div>
+                @if (mayEdit(post.authorId)) { <div class="author-tools">@if (isAdmin && !post.isPrivate) { <button class="subtle" (click)="editPin(post)">상단 고정</button> }<button class="subtle" (click)="editPost(post)">수정</button><button class="subtle" (click)="askDelete(post)">삭제</button></div> }
               </div>
-              <p class="post-body">{{ post.body }}</p>@if (isAdmin && post.authorId === ownId && post.sharing?.instagram) { <button class="secondary" (click)="prepareInstagram(post)">인스타그램 공유 준비</button> }
-              <div class="post-footer"><button [class.liked]="post.liked" [attr.aria-pressed]="!!post.liked" [disabled]="busy" (click)="like(post)"><community-icon name="heart" />공감 {{ post.likes }}</button><span><community-icon name="chat" />{{ post.kind === 'question' ? '답변' : '댓글' }} {{ post.comments }}</span></div>
+              <community-document [document]="post.bodyDocument" [body]="post.body" /><community-media [media]="post.media" />
+              <div class="share-badges">@if (post.sharedInstagramUrl) { <a [href]="post.sharedInstagramUrl" target="_blank" rel="noopener noreferrer" aria-label="인스타그램 게시물 보기" title="인스타그램 게시물 보기"><community-icon name="instagram" /></a> }</div><div class="post-footer"><button [class.liked]="post.liked" [attr.aria-pressed]="!!post.liked" [disabled]="busy" (click)="like(post)"><community-icon name="heart" />공감 {{ post.likes }}</button><span><community-icon name="chat" />{{ post.kind === 'question' ? '답변' : '댓글' }} {{ post.comments }}</span></div>
             </article>
             <section class="discussion">
-              <h3>{{ post.kind === 'question' ? '함께 나누는 답변' : '이야기 나누기' }} <span>{{ post.comments }}</span></h3>
+              <h3>{{ post.kind === 'question' ? '답변' : '댓글' }} <span>{{ post.comments }}</span></h3>
               @if (accepted; as answer) {
-                <article class="comment-card accepted"><div class="accepted-label"><community-icon name="check" />질문자가 채택한 답변</div><div class="author-row"><span class="avatar">{{ initials(answer.authorName) }}</span><div><strong>{{ answer.authorName }} @if (answer.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><small>{{ answer.createdAt | date:'yyyy.MM.dd HH:mm' }}</small></div></div><p class="post-body">{{ answer.body }}</p><div class="comment-actions">@if (post.authorId === ownId) { <button class="subtle" [disabled]="busy" (click)="accept(answer)">채택 취소</button> }@if (mayEdit(answer.authorId)) { <button class="subtle" (click)="editReply(answer)">수정</button><button class="subtle" (click)="askDelete(post, answer)">삭제</button> }</div></article>
+                <article class="comment-card accepted"><div class="accepted-label"><community-icon name="check" />질문자가 채택한 답변</div><div class="author-row"><community-avatar class="avatar" [name]="answer.authorName" [photo]="answer.authorAvatar" /><div><strong>{{ answer.authorName }} @if (answer.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><small>{{ answer.createdAt | date:'yyyy.MM.dd HH:mm' }}</small></div></div><p class="post-body">{{ answer.body }}</p><div class="comment-actions">@if (post.authorId === ownId) { <button class="subtle" [disabled]="busy" (click)="accept(answer)">채택 취소</button> }@if (mayEdit(answer.authorId)) { <button class="subtle" (click)="editReply(answer)">수정</button><button class="subtle" (click)="askDelete(post, answer)">삭제</button> }</div></article>
               }
               @for (comment of visibleComments; track comment.id) {
-                <article class="comment-card">@if (comment.deleted) { <p class="deleted">삭제된 답글입니다.</p> } @else {
-                  <div class="author-row"><span class="avatar">{{ initials(comment.authorName) }}</span><div><strong>{{ comment.authorName }} @if (comment.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><small>{{ comment.createdAt | date:'yyyy.MM.dd HH:mm' }} @if (comment.version > 1) { · 수정됨 }</small></div></div><p class="post-body">{{ comment.body }}</p>
+                <article class="comment-card">
+                  <div class="author-row"><community-avatar class="avatar" [name]="comment.authorName" [photo]="comment.authorAvatar" /><div><strong>{{ comment.authorName }} @if (comment.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><small>{{ comment.createdAt | date:'yyyy.MM.dd HH:mm' }} @if (comment.version > 1) { · 수정됨 }</small></div></div><p class="post-body">{{ comment.body }}</p>
                   <div class="comment-actions">@if (post.kind === 'question' && post.authorId === ownId) { <button class="accept-button" [disabled]="busy" (click)="accept(comment)"><community-icon name="check" />답변 채택</button> }@if (mayEdit(comment.authorId)) { <button class="subtle" (click)="editReply(comment)">수정</button><button class="subtle" (click)="askDelete(post, comment)">삭제</button> }</div>
-                }</article>
+                </article>
               }
-              @if (!comments.length && !accepted && !loading) { <p class="empty-replies">첫 {{ post.kind === 'question' ? '답변으로 도움을' : '댓글로 인사를' }} 나눠보세요.</p> }
+
               <form class="reply-form" (ngSubmit)="saveReply()"><label for="reply-body">{{ replyVersion ? '답글 수정' : post.kind === 'question' ? '답변 작성' : '댓글 작성' }}</label><textarea id="reply-body" name="reply" [(ngModel)]="replyBody" rows="4" maxlength="6000" required [disabled]="busy" placeholder="서로에게 도움이 되는 이야기를 나눠주세요."></textarea><div>@if (replyVersion) { <button type="button" class="subtle" [disabled]="busy" (click)="cancelReply()">수정 취소</button> }<button class="primary" [disabled]="busy || !replyBody.trim()">{{ busy ? '저장 중…' : replyVersion ? '수정하기' : '등록하기' }}</button></div></form>
             </section>
           } @else if (!routePostPending()) {
-            @if (roomId === 'about') { <section class="about-card"><community-icon name="compass" /><h2>일상을 설계하는 사람들의 공간</h2><p>작은 루틴, 새로운 노션 활용법, 아직 풀리지 않은 질문까지.<br>서로의 경험을 존중하며 함께 더 나은 방법을 찾아가요.</p><button class="subtle" (click)="navigate('hello')">나를 소개하러 가기 →</button></section> }
-            <div class="feed-toolbar">@if (mixedRoom) { <div class="feed-tabs" aria-label="글 형식 필터"><button [class.active]="!kind" (click)="navigate(roomId)">전체</button><button [class.active]="kind === 'feed'" (click)="navigate(roomId, 'home', 'feed')">이야기</button><button [class.active]="kind === 'question'" (click)="navigate(roomId, 'home', 'question')">질문 답변</button></div> } @else { <span class="room-kind-label">{{ room?.kind === 'question' ? '질문 답변' : '이야기' }}</span> }<span>최신순<community-icon name="chevron" /></span></div>
-            @if (canWrite) { <button class="composer" (click)="editPost()"><span class="avatar">{{ initials(member.name) }}</span><span>{{ room?.kind === 'question' ? '어떤 점이 궁금하신가요?' : '오늘은 어떤 이야기를 나누고 싶으세요?' }}</span><community-icon name="edit" /></button> }
+
+            <div class="feed-toolbar">@if (mixedRoom) { <div class="feed-tabs" aria-label="글 형식 필터"><button [class.active]="!kind" (click)="navigate(roomId, view)">전체</button><button [class.active]="kind === 'feed'" (click)="navigate(roomId, view, 'feed')">이야기</button><button [class.active]="kind === 'question'" (click)="navigate(roomId, view, 'question')">질문 답변</button>@if (requestsAllowed) { <button [class.active]="kind === 'request'" (click)="navigate(roomId, view, 'request')">요청하기</button> }</div> } @else { <span class="room-kind-label">{{ room?.kind === 'question' ? '질문 답변' : '이야기' }}</span> }<span>최신순<community-icon name="chevron" /></span></div>
+            @if (requestsAllowed && kind === 'request') { <div class="request-guide"><p>노셔너블에게 요청하고 싶은 내용을 넣어주세요.</p><small>요청하기의 글은 이야기보다 좀 더 빠르게 노셔너블 관리자가 답변을 드리겠습니다.</small></div> }@if (canWrite) { <button class="composer" (click)="editPost()"><community-avatar class="avatar" [name]="currentProfileName" [photo]="currentProfilePhoto" /><span>{{ room?.kind === 'question' ? '어떤 점이 궁금하신가요?' : '오늘은 어떤 이야기를 나누고 싶으세요?' }}</span><community-icon name="edit" /></button> }
+            @if (pinnedPosts.length && !!roomId && view === 'home') {
+              <section class="pinned-posts" aria-label="상단 고정 글"><h2 class="pinned-heading">상단 고정</h2>
+                @for (post of pinnedPosts; track post.id) {
+                  <article class="post-card pinned-card"><div class="pinned-meta"><span class="pin-label">고정</span><small>{{ post.pinExpiresAt === permanentPin ? '항상 고정' : '하루 동안 고정' }}</small>@if (post.pinExpiresAt !== permanentPin) { <small>{{ post.pinExpiresAt | date:'MM.dd HH:mm' }}까지</small> }@if (isAdmin) { <button class="subtle" (click)="editPin(post)" [attr.aria-label]="post.title + ' 고정 설정'">고정 설정</button> }</div>
+                    <button class="post-open post-title" (click)="openPost(post)"><h2>@if (post.kind === 'request') { <span class="request-mark" aria-label="요청하기">A</span> }{{ post.title }}</h2></button><div class="author-row"><community-avatar class="avatar" [name]="post.authorName" [photo]="post.authorAvatar" /><div><strong>{{post.authorName}} @if(post.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><small>{{post.createdAt | date:'MM.dd HH:mm'}}</small></div></div><button class="post-open post-excerpt" (click)="openPost(post)"><p class="post-preview">{{ post.body }}</p></button>
+                  </article>
+                }
+              </section>
+            }
             @for (post of posts; track post.id) {
-              <article class="post-card" [class.question-card]="post.kind === 'question'">
-                <div class="author-row"><span class="avatar">{{ initials(post.authorName) }}</span><div><strong>{{ post.authorName }} @if (post.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><small>{{ post.createdAt | date:'MM.dd HH:mm' }} · {{ roomName(post.roomId) }}</small></div>@if (post.kind === 'question') { <span class="status-tag" [class.solved]="post.acceptedCommentId">{{ post.acceptedCommentId ? '해결됨' : '질문' }}</span> }</div>
-                <button class="post-open" (click)="openPost(post)"><h2>@if (post.kind === 'question') { <span class="question-mark">Q.</span> }{{ post.title }}</h2><p class="post-preview">{{ post.body }}</p></button>
+              <article class="post-card feed-post" [class.question-card]="post.kind === 'question'">@if (isAdmin && !post.isPrivate) { <button class="pin-control subtle" (click)="editPin(post)" [attr.aria-label]="post.title + ' 상단 고정'">상단 고정</button> }
+                <button class="post-open post-title" (click)="openPost(post)"><h2>@if (post.kind === 'question') { <span class="question-mark">Q.</span> }@if (post.kind === 'request') { <span class="request-mark" aria-label="요청하기">A</span> }{{ post.title }} @if (post.isPrivate) { <span class="status-tag private-tag"><community-icon name="lock" />비공개</span> }</h2></button>
+                <div class="author-row"><community-avatar class="avatar" [name]="post.authorName" [photo]="post.authorAvatar" /><div><strong>{{ post.authorName }} @if (post.authorIsAdmin) { <span class="admin-tag">관리자</span> }</strong><div class="post-date-row"><small>{{ post.createdAt | date:'MM.dd HH:mm' }}</small>@if(showChannelBadge(post)) { <a class="channel-badge" [attr.data-tone]="roomTone(post.roomId)" [routerLink]="communityHome" [queryParams]="{room:post.roomId}" [attr.aria-label]="roomName(post.roomId) + ' 방으로 이동'">{{ roomName(post.roomId) }}</a> }</div></div>@if (post.kind === 'question') { <span class="status-tag" [class.solved]="post.acceptedCommentId">{{ post.acceptedCommentId ? '해결됨' : '질문' }}</span> }</div>
+                <button class="post-open post-excerpt" (click)="openPost(post)"><p class="post-preview">{{ post.body }}</p></button>
                 <div class="post-footer"><button [class.liked]="post.liked" [attr.aria-pressed]="!!post.liked" [disabled]="busy" (click)="like(post)"><community-icon name="heart" />공감 {{ post.likes }}</button><button (click)="openPost(post)"><community-icon name="chat" />{{ post.kind === 'question' ? '답변' : '댓글' }} {{ post.comments }}</button><button class="read-more" (click)="openPost(post)">자세히 보기 <span>↗</span></button></div>
               </article>
             } @empty {
-              @if (!loading && !error) { <div class="empty-state"><community-icon [name]="kind === 'question' ? 'question' : 'chat'" /><h3>아직 올라온 글이 없어요.</h3><p>이 공간의 첫 이야기를 함께 시작해요.</p>@if (canWrite) { <button class="subtle" (click)="editPost()">첫 글 작성하기 →</button> }</div> }
+              @if (!loading && !error && !pinnedPosts.length) { <div class="empty-state"><community-icon [name]="kind === 'question' ? 'question' : 'chat'" /><h3>{{ view === 'mine' ? '아직 작성한 글이 없어요.' : '아직 올라온 글이 없어요.' }}</h3><p>{{ view === 'mine' ? '글을 작성하면 이곳에서 다시 볼 수 있어요.' : '이 공간의 첫 이야기를 함께 시작해요.' }}</p>@if (canWrite) { <button class="subtle" (click)="editPost()">첫 글 작성하기 →</button> }</div> }
             }
           }
         </section>
-
+        @if (showPinnedSidebar) {
+          <aside class="pinned-sidebar" aria-label="추천 글">
+            <section aria-label="고정된 글"><h2 class="sidebar-heading">고정된 글</h2><div class="sidebar-post-box">
+              @for (post of sidebarPinnedPosts; track post.id) {
+                <button class="sidebar-post-link" (click)="openPost(post)"><community-avatar class="avatar" [name]="post.authorName" [photo]="post.authorAvatar" /><span>{{post.title}}</span></button>
+              } @empty { <p class="pinned-sidebar-empty">{{loading ? '불러오는 중…' : '아직 고정된 글이 없습니다.'}}</p> }
+            </div></section>
+            @if (showPopularPosts) {
+              <section class="popular-posts" aria-label="공감 많은 글"><h2 class="sidebar-heading">공감 많은 글</h2><div class="sidebar-post-box">
+                @for (post of popularPosts; track post.id) { <button class="sidebar-post-link" (click)="openPost(post)"><community-avatar class="avatar" [name]="post.authorName" [photo]="post.authorAvatar" /><span>{{post.title}}</span></button> }
+                @empty { <p class="pinned-sidebar-empty">{{loading ? '불러오는 중…' : '아직 공감 받은 글이 없습니다.'}}</p> }
+              </div></section>
+            }
+          </aside>
+        }
         </div>
       }
       @if (loading) { <div class="loading-state" role="status"><span class="spinner"></span>불러오는 중…</div> }
@@ -124,22 +169,51 @@
 </div>
 
 @if (dialog) {
-  <div class="dialog-backdrop" (click)="closeDialog()"><section class="dialog" [class.editor-dialog]="dialog === 'editor'" role="dialog" aria-modal="true" aria-labelledby="dialog-title" (click)="$event.stopPropagation()">
+  <div class="dialog-backdrop" (click)="dialog !== 'editor' && closeDialog()"><section class="dialog" [class.newsletter-dialog]="dialog === 'newsletter'" [class.editor-dialog]="dialog === 'editor'" [class.notifications-dialog]="dialog === 'notifications'" role="dialog" aria-modal="true" aria-labelledby="dialog-title" (click)="$event.stopPropagation()">
     <button type="button" class="icon-button dialog-close" [disabled]="busy" aria-label="닫기" (click)="closeDialog()"><community-icon name="close" /></button>
+    @if (dialog === 'settings') {
+      <h2 id="dialog-title">클럽 설정</h2><p>프로필과 알림 수신 방식을 관리하세요.</p>
+      <div class="community-settings-links">
+        <button type="button" class="secondary" (click)="editProfile()">클럽 프로필 <span aria-hidden="true">→</span></button>
+        <button type="button" class="secondary" (click)="openDialog('notificationSettings')">알림 수신 설정 <span aria-hidden="true">→</span></button>
+      </div>
+      <div class="withdrawal-settings"><p>클럽 이용을 마치고 싶으신가요?</p><button type="button" class="subtle" (click)="openDialog('withdraw')">클럽 탈퇴하기</button></div>
+    }
+    @if (dialog === 'withdraw') {
+      <h2 id="dialog-title">클럽에서 탈퇴하시겠어요?</h2>
+      <ul class="withdrawal-details">
+        <li>작성한 글과 댓글은 즉시 숨겨지고 이후 삭제 처리됩니다.</li>
+        <li>클럽 프로필이 멤버 목록에서 사라지고 알림 수신이 중단됩니다.</li>
+        <li>라이프업 계정, 구매 내역과 이용 중인 서비스는 유지됩니다.</li>
+        <li>탈퇴 데이터 정리가 끝날 때까지 재가입할 수 없습니다.</li>
+      </ul>
+      <label class="withdrawal-consent"><input type="checkbox" [(ngModel)]="withdrawalConfirmed" [disabled]="busy"><span>작성한 글·댓글 삭제와 클럽 탈퇴에 동의합니다.</span></label>
+      @if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }
+      <div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="openDialog('settings')">돌아가기</button><button type="button" class="withdrawal-submit" [disabled]="busy || !withdrawalConfirmed" (click)="withdrawCommunity()">{{ busy ? '탈퇴 처리 중…' : '클럽 탈퇴하기' }}</button></div>
+    }
+    @if (dialog === 'newsletter') {
+      <h2 id="dialog-title">뉴스레터 미리보기</h2>
+      <p>아래 내용으로 해당 알림 종류의 이메일 수신을 허용한 클럽 회원에게 실제 발송합니다. 전체 수신 차단 회원은 제외합니다.</p>
+      <iframe class="newsletter-preview" title="발송할 뉴스레터 미리보기" sandbox="" [srcdoc]="newsletterPreview"></iframe>
+      <small>본문 앞부분 최대 700자와 전체 글 링크를 보냅니다. 이미 발송한 글을 다시 보내면 회원에게 메일이 한 번 더 전달됩니다.</small>
+      @if (dialogError) { <p class="error" role="alert">{{dialogError}}</p> }
+      <div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">취소</button><button type="button" class="primary" [disabled]="busy" (click)="sendNewsletter()">{{busy ? '접수 중…' : '수신 허용 회원에게 발송'}}</button></div>
+    }
     @if (dialog === 'instagram') {
 <h2 id="dialog-title">인스타그램 공유 준비</h2><p>이미지를 저장하고 캡션을 복사해 notionable_net에 직접 게시해주세요. 자동 게시는 아직 연결되지 않았습니다.</p>
+<label for="instagram-published-url">게시 완료한 인스타그램 글 링크</label><input id="instagram-published-url" type="url" [(ngModel)]="instagramPublishedUrl" placeholder="https://www.instagram.com/p/…"><small>실제 게시 후 링크를 등록하면 클럽 글에 인스타그램 로고가 표시됩니다.</small><button class="secondary" [disabled]="busy" (click)="saveInstagramLink()">{{ busy ? '저장 중…' : '공유 링크 저장' }}</button>
 <img class="instagram-preview" [src]="instagramImage" alt="라이프업 게시물 표지 미리보기">
 <label for="instagram-caption">캡션</label><textarea id="instagram-caption" [(ngModel)]="instagramCaption" maxlength="2200" rows="6"></textarea><small>{{ instagramCaption.length }} / 2,200 · 긴 본문은 일부만 포함됩니다.</small>
 @if (dialogError) { <p role="status">{{ dialogError }}</p> }
 <div class="dialog-actions"><a class="secondary" [href]="instagramImage" [attr.download]="'lifeup-' + instagramPostId + '.jpg'">이미지 저장</a><button class="primary" (click)="copyInstagramCaption()">캡션 복사</button></div><a href="https://www.instagram.com/notionable_net/" target="_blank" rel="noopener noreferrer">notionable_net 열기 ↗</a>
 }
     @if (dialog === 'join') {
-      <span class="dialog-symbol"><community-icon name="people" /></span><h2 id="dialog-title">라이프업 커뮤니티에 가입하시겠습니까?</h2><p>라이프업 멤버들과 경험을 나누고 궁금한 점을 함께 해결해보세요.</p>
-      <form (ngSubmit)="join()"><label for="join-name">커뮤니티에서 사용할 이름</label><input id="join-name" name="name" [(ngModel)]="name" maxlength="40" required autocomplete="nickname" [disabled]="busy"><small>이름과 작성한 글은 커뮤니티 멤버에게 공개됩니다.</small><fieldset class="notification-choices"><legend>내 글과 관리자의 새 글이 올 때 알림을 받으시겠습니까?</legend><label><input type="checkbox" name="emailNotifications" [(ngModel)]="emailNotifications" [disabled]="busy"><span>기본 알림 <strong>메일</strong>로 받기</span></label><label><input type="checkbox" name="talkNotifications" [(ngModel)]="talkNotifications" [disabled]="busy"><span>중요한 알림 <strong>문자 또는 카카오톡</strong>으로 받기</span></label><small>선택하지 않아도 커뮤니티를 이용할 수 있습니다. 계정 메뉴에서 언제든 변경할 수 있어요.</small>@if (!talkAvailable) { <small>문자 발송은 준비 중이며, 카카오톡도 서비스 연결 준비 중입니다. 수신 설정만 먼저 저장되며, 발송이 시작되면 카카오 채널 연결과 친구 추가가 필요합니다.</small> } @else { <small>문자 발송은 준비 중입니다. 카카오톡 알림은 라이프봇 앱에서 카카오 채널을 연결하고 친구 추가한 회원에게 발송됩니다.</small> }</fieldset>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">나중에</button><button class="primary" [disabled]="busy || !name.trim()">{{ busy ? '가입 중…' : '확인하고 가입하기' }}</button></div></form>
+      <span class="dialog-symbol"><community-icon name="people" /></span><h2 id="dialog-title">노셔너블 클럽에 가입하시겠습니까?</h2><p>클럽 가입자만 입장하실 수 있습니다.<br>가입 후 언제든 <strong>상단 프로필 → 클럽 설정 → 탈퇴하기</strong>에서 바로 탈퇴할 수 있으니 부담 없이 함께해보세요.</p>
+      <form (ngSubmit)="join()"><label for="join-name">클럽에서 사용할 이름</label><input id="join-name" name="name" [(ngModel)]="name" maxlength="40" required autocomplete="nickname" [disabled]="busy"><small>이름과 공개 글은 클럽 멤버에게 공개됩니다. 비공개 글은 작성자와 관리자만 볼 수 있습니다.</small><fieldset class="notification-choices notification-matrix"><legend>용도별 알림 수신</legend><table><thead><tr><th scope="col">알림 종류</th><th scope="col">메일</th><th scope="col">톡</th></tr></thead><tbody>@for (category of notificationCategories; track category.id) { <tr><th scope="row"><span>{{ category.label }}</span><small>{{ category.description }}</small></th><td><input type="checkbox" [name]="category.id + 'Email'" [(ngModel)]="notificationPreferences[category.id].email" [disabled]="busy" [attr.aria-label]="category.label + ' 메일'"></td><td><input type="checkbox" [name]="category.id + 'Talk'" [(ngModel)]="notificationPreferences[category.id].talk" [disabled]="busy" [attr.aria-label]="category.label + ' 톡'"></td></tr> }</tbody></table><small>원하는 알림만 선택하세요. 선택하지 않아도 클럽을 이용할 수 있습니다.</small>@if (!talkAvailable) { <small class="talk-status">톡 알림은 준비 중입니다. 선택한 수신 설정을 저장하며, 발송이 시작되면 카카오 채널 연결과 친구 추가가 필요합니다.</small> } @else { <small>톡 알림은 카카오 채널을 연결하고 친구 추가한 회원에게 발송됩니다.</small> }</fieldset>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">나중에</button><button class="primary" [disabled]="busy || !name.trim()">{{ busy ? '가입 중…' : '확인하고 가입하기' }}</button></div></form>
     }
     @if (dialog === 'notificationSettings') {
-      <h2 id="dialog-title">알림 수신 설정</h2><p>관리자 새 글과 내 글의 댓글·답변, 답변 채택을 알려드립니다. 공감은 커뮤니티 내부 알림으로 확인할 수 있어요.</p>
-      <form (ngSubmit)="saveNotificationSettings()"><fieldset class="notification-choices"><legend>내 글과 관리자의 새 글이 올 때 알림을 받으시겠습니까?</legend><label><input type="checkbox" name="emailNotifications" [(ngModel)]="emailNotifications" [disabled]="busy"><span>기본 알림 <strong>메일</strong>로 받기</span></label><label><input type="checkbox" name="talkNotifications" [(ngModel)]="talkNotifications" [disabled]="busy"><span>중요한 알림 <strong>문자 또는 카카오톡</strong>으로 받기</span></label><small>선택하지 않아도 커뮤니티를 이용할 수 있습니다. 계정 메뉴에서 언제든 변경할 수 있어요.</small>@if (!talkAvailable) { <small>문자 발송은 준비 중이며, 카카오톡도 서비스 연결 준비 중입니다. 수신 설정만 먼저 저장되며, 발송이 시작되면 카카오 채널 연결과 친구 추가가 필요합니다.</small> } @else { <small>문자 발송은 준비 중입니다. 카카오톡 알림은 라이프봇 앱에서 카카오 채널을 연결하고 친구 추가한 회원에게 발송됩니다.</small> }</fieldset>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">닫기</button><button class="primary" [disabled]="busy">{{ busy ? '저장 중…' : '저장하기' }}</button></div></form>
+      <h2 id="dialog-title">알림 수신 설정</h2><p>알림 종류마다 메일과 톡 수신 여부를 각각 선택하세요. 공감과 1:1 채팅은 클럽 안에서 확인할 수 있어요.</p>
+      <form (ngSubmit)="saveNotificationSettings()"><fieldset class="notification-choices"><legend>DM 수신 설정</legend><label><input type="checkbox" name="allowMemberDm" [(ngModel)]="allowMemberDm" [disabled]="busy"><span>다른 멤버의 DM 허용</span></label><small>다른 멤버가 DM을 보내는 것을 허용합니다. 기본값은 허용 안 함입니다.<br>관리자와의 DM은 이 설정과 관계없이 이용할 수 있어요.</small></fieldset><fieldset class="notification-choices notification-matrix"><legend>용도별 알림 수신</legend><table><thead><tr><th scope="col">알림 종류</th><th scope="col">메일</th><th scope="col">톡</th></tr></thead><tbody>@for (category of notificationCategories; track category.id) { <tr><th scope="row"><span>{{ category.label }}</span><small>{{ category.description }}</small></th><td><input type="checkbox" [name]="category.id + 'Email'" [(ngModel)]="notificationPreferences[category.id].email" [disabled]="busy" [attr.aria-label]="category.label + ' 메일'"></td><td><input type="checkbox" [name]="category.id + 'Talk'" [(ngModel)]="notificationPreferences[category.id].talk" [disabled]="busy" [attr.aria-label]="category.label + ' 톡'"></td></tr> }</tbody></table><small>원하는 알림만 선택하세요. 선택하지 않아도 클럽을 이용할 수 있습니다.</small>@if (!talkAvailable) { <small class="talk-status">톡 알림은 준비 중입니다. 선택한 수신 설정을 저장하며, 발송이 시작되면 카카오 채널 연결과 친구 추가가 필요합니다.</small> } @else { <small>톡 알림은 카카오 채널을 연결하고 친구 추가한 회원에게 발송됩니다.</small> }</fieldset>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">닫기</button><button class="primary" [disabled]="busy">{{ busy ? '저장 중…' : '저장하기' }}</button></div></form>
     }
     @if (dialog === 'notifications') {
       <h2 id="dialog-title">알림 <span class="notification-total">{{ unreadCount }}</span></h2>
@@ -152,21 +226,46 @@
       @if (notificationCursor && !notificationsLoading) { <button class="load-more" (click)="loadNotifications(true)">이전 알림 더 보기</button> }
     }
     @if (dialog === 'profile') {
-      <h2 id="dialog-title">커뮤니티 프로필</h2><p>함께하는 멤버들에게 나를 소개해주세요.</p><form (ngSubmit)="saveProfile()"><label for="profile-name">이름</label><input id="profile-name" name="name" [(ngModel)]="name" maxlength="40" required [disabled]="busy"><label for="profile-bio">한 줄 소개</label><textarea id="profile-bio" name="bio" [(ngModel)]="bio" maxlength="160" rows="3" [disabled]="busy" placeholder="관심사나 함께 나누고 싶은 이야기를 적어주세요."></textarea><small>이전에 작성한 글에는 작성 당시 이름이 표시됩니다.</small>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">취소</button><button class="primary" [disabled]="busy || !name.trim()">{{ busy ? '저장 중…' : '저장하기' }}</button></div></form>
+      <h2 id="dialog-title">클럽 프로필</h2><p>함께하는 멤버들에게 나를 소개해주세요.</p><form (ngSubmit)="saveProfile()"><div class="profile-photo-editor"><community-avatar class="avatar profile-photo-preview" [name]="name" [photo]="avatarDraft" /><div><label class="secondary photo-picker" for="profile-photo" [class.disabled]="busy || avatarProcessing">{{ avatarProcessing ? '사진 처리 중…' : '사진 선택' }}</label><input class="photo-file-input" id="profile-photo" type="file" accept="image/jpeg,image/png,image/webp" [disabled]="busy || avatarProcessing" (change)="selectAvatar($event)">@if (avatarDraft) { <button type="button" class="subtle" [disabled]="busy || avatarProcessing" (click)="removeAvatar()">사진 삭제</button> }<small>JPG·PNG·WebP · 최대 5MB<br>사진 중앙을 정사각형으로 잘라 표시합니다.</small></div></div><label for="profile-name">이름</label><input id="profile-name" name="name" [(ngModel)]="name" maxlength="40" required [disabled]="busy || avatarProcessing"><label for="profile-bio">한 줄 소개</label><textarea id="profile-bio" name="bio" [(ngModel)]="bio" maxlength="160" rows="3" [disabled]="busy || avatarProcessing" placeholder="관심사나 함께 나누고 싶은 이야기를 적어주세요."></textarea><small>사진은 기존 글과 댓글에도 반영됩니다. 이름은 작성 당시 이름이 표시됩니다.</small>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy || avatarProcessing" (click)="closeDialog()">취소</button><button class="primary" [disabled]="busy || avatarProcessing || !name.trim()">{{ busy ? '저장 중…' : '저장하기' }}</button></div></form>
     }
     @if (dialog === 'editor') {
-      <h2 id="dialog-title">{{ draft.version ? '글 수정' : '새 이야기 나누기' }}</h2><p>작은 경험도 누군가에게는 큰 도움이 됩니다.</p><form (ngSubmit)="savePost()"><div class="editor-options"><div><label for="post-room">공간</label><select id="post-room" name="room" [(ngModel)]="draft.roomId" [disabled]="busy" (ngModelChange)="syncDraftKind()">@for (room of writableRooms; track room.id) { <option [value]="room.id">{{ room.group }} · {{ room.name }}</option> }</select></div><div><label for="post-kind">글 형식</label><select id="post-kind" name="kind" [(ngModel)]="draft.kind" [disabled]="busy || draftRoom?.kind !== 'both'"><option value="feed">일반 피드</option><option value="question">질문 답변</option></select></div></div><label for="post-title">제목</label><input id="post-title" name="title" [(ngModel)]="draft.title" maxlength="160" required [disabled]="busy" [placeholder]="editingQuestion ? '어떤 점이 궁금하신가요?' : '이야기의 제목을 적어주세요.'"><label for="post-body">내용</label><textarea id="post-body" name="body" [(ngModel)]="draft.body" maxlength="12000" rows="10" required [disabled]="busy" [placeholder]="editingQuestion ? '상황과 시도해 본 방법을 자세히 알려주세요.' : '경험과 생각을 자유롭게 나눠주세요.'"></textarea><small>{{ draft.body.length | number }} / 12,000</small>
-@if (isAdmin && !draft.version) {
-<fieldset class="notification-choices"><legend>이 글 공유하기</legend>
-<label><input type="checkbox" name="shareNewsletter" [(ngModel)]="shareChannels.newsletter" [disabled]="busy"><span>이메일 뉴스레터</span></label><small>메일 수신 회원에게 본문을 담은 뉴스레터를 보냅니다. 기본 새 글 메일은 중복 발송하지 않습니다.</small>
-<label><input type="checkbox" name="shareKakao" [(ngModel)]="shareChannels.kakao" [disabled]="busy"><span>카카오톡</span></label><small>{{ talkAvailable ? '톡 수신을 허용하고 카카오 채널을 연결한 회원에게 보냅니다.' : '카카오 연결 준비 중입니다. 지금 작성한 글은 나중에 자동 발송되지 않습니다.' }}</small>
-<label><input type="checkbox" name="shareInstagram" [(ngModel)]="shareChannels.instagram" [disabled]="busy"><span>인스타그램 공유 준비</span></label><small>게시 후 이미지·캡션을 준비할 수 있습니다. notionable_net 자동 게시는 연결 준비 중입니다.</small>
-<label><input type="checkbox" disabled><span>유튜브 커뮤니티 · 자동 게시 미지원</span></label>
-<small>커뮤니티 알림함에는 항상 표시됩니다. 수정 시 뉴스레터·톡을 다시 발송하지 않습니다.</small></fieldset>
-} @else if (isAdmin && draft.version) { <small>글 수정은 기존 뉴스레터·톡을 다시 발송하거나 외부 게시물을 수정하지 않습니다.</small> }@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">취소</button><button class="primary" [disabled]="busy || !draft.title.trim() || !draft.body.trim()">{{ busy ? '저장 중…' : draft.version ? '수정하기' : '게시하기' }}</button></div></form>
+      <h2 id="dialog-title">{{ draft.version ? '글 수정' : draftRevision ? '임시저장 글 작성' : '새 이야기 나누기' }}</h2><p>작은 경험도 누군가에게는 큰 도움이 됩니다.</p><form (ngSubmit)="savePost()"><div class="editor-options"><div><label for="post-room">공간</label><select id="post-room" name="room" [(ngModel)]="draft.roomId" [disabled]="busy" (ngModelChange)="syncDraftKind()">@for (room of writableRooms; track room.id) { <option [value]="room.id">{{ room.group }} · {{ room.name }}</option> }</select></div><div><label for="post-kind">글 형식</label><select id="post-kind" name="kind" [(ngModel)]="draft.kind" [disabled]="busy"><option value="feed" [disabled]="draftRoom?.kind !== 'both' && draftRoom?.kind !== 'feed'">이야기</option><option value="question" [disabled]="draftRoom?.kind !== 'both' && draftRoom?.kind !== 'question'">질문 답변</option>@if (draftRequestsAllowed) { <option value="request">요청하기</option> }</select></div></div>@if (draft.kind === 'request') { <div class="request-guide"><p>노셔너블에게 요청하고 싶은 내용을 넣어주세요.</p><small>요청하기의 글은 이야기보다 좀 더 빠르게 노셔너블 관리자가 답변을 드리겠습니다.</small></div> }<label for="post-title">제목</label><input id="post-title" name="title" [(ngModel)]="draft.title" maxlength="160" required [disabled]="busy" [placeholder]="draft.kind === 'request' ? '요청하고 싶은 내용을 한 줄로 적어주세요.' : editingQuestion ? '어떤 점이 궁금하신가요?' : '이야기의 제목을 적어주세요.'"><label for="post-body">내용</label><community-editor [document]="draft.bodyDocument" [body]="draft.body" [disabled]="busy" (changed)="updateDocument($event)" /><small>{{ draft.body.length | number }} / 12,000</small>
+<fieldset class="post-media-editor" [disabled]="busy || mediaProcessing">
+  <legend>사진 · 동영상</legend>
+  <label for="post-photos">사진 추가</label><input id="post-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple (change)="selectPostPhotos($event)">
+  <small>{{ mediaProcessing ? '사진 처리 중…' : '최대 3장 · 파일당 5MB · JPG·PNG·WebP (저장 시 자동 압축)' }}</small>
+  <label for="post-video">동영상 임베드 추가</label>
+  <div class="video-input"><input id="post-video" name="videoUrl" type="url" [(ngModel)]="videoUrl" placeholder="YouTube 또는 Vimeo 링크" (keydown.enter)="$event.preventDefault(); addVideo()"><button type="button" class="secondary" [disabled]="!videoUrl.trim()" (click)="addVideo()">추가</button></div>
+  <small>동영상은 최대 3개까지 추가할 수 있습니다.</small>
+  @for (item of draft.media; track $index) {
+    <div class="media-preview"><community-media [media]="[item]" /><button type="button" class="subtle" (click)="draft.media.splice($index, 1)" [attr.aria-label]="($index + 1) + '번째 첨부 삭제'">{{ item.type === 'image' ? '사진' : '동영상' }} 삭제</button></div>
+  }
+</fieldset>
+<fieldset class="notification-choices"><legend>공개 범위</legend><label><input type="checkbox" name="isPrivate" [(ngModel)]="draft.isPrivate" [disabled]="busy || !!draft.version"><span>비공개 · 작성자와 관리자만 볼 수 있어요</span></label><small>공개 범위는 게시 후 변경할 수 없습니다.</small></fieldset>
+@if (isAdmin && draft.version && !draft.isPrivate) {
+<fieldset class="publish-channels"><legend>발행</legend>
+<div class="publish-buttons">
+<button type="button" class="secondary" [disabled]="busy || mediaProcessing || draft.body.length > 12000 || !draft.title.trim() || !draft.body.trim()" (click)="savePost(true)">뉴스레터 미리보기</button>
+<button type="button" class="secondary" disabled>노셔너블 홈페이지 발행 · 준비 중</button>
+<button type="button" class="secondary" disabled>인스타그램 · 준비 중</button>
+<button type="button" class="secondary" disabled>네이버 블로그 · 준비 중</button>
+</div>
+@if (editingNewsletterStatus; as status) {
+<p class="newsletter-status">@if (status.newsletterSentCount) { 뉴스레터 발송 이력 있음 · 누적 {{ status.newsletterSentCount | number }}건 } @else if (status.newsletterRequestedAt) { 뉴스레터 발송 요청 이력 있음 · 완료 내역 없음 } @else { 아직 뉴스레터 발송 이력이 없습니다. }
+@if (status.newsletterRequestedAt) { <small>최근 요청: {{ status.newsletterRequestedAt | date:'yyyy.MM.dd HH:mm' }}</small> }
+</p>
+}
+<small>뉴스레터 미리보기를 누르면 수정 내용을 저장하고 미리보기를 엽니다. 미리보기에서 발송을 확정해 주세요.</small>
+</fieldset>
+}@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">취소</button>@if (!draft.version) { <button type="button" class="secondary" [disabled]="busy || mediaProcessing || draft.body.length > 12000" (click)="saveDraft()">임시저장</button> }<button class="primary" [disabled]="busy || mediaProcessing || draft.body.length > 12000 || !draft.title.trim() || !draft.body.trim()">{{ busy ? '저장 중…' : draft.version ? '수정하기' : '게시하기' }}</button></div></form>
+    }
+    @if (dialog === 'pin') {
+      <h2 id="dialog-title">방 상단 고정</h2><p>{{ pinTarget?.title }}</p><form (ngSubmit)="savePin()"><label for="pin-mode">고정 기간</label><select id="pin-mode" name="pinMode" [(ngModel)]="pinMode" [disabled]="busy"><option value="none">고정 해제</option><option value="always">항상 고정</option><option value="day">하루 동안 고정</option></select><small>이 글이 속한 방 상단과 오른쪽 고정된 글에 표시합니다. 하루 동안 고정은 24시간 뒤 자동으로 해제됩니다.</small>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button type="button" class="secondary" [disabled]="busy" (click)="closeDialog()">취소</button><button class="primary" [disabled]="busy">{{ busy ? '저장 중…' : '저장하기' }}</button></div></form>
     }
     @if (dialog === 'delete') {
       <h2 id="dialog-title">{{ deleteTarget?.comment ? '답글' : '글' }}을 삭제할까요?</h2><p>삭제한 내용은 되돌릴 수 없습니다.</p>@if (dialogError) { <p class="error" role="alert">{{ dialogError }}</p> }<div class="dialog-actions"><button class="secondary" [disabled]="busy" (click)="closeDialog()">취소</button><button class="danger" [disabled]="busy" (click)="remove()">{{ busy ? '삭제 중…' : '삭제하기' }}</button></div>
     }
   </section></div>
 }
+
+@if (member) { <community-chat [ownId]="ownId" [open]="chatOpen" [peerId]="chatPeerId" (closed)="chatOpen = false; chatPeerId = ''" (unread)="chatUnread = $event" /> }

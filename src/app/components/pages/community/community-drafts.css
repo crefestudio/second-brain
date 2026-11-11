@@ -1,0 +1,3 @@
+.draft-banner{padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel);margin:0 0 20px;line-height:1.7}.draft-banner .primary{margin-top:12px}.draft-badge{display:inline-block;padding:3px 8px;background:#eee8f7;color:#694a8f;border-radius:5px;font-size:12px;font-weight:600}.draft-tabs{display:flex;gap:8px;margin-bottom:20px}.draft-tabs button{padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:inherit}.draft-tabs button.active{background:#e9e1f6;color:#573786}.draft-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+
+.post-card>.draft-actions{padding-bottom:24px}

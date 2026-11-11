@@ -1,5 +1,7 @@
 import { TEMPLATE_IDS, TEMPLATE_PRODUCTS, templateSlugs } from './config/template-catalog';
-import { Routes } from '@angular/router';
+import { Route, Router, Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { isCommunityHost } from './config/community-navigation';
 import { SocialLoginComponent } from './components/login/social-login.component';
 
 //import { LoginPage } from './components/login/login.page';
@@ -57,7 +59,13 @@ import { memberGuard } from './services/auth.guard';
 import { AgentConnectComponentComponent } from './components/pages/workspace/pages/agent-connect/agent-connect-component.component';
 
 export const routes: Routes = [
-  { path: 'community', loadComponent: () => import('./components/pages/community/community.component').then(m => m.CommunityComponent) },
+  { path: 'community', pathMatch: 'full', redirectTo: ({queryParams, fragment}) =>
+    inject(Router).createUrlTree([isCommunityHost() ? '/' : '/club'], {queryParams, fragment: fragment ?? undefined}) },
+  ...(isCommunityHost() ? [{ path: 'club', pathMatch: 'full',
+    redirectTo: ({queryParams, fragment}) => inject(Router).createUrlTree(['/'], {queryParams, fragment: fragment ?? undefined}) } as Route] : []),
+  { path: '', pathMatch: 'full', canMatch: [isCommunityHost], title: '노셔너블 클럽',
+    loadComponent: () => import('./components/pages/community/community.component').then(m => m.CommunityComponent) },
+  { path: 'club', title: '노셔너블 클럽', loadComponent: () => import('./components/pages/community/community.component').then(m => m.CommunityComponent) },
   ...TEMPLATE_IDS.flatMap(id => [
     ...templateSlugs(id).map(slug => ({ path: 'store/' + slug, component: StoreRedirectComponent })),
     ...templateSlugs(id).map(slug => ({ path: 'download/' + slug, component: LifeupDownloadComponent, data: { product: id } })),
@@ -78,12 +86,12 @@ export const routes: Routes = [
   { path: 'invite/lifeup', loadComponent: () => import('./components/pages/purchase-invitation/purchase-invitation.component').then(m => m.PurchaseInvitationComponent) },
   { path: 'block', component: UnsubscribeComponent },
   { path: 'unsubscribe', redirectTo: 'block', pathMatch: 'full' },
-  { path: 'login', component: SocialLoginComponent },
+  { path: 'login', title: () => isCommunityHost() ? '노셔너블 클럽' : '라이프봇', component: SocialLoginComponent },
 
 
   {
     path: '',
-    redirectTo: () => window.location.hostname === 'community.notionable.net' ? 'community' : 'workspace/home',
+    redirectTo: 'workspace/home',
     pathMatch: 'full'
   },
 

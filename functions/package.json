@@ -26,7 +26,8 @@
     "korean-lunar-calendar": "0.4.0",
     "nanoid": "^3.3.11",
     "openai": "^6.17.0",
-    "resend": "^6.4.2"
+    "resend": "^6.4.2",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",

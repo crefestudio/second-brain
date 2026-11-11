@@ -5,7 +5,7 @@ import { FieldValue, Firestore, DocumentData } from 'firebase-admin/firestore';
 // `critical` remains readable only for messages that were queued before the
 // two-pool policy. New messages are high or normal.
 export type MailPriority = 'critical' | 'high' | 'normal';
-export interface QueueMail { from: string; to: string | string[]; subject: string; text?: string; html?: string; communityRecipientId?: string }
+export interface QueueMail { from: string; to: string | string[]; subject: string; text?: string; html?: string; communityRecipientId?: string; communityNewsletterPostId?: string; communityNotificationCategory?: import('./community-notification-settings').NotificationCategory }
 export const MAIL_LIMITS = { total: 100, normal: 70 };
 export const mailDay = (now: number) => new Date(now).toISOString().slice(0, 10);
 export function nextMailMorning(now: number): number {
@@ -36,6 +36,7 @@ export function createMailQueue(db: Firestore, provider: Provider, canSend: (ema
                 const now = Date.now();
                 const nextAttemptAt = immediate ? now : Math.max(now, Number(notBeforeAt) || now);
                 tx.create(ref, { mail: { ...mail, to: email }, subject: mail.subject, recipient: email,
+                    ...(mail.communityNewsletterPostId ? {communityNewsletterPostId: mail.communityNewsletterPostId} : {}),
                     priority, status: excluded ? 'cancelled' : 'pending', createdAt: now,
                     ...(queueOrder === undefined ? {} : { queueOrder }),
                     ...(excluded ? { lastError: '수신 차단으로 미발송', excludedAt: now } : { nextAttemptAt: now, attempts: 0 }),
@@ -123,7 +124,13 @@ export function createMailQueue(db: Firestore, provider: Provider, canSend: (ema
         }
         await db.runTransaction(async tx => {
             const [current, lock] = await Promise.all([tx.get(ref), tx.get(control)]);
-            if (current.data()?.token === token) tx.update(ref, update);
+            if (current.data()?.token === token) {
+                tx.update(ref, update);
+                const postId = current.data()?.communityNewsletterPostId;
+                if (queueName === 'communityMailQueue' && update.status === 'sent' && current.data()?.status !== 'sent' && typeof postId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(postId)) {
+                    tx.set(db.collection('communityPosts').doc(postId), {newsletterSentCount: FieldValue.increment(1)}, {merge:true});
+                }
+            }
             if (lock.data()?.token === token) tx.set(control, { leaseUntil: 0, nextSendAt: Date.now() + 1000,
                 ...(pauseUntil ? { pausedUntil: pauseUntil } : {}) }, { merge: true });
         });
