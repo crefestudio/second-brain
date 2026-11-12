@@ -5,7 +5,7 @@ const database = '11111111-1111-1111-1111-111111111111';
 const source = '22222222-2222-2222-2222-222222222222';
 const page = '33333333-3333-3333-3333-333333333333';
 const other = '44444444-4444-4444-4444-444444444444';
-const event = (parent = source) => ({ id: 'event', entity: { id: page }, data: { parent: { data_source_id: parent } } });
+const event = (parent = source) => ({ id: 'event', timestamp: new Date().toISOString(), entity: { id: page }, data: { parent: { data_source_id: parent } } });
 function fixture() {
     const records = new Map(), reads = [];
     let lookups = 0;
@@ -129,4 +129,21 @@ test('unauthorized and missing Notion resources are retained without a retry loo
     const { deferredWebhookStatus } = require('../lib/notion-webhook-routing');
     for (const status of [401, 403, 404]) assert.equal(deferredWebhookStatus({ status }), 'needs_attention');
     for (const status of [429, 500, 503]) assert.equal(deferredWebhookStatus({ status }), null);
+});
+
+test('expired mapping waits close without creating replay work', async () => {
+    const f = fixture(); await f.router.syncConnection('u');
+    const old = event(); old.timestamp = new Date(Date.now() - 3600000).toISOString();
+    f.records.set('notionWebhookInbox/old', { status: 'waiting_mapping', event: old, waitingRouteKeys: ['parent_' + notionRoutingId(source)] });
+    assert.equal(await f.router.requeueWaiting(f.ref('notionWebhookInbox/old')), false);
+    assert.equal(f.records.get('notionWebhookInbox/old').status, 'discarded');
+    assert.equal(f.records.get('notionWebhookInbox/old').waitingRouteKeys, undefined);
+});
+
+test('previous-connection events and automation OFF never route to new work', async () => {
+    const f = fixture(); await f.router.syncConnection('u');
+    f.records.get('users/u').notionConnection.connectedAt = { toMillis: () => Date.now() };
+    await assert.rejects(f.router.resolve({ ...event(), timestamp: new Date(Date.now() - 120000).toISOString() }), /STALE_WEBHOOK/);
+    f.records.get('users/u/integrations/secondbrain').enabled = false;
+    await assert.rejects(f.router.resolve(event()), /STALE_WEBHOOK/);
 });

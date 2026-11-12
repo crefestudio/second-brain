@@ -4,6 +4,12 @@ type Firestore = firestore.Firestore;
 type DocumentData = firestore.DocumentData;
 type DocumentReference = firestore.DocumentReference;
 const FieldValue = firestore.FieldValue;
+export const WEBHOOK_MAPPING_GRACE_MS = 15 * 60 * 1000;
+export function webhookMappingExpired(item: DocumentData, now = Date.now()): boolean {
+    const received = item.originalReceivedAt || item.receivedAt;
+    const time = received?.toMillis?.() || Date.parse(item.event?.timestamp || '');
+    return !Number.isFinite(time) || now - time > WEBHOOK_MAPPING_GRACE_MS;
+}
 
 export function notionRoutingId(value: unknown): string | null {
     if (typeof value !== 'string') return null;
@@ -125,24 +131,52 @@ export function createNotionWebhookRouting(db: Firestore, dataSources: (token: s
         // Never turn a corrupt/shared index into an unbounded scan or guess owner.
         if (candidates.size > 10) throw new Error('AMBIGUOUS_WEBHOOK_WORKSPACE');
         const matches: RoutingMatch[] = [];
+        let obsolete = false;
         for (const [uid, owners] of candidates) {
             const [u, c] = await Promise.all([userRef(uid).get(), configRef(uid).get()]);
             const user = u.data() || {}, config = c.data() || {};
+            const eventTime = Date.parse(event.timestamp || '');
+            const connectedAt = user.notionConnection?.connectedAt?.toMillis?.() || 0;
+            if (config.enabled === false || user.deletionStatus === 'archived' ||
+                user.notionConnection?.status === 'disconnected' || config.connectionStatus === 'disconnected' ||
+                (connectedAt && Number.isFinite(eventTime) && eventTime < connectedAt - 60000)) {
+                obsolete = true;
+                continue;
+            }
             if (!usable(user, config)) continue;
             if (!owners.some(owner => owner.connectionId === (user.notionConnectionId || null) &&
                 owner.noteDatabaseId === notionRoutingId(config.noteDatabaseId))) continue;
             matches.push({ userId: uid, accessToken: user.notionAccessToken, connectionId: user.notionConnectionId || null });
         }
         if (matches.length > 1) throw new Error('AMBIGUOUS_WEBHOOK_WORKSPACE');
-        if (!matches.length) throw new Error('NO_MATCHING_WORKSPACE');
+        if (!matches.length) throw new Error(obsolete ? 'STALE_WEBHOOK' : 'NO_MATCHING_WORKSPACE');
         return matches[0];
     }
     async function requeueWaiting(ref: DocumentReference): Promise<boolean> {
         const item = (await ref.get()).data();
         if (item?.status !== 'waiting_mapping' || !item.event || (item.routingReplayDepth || 0) >= 3) return false;
+        if (webhookMappingExpired(item)) {
+            await db.runTransaction(async tx => {
+                if ((await tx.get(ref)).data()?.status === 'waiting_mapping') tx.update(ref, {
+                    status: 'discarded', lastErrorCode: 'MAPPING_EXPIRED', waitingRouteKeys: FieldValue.delete(), closedAt: FieldValue.serverTimestamp()
+                });
+            });
+            return false;
+        }
         let match: RoutingMatch;
         try { match = await resolve(item.event); }
-        catch (error) { if (deferredWebhookStatus(error)) return false; throw error; }
+        catch (error: any) {
+            if (error?.message === 'STALE_WEBHOOK') {
+                await db.runTransaction(async tx => {
+                    if ((await tx.get(ref)).data()?.status === 'waiting_mapping') tx.update(ref, {
+                        status: 'discarded', lastErrorCode: 'STALE_WEBHOOK', waitingRouteKeys: FieldValue.delete(), closedAt: FieldValue.serverTimestamp()
+                    });
+                });
+                return false;
+            }
+            if (deferredWebhookStatus(error)) return false;
+            throw error;
+        }
         const id = createHash('sha256').update(`routing-replay:${ref.id}:${match.userId}:${match.connectionId}`).digest('hex');
         const next = db.collection('notionWebhookInbox').doc(id);
         return db.runTransaction(async tx => {
@@ -151,6 +185,7 @@ export function createNotionWebhookRouting(db: Firestore, dataSources: (token: s
                 !usable(u.data() || {}, c.data() || {}) || (u.data()?.notionConnectionId || null) !== match.connectionId) return false;
             tx.create(next, { event: current.data()!.event, status: 'pending', attempts: 0,
                 routingReplayDepth: (item.routingReplayDepth || 0) + 1, replayOf: ref.id,
+                originalReceivedAt: item.originalReceivedAt || item.receivedAt || FieldValue.serverTimestamp(),
                 receivedAt: FieldValue.serverTimestamp() });
             tx.update(ref, { status: 'replay_queued', replayId: id, waitingRouteKeys: FieldValue.delete(), replayQueuedAt: FieldValue.serverTimestamp() });
             return true;

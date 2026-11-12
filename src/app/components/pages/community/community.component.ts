@@ -28,7 +28,7 @@ export class CommunityComponent implements OnInit, OnDestroy {
     private readonly router = inject(Router);
     private readonly route = inject(ActivatedRoute);
     readonly rooms = COMMUNITY_ROOMS;
-    readonly groups = ['시작하기', '함께 나누기', '서비스', '알아보기', '주제방'];
+    readonly groups = ['시작하기', '함께 나누기', '함께 배우기', '서비스', '라이프업 템플릿', '작업실'];
     @HostBinding('class.community-dark') get darkTheme() { return this.theme === 'dark'; }
     theme: 'light' | 'dark' = this.readTheme();
     private readTheme(): 'light' | 'dark' {
@@ -216,6 +216,7 @@ export class CommunityComponent implements OnInit, OnDestroy {
     get communityReturnUrl() { return isCommunityReturnPath(this.router.url) ? this.router.url : this.communityHome; }
     get room() { return this.rooms.find(r => r.id === this.roomId); }
     get writableRooms() { return this.rooms.filter(r => isCommunityRoomVisible(r.id) && (this.isAdmin || !r.adminOnly)); }
+    get writableRoomGroups() { return this.groups.map(group => ({ group, rooms: this.writableRooms.filter(room => room.group === group) })).filter(item => item.rooms.length); }
     get currentProfileName() { return this.member?.name || this.auth.account()?.displayName || '멤버'; }
     get currentProfilePhoto() { return this.member?.avatar || ''; }
     get ownId() { return this.auth.account()?.uid || ''; }
@@ -225,6 +226,8 @@ export class CommunityComponent implements OnInit, OnDestroy {
     get requestsAllowed() { return supportsCommunityRequests(this.roomId); }
     get draftRequestsAllowed() { return supportsCommunityRequests(this.draft.roomId); }
     get draftRoom() { return this.rooms.find(r => r.id === this.draft.roomId); }
+    roomMenuOpen = false;
+    selectDraftRoom(roomId: string) { this.draft.roomId = roomId; this.roomMenuOpen = false; this.syncDraftKind(); }
     syncDraftKind() { if (this.draft.kind === 'request' && !this.draftRequestsAllowed) this.draft.kind = 'feed'; if (this.draft.kind !== 'request' && this.draftRoom && this.draftRoom.kind !== 'both') this.draft.kind = this.draftRoom.kind; }
     get editingQuestion() { return this.draft.kind === 'question' || (this.draft.roomId === 'questions' && this.draft.kind !== 'request'); }
     get visibleComments() { return this.comments.filter(c => !c.deleted && c.id !== this.accepted?.id); }
@@ -314,6 +317,7 @@ export class CommunityComponent implements OnInit, OnDestroy {
     }
     closeDialog() { if (this.busy || this.avatarProcessing || this.mediaProcessing) return; this.dialog = ''; this.dialogError = ''; this.focusBeforeDialog?.focus(); }
     @HostListener('document:keydown', ['$event']) onKey(event: KeyboardEvent) {
+        if (event.key === 'Escape' && this.roomMenuOpen) { this.roomMenuOpen = false; event.stopPropagation(); return; }
         if (event.key === 'Escape') {
             if (this.dialog === 'editor') return;
             this.closeDialog(); this.sidebarOpen = false; this.accountOpen = false;

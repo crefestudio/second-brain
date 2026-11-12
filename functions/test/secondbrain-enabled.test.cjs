@@ -31,7 +31,7 @@ test('manual batch after cache reset remains blocked while OFF', async () => {
     const f = fixture(false);
     const config = { enabled: false, cacheResetInProgress: false, cacheGeneration: 2, accessKey: 'key' };
     const ref = { collection: () => ref, doc: () => ref, get: async () => ({ exists: true, data: () => config }) };
-    Object.assign(f.context, { db: { collection: () => ref }, exports: {}, onRequest: (_, fn) => fn, withCors: fn => fn });
+    Object.assign(f.context, { notionPageWork: { acquire: async () => 'claim', release: async () => {} }, db: { collection: () => ref }, exports: {}, onRequest: (_, fn) => fn, withCors: fn => fn });
     const batch = source.slice(source.indexOf('export const generateNotionNoteKMDataBatch'), source.indexOf('async function assertSecondBrainEnabled('));
     vm.runInContext(ts.transpileModule(batch, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, f.context);
     const res = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };

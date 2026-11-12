@@ -23,7 +23,7 @@ function fixture(page, existing = { keywords: ['retained'] }, config = {}) {
             if (page instanceof Error) throw page;
             return page;
         } },
-        Client: class {
+        LimitedNotionClient: class {
             pages = { retrieve: async () => { if (page instanceof Error) throw page; return page; } };
             databases = { retrieve: async () => { throw new Error('Parent database must not be queried'); } }; },
         admin: { firestore: { FieldValue: { serverTimestamp: () => 1 } } }

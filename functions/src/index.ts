@@ -1,3 +1,5 @@
+import { createNotionRequestControl } from './notion-request-control';
+import { createNotionPageWork } from './notion-page-work';
 import { communityEventWithdrawn } from './community-withdrawal';
 import { createCommunityNotifications } from './community-notifications';
 import { createCommunityDelivery, createKakaoEventClient, canSendCommunityEmail } from './community-delivery';
@@ -5,7 +7,7 @@ import { createRecurringSchedules } from './recurring-schedules';
 import { createCommunity, CommunityError } from './community';
 import { KAKAO_CONNECTION_REQUIRED, kakaoConnectionErrorMessage } from './kakao-connection-feedback';
 import { receiveKakaoAttachment, buildFileBlocks, kakaoAttachmentName } from './kakao-attachment';
-import { createNotionWebhookRouting, deferredWebhookStatus, webhookRoutingKeys } from './notion-webhook-routing';
+import { createNotionWebhookRouting, deferredWebhookStatus, webhookRoutingKeys, webhookMappingExpired } from './notion-webhook-routing';
 import { imwebPurchasedItems } from './imweb-order-items';
 import { giftApplicationError } from './lifeup-gift';
 import { GiftRegistrationConflict, registerGiftApplication } from './lifeup-gift-registration';
@@ -83,6 +85,14 @@ export function hashContent(text: string): string {
 
 admin.initializeApp();
 const db = admin.firestore();
+const notionFetch = createNotionRequestControl(db);
+const notionPageWork = createNotionPageWork(db);
+class LimitedNotionClient extends Client {
+    constructor(options: ConstructorParameters<typeof Client>[0]) {
+        super({ ...options, fetch: notionFetch as any, retry: false });
+    }
+}
+
 
 //https://us-central1-notionable-secondbrain.cloudfunctions.net/latpeedPaymentWebhook
 
@@ -5251,7 +5261,7 @@ class NotionService {
     //     const url = 'https://api.notion.com/v1/search';
     //     const body = { query: databaseName, filter: { property: 'object', value: 'database' } };
 
-    //     const response = await fetch(url, {
+    //     const response = await notionFetch(url, {
     //         method: 'POST',
     //         headers: {
     //             Authorization: `Bearer ${accessToken}`,
@@ -5396,7 +5406,7 @@ class NotionService {
     }
 
     static async resolveDataSourceId(accessToken: string, databaseId: string): Promise<string> {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         const db: any = await notion.databases.retrieve({
             database_id: databaseId
@@ -5429,7 +5439,7 @@ class NotionService {
         relationDbId: string,
         names: string[]
     ): Promise<string[]> {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         const db: any = await notion.databases.retrieve({
             database_id: relationDbId
@@ -5485,7 +5495,7 @@ class NotionService {
             }
 
             try {
-                const response = await fetch("https://api.notion.com/v1/pages", {
+                const response = await notionFetch("https://api.notion.com/v1/pages", {
                     method: "POST",
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
@@ -5539,7 +5549,7 @@ class NotionService {
         accessToken: string,
         dataSourceId: string
     ): Promise<number> {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
         let count = 0;
         let cursor: string | undefined;
 
@@ -5572,7 +5582,7 @@ class NotionService {
         const data: { results: any[] } = { results: [] };
         let cursor: string | undefined;
         do {
-        const response = await fetch(
+        const response = await notionFetch(
             'https://api.notion.com/v1/search',
             {
                 method: 'POST',
@@ -5696,7 +5706,7 @@ class NotionService {
         console.log("[DEBUG] queryDatabase 호출, databaseId:", databaseId, "startCursor:", startCursor);
         console.log("[DEBUG] request body:", body);
 
-        const res = await fetch(`https://api.notion.com/v1/databases/${formattedDbId}/query`, {
+        const res = await notionFetch(`https://api.notion.com/v1/databases/${formattedDbId}/query`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
@@ -5730,7 +5740,7 @@ class NotionService {
         console.log("[DEBUG] getNotionPage 호출, pageId:", pageId);
 
         // 1️⃣ 페이지 속성 가져오기
-        const pageRes = await fetch(`https://api.notion.com/v1/pages/${formattedPageId}`, {
+        const pageRes = await notionFetch(`https://api.notion.com/v1/pages/${formattedPageId}`, {
             method: "GET",
             headers: {
                 Authorization: `Bearer ${accessToken}`,
@@ -5751,7 +5761,7 @@ class NotionService {
         const blocks: any[] = [];
         let cursor: string | undefined = undefined;
         do {
-            const childrenRes: any = await fetch(
+            const childrenRes: any = await notionFetch(
                 `https://api.notion.com/v1/blocks/${formattedPageId}/children?page_size=100${cursor ? `&start_cursor=${cursor}` : ""}`,
                 {
                     method: "GET",
@@ -5793,7 +5803,7 @@ class NotionService {
     //             k.split(',').map(s => s.trim()).filter(Boolean)
     //         );
 
-    //         const notion = new Client({
+    //         const notion = new LimitedNotionClient({
     //             auth: accessToken,
     //         });
 
@@ -5819,7 +5829,7 @@ class NotionService {
         aiResultKeyword: Record<string, string[]>,
         guard: () => Promise<void> = async () => {}
     ) {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         for (const [pageId, keywords] of Object.entries(aiResultKeyword)) {
             await guard();
@@ -5846,6 +5856,7 @@ class NotionService {
                 );
             } catch (error) {
                 console.error(`❌ 키워드 반영 실패: ${pageId}`, error);
+                throw error;
             }
         }
     }
@@ -5854,7 +5865,7 @@ class NotionService {
         accessToken: string,
         databaseId: string
     ) {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         try {
 
@@ -5912,7 +5923,7 @@ class NotionService {
         accessToken: string,
         dataSourceId: string
     ): Promise<any> {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         const dataSource: any = await notion.dataSources.retrieve({
             data_source_id: dataSourceId
@@ -5926,7 +5937,7 @@ class NotionService {
         dataSourceId: string,
         propertyName: string
     ): Promise<number> {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
         let count = 0;
         let cursor: string | undefined;
 
@@ -6373,7 +6384,7 @@ class NotionService {
     ): Promise<string[]> {
         console.log(`[Tag] start tagDbId = ${tagDbId} tags = ${tags.join(",")} `);
 
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         const db: any = await notion.databases.retrieve({
             database_id: tagDbId
@@ -7270,7 +7281,7 @@ class NotionService {
             throw new Error('NOTION_NOT_CONNECTED');
         }
 
-        const notion = new Client({
+        const notion = new LimitedNotionClient({
             auth: accessToken
         });
 
@@ -7463,7 +7474,7 @@ class NotionService {
             throw new Error('HABIT_ID_REQUIRED');
         }
 
-        const notion = new Client({
+        const notion = new LimitedNotionClient({
             auth: accessToken
         });
 
@@ -7634,7 +7645,7 @@ class NotionService {
             throw new Error('HABIT_ID_REQUIRED');
         }
 
-        const notion = new Client({
+        const notion = new LimitedNotionClient({
             auth: accessToken
         });
 
@@ -7883,7 +7894,7 @@ class NotionService {
             throw new Error('NOTION_NOT_CONNECTED');
         }
 
-        const notion = new Client({
+        const notion = new LimitedNotionClient({
             auth: accessToken
         });
 
@@ -7955,7 +7966,7 @@ class NotionService {
             throw new Error('NOTION_NOT_CONNECTED');
         }
 
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         const databaseId = await this.resolveDatabaseId(
             accessToken,
@@ -8031,7 +8042,7 @@ class NotionService {
         if (!accessToken) throw new Error('NOTION_NOT_CONNECTED');
         const databaseId = await this.resolveDatabaseId(accessToken, userId, 'habit log');
         const dataSourceId = await this.resolveDataSourceId(accessToken, databaseId);
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
         const range = habitDayRange(today);
         const pages: any[] = [];
         let cursor: string | undefined;
@@ -8091,7 +8102,7 @@ class NotionService {
                 );
             }
 
-            const notion = new Client({ auth: accessToken });
+            const notion = new LimitedNotionClient({ auth: accessToken });
 
             // --------------------------------
             // Habit Log DB 조회
@@ -8265,7 +8276,7 @@ class NotionService {
             throw new Error("NOTION_NOT_CONNECTED");
         }
 
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
 
         const databaseId = await this.resolveDatabaseId(
             accessToken,
@@ -8479,7 +8490,7 @@ class NotionService {
     }
 
     static async getRootPageUrl(accessToken: string, databaseId: string): Promise<string> {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
         const database: any = await notion.databases.retrieve({ database_id: databaseId });
         return this.findRootPageUrl(notion, database);
     }
@@ -8489,7 +8500,7 @@ class NotionService {
         accessToken: string,
         dataSourceId: string
     ): Promise<Array<{ id: string; title: string; properties: any }>> {
-        const notion = new Client({ auth: accessToken });
+        const notion = new LimitedNotionClient({ auth: accessToken });
         const pages: Array<{ id: string; title: string; properties: any }> = [];
         let startCursor: string | undefined = undefined;
 
@@ -8653,6 +8664,7 @@ function formatProductPrice(price: string, currency: string): string {
 export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, memory: "1GiB", },
     withCors(async (req, res) => {
         const { userId } = req.body;
+        let workClaim: string | null = null;
         try {
             if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
             if (typeof userId !== 'string' || !userId || userId.includes('/')) {
@@ -8670,6 +8682,9 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                 } catch { return res.status(403).json({ error: 'FORBIDDEN' }); }
             }
             if (!authorized) return res.status(403).json({ error: 'FORBIDDEN' });
+
+            workClaim = await notionPageWork.acquire(userId);
+            if (!workClaim) return res.status(409).json({ error: 'SECOND_BRAIN_PROCESSING_BUSY' });
 
             // Firestore에서 Notion accessToken, noteDatabaseId 가져오기
             const sbDoc = await db
@@ -8733,7 +8748,7 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
             }
             console.error("[DEBUG] batchPages =>", batchPages);
 
-            const BATCH_SIZE = 10;
+            const BATCH_SIZE = 5;
             for (let i = 0; i < batchPages.length; i += BATCH_SIZE) {
                 const batch = batchPages.slice(i, i + BATCH_SIZE);
                 const pageData: Record<
@@ -8839,6 +8854,8 @@ export const generateNotionNoteKMDataBatch = onRequest({ timeoutSeconds: 540, me
                 status: "failed",
                 eventTitle: `키워드 추출 작업 중 오류가 발생했습니다.`
             });
+        } finally {
+            if (workClaim) await notionPageWork.release(userId, workClaim);
         }
     }
     ));
@@ -8860,7 +8877,7 @@ async function assertSecondBrainEnabled(userId: string): Promise<void> {
 async function reconcileSecondBrainPage(userId: string, accessToken: string, page: any): Promise<boolean> {
     const observedAt = Date.now();
     await assertNotionConnection(userId, accessToken);
-    page = await new Client({ auth: accessToken }).pages.retrieve({ page_id: page.id });
+    page = await new LimitedNotionClient({ auth: accessToken }).pages.retrieve({ page_id: page.id });
     const integration = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
     const config = (await integration.get()).data();
     if (config?.accessToken !== accessToken || config?.connectionStatus === 'disconnected' || config?.connectionStatus === 'pending') throw new Error('NOTION_CONNECTION_CHANGED');
@@ -8887,7 +8904,7 @@ async function reconcileSecondBrainPage(userId: string, accessToken: string, pag
 }
 
 const notionWebhookRouting = createNotionWebhookRouting(db, async (token, databaseId) => {
-    const database: any = await new Client({ auth: token, logger: () => {} }).databases.retrieve({ database_id: databaseId });
+    const database: any = await new LimitedNotionClient({ auth: token, logger: () => {} }).databases.retrieve({ database_id: databaseId });
     return (database.data_sources || []).map((source: any) => source.id);
 });
 
@@ -8976,7 +8993,7 @@ export const processNotionWebhookInbox = onDocumentCreated({
     const claim = randomUUID();
     const item = await db.runTransaction(async tx => {
         const data = (await tx.get(ref)).data();
-        if (!data || ['completed', 'needs_attention', 'waiting_mapping', 'replay_queued'].includes(data.status)) return null;
+        if (!data || ['completed', 'queued', 'discarded', 'needs_attention', 'waiting_mapping', 'replay_queued'].includes(data.status)) return null;
         if (data.leaseUntil > Date.now()) throw new Error('WEBHOOK_ALREADY_PROCESSING');
         tx.update(ref, { status: 'processing', claim, leaseUntil: Date.now() + 600000,
             attempts: (data.attempts || 0) + 1 });
@@ -8984,14 +9001,18 @@ export const processNotionWebhookInbox = onDocumentCreated({
     });
     if (!item) return;
     try {
-        await processNotionWebhookDelivery(item.event);
+        if (item.replayOf && webhookMappingExpired(item)) throw new Error('STALE_WEBHOOK');
+        const match = await notionWebhookRouting.resolve(item.event);
+        await assertSecondBrainEnabled(match.userId);
+        const pageWorkId = await notionPageWork.enqueue(match.userId, match.connectionId, item.event);
         await db.runTransaction(async tx => {
             if ((await tx.get(ref)).data()?.claim === claim) tx.update(ref, {
-                status: 'completed', leaseUntil: 0, completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                status: 'queued', pageWorkId, leaseUntil: 0, queuedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
         });
     } catch (error: any) {
-        const deferred = deferredWebhookStatus(error);
+        const deferred = ['STALE_WEBHOOK', 'SECOND_BRAIN_AUTOMATION_DISABLED'].includes(error?.message) ||
+            (error?.message === 'NO_MATCHING_WORKSPACE' && webhookMappingExpired(item)) ? 'discarded' : deferredWebhookStatus(error);
         const exhausted = (item.attempts || 0) + 1 >= 10;
         // Store only a bounded error code, never SDK request headers or tokens.
         const candidate = String(error?.code || error?.message || 'PROCESSING_FAILED');
@@ -9003,13 +9024,31 @@ export const processNotionWebhookInbox = onDocumentCreated({
                 failedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
         });
-        console.error('[Notion webhook] processing failed', { eventId: trigger.params.eventId, code, exhausted });
+        if (deferred === 'waiting_mapping' || deferred === 'discarded') logger.info('[Notion webhook] deferred or closed', { eventId: trigger.params.eventId, code, status: deferred });
+        else console.error('[Notion webhook] processing failed', { eventId: trigger.params.eventId, code, exhausted });
         if (deferred === 'waiting_mapping') {
             // Close the race where an index was repaired while this event was being deferred.
             await notionWebhookRouting.requeueWaiting(ref);
         }
         if (!deferred && !exhausted) throw new Error('NOTION_WEBHOOK_RETRY');
     }
+});
+
+export const drainNotionPageWork = onSchedule({ schedule: 'every 1 minutes', timeZone: 'Asia/Seoul', timeoutSeconds: 540,
+    memory: '1GiB', maxInstances: 1, concurrency: 1 }, async () => {
+    await notionPageWork.drain(async item => {
+        const user = (await db.collection('users').doc(item.userId).get()).data();
+        if ((user?.notionConnectionId || null) !== item.connectionId) throw new Error('NOTION_CONNECTION_CHANGED');
+        await assertSecondBrainEnabled(item.userId);
+        if (item.onlyMissing) {
+            // Recovery is bound to the verified current connection and never replays old payloads.
+            await assertNotionConnection(item.userId, user?.notionAccessToken, item.connectionId || undefined);
+            await processWebhookEvent(item.userId, user!.notionAccessToken, item.event.entity.id, true);
+        } else await processNotionWebhookDelivery(item.event);
+    });
+    // Bounded upkeep: recent mapping failures can recover; expired ones become audit records.
+    const waiting = await db.collection('notionWebhookInbox').where('status', '==', 'waiting_mapping').limit(100).get();
+    for (const doc of waiting.docs) await notionWebhookRouting.requeueWaiting(doc.ref);
 });
 
 async function processNotionWebhookDelivery(event: any) {
@@ -9105,7 +9144,7 @@ async function processNotionWebhookDelivery(event: any) {
 // ----------------------------
 // #page
 
-async function processWebhookEvent(userId: string, accessToken: string, pageId: string) {
+async function processWebhookEvent(userId: string, accessToken: string, pageId: string, onlyMissing = false) {
     await assertSecondBrainEnabled(userId);
     const integration = db.collection('users').doc(userId).collection('integrations').doc('secondbrain');
     const config = (await integration.get()).data();
@@ -9114,9 +9153,15 @@ async function processWebhookEvent(userId: string, accessToken: string, pageId: 
     // notion API에서 페이지의 propery(title), block 가져오기
     if (!await reconcileSecondBrainPage(userId, accessToken, { id: pageId })) return;
     const page = await NotionService.getNotionPage(accessToken, pageId);
+    if (onlyMissing && page.properties?.['키워드']?.multi_select?.length) {
+        await saveSecondBrainKeywords(userId, pageId, cacheGeneration, {
+            keywords: page.properties['키워드'].multi_select.map((keyword: any) => keyword.name)
+        });
+        return;
+    }
     console.log(`[${pageId}] page fetched`);
 
-    const pageData = await getAndUpdatePageData(userId, page, accessToken);
+    const pageData = await getAndUpdatePageData(userId, page, accessToken, { skipIfKeywordsExist: onlyMissing });
     if (!pageData) {
         console.log(`[${pageId}] 페이지 데이터 없음`);
         return;
@@ -9812,13 +9857,14 @@ async function getPageContentText(pageId: string, accessToken: string): Promise<
 
                 // 하위 블록 재귀 호출
                 if (b.has_children) {
-                    const childRes = await fetch(`https://api.notion.com/v1/blocks/${b.id}/children?page_size=100`, {
+                    const childRes = await notionFetch(`https://api.notion.com/v1/blocks/${b.id}/children?page_size=100`, {
                         headers: {
                             "Authorization": `Bearer ${accessToken}`,
                             "Notion-Version": "2022-06-28",
                             "Content-Type": "application/json",
                         },
                     });
+                    if (!childRes.ok) throw Object.assign(new Error('NOTION_BLOCK_READ_FAILED'), { status: childRes.status });
                     const childData = await childRes.json();
                     if (Array.isArray(childData.results) && childData.results.length > 0) {
                         await extractBlockText(childData.results);
@@ -9826,18 +9872,20 @@ async function getPageContentText(pageId: string, accessToken: string): Promise<
                 }
             } catch (err) {
                 console.error("블록 텍스트 추출 실패:", err, b);
+                throw err;
             }
         }
     }
 
     try {
-        const blocksRes = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, {
+        const blocksRes = await notionFetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100`, {
             headers: {
                 "Authorization": `Bearer ${accessToken}`,
                 "Notion-Version": "2022-06-28",
                 "Content-Type": "application/json",
             },
         });
+        if (!blocksRes.ok) throw Object.assign(new Error('NOTION_BLOCK_READ_FAILED'), { status: blocksRes.status });
 
         const blocksData = await blocksRes.json();
         console.log(`[DEBUG] getPageContentText - blocksData.results length: ${blocksData.results?.length}`);
@@ -9847,6 +9895,7 @@ async function getPageContentText(pageId: string, accessToken: string): Promise<
         }
     } catch (err) {
         console.error("Notion blocks 가져오기 실패:", err);
+        throw err;
     }
 
     const finalContent = content.join("\n");
@@ -12345,7 +12394,7 @@ async function assertKakaoJobConnection(userId: string, job: any) {
 }
 
 function guardedNotionClient(token: string, guard: () => Promise<void>): Client {
-    const client = new Client({ auth: token });
+    const client = new LimitedNotionClient({ auth: token });
     for (const method of ['create', 'update', 'move'] as const) {
         const original = (client.pages as any)[method].bind(client.pages);
         (client.pages as any)[method] = async (...args: any[]) => { await guard(); return original(...args); };

@@ -19,14 +19,16 @@ function fixture() {
     }) };
     const context = { exports: {}, db, crypto, randomUUID: crypto.randomUUID,
         ...require('../lib/notion-webhook-routing'), notionWebhookRouting: { requeueWaiting: async () => false },
-        onRequest: (_, fn) => fn, withCors: fn => fn, onDocumentCreated: (_, fn) => fn,
+        notionPageWork: { enqueue: async () => 'page-work' }, assertSecondBrainEnabled: async () => {}, logger: { info() {} },
+        onSchedule: (_, fn) => fn, onRequest: (_, fn) => fn, withCors: fn => fn, onDocumentCreated: (_, fn) => fn,
         admin: { firestore: { FieldValue: { serverTimestamp: () => 1 } } },
         console: { error() {}, log() {} }, Date };
     vm.createContext(context);
     const section = source.slice(source.indexOf('export const handleNotionWebhookSinglePage ='), source.indexOf('async function processNotionWebhookDelivery('));
     vm.runInContext(ts.transpileModule(section, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, context);
     context.processNotionWebhookDelivery = async () => {};
-    const request = async (event = { id: 'event1', type: 'page.created', entity: { id: 'page1' } }) => {
+    context.notionWebhookRouting.resolve = async event => { await context.processNotionWebhookDelivery(event); return { userId: 'u', connectionId: 'c' }; };
+    const request = async (event = { id: 'event1', timestamp: new Date().toISOString(), type: 'page.created', entity: { id: 'page1' } }) => {
         const res = { status(n) { this.code = n; return this; }, send(body) { this.body = body; return this; } };
         await context.exports.handleNotionWebhookSinglePage({ method: 'POST', body: event }, res);
         return res;
@@ -44,7 +46,7 @@ test('duplicate delivery preserves existing state', async () => {
     const f = fixture(); await f.request(); await f.work();
     assert.equal((await f.request()).code, 200);
     assert.equal(f.records.size, 1);
-    assert.equal([...f.records.values()][0].status, 'completed');
+    assert.equal([...f.records.values()][0].status, 'queued');
 });
 test('Firestore write failure is not acknowledged', async () => {
     const f = fixture(); f.failWrites();

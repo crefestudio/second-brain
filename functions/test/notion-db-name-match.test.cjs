@@ -7,7 +7,7 @@ const source = fs.readFileSync(require.resolve('../src/index.ts'), 'utf8');
 const start = source.indexOf('    static async getDatabaseIdByDatabaseName(');
 const method = source.slice(start, source.indexOf('    // queryDatabase', start));
 function resolver(titles) {
-    const context = { TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS, console: { log() {} }, fetch: async () => ({ ok: true, text: async () => JSON.stringify({
+    const context = { TEMPLATE_PRODUCTS: require('../lib/template-catalog').TEMPLATE_PRODUCTS, console: { log() {} }, notionFetch: async () => ({ ok: true, text: async () => JSON.stringify({
         results: titles.map((title, i) => typeof title === 'string' ? ({ id: String(i), title: [{ plain_text: title }] }) : ({ id: String(i), ...title })), has_more: false
     }) }) };
     vm.createContext(context);

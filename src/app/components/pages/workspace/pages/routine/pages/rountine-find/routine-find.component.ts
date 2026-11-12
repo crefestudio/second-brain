@@ -22,21 +22,20 @@ export class RoutineFindComponent {
     selectedCategory = '추천';
 
     categories = [
-        // '전체',
         '추천',
+        '모닝 루틴',
+        '일과 시작 루틴',
+        '일과 중 루틴',
+        '저녁 루틴',
+        '수면 루틴',
         '건강',
         '생활',
         '다이어트',
         '성장',
-        '아침 루틴',
-        '저녁 루틴',
         '학습',
         '독서',
         '운동'
     ];
-
-    // ❌ 기존 '인기' 제거
-    // ✅ 대신 '추천' 추가
 
     habits = HABIT_RECOMMENDATIONS;
 
@@ -165,8 +164,7 @@ export class RoutineFindComponent {
             return this.habits;
         }
 
-        return this.habits.filter(r =>
-            r.categories?.includes(this.selectedCategory)
-        );
+        return this.habits.filter(r => r.categories?.includes(this.selectedCategory))
+            .sort((a, b) => (a.routineOrder || Number.MAX_SAFE_INTEGER) - (b.routineOrder || Number.MAX_SAFE_INTEGER));
     }
 }

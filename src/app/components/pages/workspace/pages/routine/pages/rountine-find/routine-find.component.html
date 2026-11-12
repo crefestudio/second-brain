@@ -43,6 +43,8 @@
               {{ habit.name }}
             </span>
 
+            @if (habit.description) { <p class="habit-description">{{ habit.description }}</p> }
+
             <!-- 키워드 여러개 -->
             <div class="keyword-row">
 
@@ -93,6 +95,7 @@
               <option [value]="5">5분</option>
               <option [value]="10">10분</option>
               <option [value]="15">15분</option>
+              <option [value]="25">25분</option>
               <option [value]="30">30분</option>
               <option [value]="60">1시간</option>
               <option [value]="120">1시간</option>
