@@ -40,3 +40,24 @@ test('pins are admin-only, public-only, ordered ahead of normal pages without du
  f.rows.set('communityMembers/admin',{active:false,withdrawalStatus:'pending'});
  assert.equal((await api(member,{action:'pins'})).posts.length,0);
 });
+test('important resources are separate, permanent, scoped, and can switch back or be removed',async()=>{
+ let time=100000;
+ const f=memoryDb({'communityMembers/admin':{active:true,name:'Admin'},'communityMembers/member':{active:true,name:'Member'}});
+ const api=createCommunity(f.db,()=>time),admin={uid:'admin',isAdmin:true},member={uid:'member',isAdmin:false};
+ f.rows.set('communityPosts/resource',{title:'Guide',body:'Body',roomId:'hello',kind:'feed',authorId:'admin',visible:true,createdAt:1,likes:0});
+ const pin=(who,mode)=>api(who,{action:'pinPost',postId:'resource',mode});
+ await assert.rejects(pin(member,'resource'),e=>e.status===403);
+ await pin(admin,'resource');time+=86400001;
+ let result=await api(member,{action:'pins'});
+ assert.equal(result.posts.length,0);assert.equal(result.resourcePosts[0].pinCategory,'resource');
+ assert.equal((await api(member,{action:'pins',roomId:'notion'})).resourcePosts.length,0);
+ const feed=await api(member,{action:'feed',roomId:'hello'});
+ assert.equal(feed.pinnedPosts.length,0);assert.equal(feed.posts[0].id,'resource');
+ await pin(admin,'always');result=await api(member,{action:'pins'});
+ assert.equal(result.posts.length,1);assert.equal(result.resourcePosts.length,0);
+ await pin(admin,'resource');await pin(admin,'none');
+ result=await api(member,{action:'pins'});assert.equal(result.posts.length,0);assert.equal(result.resourcePosts.length,0);
+ await pin(admin,'resource');f.rows.get('communityPosts/resource').isPrivate=true;
+ assert.equal((await api(member,{action:'pins'})).resourcePosts.length,0);
+ await assert.rejects(pin(admin,'resource'),e=>e.status===400);
+});

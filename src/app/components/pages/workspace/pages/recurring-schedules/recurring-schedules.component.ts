@@ -1,4 +1,5 @@
 import { HABIT_RECOMMENDATIONS } from '../routine/habit-recommendations';
+import { canUseAgent } from '../../../../../../../functions/src/template-catalog';
 import { yearlyCountdown } from './schedule-countdown';
 import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -6,10 +7,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { AuthService } from '../../../../../services/auth.service';
+import { TemplateUpgradeEventService } from '../../../../../services/template-upgrade-event.service';
+import { ScrapbookUpgradeCardComponent } from '../../../../common/scrapbook-upgrade-card.component';
 import { RecurringSchedulesService, ScheduleState } from '../../../../../services/recurring-schedules.service';
 import { RecurringSchedule, ScheduleKind, lunarDate, dateString, yearlyDates, matchesDate, koreaDate, validateSchedule, scheduleConflict } from '../../../../../../../functions/src/recurring-schedule-model';
 import { SCHEDULE_RECOMMENDATIONS, ScheduleRecommendation } from './schedule-recommendations';
-@Component({ selector:'app-recurring-schedules', standalone:true, imports:[CommonModule,FormsModule,RouterLink],
+@Component({ selector:'app-recurring-schedules', standalone:true, imports:[CommonModule,FormsModule,RouterLink,ScrapbookUpgradeCardComponent],
     templateUrl:'./recurring-schedules.component.html', styleUrls:[
         '../routine/routine.component.css',
         '../routine/pages/rountine-find/routine-find.component.scss',
@@ -50,11 +53,15 @@ export class RecurringSchedulesComponent implements OnInit, OnDestroy {
     today = koreaDate(); currentMonth = Number(this.today.slice(5,7));
     private subscription?: Subscription;
     drag: { schedule: RecurringSchedule; pointerId:number; x:number; y:number; active:boolean; month:number; day:number; element:HTMLElement } | null = null;
-    constructor(private auth:AuthService, private api:RecurringSchedulesService, private route:ActivatedRoute, private router:Router) {}
+    constructor(private auth:AuthService, private api:RecurringSchedulesService, private route:ActivatedRoute, private router:Router, private upgradeEvent:TemplateUpgradeEventService) {}
     async ngOnInit() {
         this.subscription=this.route.paramMap.subscribe(params=>{ this.cancelDrag(); this.editing=null; this.deleting=null; this.confirmEnable=false; this.message=''; this.tab=params.get('tab') || 'dashboard'; if(!['dashboard','mine','recommendations'].includes(this.tab)) void this.router.navigateByUrl('/workspace/recurring-schedules/dashboard'); });
-        try { await this.auth.updateSession(); this.userId=this.auth.getUserId(); this.connected=!!this.auth.getNotionAccessToken(); this.allowed=['lifeUp','lifeupPlanner'].includes(this.auth.templateId);
+        try { await this.auth.updateSession(); this.userId=this.auth.getUserId(); this.connected=!!this.auth.getNotionAccessToken(); this.allowed=canUseAgent(this.auth.templateId, 'recurringSchedules');
             if(this.userId && this.allowed) this.state=await this.api.request(this.userId,'list');
+            if(this.userId && !this.allowed) {
+                // The shared card falls back to the regular offer if event loading fails.
+                try { await this.upgradeEvent.initialize(this.userId, this.auth.templateId); } catch {}
+            }
         } catch(error) { this.error=this.errorText(error); } finally { this.loading=false; }
     }
     ngOnDestroy() { this.subscription?.unsubscribe(); this.cancelDrag(); }

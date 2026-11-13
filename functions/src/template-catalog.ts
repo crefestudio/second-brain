@@ -147,7 +147,9 @@ export function templateIdOrLegacy(value: unknown): TemplateId {
     return value;
 }
 export function canUseAgent(templateId: unknown, agentId: string): boolean {
-    return isTemplateId(templateId) && TEMPLATE_PRODUCTS[templateId].agents[agentId as AutomationId] === true;
+    // Recurring schedules share the routine template entitlement.
+    const entitlementId = agentId === 'recurringSchedules' ? 'routine' : agentId;
+    return isTemplateId(templateId) && TEMPLATE_PRODUCTS[templateId].agents[entitlementId as AutomationId] === true;
 }
 export function templateDownloadPath(templateId: unknown): string {
     return isTemplateId(templateId) ? `/download/${TEMPLATE_PRODUCTS[templateId].slug}` : '';

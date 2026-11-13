@@ -58,19 +58,20 @@ export class CommunityComponent implements OnInit, OnDestroy {
     pinnedPosts: CommunityPost[] = [];
     sidebarPinnedPosts: CommunityPost[] = [];
     popularPosts: CommunityPost[] = [];
+    resourcePosts: CommunityPost[] = [];
     get loadPinnedSidebar() { return this.view === 'mine' || this.view === 'home'; }
-    get showPinnedSidebar() { return this.loadPinnedSidebar && this.sidebarPinnedPosts.length > 0; }
+    get showPinnedSidebar() { return this.loadPinnedSidebar && (this.sidebarPinnedPosts.length > 0 || this.resourcePosts.length > 0 || this.showPopularPosts); }
     get showPopularPosts() { return this.view === 'home' && !this.roomId; }
     showChannelBadge(post: CommunityPost) { return !this.roomId && (post.pinExpiresAt || 0) <= Date.now(); }
     roomTone(id: string) { const index = this.rooms.findIndex(r => r.id === id); return 'tone-' + Math.max(0, index % 6); }
     pinTarget: CommunityPost | null = null;
     pinMode = 'none';
     readonly permanentPin = Number.MAX_SAFE_INTEGER;
-    editPin(post: CommunityPost) { this.pinTarget = post; this.pinMode = post.pinExpiresAt === this.permanentPin ? 'always' : (post.pinExpiresAt || 0) > Date.now() ? 'day' : 'none'; this.openDialog('pin'); }
+    editPin(post: CommunityPost) { this.pinTarget = post; this.pinMode = post.pinCategory === 'resource' && (post.pinExpiresAt || 0) > Date.now() ? 'resource' : post.pinExpiresAt === this.permanentPin ? 'always' : (post.pinExpiresAt || 0) > Date.now() ? 'day' : 'none'; this.openDialog('pin'); }
     async savePin() {
         if (this.busy || !this.pinTarget) return;
         this.busy = true; this.dialogError = '';
-        try { await this.api.request('pinPost', {postId: this.pinTarget.id, mode: this.pinMode}); this.dialog = ''; this.notice = this.pinMode === 'none' ? '상단 고정을 해제했습니다.' : '해당 방 상단과 고정된 글에 표시했습니다.'; await this.load(); }
+        try { await this.api.request('pinPost', {postId: this.pinTarget.id, mode: this.pinMode}); this.dialog = ''; this.notice = this.pinMode === 'none' ? '글 고정을 해제했습니다.' : this.pinMode === 'resource' ? '중요 자료에 표시했습니다.' : '고정된 글에 표시했습니다.'; await this.load(); }
         catch (e) { this.dialogError = this.message(e); } finally { this.busy = false; }
     }
     members: CommunityMember[] = [];
@@ -280,7 +281,7 @@ export class CommunityComponent implements OnInit, OnDestroy {
         if (!this.member || (more && !this.nextCursor)) return;
         const generation = ++this.generation;
         this.loading = true; this.error = '';
-        if (!more) { this.draftPreview = null; this.savedDrafts = []; this.sidebarPinnedPosts = []; this.popularPosts = []; this.pinnedPosts = []; this.posts = []; this.members = []; this.selected = null; this.comments = []; this.accepted = null; this.nextCursor = null; }
+        if (!more) { this.draftPreview = null; this.savedDrafts = []; this.sidebarPinnedPosts = []; this.popularPosts = []; this.resourcePosts = []; this.pinnedPosts = []; this.posts = []; this.members = []; this.selected = null; this.comments = []; this.accepted = null; this.nextCursor = null; }
         const postId = this.route.snapshot.queryParamMap.get('post');
         try {
             const draftId = this.route.snapshot.queryParamMap.get('draft');
@@ -291,6 +292,7 @@ export class CommunityComponent implements OnInit, OnDestroy {
                 ]);
                 if (generation !== this.generation) return;
                 this.sidebarPinnedPosts = pins.posts || [];
+            this.resourcePosts = pins.resourcePosts || [];
                 if (draftId) this.draftPreview = result.draft;
                 else this.savedDrafts = more ? [...this.savedDrafts,...result.drafts] : result.drafts;
                 this.nextCursor=result.nextCursor || null; return;
@@ -300,6 +302,7 @@ export class CommunityComponent implements OnInit, OnDestroy {
             }), this.loadPinnedSidebar ? this.api.request('pins', {roomId: this.view === 'mine' ? '' : this.roomId, includePopular:this.showPopularPosts}) : Promise.resolve({posts:[]})]);
             if (generation !== this.generation) return;
             this.sidebarPinnedPosts = pins.posts || [];
+            this.resourcePosts = pins.resourcePosts || [];
             this.popularPosts = pins.popularPosts || [];
             this.nextCursor = result.nextCursor;
             if (this.view === 'members') this.members = more ? [...this.members, ...result.members] : result.members;

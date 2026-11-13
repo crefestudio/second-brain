@@ -18408,7 +18408,7 @@ function communityDelivery() {
         apiKey: COMMUNITY_KAKAO_REST_API_KEY?.value() || ''
     });
     return createCommunityDelivery(db, admin.auth(), async (uid, email, subject, text, key, html, newsletterPostId, category) => {
-        const result = await communityMailQueue.send({ from: 'Notionable <noreply@notionable.net>',
+        const result = await communityMailQueue.send({ from: '노셔너블 클럽 <noreply@notionable.net>',
             to: email, subject, text, ...(html ? {html} : {}), ...(newsletterPostId ? {communityNewsletterPostId: newsletterPostId} : {}), communityRecipientId: uid, communityNotificationCategory: category }, 'normal', key);
         if (result.error) throw new Error('COMMUNITY_MAIL_QUEUE_FAILED');
     }, client);

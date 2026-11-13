@@ -97,7 +97,7 @@ export function createCommunity(db: Firestore, now = () => Date.now(), resolveAd
         };
         const publicPost = (d: FirebaseFirestore.DocumentSnapshot): CommunityPost => {
             const v = d.data() || {};
-            return { id: d.id, bodyDocument: v.bodyDocument || null, pinExpiresAt: v.pinExpiresAt || 0, pinnedAt: v.pinnedAt || 0, isPrivate: v.isPrivate === true, roomId: v.roomId, kind: v.kind, title: v.title, body: v.body, media: v.media || [],
+            return { id: d.id, bodyDocument: v.bodyDocument || null, pinCategory: v.pinCategory === 'resource' ? 'resource' : 'post', pinExpiresAt: v.pinExpiresAt || 0, pinnedAt: v.pinnedAt || 0, isPrivate: v.isPrivate === true, roomId: v.roomId, kind: v.kind, title: v.title, body: v.body, media: v.media || [],
                 authorId: v.authorId, authorName: v.authorName, authorIsAdmin: adminIds.has(v.authorId), authorAvatar: authorAvatars.get(v.authorId) || '', createdAt: v.createdAt, updatedAt: v.updatedAt,
                 websitePublishedAt: v.websitePublishedAt || 0, websitePublishedVersion: v.websitePublishedVersion || 0,
                 sharedInstagramUrl: v.sharedInstagramUrl || '', ...(who.isAdmin && (v.sharing?.newsletter || v.newsletterRequestedAt) ? {newsletterSentCount: v.newsletterSentCount || 0, newsletterRequestedAt: v.newsletterRequestedAt || 0} : {}), sharing: v.sharing, version: v.version, likes: v.likes, comments: v.comments, acceptedCommentId: v.acceptedCommentId };
@@ -162,20 +162,20 @@ export function createCommunity(db: Firestore, now = () => Date.now(), resolveAd
                 popular.splice(5);
                 await loadAuthorAvatars(popular);
             }
-            return {posts: rows.map(publicPost), popularPosts: popular.map(publicPost)};
+            return {posts: rows.filter(d => d.get('pinCategory') !== 'resource').map(publicPost), resourcePosts: rows.filter(d => d.get('pinCategory') === 'resource').map(publicPost), popularPosts: popular.map(publicPost)};
         }
         if (['drafts', 'draft', 'saveDraft', 'deleteDraft'].includes(String(action))) return drafts(who, input);
         if (typeof action === 'string' && action.startsWith('chat')) return chat(who, input, adminIds);
         if (action === 'pinPost') {
-            if (!who.isAdmin) return fail(403, '관리자만 글을 상단에 고정할 수 있습니다.');
-            if (!['none', 'always', 'day'].includes(String(input.mode))) return fail(400, '고정 기간을 선택해주세요.');
+            if (!who.isAdmin) return fail(403, '관리자만 글을 고정할 수 있습니다.');
+            if (!['none', 'always', 'day', 'resource'].includes(String(input.mode))) return fail(400, '고정 옵션을 선택해주세요.');
             const ref = posts.doc(id(input.postId));
             await db.runTransaction(async tx => {
                 await requireMember(who.uid, tx);
                 const post = await tx.get(ref);
                 await ensurePost(post, who, tx);
                 if (post.get('isPrivate')) fail(400, '비공개 글은 고정할 수 없습니다.');
-                tx.update(ref, {pinnedAt: now(), pinExpiresAt: input.mode === 'always' ? Number.MAX_SAFE_INTEGER : input.mode === 'day' ? now() + 86400000 : 0});
+                tx.update(ref, {pinnedAt: now(), pinCategory: input.mode === 'resource' ? 'resource' : 'post', pinExpiresAt: input.mode === 'always' || input.mode === 'resource' ? Number.MAX_SAFE_INTEGER : input.mode === 'day' ? now() + 86400000 : 0});
             });
             const updated = await ref.get(); await loadAuthorAvatars([updated]);
             return {post: publicPost(updated)};
@@ -228,7 +228,7 @@ export function createCommunity(db: Firestore, now = () => Date.now(), resolveAd
                 query = query.where('kind', '==', input.kind);
             }
             let pinned: FirebaseFirestore.QueryDocumentSnapshot[] = [];
-            if (input.roomId && input.mine !== true) pinned = (await pinnedRows(String(input.roomId))).filter(d => !input.kind || d.get('kind') === input.kind);
+            if (input.roomId && input.mine !== true) pinned = (await pinnedRows(String(input.roomId))).filter(d => d.get('pinCategory') !== 'resource' && (!input.kind || d.get('kind') === input.kind));
             const pinnedIds = new Set(pinned.map(d => d.id));
             // Fill a visible page even when intervening posts are pinned, private or retired.
             const docs: FirebaseFirestore.QueryDocumentSnapshot[] = [];

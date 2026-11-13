@@ -9,7 +9,10 @@
     @if(loading){<div class="page-loading"><div class="loading-spinner"></div><div class="loading-text" role="status">반복 일정을 불러오는 중입니다…</div></div>}
     @if(error){<p class="routine-status" role="alert">{{error}} <button class="inline-action-btn" [disabled]="busy" (click)="perform('list')">다시 불러오기</button></p>}
     @if(message){<p class="routine-dashboard-note" role="status">{{message}}</p>}
-    @if(!loading && (!userId || !connected || !allowed)){<div class="notion-connect-box"><div class="notion-connect-icon">🔗</div><h2>노션 연결이 필요합니다.</h2><p>라이프업 또는 플래너 워크스페이스를 연결해주세요.</p><a class="notion-connect-btn" routerLink="/workspace/connect">연결 설정</a></div>}
+    @if(!loading && userId && !allowed){
+      <app-scrapbook-upgrade-card source="recurring_schedules" />
+    } @else {
+    @if(!loading && (!userId || !connected)){<div class="notion-connect-box"><div class="notion-connect-icon">🔗</div><h2>노션 연결이 필요합니다.</h2><p>라이프업 또는 플래너 워크스페이스를 연결해주세요.</p><a class="notion-connect-btn" routerLink="/workspace/connect">연결 설정</a></div>}
     @if(tab==='dashboard'){
       <div class="habit-dashboard">
         <section class="routine-dashboard-intro"><h1>📅 반복 일정 관리</h1><button type="button" class="inline-action-btn" [disabled]="!canEdit || !connected || !state.enabled" (click)="perform('run')">{{busy?'처리 중…':'오늘 일정 동기화'}}</button><div class="routine-dashboard-hero">
@@ -75,6 +78,7 @@
       <div class="habit-page"><p class="routine-dashboard-note">추천 날짜를 실제 일정에 맞게 설정해주세요. 실제 납부일·생일·계약일을 확인하고 변경해주세요.</p><div class="category-row">@for(item of categories;track item){<button class="category-chip" [class.active]="category===item" (click)="category=item">{{item}}</button>}</div>
         <div class="habit-grid">@for(item of recommendations;track item.name){<article class="habit-card recommendation-card"><div class="habit-header"><span class="habit-icon">{{item.icon}}</span><div class="habit-title"><span class="habit-name">{{item.name}}</span><div class="keyword-row"><span class="habit-tag">#{{item.category}}</span></div></div></div><p class="routine-dashboard-note">{{dateLabel(item)}}</p>@if(item.note){<p class="routine-dashboard-note">{{item.note}}</p>}<button class="add-btn" [disabled]="!canEdit" (click)="openEditor(undefined,5,1,item)">날짜 확인하고 추가 +</button></article>}</div>
       </div>
+    }
     }
   </div>
 </div>

@@ -38,7 +38,7 @@ export type CommunityKind = 'feed' | 'question' | 'request';
 export interface CommunityMember { id: string; name: string; bio: string; joinedAt: number; isAdmin?: boolean; avatar?: string }
 export interface CommunityPost {
     bodyDocument?: ClubDocument | null;
-    pinExpiresAt?: number; pinnedAt?: number;
+    pinExpiresAt?: number; pinnedAt?: number; pinCategory?: 'post' | 'resource';
     id: string; isPrivate?: boolean; roomId: string; kind: CommunityKind; title: string; body: string; media?: CommunityMedia[];
     authorId: string; authorName: string; authorIsAdmin?: boolean; authorAvatar?: string; createdAt: number; updatedAt: number; version: number;
     sharedInstagramUrl?: string; newsletterSentCount?: number; newsletterRequestedAt?: number;
